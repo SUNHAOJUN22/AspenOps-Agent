@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find bootstrap -maxdepth 1 -name 'part-*.b64' | wc -l)" -eq 9
+          test "$(find bootstrap -maxdepth 1 -name 'part-*.b64' | wc -l)" -eq 22
           cat $(find bootstrap -maxdepth 1 -name 'part-*.b64' | sort) | base64 --decode > /tmp/aspenops-v1.bundle
           echo "a67b37001c657e1f9b6b9b80f297684e7be026ff4eb4a472c2eef9fec4370b4a  /tmp/aspenops-v1.bundle" | sha256sum --check --strict
           git bundle verify /tmp/aspenops-v1.bundle
@@ -32,7 +32,10 @@ jobs:
           test "$(git rev-parse 'refs/tags/v1.0.0^{}')" = "b2bfd35c8672c6238e7ab488c99c3483b9f342b0"
           test "$(git ls-tree -r --name-only refs/remotes/release/main | wc -l)" -eq 138
           git ls-tree -r --name-only refs/remotes/release/main | grep -qx README.md
+          git ls-tree -r --name-only refs/remotes/release/main | grep -qx README.zh-CN.md
           git ls-tree -r --name-only refs/remotes/release/main | grep -qx pyproject.toml
+          git ls-tree -r --name-only refs/remotes/release/main | grep -qx uv.lock
+          git ls-tree -r --name-only refs/remotes/release/main | grep -qx src/aspenops/__init__.py
 
       - name: Publish validated import branch and tag
         shell: bash
