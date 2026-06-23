@@ -1,1 +1,1 @@
-Request observable materialization of the verified AspenOps Nexus v1.0.0 release.
+Verification revision: 2
