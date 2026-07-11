@@ -1,1 +1,0 @@
-Transport diagnostic revision 4: publish source before workflow replacement.

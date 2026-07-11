@@ -1,0 +1,15 @@
+backend: mock
+case: ../mock_case.json
+variables:
+  - key: block.input.temperature
+    identifiers: {block: R-101}
+    unit: C
+    lower: 380
+    upper: 500
+outputs:
+  - key: block.output.conversion
+    identifiers: {block: R-101}
+    unit: fraction
+method: latin_hypercube
+points: 20
+seed: 2026
