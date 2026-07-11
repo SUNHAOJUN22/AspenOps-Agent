@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Sync
+        run: uv sync --extra dev --extra agent
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy src/aspenops
+      - name: Tests
+        run: uv run pytest
+      - name: Build distributions
+        if: matrix.python-version == '3.13'
+        run: uv build
+      - name: Wheel smoke test
+        if: matrix.python-version == '3.13'
+        shell: bash
+        run: |
+          python -m venv /tmp/aspenops-wheel
+          /tmp/aspenops-wheel/bin/pip install dist/*.whl
+          /tmp/aspenops-wheel/bin/aspenops version
