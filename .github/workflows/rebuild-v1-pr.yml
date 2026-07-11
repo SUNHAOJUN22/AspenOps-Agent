@@ -87,8 +87,13 @@ jobs:
           set -o pipefail
           {
             set -eux
+            mkdir -p /tmp/base-workflows
+            cp -a "$GITHUB_WORKSPACE/.github/workflows/." /tmp/base-workflows/
             find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
             cp -a /tmp/aspenops-release/. "$GITHUB_WORKSPACE"/
+            rm -rf "$GITHUB_WORKSPACE/.github/workflows"
+            mkdir -p "$GITHUB_WORKSPACE/.github/workflows"
+            cp -a /tmp/base-workflows/. "$GITHUB_WORKSPACE/.github/workflows/"
             cd "$GITHUB_WORKSPACE"
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
