@@ -1,0 +1,66 @@
+name: Verify and Materialize AspenOps v1 Rebuild
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.event.pull_request.title == 'VERIFY_ASPENOPS_V1_REBUILD'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pull request candidate
+        uses: actions/checkout@v4
+
+      - name: Verify and extract source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check --strict PAYLOAD_SHA256.txt
+          mkdir -p /tmp/aspenops-release
+          tar -xzf payload/aspenops-v1.0.0.tar.gz -C /tmp/aspenops-release
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Run complete release gate
+        working-directory: /tmp/aspenops-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --extra dev --extra agent
+          uv run ruff check .
+          uv run mypy src/aspenops
+          uv run pytest
+          uv build
+          uv run aspenops demo
+
+      - name: Remove generated build state
+        working-directory: /tmp/aspenops-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv .pytest_cache .mypy_cache .ruff_cache htmlcov dist build
+          rm -f .coverage .coverage.*
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type d -name '*.egg-info' -prune -exec rm -rf {} +
+
+      - name: Publish clean source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/aspenops-release/. "$GITHUB_WORKSPACE"/
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: rebuild AspenOps Agent 1.0"
+          git push --force origin HEAD:refs/heads/agent/rebuild-aspenops-v1
