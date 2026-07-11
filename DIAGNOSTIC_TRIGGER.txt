@@ -1,1 +1,1 @@
-Transport diagnostic revision 3: explicit candidate branch publication.
+Transport diagnostic revision 4: publish source before workflow replacement.
