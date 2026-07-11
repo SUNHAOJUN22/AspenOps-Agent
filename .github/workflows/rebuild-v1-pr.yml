@@ -81,14 +81,28 @@ jobs:
           find . -type d -name '*.egg-info' -prune -exec rm -rf {} +
 
       - name: Publish clean source candidate
+        id: publish
         shell: bash
         run: |
-          set -euo pipefail
-          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -a /tmp/aspenops-release/. "$GITHUB_WORKSPACE"/
-          cd "$GITHUB_WORKSPACE"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: rebuild AspenOps Agent 1.0"
-          git push --force origin HEAD:refs/heads/agent/rebuild-aspenops-v1
+          set -o pipefail
+          {
+            set -eux
+            find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            cp -a /tmp/aspenops-release/. "$GITHUB_WORKSPACE"/
+            cd "$GITHUB_WORKSPACE"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -C agent/rebuild-aspenops-v1
+            git add -A
+            git status --short
+            git commit -m "feat: rebuild AspenOps Agent 1.0"
+            git push --force origin agent/rebuild-aspenops-v1
+          } 2>&1 | tee /tmp/publish-diagnostics.txt
+
+      - name: Upload publish diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aspenops-publish-diagnostics
+          path: /tmp/publish-diagnostics.txt
+          if-no-files-found: warn
