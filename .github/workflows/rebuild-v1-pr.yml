@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find payload -maxdepth 1 -name 'source.b64.*' | wc -l)" -eq 9
+          test "$(find payload -maxdepth 1 -name 'source.b64.*' | wc -l)" -eq 12
           base64 --decode /tmp/aspenops-source.b64 > /tmp/aspenops-v1.0.0.tar.gz
           echo "70ef0083b4d2d4e53a6b225ed3457cd7b4d03f82614e689f269581e93317811b  /tmp/aspenops-v1.0.0.tar.gz" | sha256sum --check --strict
           mkdir -p /tmp/aspenops-release
