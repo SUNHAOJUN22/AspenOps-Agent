@@ -1,1 +1,1 @@
-Transport diagnostic revision 1.
+Transport diagnostic revision 2: twelve verified parts.
