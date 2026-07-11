@@ -16,13 +16,16 @@ jobs:
       - name: Checkout pull request candidate
         uses: actions/checkout@v4
 
-      - name: Verify and extract source payload
+      - name: Reconstruct, verify and extract source
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum --check --strict PAYLOAD_SHA256.txt
+          test "$(find payload -maxdepth 1 -name 'source.b64.*' | wc -l)" -eq 5
+          cat payload/source.b64.* > /tmp/aspenops-source.b64
+          base64 --decode /tmp/aspenops-source.b64 > /tmp/aspenops-v1.0.0.tar.gz
+          echo "70ef0083b4d2d4e53a6b225ed3457cd7b4d03f82614e689f269581e93317811b  /tmp/aspenops-v1.0.0.tar.gz" | sha256sum --check --strict
           mkdir -p /tmp/aspenops-release
-          tar -xzf payload/aspenops-v1.0.0.tar.gz -C /tmp/aspenops-release
+          tar -xzf /tmp/aspenops-v1.0.0.tar.gz -C /tmp/aspenops-release
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
