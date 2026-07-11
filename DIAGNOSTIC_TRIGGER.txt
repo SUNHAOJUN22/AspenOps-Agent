@@ -1,1 +1,1 @@
-Transport diagnostic revision 2: twelve verified parts.
+Transport diagnostic revision 3: explicit candidate branch publication.
