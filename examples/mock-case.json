@@ -1,0 +1,11 @@
+{
+  "solve_delay_ms": 25,
+  "fail_if_temperature_above": 220,
+  "inputs": {
+    "feed_temperature_C": 80,
+    "feed_pressure_bar": 5,
+    "feed_flow_kg_h": 100,
+    "reflux_ratio": 2.0,
+    "stages": 24
+  }
+}

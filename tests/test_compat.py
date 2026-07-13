@@ -1,28 +1,26 @@
-import pytest
+from aspenops_nexus.compat import (
+    discover_aspen_plus_candidates,
+    discover_hysys_candidates,
+    parse_numeric_version,
+)
 
-from aspenops.compat import ProgIdInfo, candidate_progids, order_progids, parse_progid
-from aspenops.errors import CompatibilityError
+
+def test_numeric_version_parser_is_marketing_version_agnostic() -> None:
+    assert parse_numeric_version("Apwn.Document.40.0") == (40, 0)
+    assert parse_numeric_version("Apwn.Document.39") == (39,)
+    assert parse_numeric_version("Apwn.Document") == ()
 
 
-def test_parse_and_order_progids(monkeypatch: pytest.MonkeyPatch) -> None:
-    items = [
-        parse_progid("Apwn.Document.40.0", "32-bit"),
-        parse_progid("Apwn.Document.42.1", "64-bit"),
-        parse_progid("Apwn.Document", "64-bit"),
-        ProgIdInfo("Apwn.Document.40.0", 40, 0, "64-bit"),
-    ]
-    ordered = order_progids(items)
-    assert [item.progid for item in ordered] == [
-        "Apwn.Document.42.1",
-        "Apwn.Document.40.0",
-        "Apwn.Document",
-    ]
-    assert ordered[1].registry_view == "64-bit"
-
+def test_pinned_progids_override_discovery(monkeypatch) -> None:
     monkeypatch.setenv("ASPENOPS_PROGID", "Apwn.Document.99.0")
-    assert candidate_progids() == ["Apwn.Document.99.0", "Apwn.Document"]
+    monkeypatch.setenv("ASPENOPS_HYSYS_PROGID", "HYSYS.Application.99")
+    assert discover_aspen_plus_candidates()[0].progid == "Apwn.Document.99.0"
+    assert discover_aspen_plus_candidates()[0].pinned
+    assert discover_hysys_candidates()[0].progid == "HYSYS.Application.99"
 
 
-def test_invalid_progid() -> None:
-    with pytest.raises(CompatibilityError):
-        parse_progid("HYSYS.Application")
+def test_non_windows_discovery_keeps_unversioned_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("ASPENOPS_PROGID", raising=False)
+    monkeypatch.delenv("ASPENOPS_HYSYS_PROGID", raising=False)
+    assert discover_aspen_plus_candidates()[-1].progid == "Apwn.Document"
+    assert discover_hysys_candidates()[-1].progid == "HYSYS.Application"

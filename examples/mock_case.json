@@ -1,9 +1,0 @@
-{
-  "values": {
-    "mock.feed.temperature": 90.0,
-    "mock.feed.pressure": 15.0,
-    "mock.feed.mass_flow": 12000.0,
-    "mock.reactor.temperature": 430.0,
-    "mock.reactor.residence_time": 2.8
-  }
-}

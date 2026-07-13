@@ -1,0 +1,41 @@
+{
+  "name": "hysys-spreadsheet-bridge-example",
+  "version": "1.0.0",
+  "nodes": {
+    "stream.input.temperature": {
+      "backend": "hysys",
+      "access": "readwrite",
+      "unit": "C",
+      "lower": -100,
+      "upper": 500,
+      "identifiers": ["stream"],
+      "paths": [],
+      "locator": {
+        "spreadsheet": "ASPENOPS_IO",
+        "cell": "B2"
+      }
+    },
+    "stream.output.temperature": {
+      "backend": "hysys",
+      "access": "read",
+      "unit": "C",
+      "identifiers": ["stream"],
+      "paths": [],
+      "locator": {
+        "spreadsheet": "ASPENOPS_IO",
+        "cell": "C2"
+      }
+    },
+    "stream.output.mass_flow": {
+      "backend": "hysys",
+      "access": "read",
+      "unit": "kg/h",
+      "identifiers": ["stream"],
+      "paths": [],
+      "locator": {
+        "spreadsheet": "ASPENOPS_IO",
+        "cell": "C3"
+      }
+    }
+  }
+}
