@@ -33,8 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f v1.1stage/source.tar.gz.b64
-          echo "e2ed6b5eb35e8a1504bddf3fb40229897f08d3a538ce0d32ece2318cc9a76857  v1.1stage/source.tar.gz.b64" | sha256sum --check --strict
-          base64 --decode v1.1stage/source.tar.gz.b64 > /tmp/aspenops-1.1.0-source.tar.gz
+          tr -d '\r\n\t ' < v1.1stage/source.tar.gz.b64 | base64 --decode > /tmp/aspenops-1.1.0-source.tar.gz
           echo "de758d63a3003560cb3b43de08138aa196599b92fb94bbb211fd0fd3a47e2aef  /tmp/aspenops-1.1.0-source.tar.gz" | sha256sum --check --strict
           mkdir -p /tmp/aspenops-1.1.0
           tar -xzf /tmp/aspenops-1.1.0-source.tar.gz -C /tmp/aspenops-1.1.0
