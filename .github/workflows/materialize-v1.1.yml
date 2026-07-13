@@ -1,4 +1,4 @@
-name: Materialize AspenOps 1.1.0
+name: Diagnose AspenOps 1.1 payload
 
 on:
   push:
@@ -10,85 +10,69 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: aspenops-1.1-materialize-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  contents: read
+  issues: read
 
 jobs:
-  verify-and-materialize:
+  diagnose-payload:
     if: github.event_name != 'pull_request' || github.head_ref == 'agent/aspenops-1.1-materialize'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
-      - name: Checkout checksum-gated staging branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Verify and reconstruct source archive
+      - name: Hash issue payload comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          test -f v1.1stage/source.tar.gz.b64
-          tr -d '\r\n\t ' < v1.1stage/source.tar.gz.b64 | base64 --decode > /tmp/aspenops-1.1.0-source.tar.gz
-          echo "de758d63a3003560cb3b43de08138aa196599b92fb94bbb211fd0fd3a47e2aef  /tmp/aspenops-1.1.0-source.tar.gz" | sha256sum --check --strict
-          mkdir -p /tmp/aspenops-1.1.0
-          tar -xzf /tmp/aspenops-1.1.0-source.tar.gz -C /tmp/aspenops-1.1.0
-          test -f /tmp/aspenops-1.1.0/pyproject.toml
-          test -f /tmp/aspenops-1.1.0/README.md
-          test -f /tmp/aspenops-1.1.0/README.en.md
+          python - <<'PY'
+          import hashlib, json, os, re, urllib.request
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-          enable-cache: true
-
-      - name: Run portable release gate
-        working-directory: /tmp/aspenops-1.1.0
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv sync --extra dev --extra agent
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy src
-          uv run pytest -W error::ResourceWarning --cov=aspenops --cov-branch --cov-report=term --cov-report=json:var/coverage.json --cov-fail-under=85
-          uv run python scripts/check_release_consistency.py
-          uv run python scripts/check_mcp.py
-          uv build --clear
-          uv run aspenops version
-          uv run aspenops doctor
-          uv run aspenops demo
-
-      - name: Verify clean wheel installation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m venv /tmp/aspenops-wheel-smoke
-          /tmp/aspenops-wheel-smoke/bin/pip install /tmp/aspenops-1.1.0/dist/*.whl
-          cd /tmp
-          /tmp/aspenops-wheel-smoke/bin/aspenops version
-          /tmp/aspenops-wheel-smoke/bin/aspenops doctor
-          /tmp/aspenops-wheel-smoke/bin/aspenops demo
-
-      - name: Publish verified production candidate branch
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          tar -xzf /tmp/aspenops-1.1.0-source.tar.gz -C .
-          rm -rf .venv .pytest_cache .mypy_cache .ruff_cache dist build var htmlcov
-          rm -f .coverage .coverage.*
-          find . -type d -name __pycache__ -prune -exec rm -rf {} +
-          find . -type d -name '*.egg-info' -prune -exec rm -rf {} +
-          git switch -C agent/aspenops-1.1-production-runtime
-          git add -A
-          git commit -m "release: AspenOps 1.1.0 production candidate"
-          git push --force origin agent/aspenops-1.1-production-runtime
+          repo = os.environ['REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/issues/12/comments?per_page=100',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+          )
+          comments = json.load(urllib.request.urlopen(req))
+          pattern = re.compile(r'^ASPENOPS-ZSTD-PART ([0-9]{2})\r?\n([A-Za-z0-9+/=]+)\s*$')
+          expected = {
+              '2c415a8f19afd50fe663245b483ac710e43310fe6cfd177f547f7d9f48a01205': '00',
+              'd256ae4b81ee51d8899af2da2ab6247d894848a8c5c1a912f4b85228723067b0': '01',
+              '7ddb88597deb28cefacaf54b585104469fb3e1b44b4b8fbcd5512948f0e08366': '02',
+              '228d0d81a5726c3573b97ace9ec6867bafd27aa0840c59a11eec41cd23346e02': '03',
+              'e398d74bab9f82151d585dfc9f2cff48b4443cec45a1875e813a04ae33c0d540': '04',
+          }
+          found = {}
+          for comment in comments:
+              body = comment.get('body') or ''
+              match = pattern.fullmatch(body)
+              if not match:
+                  continue
+              marker, payload = match.groups()
+              digest = hashlib.sha256(payload.encode()).hexdigest()
+              canonical = expected.get(digest, 'UNKNOWN')
+              print(json.dumps({
+                  'comment_id': comment['id'],
+                  'marker': marker,
+                  'canonical_by_sha256': canonical,
+                  'length': len(payload),
+                  'sha256': digest,
+              }, sort_keys=True))
+              if canonical != 'UNKNOWN':
+                  found.setdefault(canonical, []).append(comment['id'])
+          missing = sorted(set(expected.values()) - set(found))
+          duplicates = {key: value for key, value in found.items() if len(value) != 1}
+          print(json.dumps({'missing': missing, 'duplicates': duplicates}, sort_keys=True))
+          if missing or duplicates:
+              raise SystemExit(1)
+          PY
