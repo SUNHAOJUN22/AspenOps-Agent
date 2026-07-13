@@ -19,9 +19,26 @@ class Variable:
     unit: str | None = None
     integer: bool = False
 
+    def __post_init__(self) -> None:
+        if not self.key:
+            raise ValidationError("Variable key must not be empty")
+        if not math.isfinite(self.lower) or not math.isfinite(self.upper):
+            raise ValidationError(f"Variable bounds must be finite for {self.key}")
+        if self.lower > self.upper:
+            raise ValidationError(f"Invalid bounds for {self.key}")
+        if self.integer and math.ceil(self.lower) > math.floor(self.upper):
+            raise ValidationError(f"Integer variable {self.key} has no feasible integer in its bounds")
+
     def project(self, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValidationError(f"Variable {self.key} cannot project a non-finite value")
         clipped = min(self.upper, max(self.lower, value))
-        return float(round(clipped)) if self.integer else clipped
+        if not self.integer:
+            return clipped
+        integer_lower = math.ceil(self.lower)
+        integer_upper = math.floor(self.upper)
+        projected = min(integer_upper, max(integer_lower, round(clipped)))
+        return float(projected)
 
 
 def latin_hypercube(
@@ -59,6 +76,8 @@ def random_design(variables: list[Variable], points: int, seed: int = 0) -> list
 
 def halton_design(variables: list[Variable], points: int, skip: int = 11) -> list[dict[str, float]]:
     _validate_design(variables, points)
+    if skip < 0:
+        raise ValidationError("Halton skip must be non-negative")
     primes = _first_primes(len(variables))
     result: list[dict[str, float]] = []
     for row in range(skip, skip + points):
@@ -76,6 +95,8 @@ def grid_design(
     variables: list[Variable], levels: int, max_points: int = 10_000
 ) -> list[dict[str, float]]:
     _validate_design(variables, levels)
+    if max_points <= 0:
+        raise ValidationError("max_points must be positive")
     total = levels ** len(variables)
     if total > max_points:
         raise ValidationError(f"Grid would create {total} points; limit is {max_points}")
@@ -102,13 +123,24 @@ def nearest_neighbor_order(points: list[dict[str, float]]) -> list[int]:
     if not points:
         return []
     keys = sorted(points[0])
+    if not keys:
+        return list(range(len(points)))
+    for point in points:
+        if sorted(point) != keys:
+            raise ValidationError("Nearest-neighbor points must have identical variables")
+        if any(not math.isfinite(float(point[key])) for key in keys):
+            raise ValidationError("Nearest-neighbor points must contain only finite values")
+    scales = {
+        key: max(point[key] for point in points) - min(point[key] for point in points)
+        for key in keys
+    }
     remaining = set(range(1, len(points)))
     order = [0]
     while remaining:
         current = order[-1]
         next_index = min(
             remaining,
-            key=lambda index: _distance(points[current], points[index], keys),
+            key=lambda index: _distance(points[current], points[index], keys, scales),
         )
         remaining.remove(next_index)
         order.append(next_index)
@@ -120,8 +152,19 @@ def reorder_by_indices(items: Iterable[object], order: list[int]) -> list[object
     return [materialized[index] for index in order]
 
 
-def _distance(left: dict[str, float], right: dict[str, float], keys: list[str]) -> float:
-    return math.sqrt(sum((left[key] - right[key]) ** 2 for key in keys))
+def _distance(
+    left: dict[str, float],
+    right: dict[str, float],
+    keys: list[str],
+    scales: dict[str, float],
+) -> float:
+    return math.sqrt(
+        sum(
+            ((left[key] - right[key]) / scales[key]) ** 2
+            for key in keys
+            if scales[key] > 0
+        )
+    )
 
 
 def _validate_design(variables: list[Variable], points: int) -> None:
@@ -129,9 +172,9 @@ def _validate_design(variables: list[Variable], points: int) -> None:
         raise ValidationError("At least one variable is required")
     if points <= 0:
         raise ValidationError("Point count must be positive")
-    for variable in variables:
-        if variable.lower > variable.upper:
-            raise ValidationError(f"Invalid bounds for {variable.key}")
+    keys = [variable.key for variable in variables]
+    if len(set(keys)) != len(keys):
+        raise ValidationError("Variable keys must be unique")
 
 
 def _radical_inverse(index: int, base: int) -> float:
