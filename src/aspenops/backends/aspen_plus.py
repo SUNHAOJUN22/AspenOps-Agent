@@ -16,7 +16,12 @@ from typing import Any
 
 from aspenops.backends.base import RawValue, SimulatorBackend
 from aspenops.compat import candidate_progids
-from aspenops.errors import AccessViolation, CaseOpenError, CompatibilityError, SimulationError
+from aspenops.errors import (
+    AccessViolation,
+    CaseOpenError,
+    CompatibilityError,
+    SimulationError,
+)
 from aspenops.models import RunReport, RunState
 
 
@@ -216,7 +221,7 @@ class AspenPlusBackend(SimulatorBackend):
             method = getattr(document, name, None)
             if not callable(method):
                 continue
-            variants = [args + (True,)] if read_only else [args, args + (False,)]
+            variants = [(*args, True)] if read_only else [args, (*args, False)]
             for call_args in variants:
                 try:
                     method(*call_args)
