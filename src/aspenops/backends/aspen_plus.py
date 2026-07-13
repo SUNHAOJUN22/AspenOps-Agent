@@ -16,7 +16,7 @@ from typing import Any
 
 from aspenops.backends.base import RawValue, SimulatorBackend
 from aspenops.compat import candidate_progids
-from aspenops.errors import CaseOpenError, CompatibilityError, SimulationError
+from aspenops.errors import AccessViolation, CaseOpenError, CompatibilityError, SimulationError
 from aspenops.models import RunReport, RunState
 
 
@@ -28,6 +28,7 @@ class AspenPlusBackend(SimulatorBackend):
         self._progid: str | None = None
         self._case_path: Path | None = None
         self._pythoncom: Any | None = None
+        self._read_only = False
 
     @property
     def progid(self) -> str | None:
@@ -49,10 +50,13 @@ class AspenPlusBackend(SimulatorBackend):
             raise CaseOpenError(f"Could not open Aspen case {path}: {exc}") from exc
         self._document = document
         self._case_path = path
+        self._read_only = read_only
 
     def close(self) -> None:
         document = self._document
         self._document = None
+        self._case_path = None
+        self._read_only = False
         if document is not None:
             self._safe_quit(document)
         if self._pythoncom is not None:
@@ -76,6 +80,8 @@ class AspenPlusBackend(SimulatorBackend):
         return RawValue(value=value, unit=unit)
 
     def set_raw(self, path: str, value: Any, unit: str | None = None) -> None:
+        if self._read_only:
+            raise AccessViolation("Read-only Aspen case cannot be modified")
         node = self._require_node(path)
         try:
             setter = getattr(node, "SetValueAndUnit", None)
@@ -121,10 +127,12 @@ class AspenPlusBackend(SimulatorBackend):
                 simulator_status=self._read_status(document, engine),
             )
         status = self._read_status(document, engine)
-        state = self._classify_status(status)
         messages = self._collect_messages(document, engine)
+        state = self._classify_status(status, messages)
         if state == RunState.FAILED and not messages:
-            messages = ["Aspen completed without a recognized converged status"]
+            messages = ["Aspen completed with explicit failure evidence"]
+        elif state == RunState.UNKNOWN and not messages:
+            messages = ["Aspen completed without explicit convergence evidence"]
         return RunReport(
             state=state,
             elapsed_s=time.monotonic() - start,
@@ -133,6 +141,8 @@ class AspenPlusBackend(SimulatorBackend):
         )
 
     def save(self, path: Path | None = None) -> None:
+        if self._read_only:
+            raise AccessViolation("Read-only Aspen case cannot be saved")
         document = self._require_document()
         target = path
         try:
@@ -165,6 +175,7 @@ class AspenPlusBackend(SimulatorBackend):
             ),
             "status": self._read_status(document, engine) if document is not None else None,
             "messages": self._collect_messages(document, engine) if document is not None else [],
+            "read_only": self._read_only,
         }
 
     def _initialize_com(self) -> None:
@@ -195,32 +206,32 @@ class AspenPlusBackend(SimulatorBackend):
 
     def _open_document(self, document: Any, path: Path, *, read_only: bool) -> None:
         extension = path.suffix.lower()
-        methods = (
-            ("InitFromArchive2", (str(path),)),
-            ("InitFromFile2", (str(path),)),
-            ("InitFromArchive", (str(path),)),
-            ("InitFromFile", (str(path),)),
-        )
         if extension not in {".bkp", ".apw", ".apwz"}:
             raise CaseOpenError(f"Unsupported Aspen case extension: {extension}")
+        if extension == ".bkp":
+            method_names = ("InitFromArchive2", "InitFromArchive", "InitFromFile2", "InitFromFile")
+        else:
+            method_names = ("InitFromFile2", "InitFromFile", "InitFromArchive2", "InitFromArchive")
         errors: list[str] = []
-        for name, args in methods:
+        for name in method_names:
             method = getattr(document, name, None)
             if not callable(method):
                 continue
-            call_args = args + ((True,) if read_only else ())
             try:
-                method(*call_args)
+                if read_only:
+                    method(str(path), True)
+                else:
+                    method(str(path))
                 return
-            except TypeError:
-                try:
-                    method(*args)
-                    return
-                except Exception as exc:
+            except TypeError as exc:
+                if read_only:
+                    errors.append(f"{name}: read-only signature unsupported ({exc})")
+                else:
                     errors.append(f"{name}: {exc}")
             except Exception as exc:
                 errors.append(f"{name}: {exc}")
-        raise CaseOpenError("No Aspen open method succeeded: " + "; ".join(errors))
+        mode = "read-only " if read_only else ""
+        raise CaseOpenError(f"No Aspen {mode}open method succeeded: " + "; ".join(errors))
 
     def _find_node(self, path: str) -> Any | None:
         document = self._require_document()
@@ -281,13 +292,34 @@ class AspenPlusBackend(SimulatorBackend):
         return None if value is None else str(value)
 
     @staticmethod
-    def _classify_status(status: str | None) -> RunState:
-        if status is None:
-            return RunState.CONVERGED
-        lowered = status.lower()
-        if any(token in lowered for token in ("error", "fail", "diverg", "incomplete")):
+    def _classify_status(status: str | None, messages: list[str] | None = None) -> RunState:
+        evidence = " ".join([status or "", *(messages or [])]).lower()
+        failure_tokens = (
+            "error",
+            "fail",
+            "diverg",
+            "incomplete",
+            "aborted",
+            "fatal",
+            "not converged",
+        )
+        if any(token in evidence for token in failure_tokens):
             return RunState.FAILED
-        return RunState.CONVERGED
+        if status is None:
+            return RunState.UNKNOWN
+        lowered = status.strip().lower()
+        success_tokens = (
+            "converged",
+            "completed",
+            "complete",
+            "success",
+            "successful",
+            "finished",
+            "done",
+        )
+        if any(token in lowered for token in success_tokens):
+            return RunState.CONVERGED
+        return RunState.UNKNOWN
 
     def _collect_messages(self, document: Any, engine: Any) -> list[str]:
         messages: list[str] = []
