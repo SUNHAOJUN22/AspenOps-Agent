@@ -1,12 +1,14 @@
 # Changelog
 
-## 1.0.0 - 2026-07-11
+## 1.0.0 - 2026-07-13
 
-- rebuilt the repository as direct source files; removed bundle/bootstrap materialization;
-- constrained scope to Aspen Plus steady-state automation;
-- added local registered ProgID discovery and unversioned fallback;
-- added spawned-process COM ownership and persistent staged-case pool;
-- added semantic registry, engineering units, bounds, path cache and atomic write rollback;
-- added deterministic Mock backend, DOE, continuation, balances, safe expressions and differential evolution;
-- added CLI, optional MCP server, audit, CI matrix and licensed Windows integration workflow;
-- added strict typing, failure-injection tests and evidence-based documentation.
+- Introduced runtime discovery of versioned Aspen Plus and HYSYS COM Automation Servers.
+- Added process-isolated STA workers with private staged model copies and correlated IPC.
+- Added persistent CasePool execution, dynamic task claiming, worker recycling and license caps.
+- Added semantic registries, identifier injection protection, explicit units and engineering bounds.
+- Added separate transport, engine, convergence, constraint and balance validity gates.
+- Added content-addressed cache identity over runtime, backend, model, registry and physical request.
+- Added SQLite WAL background jobs, restart interruption detection and cancellation state.
+- Added immutable evidence bundles with request, result, model and registry SHA-256 values.
+- Added independent repeated-state certification, Codex/Claude Code MCP integration and CI gates.
+- Added Aspen Plus COM, HYSYS Spreadsheet, and deterministic cross-platform Mock backends.

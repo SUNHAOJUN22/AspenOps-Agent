@@ -1,0 +1,1 @@
+"""Bundled portable Mock resources."""

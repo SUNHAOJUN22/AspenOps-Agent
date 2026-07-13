@@ -1,48 +1,64 @@
-# Architecture
+# AspenOps 1.0 Architecture
 
-## Responsibility split
+## Design objective
 
-AspenOps separates planning, execution and physics:
+Aspen Automation is a stateful COM interface around a proprietary nonlinear solver. The runtime must therefore preserve COM apartment ownership, simulator lifecycle, model identity, license limits and engineering evidence. AspenOps treats these as first-class invariants rather than incidental implementation details.
 
-- agent/application: experiment intent, variables, objectives and reporting;
-- AspenOps: policy, units, lifecycle, retries, batching, audit and evidence;
-- Aspen Plus: property methods, unit operations and nonlinear flowsheet solution.
+## Control plane and data plane
 
-## Process model
+The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, provenance and certification. The data plane consists of spawned workers. Each worker owns:
 
-`SessionManager` owns only serializable metadata and `WorkerClient` objects. Each `WorkerClient` starts a spawned process. The process creates exactly one backend and one semantic accessor. The Aspen backend initializes COM in STA mode and creates a document with `DispatchEx`.
+- one OS process;
+- one COM STA;
+- one simulator Automation Server;
+- one private staged model copy;
+- one semantic registry instance;
+- one sequential command stream.
 
-No COM proxy is sent back to the parent. The pipe carries dictionaries containing primitives and Pydantic-validated payloads.
+No COM proxy crosses a process boundary.
 
-## One-point transaction
+## Evaluation transaction
 
-A pool evaluation uses one request:
+```text
+RECEIVED
+  → VALIDATED
+  → REINITIALIZED | WARM_START
+  → WRITES_COMMITTED
+  → ENGINE_RETURNED
+  → OUTPUTS_READ
+  → VERIFIED | FAILED
+```
 
-1. validate all semantic writes;
-2. resolve candidate tree paths;
-3. snapshot original values;
-4. apply writes;
-5. rollback applied writes if a later write fails;
-6. optionally reinitialize;
-7. run the simulator;
-8. read requested outputs only after convergence;
-9. return run evidence, values and diagnosis.
+A batched transaction is sent over one duplex pipe message with a correlation ID. The worker validates and executes the complete point. The parent process enforces the hard deadline. If the worker does not respond, only that worker is terminated and later replaced.
 
-This cuts IPC overhead and keeps the state transition inside the process that owns Aspen.
+## Semantic registry
 
-## Persistent pool
+The registry is both an API schema and a capability boundary. A semantic node defines access, unit, quantity, bounds, identifiers, candidate paths or locators, backend and verification status. Agent-provided identifiers are restricted to safe characters and cannot contain path separators or template syntax.
 
-Each pool worker receives a private staged case copy and keeps it open. Points may be reordered by nearest-neighbor distance, but results are restored to original input order.
+The registry hash participates in cache identity. Changing a path, bound, unit or meaning invalidates cached results.
 
-The number of workers is an operational decision constrained by license seats, RAM and stability. AspenOps does not attempt to bypass license controls.
+## Runtime compatibility
 
-## Failure boundaries
+Aspen Plus registrations are discovered from both Windows registry views. Versioned `Apwn.Document.*` candidates are sorted by numeric suffix and tried newest-first, followed by `Apwn.Document`. HYSYS uses the corresponding `HYSYS.Application.*` strategy.
 
-- validation error: request never reaches COM;
-- node-resolution error: no candidate path exists;
-- partial-write error: rollback is attempted before returning failure;
-- solve failure: run report is `failed`, outputs are not represented as valid;
-- deadline error: the owning Worker process is terminated;
-- parent process remains alive and may create a fresh worker.
+No marketing-version mapping is assumed. The actual successful ProgID and exposed application attributes are captured as runtime evidence.
 
-AspenOps does not issue global process-kill commands because they may terminate unrelated user sessions.
+## Validity state
+
+One evaluation returns independent gates:
+
+```text
+communication_ok
+engine_ok
+converged
+feasible
+balance_residuals
+```
+
+`ok` is the conjunction of those gates. This prevents software completion from being confused with a valid process solution.
+
+## Persistence
+
+The scheduler uses SQLite in WAL mode. Jobs survive process restarts as durable records. A job left in `running` during service restart is moved to `interrupted`, because silent resumption would violate execution identity.
+
+The result cache is also SQLite WAL. Cache keys bind runtime schema/version, backend, model SHA-256, registry SHA-256 and solver-relevant request content.

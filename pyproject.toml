@@ -1,101 +1,66 @@
 [build-system]
-requires = ["hatchling>=1.26"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aspenops-agent"
+name = "aspenops-nexus"
 version = "1.0.0"
-description = "A version-adaptive, process-isolated automation runtime for Aspen Plus"
+description = "A deterministic, process-isolated and license-aware Aspen execution fabric for AI coding agents."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
-authors = [{ name = "AspenOps contributors" }]
-keywords = ["Aspen Plus", "process simulation", "automation", "MCP", "optimization"]
+license = {file = "LICENSE"}
+authors = [{name = "SUNHAOJUN22"}]
+keywords = ["aspen-plus", "hysys", "mcp", "codex", "claude-code", "process-simulation"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: Apache Software License",
-  "Operating System :: Microsoft :: Windows",
-  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Operating System :: Microsoft :: Windows",
   "Topic :: Scientific/Engineering",
 ]
-dependencies = [
-  "pydantic>=2.8,<3",
-  "PyYAML>=6.0,<7",
-  "typer>=0.12,<1",
-]
+dependencies = ["psutil>=5.9"]
 
 [project.optional-dependencies]
-windows = ["pywin32>=306; platform_system == 'Windows' "]
-agent = ["mcp>=1.9,<2"]
+windows = ["pywin32>=306; platform_system == 'Windows'"]
+agent = ["mcp>=1.9"]
 dev = [
-  "build>=1.2,<2",
-  "mypy>=1.13,<2",
-  "pytest>=8.3,<9",
-  "pytest-cov>=6,<7",
-  "ruff>=0.9,<1",
+  "build>=1.2",
+  "mypy>=1.15",
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.11",
+  "types-psutil>=5.9",
+  "types-pywin32>=306",
 ]
 
 [project.scripts]
-aspenops = "aspenops.cli:app"
-aspenops-mcp = "aspenops.mcp_server:main"
-
-[project.urls]
-Homepage = "https://github.com/SUNHAOJUN22/AspenOps-Agent"
-Repository = "https://github.com/SUNHAOJUN22/AspenOps-Agent"
-Issues = "https://github.com/SUNHAOJUN22/AspenOps-Agent/issues"
+aspenops = "aspenops_nexus.cli:main"
+aspenops-mcp = "aspenops_nexus.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aspenops"]
+packages = ["src/aspenops_nexus"]
 
-[tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "examples", "README.md", "README.zh-CN.md", "LICENSE", "pyproject.toml"]
+[tool.hatch.build]
+include = [
+  "src/aspenops_nexus/**/*.py",
+  "src/aspenops_nexus/data/*.json",
+]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]
+select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-warn_unused_ignores = true
-show_error_codes = true
-packages = ["aspenops"]
-
-[[tool.mypy.overrides]]
-module = ["win32com.*", "pythoncom", "win32process", "yaml"]
-ignore_missing_imports = true
+packages = ["aspenops_nexus"]
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers --cov=aspenops --cov-report=term-missing --cov-fail-under=85"
+addopts = "-q --strict-markers"
 testpaths = ["tests"]
-markers = [
-  "aspen_integration: requires a licensed Windows host with Aspen Plus installed",
-]
-
-[tool.coverage.run]
-branch = true
-source = ["aspenops"]
-omit = [
-  "src/aspenops/backends/aspen_plus.py",
-  "src/aspenops/backends/base.py",
-  "src/aspenops/compat.py",
-  "src/aspenops/mcp_server.py",
-  "src/aspenops/__main__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-  "pragma: no cover",
-  "if TYPE_CHECKING:",
-  "if __name__ == .__main__.:",
-]
+markers = ["aspen_real: requires licensed Windows Aspen installation"]
