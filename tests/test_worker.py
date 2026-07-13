@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aspenops.errors import WorkerTimeout
+from aspenops.errors import WorkerError, WorkerTimeout
 from aspenops.models import RunReport, RunState, ValueRead, ValueResult, ValueWrite
 from aspenops.worker import WorkerClient
 
@@ -38,7 +38,7 @@ def test_worker_full_lifecycle(tmp_path: Path) -> None:
         assert diagnosis["path_cache_size"] >= 2
 
 
-def test_worker_timeout_terminates_process(tmp_path: Path) -> None:
+def test_worker_timeout_terminates_process_without_implicit_restart(tmp_path: Path) -> None:
     case = tmp_path / "case.json"
     case.write_text("{}", encoding="utf-8")
     worker = WorkerClient("mock", timeout_s=0.05, backend_options={"run_delay_s": 0.3})
@@ -46,4 +46,7 @@ def test_worker_timeout_terminates_process(tmp_path: Path) -> None:
     worker.call("open", {"path": str(case)})
     with pytest.raises(WorkerTimeout):
         worker.call("run")
+    assert not worker.alive
+    with pytest.raises(WorkerError, match="explicit session recovery"):
+        worker.call("diagnose")
     assert not worker.alive
