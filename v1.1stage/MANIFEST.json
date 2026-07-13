@@ -1,0 +1,18 @@
+{
+  "release": "AspenOps 1.1.0",
+  "archive_file": "source.tar.gz.b64",
+  "archive_sha256": "de758d63a3003560cb3b43de08138aa196599b92fb94bbb211fd0fd3a47e2aef",
+  "base64_sha256": "e2ed6b5eb35e8a1504bddf3fb40229897f08d3a538ce0d32ece2318cc9a76857",
+  "expected_version": "1.1.0",
+  "local_gate": {
+    "ruff": "passed",
+    "ruff_format": "passed",
+    "mypy_modules": 32,
+    "pytest_passed": 74,
+    "pytest_skipped": 1,
+    "coverage_total_percent": 85.25,
+    "mcp_tools": 10,
+    "real_aspen_certification": "BLOCKED"
+  },
+  "real_aspen_blocker": "Requires a licensed Windows Aspen host, an available license seat, and an approved non-confidential qualification model. Mock and Fake COM evidence are not physical certification."
+}
