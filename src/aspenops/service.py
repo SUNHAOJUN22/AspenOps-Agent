@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,14 @@ from aspenops.audit import AuditLog
 from aspenops.errors import AccessViolation, ConfigurationError
 from aspenops.models import RunReport, SessionInfo, ValueRead, ValueResult, ValueWrite
 from aspenops.worker import WorkerClient
+
+
+@dataclass
+class _ManagedSession:
+    client: WorkerClient
+    backend: str
+    path: Path
+    read_only: bool
 
 
 class SessionManager:
@@ -24,7 +33,7 @@ class SessionManager:
         self.allowed_roots = [root.resolve() for root in allowed_roots or []]
         self.audit_log = audit_log
         self.default_timeout_s = default_timeout_s
-        self._sessions: dict[str, tuple[WorkerClient, str, Path]] = {}
+        self._sessions: dict[str, _ManagedSession] = {}
         self._lock = threading.RLock()
 
     def open_session(
@@ -56,22 +65,32 @@ class SessionManager:
             client.shutdown()
             raise
         session_id = uuid.uuid4().hex
-        with self._lock:
-            self._sessions[session_id] = (client, backend, resolved)
-        self._audit(
-            "session.open", {"session_id": session_id, "backend": backend, "path": str(resolved)}
-        )
-        return SessionInfo(
-            session_id=session_id,
+        record = _ManagedSession(
+            client=client,
             backend=backend,
-            case_path=str(resolved),
-            alive=True,
+            path=resolved,
+            read_only=read_only,
         )
+        with self._lock:
+            self._sessions[session_id] = record
+        self._audit(
+            "session.open",
+            {
+                "session_id": session_id,
+                "backend": backend,
+                "path": str(resolved),
+                "read_only": read_only,
+            },
+        )
+        return self._session_info(session_id, record)
 
     def close_session(self, session_id: str) -> None:
         with self._lock:
-            client, _, _ = self._sessions.pop(session_id)
-        client.shutdown()
+            try:
+                record = self._sessions.pop(session_id)
+            except KeyError as exc:
+                raise ConfigurationError(f"Unknown session: {session_id}") from exc
+        record.client.shutdown()
         self._audit("session.close", {"session_id": session_id})
 
     def get_values(self, session_id: str, reads: list[ValueRead]) -> list[ValueResult]:
@@ -89,7 +108,9 @@ class SessionManager:
         *,
         atomic: bool = True,
     ) -> list[ValueResult]:
-        client = self._client(session_id)
+        record = self._record(session_id)
+        self._require_writable(record)
+        client = self._live_client(session_id, record)
         payload = {
             "writes": [write.model_dump(mode="json") for write in writes],
             "atomic": atomic,
@@ -111,12 +132,16 @@ class SessionManager:
         self._audit("simulation.reinitialize", {"session_id": session_id})
 
     def save(self, session_id: str, path: Path | None = None) -> None:
+        record = self._record(session_id)
+        self._require_writable(record)
         if path is not None:
             resolved = path.resolve()
             self._check_path(resolved)
         else:
             resolved = None
-        self._client(session_id).call("save", {"path": str(resolved) if resolved else None})
+        self._live_client(session_id, record).call(
+            "save", {"path": str(resolved) if resolved else None}
+        )
         self._audit(
             "simulation.save",
             {"session_id": session_id, "path": str(resolved) if resolved else None},
@@ -131,13 +156,8 @@ class SessionManager:
     def list_sessions(self) -> list[SessionInfo]:
         with self._lock:
             return [
-                SessionInfo(
-                    session_id=session_id,
-                    backend=backend,
-                    case_path=str(path),
-                    alive=client.alive,
-                )
-                for session_id, (client, backend, path) in self._sessions.items()
+                self._session_info(session_id, record)
+                for session_id, record in self._sessions.items()
             ]
 
     def close_all(self) -> None:
@@ -146,12 +166,39 @@ class SessionManager:
         for session_id in identifiers:
             self.close_session(session_id)
 
-    def _client(self, session_id: str) -> WorkerClient:
+    def _record(self, session_id: str) -> _ManagedSession:
         with self._lock:
             try:
-                return self._sessions[session_id][0]
+                return self._sessions[session_id]
             except KeyError as exc:
                 raise ConfigurationError(f"Unknown session: {session_id}") from exc
+
+    def _client(self, session_id: str) -> WorkerClient:
+        record = self._record(session_id)
+        return self._live_client(session_id, record)
+
+    @staticmethod
+    def _live_client(session_id: str, record: _ManagedSession) -> WorkerClient:
+        if not record.client.alive:
+            raise ConfigurationError(
+                f"Session {session_id} worker is not alive; close and reopen the session"
+            )
+        return record.client
+
+    @staticmethod
+    def _require_writable(record: _ManagedSession) -> None:
+        if record.read_only:
+            raise AccessViolation("Read-only session cannot modify or save a case")
+
+    @staticmethod
+    def _session_info(session_id: str, record: _ManagedSession) -> SessionInfo:
+        return SessionInfo(
+            session_id=session_id,
+            backend=record.backend,
+            case_path=str(record.path),
+            alive=record.client.alive,
+            read_only=record.read_only,
+        )
 
     def _check_path(self, path: Path) -> None:
         if not self.allowed_roots:

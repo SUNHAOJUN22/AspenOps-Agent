@@ -13,7 +13,7 @@ from typing import Any
 
 from aspenops.accessor import SemanticAccessor
 from aspenops.backends import AspenPlusBackend, MockBackend, SimulatorBackend
-from aspenops.errors import WorkerError, WorkerTimeout
+from aspenops.errors import AccessViolation, WorkerError, WorkerTimeout
 from aspenops.models import ValueRead, ValueWrite
 from aspenops.registry import load_bundled_registry
 
@@ -31,6 +31,7 @@ def _make_backend(name: str, options: dict[str, Any]) -> SimulatorBackend:
 
 def _worker_main(connection: Connection, backend_name: str, options: dict[str, Any]) -> None:
     backend: SimulatorBackend | None = None
+    state: dict[str, Any] = {"read_only": False, "opened": False}
     try:
         backend = _make_backend(backend_name, options)
         accessor = SemanticAccessor(backend, load_bundled_registry())
@@ -43,7 +44,7 @@ def _worker_main(connection: Connection, backend_name: str, options: dict[str, A
                 connection.send({"ok": True, "result": None})
                 return
             try:
-                result = _dispatch(operation, payload, backend, accessor)
+                result = _dispatch(operation, payload, backend, accessor, state)
                 connection.send({"ok": True, "result": result})
             except Exception as exc:
                 connection.send(
@@ -76,23 +77,30 @@ def _dispatch(
     payload: dict[str, Any],
     backend: SimulatorBackend,
     accessor: SemanticAccessor,
+    state: dict[str, Any],
 ) -> Any:
     if operation == "open":
+        read_only = bool(payload.get("read_only", False))
         backend.open_case(
             Path(str(payload["path"])),
             visible=bool(payload.get("visible", False)),
-            read_only=bool(payload.get("read_only", False)),
+            read_only=read_only,
         )
+        state["read_only"] = read_only
+        state["opened"] = True
         accessor.clear_cache()
         return backend.diagnose()
     if operation == "close":
         backend.close()
+        state["read_only"] = False
+        state["opened"] = False
         accessor.clear_cache()
         return None
     if operation == "get_many":
         reads = [ValueRead.model_validate(item) for item in payload.get("reads", [])]
         return [item.model_dump(mode="json") for item in accessor.get_many(reads)]
     if operation == "set_many":
+        _require_writable(state)
         writes = [ValueWrite.model_validate(item) for item in payload.get("writes", [])]
         results = accessor.set_many(writes, atomic=bool(payload.get("atomic", True)))
         return [item.model_dump(mode="json") for item in results]
@@ -102,14 +110,17 @@ def _dispatch(
     if operation == "run":
         return backend.run().model_dump(mode="json")
     if operation == "save":
+        _require_writable(state)
         raw_path = payload.get("path")
         backend.save(Path(str(raw_path)) if raw_path else None)
         return None
     if operation == "diagnose":
         diagnosis = backend.diagnose()
         diagnosis["path_cache_size"] = accessor.cache_size
+        diagnosis["worker_read_only"] = bool(state.get("read_only", False))
         return diagnosis
     if operation == "evaluate":
+        _require_writable(state)
         writes = [ValueWrite.model_validate(item) for item in payload.get("writes", [])]
         reads = [ValueRead.model_validate(item) for item in payload.get("reads", [])]
         accessor.set_many(writes, atomic=True)
@@ -125,8 +136,18 @@ def _dispatch(
     raise WorkerError(f"Unsupported worker operation: {operation}")
 
 
+def _require_writable(state: dict[str, Any]) -> None:
+    if bool(state.get("read_only", False)):
+        raise AccessViolation("Read-only worker session cannot modify or save a case")
+
+
 class WorkerClient:
-    """Synchronous RPC client for one persistent spawned worker."""
+    """Synchronous RPC client for one persistent spawned worker.
+
+    A dead worker is never restarted implicitly because a newly spawned process
+    would not own the previously opened simulator document. Recovery therefore
+    requires an explicit ``start`` followed by ``open``.
+    """
 
     def __init__(
         self,
@@ -150,6 +171,8 @@ class WorkerClient:
         with self._lock:
             if self.alive:
                 return
+            if self._process is not None or self._connection is not None:
+                self.terminate()
             context = mp.get_context("spawn")
             parent, child = context.Pipe(duplex=True)
             process = context.Process(
@@ -176,7 +199,9 @@ class WorkerClient:
     ) -> Any:
         with self._lock:
             if not self.alive:
-                self.start()
+                raise WorkerError(
+                    "Worker is not running; explicitly start and reopen the case before retrying"
+                )
             connection = self._require_connection()
             try:
                 connection.send({"op": operation, "payload": payload or {}})

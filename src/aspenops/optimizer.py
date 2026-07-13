@@ -36,6 +36,9 @@ def differential_evolution(
     config = config or OptimizationConfig()
     if len(variables) == 0:
         raise ValidationError("At least one optimization variable is required")
+    keys = [variable.key for variable in variables]
+    if len(set(keys)) != len(keys):
+        raise ValidationError("Optimization variable keys must be unique")
     if config.population_size < 4:
         raise ValidationError("Differential evolution requires population_size >= 4")
     if config.generations < 0:

@@ -7,19 +7,40 @@ import os
 from pathlib import Path
 from typing import Any
 
+from aspenops.audit import AuditLog
 from aspenops.compat import discover_aspen_progids
 from aspenops.models import ValueRead, ValueWrite
 from aspenops.service import SessionManager
 
 _MANAGER: SessionManager | None = None
+_TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _manager() -> SessionManager:
     global _MANAGER
     if _MANAGER is None:
         roots_raw = os.getenv("ASPENOPS_ALLOWED_ROOTS", "")
-        roots = [Path(item) for item in roots_raw.split(os.pathsep) if item]
-        _MANAGER = SessionManager(allowed_roots=roots)
+        roots = [
+            Path(item).expanduser().resolve()
+            for item in roots_raw.split(os.pathsep)
+            if item
+        ]
+        insecure = (
+            os.getenv("ASPENOPS_INSECURE_ALLOW_ANY_ROOT", "").strip().lower() in _TRUTHY
+        )
+        if not roots and not insecure:
+            raise RuntimeError(
+                "ASPENOPS_ALLOWED_ROOTS must be configured for MCP operation; "
+                "set ASPENOPS_INSECURE_ALLOW_ANY_ROOT=1 only for trusted local development"
+            )
+
+        audit_raw = os.getenv("ASPENOPS_AUDIT_LOG", "").strip()
+        if audit_raw:
+            audit_path = Path(audit_raw).expanduser().resolve()
+        else:
+            audit_root = roots[0] if roots else Path.cwd().resolve()
+            audit_path = audit_root / ".aspenops" / "audit.jsonl"
+        _MANAGER = SessionManager(allowed_roots=roots, audit_log=AuditLog(audit_path))
     return _MANAGER
 
 

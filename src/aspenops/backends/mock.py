@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from aspenops.backends.base import RawValue, SimulatorBackend
-from aspenops.errors import CaseOpenError, SimulationError
+from aspenops.errors import AccessViolation, CaseOpenError, SimulationError
 from aspenops.models import RunReport, RunState
 
 
@@ -19,6 +19,7 @@ class MockBackend(SimulatorBackend):
 
     def __init__(self, *, fail_on_write_path: str | None = None, run_delay_s: float = 0.0) -> None:
         self._opened = False
+        self._read_only = False
         self._path: Path | None = None
         self._values = self._default_values()
         self._units = self._default_units()
@@ -27,8 +28,9 @@ class MockBackend(SimulatorBackend):
         self._run_delay_s = run_delay_s
 
     def open_case(self, path: Path, *, visible: bool = False, read_only: bool = False) -> None:
-        del visible, read_only
+        del visible
         self._path = path
+        self._read_only = bool(read_only)
         if path.exists() and path.suffix.lower() == ".json":
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
@@ -42,6 +44,7 @@ class MockBackend(SimulatorBackend):
 
     def close(self) -> None:
         self._opened = False
+        self._read_only = False
 
     def exists(self, path: str) -> bool:
         return path in self._values
@@ -54,6 +57,7 @@ class MockBackend(SimulatorBackend):
 
     def set_raw(self, path: str, value: Any, unit: str | None = None) -> None:
         self._ensure_open()
+        self._ensure_writable()
         if path not in self._values:
             raise SimulationError(f"Mock path not found: {path}")
         if self._fail_on_write_path == path:
@@ -114,6 +118,7 @@ class MockBackend(SimulatorBackend):
 
     def save(self, path: Path | None = None) -> None:
         self._ensure_open()
+        self._ensure_writable()
         target = path or self._path
         if target is None:
             raise SimulationError("Mock case has no save target")
@@ -127,6 +132,7 @@ class MockBackend(SimulatorBackend):
         return {
             "backend": self.name,
             "opened": self._opened,
+            "read_only": self._read_only,
             "case_path": str(self._path) if self._path else None,
             "messages": self._messages.copy(),
             "node_count": len(self._values),
@@ -135,6 +141,10 @@ class MockBackend(SimulatorBackend):
     def _ensure_open(self) -> None:
         if not self._opened:
             raise SimulationError("No mock case is open")
+
+    def _ensure_writable(self) -> None:
+        if self._read_only:
+            raise AccessViolation("Read-only case cannot be modified or saved")
 
     @staticmethod
     def _default_values() -> dict[str, Any]:

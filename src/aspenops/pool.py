@@ -9,16 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from aspenops.design import nearest_neighbor_order
+from aspenops.errors import WorkerError
 from aspenops.models import RunReport, ValueRead, ValueResult, ValueWrite
 from aspenops.worker import WorkerClient
 
 
 class CasePool:
-    """Keep one open case per worker and reuse it across many evaluations.
-
-    Each worker receives a private staged model copy. This avoids sharing a
-    mutable Aspen document between processes and amortizes startup/open costs.
-    """
+    """Keep one open case per worker and reuse it across many evaluations."""
 
     def __init__(
         self,
@@ -38,8 +35,11 @@ class CasePool:
         self.backend_options = backend_options or {}
         self._clients: list[WorkerClient] = []
         self._temp_dir: tempfile.TemporaryDirectory[str] | None = None
+        self._broken = False
 
     def start(self) -> None:
+        if self._broken:
+            raise WorkerError("CasePool is broken after a worker failure; create a new pool")
         if self._clients:
             return
         self._temp_dir = tempfile.TemporaryDirectory(prefix="aspenops-pool-")
@@ -62,9 +62,7 @@ class CasePool:
         except Exception:
             for client in clients:
                 client.shutdown()
-            if self._temp_dir is not None:
-                self._temp_dir.cleanup()
-                self._temp_dir = None
+            self._cleanup_temp_dir()
             raise
         self._clients = clients
 
@@ -72,9 +70,7 @@ class CasePool:
         for client in self._clients:
             client.shutdown()
         self._clients.clear()
-        if self._temp_dir is not None:
-            self._temp_dir.cleanup()
-            self._temp_dir = None
+        self._cleanup_temp_dir()
 
     def evaluate_many(
         self,
@@ -84,6 +80,8 @@ class CasePool:
         locality_order: bool = True,
         reinitialize: bool = True,
     ) -> list[dict[str, Any]]:
+        if self._broken:
+            raise WorkerError("CasePool is broken after a worker failure; create a new pool")
         if not self._clients:
             self.start()
         if not points:
@@ -94,7 +92,7 @@ class CasePool:
                 {
                     write.key: float(write.value)
                     for write in point
-                    if isinstance(write.value, (int, float))
+                    if isinstance(write.value, (int, float)) and not isinstance(write.value, bool)
                 }
                 for point in points
             ]
@@ -116,15 +114,28 @@ class CasePool:
                 raise TypeError("Worker evaluation result must be a mapping")
             return original_index, result
 
-        with ThreadPoolExecutor(max_workers=len(self._clients)) as executor:
-            futures = [
-                executor.submit(submit, original_index, ordinal)
-                for ordinal, original_index in enumerate(order)
-            ]
-            for future in as_completed(futures):
-                original_index, result = future.result()
-                results[original_index] = result
+        try:
+            with ThreadPoolExecutor(max_workers=len(self._clients)) as executor:
+                futures = [
+                    executor.submit(submit, original_index, ordinal)
+                    for ordinal, original_index in enumerate(order)
+                ]
+                for future in as_completed(futures):
+                    original_index, result = future.result()
+                    results[original_index] = result
+        except Exception:
+            self._broken = True
+            for client in self._clients:
+                client.terminate()
+            self._clients.clear()
+            self._cleanup_temp_dir()
+            raise
         return [result for result in results if result is not None]
+
+    def _cleanup_temp_dir(self) -> None:
+        if self._temp_dir is not None:
+            self._temp_dir.cleanup()
+            self._temp_dir = None
 
     def __enter__(self) -> CasePool:
         self.start()

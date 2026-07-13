@@ -6,6 +6,7 @@ registry. Unknown units fail closed instead of being guessed.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -87,6 +88,8 @@ def dimension_of(unit: str) -> str:
 
 
 def convert(value: float, from_unit: str, to_unit: str) -> float:
+    if not math.isfinite(float(value)):
+        raise UnitError("Unit conversion requires a finite value")
     source_name = normalize_unit(from_unit)
     target_name = normalize_unit(to_unit)
     try:
@@ -100,4 +103,7 @@ def convert(value: float, from_unit: str, to_unit: str) -> float:
             f"Incompatible units: {from_unit} ({source.dimension}) -> "
             f"{to_unit} ({target.dimension})"
         )
-    return target.from_base(source.to_base(float(value)))
+    result = target.from_base(source.to_base(float(value)))
+    if not math.isfinite(result):
+        raise UnitError("Unit conversion produced a non-finite value")
+    return result

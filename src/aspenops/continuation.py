@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -33,8 +34,31 @@ def adaptive_continuation(
 ) -> list[ContinuationStep[T]]:
     if start.keys() != target.keys():
         raise ValidationError("Continuation start and target must have identical variables")
+    if not start:
+        raise ValidationError("Continuation requires at least one variable")
+    for label, values in (("start", start), ("target", target)):
+        for key, value in values.items():
+            if not math.isfinite(value):
+                raise ValidationError(f"Continuation {label} value {key} must be finite")
+    parameters = {
+        "initial_step": initial_step,
+        "minimum_step": minimum_step,
+        "maximum_step": maximum_step,
+        "growth": growth,
+        "shrink": shrink,
+    }
+    for name, value in parameters.items():
+        if not math.isfinite(value):
+            raise ValidationError(f"Continuation {name} must be finite")
     if not 0 < minimum_step <= initial_step <= maximum_step <= 1:
         raise ValidationError("Invalid continuation step bounds")
+    if growth <= 1:
+        raise ValidationError("Continuation growth must be greater than 1")
+    if not 0 < shrink < 1:
+        raise ValidationError("Continuation shrink must be in (0, 1)")
+    if max_attempts <= 0:
+        raise ValidationError("Continuation max_attempts must be positive")
+
     fraction = 0.0
     step = initial_step
     history: list[ContinuationStep[T]] = []
@@ -44,6 +68,8 @@ def adaptive_continuation(
         if attempts > max_attempts:
             raise SimulationError("Continuation exceeded maximum attempts")
         trial_fraction = min(1.0, fraction + step)
+        if trial_fraction <= fraction:
+            raise SimulationError("Continuation step made no progress")
         point = {key: start[key] + trial_fraction * (target[key] - start[key]) for key in start}
         result, success = evaluate(point)
         history.append(

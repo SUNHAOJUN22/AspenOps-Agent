@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from aspenops.backends.base import SimulatorBackend
@@ -103,6 +104,8 @@ class SemanticAccessor:
             return value, write.unit or spec.default_unit
 
         numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValidationError(f"Node {write.key} requires a finite numeric value")
         source_unit = write.unit or spec.default_unit
         target_unit = spec.default_unit
         if source_unit is not None:
@@ -110,6 +113,8 @@ class SemanticAccessor:
                 raise UnitError(f"Node {write.key} expects {spec.quantity}, got {source_unit}")
             if target_unit is not None:
                 numeric = convert(numeric, source_unit, target_unit)
+        if not math.isfinite(numeric):
+            raise ValidationError(f"Node {write.key} converted to a non-finite value")
         if spec.minimum is not None and numeric < spec.minimum:
             raise ValidationError(
                 f"Node {write.key} value {numeric} is below minimum {spec.minimum} {target_unit or ''}"

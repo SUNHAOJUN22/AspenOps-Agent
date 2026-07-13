@@ -16,7 +16,7 @@ from typing import Any
 
 from aspenops.backends.base import RawValue, SimulatorBackend
 from aspenops.compat import candidate_progids
-from aspenops.errors import CaseOpenError, CompatibilityError, SimulationError
+from aspenops.errors import AccessViolation, CaseOpenError, CompatibilityError, SimulationError
 from aspenops.models import RunReport, RunState
 
 
@@ -28,6 +28,7 @@ class AspenPlusBackend(SimulatorBackend):
         self._progid: str | None = None
         self._case_path: Path | None = None
         self._pythoncom: Any | None = None
+        self._read_only = False
 
     @property
     def progid(self) -> str | None:
@@ -49,10 +50,12 @@ class AspenPlusBackend(SimulatorBackend):
             raise CaseOpenError(f"Could not open Aspen case {path}: {exc}") from exc
         self._document = document
         self._case_path = path
+        self._read_only = bool(read_only)
 
     def close(self) -> None:
         document = self._document
         self._document = None
+        self._read_only = False
         if document is not None:
             self._safe_quit(document)
         if self._pythoncom is not None:
@@ -76,6 +79,7 @@ class AspenPlusBackend(SimulatorBackend):
         return RawValue(value=value, unit=unit)
 
     def set_raw(self, path: str, value: Any, unit: str | None = None) -> None:
+        self._ensure_writable()
         node = self._require_node(path)
         try:
             setter = getattr(node, "SetValueAndUnit", None)
@@ -124,7 +128,9 @@ class AspenPlusBackend(SimulatorBackend):
         state = self._classify_status(status)
         messages = self._collect_messages(document, engine)
         if state == RunState.FAILED and not messages:
-            messages = ["Aspen completed without a recognized converged status"]
+            messages = ["Aspen completed with a failure or divergence status"]
+        if state == RunState.UNKNOWN and not messages:
+            messages = ["Aspen completed without readable convergence evidence"]
         return RunReport(
             state=state,
             elapsed_s=time.monotonic() - start,
@@ -133,6 +139,7 @@ class AspenPlusBackend(SimulatorBackend):
         )
 
     def save(self, path: Path | None = None) -> None:
+        self._ensure_writable()
         document = self._require_document()
         target = path
         try:
@@ -158,6 +165,7 @@ class AspenPlusBackend(SimulatorBackend):
         return {
             "backend": self.name,
             "opened": document is not None,
+            "read_only": self._read_only,
             "case_path": str(self._case_path) if self._case_path else None,
             "progid": self._progid,
             "version": self._first_property(
@@ -208,19 +216,15 @@ class AspenPlusBackend(SimulatorBackend):
             method = getattr(document, name, None)
             if not callable(method):
                 continue
-            call_args = args + ((True,) if read_only else ())
-            try:
-                method(*call_args)
-                return
-            except TypeError:
+            variants = [args + (True,)] if read_only else [args, args + (False,)]
+            for call_args in variants:
                 try:
-                    method(*args)
+                    method(*call_args)
                     return
                 except Exception as exc:
-                    errors.append(f"{name}: {exc}")
-            except Exception as exc:
-                errors.append(f"{name}: {exc}")
-        raise CaseOpenError("No Aspen open method succeeded: " + "; ".join(errors))
+                    errors.append(f"{name}{call_args[1:]}: {exc}")
+        mode = "read-only " if read_only else ""
+        raise CaseOpenError(f"No Aspen {mode}open method succeeded: " + "; ".join(errors))
 
     def _find_node(self, path: str) -> Any | None:
         document = self._require_document()
@@ -239,6 +243,10 @@ class AspenPlusBackend(SimulatorBackend):
         if self._document is None:
             raise SimulationError("No Aspen case is open")
         return self._document
+
+    def _ensure_writable(self) -> None:
+        if self._read_only:
+            raise AccessViolation("Read-only Aspen case cannot be modified or saved")
 
     def _pump_until_idle(self, engine: Any) -> None:
         for _ in range(3_600_000):
@@ -282,12 +290,20 @@ class AspenPlusBackend(SimulatorBackend):
 
     @staticmethod
     def _classify_status(status: str | None) -> RunState:
-        if status is None:
-            return RunState.CONVERGED
+        if status is None or not status.strip():
+            return RunState.UNKNOWN
         lowered = status.lower()
-        if any(token in lowered for token in ("error", "fail", "diverg", "incomplete")):
+        if any(
+            token in lowered
+            for token in ("error", "fail", "diverg", "incomplete", "abort", "stop")
+        ):
             return RunState.FAILED
-        return RunState.CONVERGED
+        if any(
+            token in lowered
+            for token in ("converged", "complete", "completed", "success", "successful")
+        ):
+            return RunState.CONVERGED
+        return RunState.UNKNOWN
 
     def _collect_messages(self, document: Any, engine: Any) -> list[str]:
         messages: list[str] = []

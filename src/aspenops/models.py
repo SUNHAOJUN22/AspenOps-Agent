@@ -12,6 +12,7 @@ class RunState(StrEnum):
     CONVERGED = "converged"
     FAILED = "failed"
     TIMEOUT = "timeout"
+    UNKNOWN = "unknown"
     NOT_RUN = "not_run"
 
 
@@ -76,3 +77,4 @@ class SessionInfo(BaseModel):
     backend: str
     case_path: str
     alive: bool
+    read_only: bool = False
