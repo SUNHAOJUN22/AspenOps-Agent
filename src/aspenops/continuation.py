@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
@@ -33,8 +34,21 @@ def adaptive_continuation(
 ) -> list[ContinuationStep[T]]:
     if start.keys() != target.keys():
         raise ValidationError("Continuation start and target must have identical variables")
+    if not start:
+        raise ValidationError("Continuation requires at least one variable")
+    if any(not math.isfinite(float(value)) for value in [*start.values(), *target.values()]):
+        raise ValidationError("Continuation endpoints must contain only finite values")
+    controls = (initial_step, minimum_step, maximum_step, growth, shrink)
+    if any(not math.isfinite(value) for value in controls):
+        raise ValidationError("Continuation controls must be finite")
     if not 0 < minimum_step <= initial_step <= maximum_step <= 1:
         raise ValidationError("Invalid continuation step bounds")
+    if growth <= 1:
+        raise ValidationError("Continuation growth must be greater than 1")
+    if not 0 < shrink < 1:
+        raise ValidationError("Continuation shrink must be in (0, 1)")
+    if max_attempts <= 0:
+        raise ValidationError("Continuation max_attempts must be positive")
     fraction = 0.0
     step = initial_step
     history: list[ContinuationStep[T]] = []
@@ -44,14 +58,18 @@ def adaptive_continuation(
         if attempts > max_attempts:
             raise SimulationError("Continuation exceeded maximum attempts")
         trial_fraction = min(1.0, fraction + step)
+        if trial_fraction <= fraction:
+            raise SimulationError("Continuation made no numerical progress")
         point = {key: start[key] + trial_fraction * (target[key] - start[key]) for key in start}
+        if any(not math.isfinite(value) for value in point.values()):
+            raise SimulationError("Continuation generated a non-finite operating point")
         result, success = evaluate(point)
         history.append(
             ContinuationStep(
                 fraction=trial_fraction,
                 point=point,
                 result=result,
-                success=success,
+                success=bool(success),
             )
         )
         if success:
