@@ -62,3 +62,42 @@ def test_expression_operator_and_relation_branches() -> None:
         safe_evaluate("missing + 1", values)
     with pytest.raises(ValidationError):
         safe_evaluate("round(x)", values)
+
+
+def test_non_finite_values_are_infeasible() -> None:
+    run = RunReport(state=RunState.CONVERGED)
+    result = build_evaluation(
+        inputs={"x": 1.0},
+        outputs={"cost": math.nan},
+        run=run,
+        objective_expression="cost",
+    )
+    assert not result.feasible
+    assert result.objective is None
+    assert math.isinf(result.constraint_violation)
+    assert result.metadata["invalid_numeric_fields"] == ["cost"]
+    with pytest.raises(ValidationError, match="finite"):
+        safe_evaluate("x", {"x": math.inf})
+    with pytest.raises(ValidationError, match="finite"):
+        Balance({"feed": 1.0}, 1.0, 1.0).residuals({"feed": math.nan})
+
+
+def test_non_finite_deb_values_are_worst_case() -> None:
+    run = RunReport(state=RunState.CONVERGED)
+    finite = EvaluationResult(
+        inputs={},
+        outputs={},
+        run=run,
+        constraint_violation=1.0,
+        balance_violation=0.0,
+        feasible=False,
+    )
+    non_finite = EvaluationResult(
+        inputs={},
+        outputs={},
+        run=run,
+        constraint_violation=math.nan,
+        balance_violation=0.0,
+        feasible=False,
+    )
+    assert deb_better(finite, non_finite)

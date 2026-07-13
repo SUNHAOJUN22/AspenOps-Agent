@@ -40,6 +40,7 @@ Codex / Claude Code / MCP client / Python application
 │ one process · one COM apartment · one simulator document    │
 │ semantic registry · unit checks · rollback · path cache     │
 └──────────────────────────────┬──────────────────────────────┘
+                               │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Aspen Plus Automation Server                                │
@@ -60,8 +61,10 @@ The separation is intentional:
 3. **Semantic keys are the default API.** Agents cannot freely concatenate arbitrary Aspen tree paths.
 4. **Batch reads and writes cross IPC once.** A point evaluation performs write -> reinitialize -> run -> read in one worker request.
 5. **Batch writes are rollback-capable.** If write 2 fails after write 1 succeeds, AspenOps attempts to restore the original values.
-6. **Software completion, Aspen convergence and physical feasibility are different states.** They are never collapsed into one Boolean.
-7. **Public CI uses the same service, worker, registry and numerical code through a deterministic Mock backend.** Real Aspen validation remains an explicit licensed-Windows gate.
+6. **Software completion, explicit Aspen convergence evidence and physical feasibility are different states.** Missing or unrecognized simulator status is `unknown`, never assumed converged.
+7. **Worker death invalidates the logical session.** Recovery is explicit and reopens the original case path; unsaved in-memory state is not claimed to survive.
+8. **Read-only mode fails closed.** Mutation and save are rejected, and unsupported read-only COM signatures do not fall back to writable opening.
+9. **Public CI uses the same service, worker, registry and numerical code through a deterministic Mock backend.** Real Aspen validation remains an explicit licensed-Windows gate.
 
 ## Version-adaptive Aspen discovery
 
@@ -108,8 +111,9 @@ AspenOps implements:
 - one open simulator document reused across many points;
 - one batched IPC request per point;
 - candidate-path caching after the first successful semantic-node resolution;
-- nearest-neighbor point ordering to reduce operating-condition jumps;
-- hard worker deadlines; on timeout AspenOps terminates **its worker process**, never performs a machine-wide Aspen kill command.
+- range-normalized nearest-neighbor point ordering to reduce operating-condition jumps;
+- hard worker deadlines; on timeout AspenOps terminates **its worker process**, never performs a machine-wide Aspen kill command;
+- explicit worker replacement that reopens the staged case without silently retrying the failed point.
 
 Start with one worker. Increase concurrency only after measuring license availability, RAM use and case stability.
 
@@ -170,16 +174,17 @@ r_b=\sum_i a_i q_i,
 \varepsilon_b=\frac{|r_b|}{\max(\sum_i|a_iq_i|,q_{min})}
 \]
 
-For constrained optimization, failed or infeasible points do not become attractive merely because an output is missing or numerically small. Candidate selection follows Deb-style feasibility ordering:
+For constrained optimization, failed, unknown, non-finite or infeasible points do not become attractive merely because an output is missing or numerically small. Candidate selection follows Deb-style feasibility ordering:
 
 1. feasible dominates infeasible;
 2. among feasible points, lower objective wins;
-3. among infeasible points, lower total violation wins.
+3. among infeasible points, lower total finite violation wins.
 
 Included numerical components:
 
 - Latin Hypercube, Halton, random and bounded grid designs;
 - safe AST objective and constraint expressions - no `eval`, imports, attributes or arbitrary calls;
+- finite-value validation for inputs, outputs, objectives, constraints and balances;
 - absolute and relative conservation residuals;
 - adaptive continuation for large condition changes;
 - bounded `DE/best/1/bin` differential evolution;
@@ -206,11 +211,16 @@ uv run aspenops run-case "D:\AspenModels\case.bkp" --timeout-s 1200
 
 ### MCP server
 
+Production MCP startup is fail-closed: configure both allowed model roots and a persistent audit destination.
+
 ```powershell
 uv sync --extra windows --extra agent
 $env:ASPENOPS_ALLOWED_ROOTS = "D:\AspenModels;D:\AspenResults"
+$env:ASPENOPS_AUDIT_LOG = "D:\AspenResults\audit\aspenops.jsonl"
 uv run aspenops-mcp
 ```
+
+For isolated local Mock development only, `ASPENOPS_INSECURE_LOCAL_DEV=1` permits unrestricted paths and no persistent audit. Do not use that override for a remote or shared deployment.
 
 Example MCP configuration:
 
@@ -221,7 +231,8 @@ Example MCP configuration:
       "command": "uv",
       "args": ["run", "--project", "D:/src/AspenOps-Agent", "aspenops-mcp"],
       "env": {
-        "ASPENOPS_ALLOWED_ROOTS": "D:/AspenModels;D:/AspenResults"
+        "ASPENOPS_ALLOWED_ROOTS": "D:/AspenModels;D:/AspenResults",
+        "ASPENOPS_AUDIT_LOG": "D:/AspenResults/audit/aspenops.jsonl"
       }
     }
   }
@@ -232,6 +243,7 @@ Exposed tools are deliberately narrow:
 
 - `system_info`
 - `open_session`
+- `recover_session`
 - `close_session`
 - `get_values`
 - `set_values`
@@ -285,6 +297,7 @@ The integration case should be non-confidential, deterministic, already converge
 - This repository cannot test a real Aspen installation from public Linux CI.
 - The bundled registry is a safe starting point; it is not a substitute for validating a project's actual tree.
 - Worker termination may leave a vendor process to be cleaned up by COM or Windows; AspenOps deliberately avoids broad `taskkill` commands that could terminate another engineer's session.
+- Explicit session recovery reloads the configured case path; it cannot restore unsaved state from a terminated process.
 - Semi-batch kinetics, population balances and full transient reactor trajectories require an external ODE/PBE layer, Aspen Custom Modeler, or Aspen Dynamics. The v1.0 backend is steady-state.
 - HYSYS, ACM and Dynamics require separate adapters and separate validation evidence.
 

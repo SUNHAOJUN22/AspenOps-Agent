@@ -15,7 +15,21 @@ AspenOps does not expose:
 
 `SessionManager` may be configured with allowed roots. Case opening and save destinations outside those roots are rejected before worker creation or save.
 
-For MCP, configure `ASPENOPS_ALLOWED_ROOTS` using the platform path separator. An empty setting means no root restriction and is appropriate only for trusted local development.
+MCP operation is fail-closed. Production startup requires `ASPENOPS_ALLOWED_ROOTS`, using the platform path separator, and `ASPENOPS_AUDIT_LOG`. An empty root list or missing audit destination raises a configuration error before any session can be used.
+
+For isolated local development only, `ASPENOPS_INSECURE_LOCAL_DEV=1` explicitly permits unrestricted paths and disables persistent audit. Do not use this override on a shared workstation, service account, remote MCP endpoint or production host.
+
+## Worker and session recovery
+
+A worker timeout or transport death marks the logical session as `dead`. AspenOps never starts a fresh worker behind the same session ID and pretends the simulator document survived. The client must call `recover_session`, which reopens the original case path. Unsaved in-memory modifications from the terminated process are not recoverable.
+
+## Read-only policy
+
+A read-only session cannot call `set_values` or `save_case`. The Aspen backend also rejects direct mutation and save operations. If the installed Aspen Automation interface cannot open a case with an explicit read-only argument, opening fails rather than silently falling back to writable mode.
+
+## Convergence policy
+
+Missing or unrecognized Aspen status is reported as `unknown`, not `converged`. Only explicit success evidence produces the converged state; explicit failure evidence always dominates success text.
 
 ## Semantic identifier policy
 
@@ -23,7 +37,7 @@ Identifiers such as stream and block names accept only letters, numbers, undersc
 
 ## Audit
 
-Optional JSONL audit records include UTC timestamp, event and sanitized metadata. The default audit does not persist model contents or output arrays. Deployments should define retention, access control and redaction rules.
+JSONL audit records include UTC timestamp, event and sanitized metadata. MCP deployments must configure `ASPENOPS_AUDIT_LOG`. The audit does not persist model contents or output arrays by default. Deployments should define retention, access control, integrity protection and redaction rules.
 
 ## Proprietary data
 

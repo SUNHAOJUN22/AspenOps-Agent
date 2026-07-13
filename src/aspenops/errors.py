@@ -41,5 +41,9 @@ class WorkerTimeout(WorkerError):
     """A worker did not answer before its deadline."""
 
 
+class SessionDeadError(WorkerError):
+    """A logical session lost its worker and requires explicit recovery."""
+
+
 class SimulationError(AspenOpsError):
     """The simulator failed to complete a requested operation."""

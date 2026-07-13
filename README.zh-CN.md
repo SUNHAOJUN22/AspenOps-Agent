@@ -15,7 +15,9 @@ v1.0 只对 **Aspen Plus 稳态流程模拟自动化**负责，不再把尚未�
 - 不开放任意 VBA、Python、Shell 或通用 COM 反射调用；
 - 不默认允许 Agent 任意拼接 Aspen Tree 路径；
 - 不声称公共 Linux CI 已经测试真实 Aspen；
-- 不把“COM 调用返回”“Aspen 收敛”“结果物理合理”混成一个成功状态。
+- 不把“COM 调用返回”“Aspen 明确收敛”“结果物理合理”混成一个成功状态；
+- Aspen 状态缺失或无法识别时返回 `unknown`，不再假定已经收敛；
+- Worker 死亡后会话进入 `dead`，不会在原会话编号下静默启动一个未打开模型的新进程。
 
 这使工程能力、README 承诺和测试证据保持一致。
 
@@ -44,6 +46,8 @@ Codex / Claude Code / MCP 客户端 / Python 应用
 ```
 
 关键不变量：真实 Aspen COM 对象只存在于创建它的 Windows 子进程和 STA apartment 内，不跨线程共享、不跨进程序列化。
+
+会话具有明确的 `open`、`dead`、`closed` 状态。超时或传输故障会终止 Worker 并将会话标记为 `dead`；只有显式调用 `recover_session` 才会重新打开原始案例。已终止进程中的未保存内存状态无法恢复，系统不会声称这些状态仍然存在。
 
 ## 3. 为什么能适配新 Aspen 版本
 
@@ -82,8 +86,9 @@ T_{pool}\approx W(T_{start}+T_{open})+\frac{N}{W}T_{solve}+T_{IPC}
 - 每个 Worker 独立模型副本，避免并发写同一个文件；
 - 每个操作点只进行一次 IPC：批量写入 -> Reinit -> Run -> 批量读取；
 - 第一次找到正确 Aspen 路径后缓存；
-- DOE 点按邻近关系排序，减少相邻工况跳跃；
+- DOE 点按变量范围归一化后的邻近关系排序，避免大量纲变量独占距离；
 - 超时只终止 AspenOps 自己的 Worker，不执行可能误杀别人 Aspen 会话的全局 `taskkill`；
+- Pool 会显式重建死亡 Worker 并重新打开其私有案例，但不会静默重试已经失败的计算点；
 - Worker 数量受配置、许可证、内存和稳定实例数共同约束。
 
 ## 5. 语义节点与安全写入
@@ -115,6 +120,8 @@ Agent 不直接写：
 6. 候选路径解析与缓存；
 7. 批量写入；
 8. 任一写入失败时按已保存原值逆序回滚。
+
+只读会话在服务层和 Aspen 后端层都会拒绝写入和保存。如果目标 Aspen COM 接口不支持明确的只读打开参数，打开操作直接失败，不会退回可写模式。
 
 Aspen Tree 路径会随模型、模块、规格方式和版本变化。仓库自带路径只作为候选模板，项目实施时必须依据 Variable Explorer 建立项目专用注册表。
 
@@ -148,9 +155,11 @@ r_b=\sum_i a_iq_i,
 1. 可行解无条件优于不可行解；
 2. 可行解之间比较目标值；
 3. 不可行解之间比较总违反量；
-4. Aspen 不收敛点以无穷违反量处理，不会被误判成“低目标值好点”。
+4. Aspen 失败、状态未知以及包含 NaN/Inf 的点均按不可行处理，不会被误判成“低目标值好点”。
 
-包含：Latin Hypercube、Halton、随机和网格 DOE；安全 AST 表达式；质量/能量闭合；自适应连续求解；有界 `DE/best/1/bin` 差分进化。
+包含：Latin Hypercube、Halton、随机和网格 DOE；安全 AST 表达式；有限数校验；质量/能量闭合；自适应连续求解；有界 `DE/best/1/bin` 差分进化。
+
+DOE 会检查变量名唯一性、有限上下界和整数区间可行性。连续求解会检查增长因子、收缩因子、最大尝试次数以及端点有限性。
 
 ## 7. 安装与验证
 
@@ -177,26 +186,30 @@ uv run aspenops run-case "D:\AspenModels\case.bkp" --timeout-s 1200
 
 ### MCP
 
+生产 MCP 默认采用 fail-closed 策略，必须同时配置案例目录白名单和审计日志：
+
 ```powershell
 uv sync --extra windows --extra agent
 $env:ASPENOPS_ALLOWED_ROOTS = "D:\AspenModels;D:\AspenResults"
+$env:ASPENOPS_AUDIT_LOG = "D:\AspenResults\audit\aspenops.jsonl"
 uv run aspenops-mcp
 ```
 
-MCP 只提供 9 个窄工具：系统信息、打开/关闭会话、批量读写、Reinit、Run、诊断和保存。没有任意执行代码接口。
+只有在隔离的本地 Mock 开发环境中，才可显式设置 `ASPENOPS_INSECURE_LOCAL_DEV=1`，允许不限制目录且不落盘审计。共享工作站、远程 MCP 服务和生产环境禁止使用该开关。
+
+MCP 只提供 10 个窄工具：系统信息、打开会话、恢复会话、关闭会话、批量读写、Reinit、Run、诊断和保存。没有任意执行代码接口。
 
 ## 8. 自动测试证据
 
-当前 v1.0.0 本地质量门：
+当前修复分支质量门：
 
-- Ruff 全通过；
+- Python 3.11、3.12、3.13 的 Ruff 全通过；
 - 22 个源码模块严格 mypy 全通过；
-- 34 项测试通过；
+- 50 项测试通过；
 - 1 项真实 Aspen 集成测试因当前环境不是持证 Windows 节点而按条件跳过；
-- 跨平台可执行模块覆盖率 86.75%；
-- 最终文档完成后再次构建 wheel、sdist 和运行 Demo。
+- Python 3.13 上 wheel、sdist 构建和 wheel 安装冒烟测试通过。
 
-GitHub Actions 在 Python 3.11、3.12、3.13 上重复执行。真实 Aspen 由独立的自托管 Windows 工作流验证。
+真实 Aspen 仍由独立的自托管 Windows 工作流验证，公共 Linux CI 不被表述为真实 Aspen 实机证据。
 
 ## 9. 适用于 EPDM/聚合工艺时必须注意
 
@@ -216,5 +229,6 @@ GitHub Actions 在 Python 3.11、3.12、3.13 上重复执行。真实 Aspen 由�
 - 真实 Aspen 只能在 Windows、已安装 Aspen Plus、具备许可证时验证；
 - 公共 CI 不可能证明某一商业 Aspen 补丁版本的真实行为；
 - HYSYS、ACM、Dynamics 需要独立适配器与独立测试；
-- 生产前必须验证项目专用节点路径、单位集和规格模式；
+- 生产前必须验证项目专用节点路径、单位集、规格模式和明确收敛状态；
+- 恢复会话只会重新加载配置的案例路径，无法恢复死亡进程中的未保存状态；
 - 不提交客户模型、许可证、私有动力学参数或 Aspen 专有文档。

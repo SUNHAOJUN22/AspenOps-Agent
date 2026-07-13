@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from aspenops.continuation import adaptive_continuation
@@ -38,3 +40,17 @@ def test_continuation_validation_and_failure() -> None:
             initial_step=0.1,
             minimum_step=0.05,
         )
+
+
+def test_continuation_rejects_invalid_controls() -> None:
+    def evaluator(point: dict[str, float]) -> tuple[dict[str, float], bool]:
+        return point, True
+
+    with pytest.raises(ValidationError, match="growth"):
+        adaptive_continuation({"x": 0}, {"x": 1}, evaluator, growth=1.0)
+    with pytest.raises(ValidationError, match="shrink"):
+        adaptive_continuation({"x": 0}, {"x": 1}, evaluator, shrink=1.0)
+    with pytest.raises(ValidationError, match="max_attempts"):
+        adaptive_continuation({"x": 0}, {"x": 1}, evaluator, max_attempts=0)
+    with pytest.raises(ValidationError, match="finite"):
+        adaptive_continuation({"x": 0}, {"x": math.inf}, evaluator)

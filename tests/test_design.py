@@ -28,3 +28,29 @@ def test_grid_cap_and_nearest_neighbor_order() -> None:
         grid_design(variables, 101, max_points=100)
     points = [{"x": 0.0}, {"x": 10.0}, {"x": 1.0}, {"x": 2.0}]
     assert nearest_neighbor_order(points) == [0, 2, 3, 1]
+
+
+def test_variable_and_design_validation() -> None:
+    with pytest.raises(ValidationError, match="no feasible integer"):
+        Variable("n", 0.2, 0.8, integer=True)
+    with pytest.raises(ValidationError, match="unique"):
+        latin_hypercube([Variable("x", 0, 1), Variable("x", 2, 3)], 2)
+    with pytest.raises(ValidationError, match="non-negative"):
+        halton_design([Variable("x", 0, 1)], 2, skip=-1)
+    with pytest.raises(ValidationError, match="identical"):
+        nearest_neighbor_order([{"x": 0.0}, {"y": 1.0}])
+
+
+def test_nearest_neighbor_distance_is_range_normalized() -> None:
+    points = [
+        {"large": 0.0, "small": 0.0},
+        {"large": 900.0, "small": 0.0},
+        {"large": 100.0, "small": 1.0},
+    ]
+    assert nearest_neighbor_order(points) == [0, 1, 2]
+
+
+def test_integer_projection_remains_inside_fractional_bounds() -> None:
+    variable = Variable("n", 0.2, 1.8, integer=True)
+    assert variable.project(0.2) == 1.0
+    assert variable.project(1.8) == 1.0

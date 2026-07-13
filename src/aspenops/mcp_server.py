@@ -7,19 +7,42 @@ import os
 from pathlib import Path
 from typing import Any
 
+from aspenops.audit import AuditLog
 from aspenops.compat import discover_aspen_progids
+from aspenops.errors import ConfigurationError
 from aspenops.models import ValueRead, ValueWrite
 from aspenops.service import SessionManager
 
 _MANAGER: SessionManager | None = None
 
 
+def _truthy_environment(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _build_manager_from_env() -> SessionManager:
+    roots_raw = os.getenv("ASPENOPS_ALLOWED_ROOTS", "")
+    roots = [Path(item).resolve() for item in roots_raw.split(os.pathsep) if item.strip()]
+    audit_raw = os.getenv("ASPENOPS_AUDIT_LOG", "").strip()
+    insecure_local_dev = _truthy_environment("ASPENOPS_INSECURE_LOCAL_DEV")
+    if not roots and not insecure_local_dev:
+        raise ConfigurationError(
+            "ASPENOPS_ALLOWED_ROOTS is required for MCP operation; "
+            "set ASPENOPS_INSECURE_LOCAL_DEV=1 only for isolated local development"
+        )
+    if not audit_raw and not insecure_local_dev:
+        raise ConfigurationError(
+            "ASPENOPS_AUDIT_LOG is required for MCP operation; "
+            "set ASPENOPS_INSECURE_LOCAL_DEV=1 only for isolated local development"
+        )
+    audit_log = AuditLog(Path(audit_raw).resolve()) if audit_raw else None
+    return SessionManager(allowed_roots=roots, audit_log=audit_log)
+
+
 def _manager() -> SessionManager:
     global _MANAGER
     if _MANAGER is None:
-        roots_raw = os.getenv("ASPENOPS_ALLOWED_ROOTS", "")
-        roots = [Path(item) for item in roots_raw.split(os.pathsep) if item]
-        _MANAGER = SessionManager(allowed_roots=roots)
+        _MANAGER = _build_manager_from_env()
     return _MANAGER
 
 
@@ -56,6 +79,11 @@ def create_server() -> Any:
             timeout_s=timeout_s,
         )
         return result.model_dump(mode="json")
+
+    @server.tool()  # type: ignore[untyped-decorator]
+    def recover_session(session_id: str) -> dict[str, Any]:
+        """Explicitly replace a dead worker and reopen its original case path."""
+        return _manager().recover_session(session_id).model_dump(mode="json")
 
     @server.tool()  # type: ignore[untyped-decorator]
     def close_session(session_id: str) -> dict[str, bool]:

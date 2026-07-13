@@ -126,7 +126,12 @@ def _dispatch(
 
 
 class WorkerClient:
-    """Synchronous RPC client for one persistent spawned worker."""
+    """Synchronous RPC client for one persistent spawned worker.
+
+    A dead worker is never restarted implicitly. The owner must explicitly create
+    a replacement and reopen the simulator case so logical session state cannot
+    silently diverge from process state.
+    """
 
     def __init__(
         self,
@@ -146,10 +151,16 @@ class WorkerClient:
     def alive(self) -> bool:
         return self._process is not None and self._process.is_alive()
 
+    @property
+    def started(self) -> bool:
+        return self._process is not None or self._connection is not None
+
     def start(self) -> None:
         with self._lock:
             if self.alive:
                 return
+            if self.started:
+                raise WorkerError("Dead worker cannot be restarted; create a new WorkerClient")
             context = mp.get_context("spawn")
             parent, child = context.Pipe(duplex=True)
             process = context.Process(
@@ -176,14 +187,14 @@ class WorkerClient:
     ) -> Any:
         with self._lock:
             if not self.alive:
-                self.start()
+                raise WorkerError("Worker is not alive; explicit session recovery is required")
             connection = self._require_connection()
             try:
                 connection.send({"op": operation, "payload": payload or {}})
             except (BrokenPipeError, EOFError, OSError) as exc:
                 self.terminate()
                 raise WorkerError(f"Worker transport failed: {exc}") from exc
-            response = self._receive(timeout_s or self.timeout_s)
+            response = self._receive(self.timeout_s if timeout_s is None else timeout_s)
             if not response.get("ok"):
                 raise WorkerError(
                     f"{response.get('error', 'Worker request failed')}\n"
@@ -227,6 +238,7 @@ class WorkerClient:
             self.terminate()
             raise WorkerError(f"Worker exited without a response: {exc}") from exc
         if not isinstance(response, dict):
+            self.terminate()
             raise WorkerError("Worker returned a non-mapping response")
         return response
 

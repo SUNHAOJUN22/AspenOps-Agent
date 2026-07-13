@@ -12,7 +12,14 @@ class RunState(StrEnum):
     CONVERGED = "converged"
     FAILED = "failed"
     TIMEOUT = "timeout"
+    UNKNOWN = "unknown"
     NOT_RUN = "not_run"
+
+
+class SessionState(StrEnum):
+    OPEN = "open"
+    DEAD = "dead"
+    CLOSED = "closed"
 
 
 class AccessMode(StrEnum):
@@ -76,3 +83,5 @@ class SessionInfo(BaseModel):
     backend: str
     case_path: str
     alive: bool
+    state: SessionState = SessionState.OPEN
+    read_only: bool = False
