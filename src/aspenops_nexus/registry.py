@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
+import string
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .units import convert, dimension
+from .units import UnitError, convert, dimension
 
 
 class RegistryError(ValueError):
@@ -15,6 +17,8 @@ class RegistryError(ValueError):
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_. -]{1,128}$")
+_IDENTIFIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_VALID_BACKENDS = {"any", "mock", "aspen_plus", "hysys"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,25 +74,93 @@ class NodeRegistry:
         self.schema = str(data.get("schema", "aspenops.registry/v1"))
 
     @staticmethod
-    def _validate_definition(key: str, node: dict[str, Any]) -> None:
+    def _finite_bound(key: str, name: str, value: Any) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise RegistryError(f"{name} bound for {key} must be numeric, not Boolean")
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise RegistryError(f"{name} bound for {key} must be numeric") from exc
+        if not math.isfinite(numeric):
+            raise RegistryError(f"{name} bound for {key} must be finite")
+        return numeric
+
+    @staticmethod
+    def _validate_template(key: str, template: str, identifiers: tuple[str, ...]) -> None:
+        try:
+            parsed = string.Formatter().parse(template)
+            for _literal, field_name, format_spec, conversion in parsed:
+                if field_name is None:
+                    continue
+                if field_name not in identifiers:
+                    raise RegistryError(
+                        f"Template for {key} references undeclared identifier {field_name!r}"
+                    )
+                if format_spec or conversion:
+                    raise RegistryError(
+                        f"Template for {key} may only use plain identifier placeholders"
+                    )
+        except ValueError as exc:
+            raise RegistryError(f"Invalid template for {key}: {template!r}") from exc
+
+    @classmethod
+    def _validate_definition(cls, key: str, node: dict[str, Any]) -> None:
         access = str(node.get("access", "read"))
         if access not in {"read", "write", "readwrite"}:
             raise RegistryError(f"Invalid access for {key}: {access}")
-        unit = node.get("unit")
-        if unit is not None:
-            dimension(str(unit))
-        lower = node.get("lower")
-        upper = node.get("upper")
-        if lower is not None and upper is not None and float(lower) > float(upper):
+        unit = None if node.get("unit") is None else str(node["unit"])
+        quantity = None if node.get("quantity") is None else str(node["quantity"])
+        unit_dimension = None if unit is None else dimension(unit)
+        if quantity is not None:
+            if not quantity.strip():
+                raise RegistryError(f"Quantity for {key} must not be blank")
+            if unit_dimension is None:
+                raise RegistryError(f"Quantity {quantity!r} for {key} requires a canonical unit")
+            if quantity != unit_dimension:
+                raise RegistryError(
+                    f"Quantity {quantity!r} for {key} does not match unit {unit!r} "
+                    f"dimension {unit_dimension!r}"
+                )
+        lower = cls._finite_bound(key, "lower", node.get("lower"))
+        upper = cls._finite_bound(key, "upper", node.get("upper"))
+        if lower is not None and upper is not None and lower > upper:
             raise RegistryError(f"Lower bound exceeds upper bound for {key}")
+        integer = node.get("integer", False)
+        if not isinstance(integer, bool):
+            raise RegistryError(f"integer for {key} must be a JSON Boolean")
+        backend = str(node.get("backend", "aspen_plus"))
+        if backend not in _VALID_BACKENDS:
+            raise RegistryError(f"Invalid backend for {key}: {backend!r}")
+        raw_identifiers = node.get("identifiers", [])
+        if not isinstance(raw_identifiers, list) or not all(
+            isinstance(item, str) for item in raw_identifiers
+        ):
+            raise RegistryError(f"identifiers for {key} must be a list of strings")
+        identifiers = tuple(raw_identifiers)
+        if len(set(identifiers)) != len(identifiers):
+            raise RegistryError(f"identifiers for {key} must be unique")
+        for identifier in identifiers:
+            if not _IDENTIFIER_NAME_RE.fullmatch(identifier):
+                raise RegistryError(f"Invalid identifier name {identifier!r} for {key}")
         paths = node.get("paths", [])
         locator = node.get("locator", {})
         if not paths and not locator:
             raise RegistryError(f"Node {key} requires at least one path or locator")
-        if paths and not isinstance(paths, list):
-            raise RegistryError(f"paths for {key} must be a list")
-        if locator and not isinstance(locator, dict):
+        if not isinstance(paths, list) or not all(
+            isinstance(path, str) and path for path in paths
+        ):
+            raise RegistryError(f"paths for {key} must be a list of non-empty strings")
+        if not isinstance(locator, dict):
             raise RegistryError(f"locator for {key} must be an object")
+        for path in paths:
+            cls._validate_template(key, path, identifiers)
+        for locator_key, locator_value in locator.items():
+            if not isinstance(locator_key, str) or not locator_key:
+                raise RegistryError(f"locator keys for {key} must be non-empty strings")
+            if isinstance(locator_value, str):
+                cls._validate_template(key, locator_value, identifiers)
 
     def keys(self) -> list[str]:
         return sorted(self._nodes)
@@ -106,7 +178,7 @@ class NodeRegistry:
                     "identifiers": node.get("identifiers", []),
                     "lower": node.get("lower"),
                     "upper": node.get("upper"),
-                    "integer": bool(node.get("integer", False)),
+                    "integer": node.get("integer", False),
                     "backend": node.get("backend", "aspen_plus"),
                     "verification": node.get("verification", "project-required"),
                     "description": node.get("description", ""),
@@ -117,7 +189,7 @@ class NodeRegistry:
     @staticmethod
     def _validate_identifiers(identifiers: dict[str, str]) -> None:
         for name, value in identifiers.items():
-            if not name or not _IDENTIFIER_RE.fullmatch(value):
+            if not _IDENTIFIER_NAME_RE.fullmatch(name) or not _IDENTIFIER_RE.fullmatch(value):
                 raise RegistryError(
                     f"Unsafe identifier {name!r}={value!r}; path separators and template syntax "
                     "are not allowed"
@@ -152,9 +224,9 @@ class NodeRegistry:
             quantity=None if node.get("quantity") is None else str(node["quantity"]),
             paths=paths,
             identifiers=normalized,
-            lower=None if node.get("lower") is None else float(node["lower"]),
-            upper=None if node.get("upper") is None else float(node["upper"]),
-            integer=bool(node.get("integer", False)),
+            lower=self._finite_bound(key, "lower", node.get("lower")),
+            upper=self._finite_bound(key, "upper", node.get("upper")),
+            integer=node.get("integer", False),
             backend=str(node.get("backend", "aspen_plus")),
             locator=locator,
             verification=str(node.get("verification", "project-required")),
@@ -182,10 +254,13 @@ class NodeRegistry:
                 value_type = type(value).__name__
                 raise RegistryError(f"Numeric variable {node.key} cannot receive {value_type}")
             return value
-        numeric = convert(float(value), unit, node.native_unit)
+        try:
+            numeric = convert(float(value), unit, node.native_unit)
+        except UnitError as exc:
+            raise RegistryError(f"Invalid unit for {node.key}: {exc}") from exc
         if node.integer:
             rounded = round(numeric)
-            if abs(numeric - rounded) > 1e-9:
+            if not math.isclose(numeric, rounded, rel_tol=0.0, abs_tol=1e-9):
                 raise RegistryError(f"{node.key} requires an integer value")
             numeric = float(rounded)
         if node.lower is not None and numeric < node.lower:
