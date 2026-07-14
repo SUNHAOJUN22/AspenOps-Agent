@@ -44,9 +44,7 @@ class StateMachineSpec:
         if source == target:
             return
         if not self.can_transition(source, target):
-            raise StateTransitionError(
-                f"Illegal {self.name} transition: {source!r} -> {target!r}"
-            )
+            raise StateTransitionError(f"Illegal {self.name} transition: {source!r} -> {target!r}")
 
     def validate_complete(self) -> None:
         for state in self.states - self.terminal:
@@ -200,9 +198,7 @@ EVIDENCE_BUNDLE: Final = StateMachineSpec(
 SURROGATE_MODEL: Final = StateMachineSpec(
     name="SurrogateModel",
     initial="DRAFT",
-    states=frozenset(
-        {"DRAFT", "VALIDATING", "ACTIVE", "DRIFTED", "BLOCKED", "RETIRED"}
-    ),
+    states=frozenset({"DRAFT", "VALIDATING", "ACTIVE", "DRIFTED", "BLOCKED", "RETIRED"}),
     transitions=frozenset(
         {
             ("DRAFT", "VALIDATING"),
