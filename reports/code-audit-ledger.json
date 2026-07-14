@@ -1,0 +1,155 @@
+{
+  "schema": "aspenops.code-audit-ledger/v1",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "branch": "agent/aspenops-1.4-mathematical-database-hardening",
+  "base_commit": "8283744093a210c07da16ffe006968776dff9547",
+  "inventory_status": "PARTIAL",
+  "audit_complete": false,
+  "entries": [
+    {
+      "path": "pyproject.toml",
+      "symbol": "project packaging configuration",
+      "line_start": 7,
+      "line_end": 67,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["packaging", "release", "testing"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "REL-001", "type": "coverage-gate-below-target", "description": "Current CI gate is 63%, below the required repository and module thresholds."},
+        {"id": "REL-002", "type": "single-source-version-gap", "description": "Version is embedded directly in pyproject and duplicated in src/aspenops_nexus/__init__.py."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": "src/aspenops_nexus/units.py",
+      "symbol": "UnitSpec; convert",
+      "line_start": 12,
+      "line_end": 90,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["mathematics", "physics", "units", "numerics"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "UNIT-001", "type": "validation-bypass", "description": "source == target returns before unit lookup, so an unsupported unit can be accepted when both strings match."},
+        {"id": "UNIT-002", "type": "missing-unit-bypass", "description": "If exactly one of source or target is None, conversion silently returns the value instead of rejecting ambiguous dimensional semantics."},
+        {"id": "UNIT-003", "type": "nonfinite-input", "description": "NaN and Infinity are not rejected."},
+        {"id": "UNIT-004", "type": "quantity-model-gap", "description": "Absolute temperature and temperature differences are not separated; absolute and gauge pressure are not separated."},
+        {"id": "UNIT-005", "type": "constructor-invariant-gap", "description": "UnitSpec does not enforce finite positive scale or finite offset."}
+      ],
+      "tests": ["tests/test_units.py"],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": "src/aspenops_nexus/hashing.py",
+      "symbol": "canonical_hash",
+      "line_start": 19,
+      "line_end": 21,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["mathematics", "cache", "evidence", "security"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "HASH-001", "type": "noncanonical-json", "description": "json.dumps does not set allow_nan=False; NaN and Infinity can enter a supposedly canonical identity."},
+        {"id": "HASH-002", "type": "physical-identity-gap", "description": "Equivalent physical values are not normalized for negative zero, units or display-only fields."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": "src/aspenops_nexus/cache.py",
+      "symbol": "ResultCache",
+      "line_start": 13,
+      "line_end": 76,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["database", "concurrency", "cache", "performance"],
+      "risk": "CRITICAL",
+      "findings": [
+        {"id": "CACHE-001", "type": "cache-stampede", "description": "There is no pending owner, lease, single-flight or stale-owner recovery; concurrent misses can launch duplicate Aspen solves."},
+        {"id": "CACHE-002", "type": "mutable-result", "description": "ON CONFLICT overwrites existing payloads without immutable publish semantics."},
+        {"id": "CACHE-003", "type": "integrity-gap", "description": "Payloads have no checksum, schema version, corruption state or transactional publish protocol."},
+        {"id": "CACHE-004", "type": "unbounded-storage", "description": "No size bound, eviction policy or version invalidation is defined."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": "src/aspenops_nexus/scheduler.py",
+      "symbol": "JobStore; BackgroundScheduler",
+      "line_start": 20,
+      "line_end": 243,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["database", "transactions", "concurrency", "state-machine", "exceptions"],
+      "risk": "CRITICAL",
+      "findings": [
+        {"id": "DB-001", "type": "schema-invariant-gap", "description": "Status and cancel_requested have no CHECK constraints; no schema version, idempotency key, optimistic version, lease or migration ledger exists."},
+        {"id": "DB-002", "type": "illegal-state-transition", "description": "fail updates any job regardless of current state, allowing terminal jobs to be rewritten."},
+        {"id": "DB-003", "type": "silent-transition-failure", "description": "complete ignores rowcount, so stale or duplicate completion silently appears successful."},
+        {"id": "DB-004", "type": "startup-race", "description": "Every JobStore construction rewrites all running rows to interrupted, corrupting live work if a second service starts."},
+        {"id": "DB-005", "type": "n-plus-one", "description": "list_recent selects IDs and opens a new connection/query for every row."},
+        {"id": "DB-006", "type": "state-model-gap", "description": "No explicit PENDING→CLAIMED→RUNNING→terminal state machine or owner/lease preconditions."},
+        {"id": "ERR-001", "type": "broad-exception-collapse", "description": "All exceptions are collapsed to an unstructured string without stable error taxonomy or traceback evidence."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": "tests/test_units.py",
+      "symbol": "unit conversion tests",
+      "line_start": 1,
+      "line_end": 27,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["testing", "units"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "TEST-001", "type": "missing-boundary-tests", "description": "No tests cover NaN/Inf, missing units, unsupported same-unit strings, delta temperature, gauge/absolute pressure or round-trip properties."}
+      ],
+      "tests": ["tests/test_units.py"],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "symbol": "portable workflow",
+      "line_start": 1,
+      "line_end": 26,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["ci", "testing", "release"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "CI-001", "type": "missing-gates", "description": "Formatting, branch coverage, release consistency, database/state/evidence validators and independent wheel commands are absent."},
+        {"id": "CI-002", "type": "coverage-too-low", "description": "Coverage gate is 63%, below requested thresholds."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "OPEN"
+    },
+    {
+      "path": ".github/workflows/windows-aspen-certification.yml",
+      "symbol": "licensed certification workflow",
+      "line_start": 1,
+      "line_end": 31,
+      "review_status": "REVIEWED",
+      "classification": "REFACTOR",
+      "domains": ["ci", "real-aspen", "evidence", "release"],
+      "risk": "HIGH",
+      "findings": [
+        {"id": "ASPEN-CERT-001", "type": "runner-label-mismatch", "description": "Runner labels are [self-hosted, Windows, Aspen], not [self-hosted, Windows, aspen, licensed]."},
+        {"id": "ASPEN-CERT-002", "type": "incomplete-certification-sequence", "description": "The workflow lacks explicit model/registry hash qualification, perturbation, fault injection, manifest verification and release-blocking physically_certified output."}
+      ],
+      "tests": [],
+      "commit": null,
+      "final_validation": "BLOCKED"
+    }
+  ]
+}
