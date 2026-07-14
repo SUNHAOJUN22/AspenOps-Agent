@@ -3,16 +3,29 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from dataclasses import replace
+import uuid
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from . import RUNTIME_SCHEMA, __version__
-from .cache import ResultCache
+from .cache import CacheWaitTimeoutError, ResultCache
 from .hashing import canonical_hash, sha256_file
 from .models import EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry
 from .worker import WorkerHandle, evaluate_on_worker, start_worker, stop_worker
+
+_TaskMode = Literal["OWNER", "WAIT", "UNCACHED"]
+
+
+@dataclass(slots=True)
+class _EvaluationTask:
+    mode: _TaskMode
+    key: str
+    request: EvaluationRequest
+    indexes: list[int]
+    owner_token: str | None
+    deadline_monotonic: float
 
 
 class CasePool:
@@ -123,62 +136,175 @@ class CasePool:
             return False
         return result.ok or self.cache_failures
 
+    @staticmethod
+    def _assign_result(
+        output: list[EvaluationResult | None],
+        result: EvaluationResult,
+        indexes: list[int],
+        *,
+        cached: bool,
+        result_lock: threading.Lock,
+    ) -> None:
+        with result_lock:
+            for ordinal, index in enumerate(indexes):
+                clone = EvaluationResult.from_dict(result.to_dict())
+                clone.cache_hit = cached or ordinal > 0
+                output[index] = clone
+
     def evaluate_many(self, requests: list[EvaluationRequest]) -> list[EvaluationResult]:
         if not requests:
             return []
         if not self._handles:
             self.start()
         output: list[EvaluationResult | None] = [None] * len(requests)
-        unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
+        grouped: dict[str, tuple[EvaluationRequest, list[int]]] = {}
+        uncached: list[tuple[str, EvaluationRequest, list[int]]] = []
         for index, request in enumerate(requests):
             key = self.cache_key(request)
             if request.reinitialize:
-                cached = self.cache.get(key)
-                if cached is not None:
-                    result = EvaluationResult.from_dict(cached)
-                    result.cache_hit = True
-                    result.request_hash = key
-                    output[index] = result
-                    continue
-            unique.setdefault(key, (request, []))[1].append(index)
+                grouped.setdefault(key, (request, []))[1].append(index)
+            else:
+                # Warm-start requests are stateful experiments. Even identical documents must run
+                # independently and in order rather than being coalesced as cache-equivalent work.
+                uncached.append((key, request, [index]))
 
-        tasks: queue.Queue[tuple[str, EvaluationRequest, list[int]]] = queue.Queue()
-        for key, (request, indexes) in unique.items():
-            tasks.put((key, request, indexes))
+        tasks: queue.Queue[_EvaluationTask] = queue.Queue()
+        now_monotonic = time.monotonic()
+        for key, request, indexes in uncached:
+            tasks.put(
+                _EvaluationTask(
+                    mode="UNCACHED",
+                    key=key,
+                    request=request,
+                    indexes=indexes,
+                    owner_token=None,
+                    deadline_monotonic=now_monotonic + request.timeout_s,
+                )
+            )
+        for key, (request, indexes) in grouped.items():
+            owner_token = f"pool-{uuid.uuid4().hex}"
+            lease_seconds = max(1.0, request.timeout_s + 30.0)
+            reservation = self.cache.reserve(key, owner_token, lease_seconds)
+            if reservation.state == "HIT":
+                assert reservation.payload is not None
+                result = EvaluationResult.from_dict(reservation.payload)
+                result.cache_hit = True
+                result.request_hash = key
+                for index in indexes:
+                    output[index] = EvaluationResult.from_dict(result.to_dict())
+                continue
+            tasks.put(
+                _EvaluationTask(
+                    mode=reservation.state,
+                    key=key,
+                    request=request,
+                    indexes=indexes,
+                    owner_token=owner_token,
+                    deadline_monotonic=now_monotonic + request.timeout_s,
+                )
+            )
+
+        if tasks.empty():
+            return [replace(item) for item in output if item is not None]
+
         result_lock = threading.Lock()
-        errors: list[BaseException] = []
+        errors: list[Exception] = []
 
         def worker_loop(handle_index: int) -> None:
-            nonlocal output
             handle = self._handles[handle_index]
             while True:
                 try:
-                    key, request, indexes = tasks.get_nowait()
+                    task = tasks.get_nowait()
                 except queue.Empty:
                     return
+                owner_token = task.owner_token
                 try:
+                    if task.mode == "WAIT":
+                        while True:
+                            remaining = task.deadline_monotonic - time.monotonic()
+                            if remaining <= 0.0:
+                                raise CacheWaitTimeoutError(
+                                    f"Total request deadline expired while waiting for {task.key!r}"
+                                )
+                            payload = self.cache.wait_for_ready(task.key, timeout_s=remaining)
+                            if payload is not None:
+                                result = EvaluationResult.from_dict(payload)
+                                result.request_hash = task.key
+                                self._assign_result(
+                                    output,
+                                    result,
+                                    task.indexes,
+                                    cached=True,
+                                    result_lock=result_lock,
+                                )
+                                break
+                            owner_token = f"pool-{uuid.uuid4().hex}"
+                            remaining = task.deadline_monotonic - time.monotonic()
+                            if remaining <= 0.0:
+                                raise CacheWaitTimeoutError(
+                                    f"Total request deadline expired before takeover of {task.key!r}"
+                                )
+                            reservation = self.cache.reserve(
+                                task.key,
+                                owner_token,
+                                lease_seconds=max(1.0, remaining + 30.0),
+                            )
+                            if reservation.state == "HIT":
+                                assert reservation.payload is not None
+                                result = EvaluationResult.from_dict(reservation.payload)
+                                result.request_hash = task.key
+                                self._assign_result(
+                                    output,
+                                    result,
+                                    task.indexes,
+                                    cached=True,
+                                    result_lock=result_lock,
+                                )
+                                break
+                            if reservation.state == "WAIT":
+                                continue
+                            task.mode = "OWNER"
+                            task.owner_token = owner_token
+                            break
+                        if task.mode == "WAIT":
+                            continue
+                    remaining = task.deadline_monotonic - time.monotonic()
+                    if remaining <= 0.0:
+                        raise TimeoutError(
+                            f"Total request deadline expired before worker execution of {task.key!r}"
+                        )
                     if self._requires_recycle(handle):
                         handle = self._replace(handle_index)
-                    result = evaluate_on_worker(handle, request)
+                    effective_request = replace(task.request, timeout_s=remaining)
+                    result = evaluate_on_worker(handle, effective_request)
                     if not handle.process.is_alive():
                         handle = self._replace(handle_index)
-                    result.request_hash = key
-                    if self._cacheable(request, result):
-                        self.cache.put(key, result.to_dict())
-                    with result_lock:
-                        for ordinal, index in enumerate(indexes):
-                            clone = EvaluationResult.from_dict(result.to_dict())
-                            clone.cache_hit = ordinal > 0
-                            output[index] = clone
-                except BaseException as exc:
+                    result.request_hash = task.key
+                    if task.mode == "OWNER":
+                        assert owner_token is not None
+                        if self._cacheable(task.request, result):
+                            self.cache.publish(task.key, owner_token, result.to_dict())
+                        else:
+                            self.cache.abandon(task.key, owner_token)
+                    self._assign_result(
+                        output,
+                        result,
+                        task.indexes,
+                        cached=False,
+                        result_lock=result_lock,
+                    )
+                except Exception as exc:
+                    if task.mode == "OWNER" and owner_token is not None:
+                        self.cache.abandon(task.key, owner_token)
                     with result_lock:
                         errors.append(exc)
                 finally:
                     tasks.task_done()
 
+        thread_count = min(len(self._handles), tasks.qsize())
         threads = [
             threading.Thread(target=worker_loop, args=(index,), name=f"aspenops-dispatch-{index}")
-            for index in range(min(len(self._handles), max(1, len(unique))))
+            for index in range(thread_count)
         ]
         for thread in threads:
             thread.start()
