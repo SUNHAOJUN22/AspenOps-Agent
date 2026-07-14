@@ -156,6 +156,12 @@ class CasePool:
             return []
         if not self._handles:
             self.start()
+        warm_start_count = sum(not request.reinitialize for request in requests)
+        if warm_start_count:
+            if warm_start_count != len(requests):
+                raise ValueError("warm_start requests cannot be mixed with reinitialized requests")
+            if len(self._handles) != 1:
+                raise ValueError("warm_start batches require exactly one worker to preserve order")
         output: list[EvaluationResult | None] = [None] * len(requests)
         grouped: dict[str, tuple[EvaluationRequest, list[int]]] = {}
         uncached: list[tuple[str, EvaluationRequest, list[int]]] = []
@@ -164,8 +170,8 @@ class CasePool:
             if request.reinitialize:
                 grouped.setdefault(key, (request, []))[1].append(index)
             else:
-                # Warm-start requests are stateful experiments. Even identical documents must run
-                # independently and in order rather than being coalesced as cache-equivalent work.
+                # All-warm batches are accepted only with one Worker, so FIFO preserves order and
+                # every stateful experiment executes independently rather than being coalesced.
                 uncached.append((key, request, [index]))
 
         tasks: queue.Queue[_EvaluationTask] = queue.Queue()
