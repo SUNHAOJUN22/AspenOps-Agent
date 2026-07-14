@@ -166,9 +166,7 @@ def evaluate(
                 feasible = False
         if constraint_details:
             diagnostics["constraints"] = constraint_details
-            diagnostics["total_normalized_constraint_violation"] = math.fsum(
-                normalized_violations
-            )
+            diagnostics["total_normalized_constraint_violation"] = math.fsum(normalized_violations)
 
         for balance in request.balances:
             resolved_terms = [
