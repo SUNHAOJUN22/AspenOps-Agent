@@ -1,804 +1,455 @@
 <div align="center">
 
-# AspenOps 1.0
+# AspenOps 1.2
 
-## 为 Aspen 建立一层可验证、可并发、可审计的“执行操作系统”
+## 为 Aspen 建立一层确定性、高吞吐、可验证、可审计的 Agent 执行控制平面
 
-### Codex / Claude Code → 语义工艺意图 → 隔离执行 → Aspen 求解 → 工程判定 → 可复现实验证据
+### Codex / Claude Code / MCP → 语义工艺意图 → 隔离执行 → Aspen 求解 → 工程判定 → 可复现实验证据
 
-**不是 GUI 宏。不是几行 `Tree.FindNode()`。不是让大模型直接碰 COM。**  
-**AspenOps 是 AI Agent 与工业流程模拟器之间的确定性控制平面。**
+**不是 GUI 宏。不是几行 `Tree.FindNode()`。不是让大模型直接触碰任意 COM。**  
+**AspenOps 把有状态、会阻塞、版本敏感且受许可证约束的流程模拟器，封装为具有工程语义和证据边界的计算系统。**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Security](SECURITY.md)
+[中文](README.md) | [English](README.en.md)
 
 [![CI](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-1.2.0-111827)
 ![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB)
-![Version](https://img.shields.io/badge/version-1.0.0-111827)
 ![License](https://img.shields.io/badge/license-Apache--2.0-0F766E)
-![Aspen](https://img.shields.io/badge/Aspen-Plus%20%7C%20HYSYS-005A9C)
-![Agent](https://img.shields.io/badge/Agent-Codex%20%7C%20Claude%20Code-6B4EFF)
+![Backends](https://img.shields.io/badge/backends-Aspen%20Plus%20%7C%20HYSYS%20%7C%20Mock-005A9C)
+![Agents](https://img.shields.io/badge/agents-Codex%20%7C%20Claude%20Code%20%7C%20MCP-6B4EFF)
 
 </div>
+
+---
+
+## 当前资格状态
+
+| 资格层 | 状态 | 已验证内容 |
+|---|---:|---|
+| Ruff、格式、严格类型 | **PASS** | Ruff 与 32 个源模块 strict mypy 通过 |
+| 自动测试 | **PASS** | **78 passed，1 skipped**；跳过项仅为持证 Windows Aspen 集成测试 |
+| 覆盖率 | **PASS** | 总覆盖率 **85%**，包含分支覆盖统计 |
+| Mock 多进程执行 | **PASS** | 使用真实 `spawn` Worker、IPC、缓存、调度、证据和后台作业代码路径 |
+| Fake COM 契约 | **PASS** | 批量写入、回滚、严格布尔、收敛证据、故障注入 |
+| Wheel / Sdist / 独立安装 | **PASS** | 全新虚拟环境安装 Wheel 后运行版本、Doctor、Demo 与 Benchmark |
+| Windows COM 激活 | **BLOCKED** | 当前构建节点不是安装 Aspen 的 Windows 主机 |
+| 真实模型求解 | **BLOCKED** | 未提供许可证席位和批准的非保密资格模型 |
+| 真实物理认证 | **BLOCKED** | 尚无三次独立 Aspen 求解、约束和守恒证据 |
+
+> **真实性边界：** Mock 通过不等于 Aspen 通过；COM 可实例化不等于模型可用；`Run2()` 返回不等于收敛；收敛也不自动等于物理可信。
 
 ---
 
 ## 一句话定义
 
-> **AspenOps 1.0 把 Aspen Plus / Aspen HYSYS 从一个有状态、会阻塞、版本敏感、许可证受限的桌面模拟器，变成一个能够被 Codex、Claude Code、MCP 客户端和 Python 工作流安全调用的确定性计算引擎。**
+> **Agent 决定研究什么，Aspen 求解热力学与流程方程，AspenOps 决定操作是否允许、单位是否正确、状态是否收敛、结果是否满足工艺与守恒、证据是否能够复现。**
 
-它建立的不是“自然语言遥控器”，而是一套完整的执行语义：
-
-```text
-Agent 决定研究什么
-Aspen 求解热力学与流程方程
-AspenOps 决定操作是否允许、单位是否正确、运行是否收敛、结果是否物理可信、证据是否可复现
-```
-
----
-
-## 为什么传统 Aspen 自动化远远不够
-
-最常见的 Aspen Python 脚本通常只有四步：
-
-```python
-app = Dispatch("Apwn.Document.XX.0")
-app.InitFromArchive2(case)
-app.Tree.FindNode(path).Value = x
-app.Engine.Run2()
-```
-
-这段代码可以演示 COM，却没有解决生产自动化中的核心问题：
-
-- Aspen 版本升级后 ProgID 变化；
-- COM 对象不能安全跨线程、跨进程传递；
-- `Run2()` 返回不等于流程收敛；
-- Aspen 阻塞时 Python 线程无法可靠中止；
-- 不同工况互相污染，热启动产生路径依赖；
-- LLM 可以拼接任意 Tree Path，存在误写和越权风险；
-- 单位错误可能得到“数值正常但物理错误”的结果；
-- 并行数超过许可证、内存或模型稳定上限后，吞吐量反而下降；
-- 模型、注册表、输入和输出没有内容哈希，结果无法追溯；
-- 公共 CI 没有 Aspen，代码经常处于“README 可运行、实际不可验证”的状态。
-
-AspenOps 1.0 的目标就是一次性解决这些问题。
-
----
-
-# 系统架构
+AspenOps 的核心流水线是：
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     Codex / Claude Code / MCP Client                        │
-│        只表达工艺变量、DOE、约束、目标和结果需求；不接触原始 COM             │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │ typed MCP / CLI / JSON
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AspenOps Control Plane                              │
-│                                                                             │
-│  Path Policy   Semantic Registry   Unit Algebra   Bounds   Dry Run          │
-│  Job Store     Content Cache       Evidence Bundle   Audit   Certification  │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │ one batched RPC per point
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Persistent CasePool                                 │
-│                                                                             │
-│   ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
-│   │ Worker 0         │   │ Worker 1         │   │ Worker N         │        │
-│   │ private process  │   │ private process  │   │ private process  │        │
-│   │ COM STA          │   │ COM STA          │   │ COM STA          │        │
-│   │ private case copy│   │ private case copy│   │ private case copy│        │
-│   │ one Aspen session│   │ one Aspen session│   │ one Aspen session│        │
-│   └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘        │
-└────────────┼──────────────────────┼──────────────────────┼──────────────────┘
-             │                      │                      │
-             ▼                      ▼                      ▼
-       Aspen Plus / HYSYS     Aspen Plus / HYSYS     Aspen Plus / HYSYS
+Typed Request
+  → Policy / Units / Bounds / Semantic Registry
+  → PreparedBatch / Content Identity / Cache / Job Store
+  → Persistent Process-isolated CasePool
+  → Aspen Plus or HYSYS Solver
+  → Transport / Engine / Convergence / Constraints / Balances
+  → Immutable Evidence Bundle
 ```
 
-### 不可破坏的架构不变量
-
-1. **一个 COM 对象只属于一个 Windows 子进程和一个 STA apartment。**
-2. **Agent 只调用语义变量，不构造原始 Aspen Tree Path。**
-3. **每个 Worker 使用源模型的私有副本，绝不覆盖主模型。**
-4. **一次工况通过一次 IPC 完成重置、批量写入、求解、批量读取和工程校验。**
-5. **超时只终止 AspenOps 自己创建的 Worker，不执行全机范围的 `taskkill`。**
-6. **通信成功、引擎返回、数值收敛、工艺可行和守恒闭合是五个不同状态。**
-7. **Mock CI 证明控制平面，不冒充真实 Aspen 物理认证。**
+Aspen Plus 和 Aspen HYSYS仍然是高保真流程模拟器。AspenOps 不替代热力学与流程求解，而是在 Agent 与求解器之间建立确定性执行边界。
 
 ---
 
-# 面向最新 Aspen 版本的兼容策略
+## 1.2 为什么是一次执行语义升级
 
-AspenOps 不把某个 `Apwn.Document.N.0` 写死成“最新版本”，也不维护容易过期的营销版本对照表。
+AspenOps 1.2 删除了“表面成功、实际不确定”的逻辑：
 
-启动时它会：
+- 请求省略 `backend` 时继承部署配置，不再静默落到 Mock；
+- 每个批请求只解析、授权和验证一次，不再在 dry-run 与执行之间重复整套工作；
+- `"false"`、`0/1` 之外的整数和其他畸形值不能冒充后端布尔状态；
+- 后端请求被拒绝与 Worker 传输故障分离，不再进行无意义重启和重试；
+- 仅启动缓存未命中且唯一物理工况真正需要的 Worker；
+- 大规模 SQLite 缓存查询分块执行，避免参数数量上限；
+- 后台作业列表使用一次查询，删除 N+1 读取；
+- Engine 未返回时停止读取输出，不制造二次异常掩盖根因；
+- 守恒归一化尺度必须严格大于零；
+- Worker 协议升级到 3，所有公开 Schema 升级到 v1.2。
 
-1. 若设置 `ASPENOPS_PROGID`，优先使用操作员明确指定的 ProgID；
-2. 同时扫描 64 位与 32 位 Windows Registry View；
-3. 枚举所有 `Apwn.Document.*` 注册项；
-4. 对数字版本进行解析并按从新到旧排序；
-5. 使用 `DispatchEx` 逐个建立隔离 Automation Server；
-6. 最后尝试无版本的 `Apwn.Document`；
-7. 将实际成功的 ProgID、应用暴露的版本属性和能力写入运行证据。
+### 单点稀疏负载的直接收益
 
-HYSYS 使用同样的运行时发现策略：版本化 `HYSYS.Application.*` → 无版本 `HYSYS.Application`。
+在 `workers=16`、只有 1 个唯一 Mock 工况的同机测试中：
 
-因此，**只要未来 Aspen 版本继续注册兼容的 COM Automation Server，AspenOps 就会优先发现本机最新注册版本，而不需要先修改源码。**
+| 版本 | 实际启动 Worker | 总耗时 |
+|---|---:|---:|
+| 1.1 | 16 | 2.180 s |
+| 1.2 | 1 | 0.166 s |
 
-但“能够发现并调用”与“经过某一版本认证”是两个概念。正式认证必须在装有目标 Aspen 版本、有效许可证和批准案例的 Windows 主机上运行真实资格测试。项目不会虚构这一证据。
-
-```powershell
-uv run aspenops doctor --probe
-```
+启动实例数减少 **93.75%**，总耗时减少约 **92.4%**。在真实 Aspen 环境中，每个多余 Worker 都可能占用许可证席位、内存和一个模拟器实例，因此这比微小的 Python 算术优化更有工程价值。
 
 ---
 
-# 数理逻辑：AspenOps 到底在判定什么
+## 系统架构
 
-## 1. 模拟器不是普通函数
+```mermaid
+flowchart TB
+    A[Codex / Claude Code / MCP / Python] --> B[Typed Semantic Request]
+    B --> C[Policy + Units + Bounds + Registry]
+    C --> D[PreparedBatch<br/>parse once]
+    D --> E[Job Store + Content Cache]
+    E --> F[Persistent CasePool]
+    F --> W1[Worker 1<br/>Process + STA + Private Case]
+    F --> W2[Worker 2<br/>Process + STA + Private Case]
+    F --> WN[Worker N<br/>Process + STA + Private Case]
+    W1 --> S[Aspen Plus / HYSYS]
+    W2 --> S
+    WN --> S
+    S --> G[Five Engineering Gates]
+    G --> H[Evidence Bundle + Certification]
+```
 
-稳态流程模拟本质上求解隐式非线性系统：
+### 不可破坏的运行时不变量
 
-\[
-\mathbf{F}(\mathbf{z},\mathbf{x};\boldsymbol{\theta})=\mathbf{0},
-\]
+```text
+一个 Worker
+= 一个操作系统子进程
+= 一个 COM STA apartment
+= 一个私有模型副本
+= 一个模拟器文档
+= 一条顺序命令流
+```
 
-其中：
+COM Proxy 不通过 Queue、Pipe、线程或 JSON 边界传递。父进程只交换有版本的可序列化消息。
 
-- \(\mathbf{x}\)：外部操纵变量，例如温度、压力、回流比、塔板数；
-- \(\mathbf{z}\)：Aspen 内部状态，例如相平衡、流股状态、设备内部变量；
-- \(\boldsymbol{\theta}\)：物性方法、组分、反应参数和模型结构；
-- \(\mathbf{F}\)：物料衡算、能量衡算、相平衡和单元操作方程。
+---
 
-AspenOps 将一次运行定义为事务：
+## 五重有效性门
 
-\[
-\mathcal{E}:\mathbf{x}
-\rightarrow \text{validate}
-\rightarrow \text{reset}
-\rightarrow \text{write}
-\rightarrow \text{solve}
-\rightarrow \text{read}
-\rightarrow \text{verify}
-\rightarrow (\mathbf{y},\mathcal{S},\mathcal{D}),
-\]
-
-其中 \(\mathcal{S}\) 是分层状态，\(\mathcal{D}\) 是证据与诊断。
-
-## 2. 结果有效性的五重门
-
-AspenOps 不使用一个含糊的 `success=True`。最终有效性定义为：
-
-\[
-S_{valid}=
-S_{transport}
-\land S_{engine}
-\land S_{convergence}
-\land S_{constraints}
-\land S_{balances}.
-\]
-
-分别表示：
-
-- `communication_ok`：Worker 协议完整，响应与请求 ID 一致；
-- `engine_ok`：Aspen 求解调用正常返回；
-- `converged`：状态节点、错误信息和引擎状态没有给出失败证据；
-- `feasible`：所有用户定义的工艺约束通过；
-- `balance_residuals`：守恒残差在容差内。
-
-只有这五层全部通过，`ok` 才为 `true`。
-
-## 3. 守恒判据
-
-对任意配置的守恒关系：
+一次调用返回控制权，不代表一次有效物理计算。AspenOps 只有在以下五项同时通过时才返回 `ok=true`：
 
 \[
-r_b=\sum_{i=1}^{m}a_iq_i-q_{expected},
+S_{valid}=S_{transport}\land S_{engine}\land S_{convergence}
+\land S_{constraints}\land S_{balances}
 \]
 
-绝对残差为：
+| 门禁 | 语义 |
+|---|---|
+| `transport_ok` | IPC 完整、协议版本和 request ID 一致 |
+| `engine_ok` | 模拟器调用明确返回，且状态字段类型合法 |
+| `convergence_known && converged` | 存在项目认可的明确收敛证据 |
+| `constraints_ok` | 产品、设备和操作约束全部通过 |
+| `balances_ok` | 配置的物料、能量或元素守恒通过 |
+
+### 守恒残差
+
+\[
+r_b=\sum_{i=1}^{m}a_iq_i-q_{expected}
+\]
 
 \[
 \varepsilon_{abs}=|r_b|,
+\qquad
+\varepsilon_{rel}=\frac{|r_b|}{\max(\sum_i|a_iq_i|,q_{floor})}
 \]
 
-归一化残差为：
-
-\[
-\varepsilon_{rel}=
-\frac{|r_b|}
-{\max\left(\sum_i|a_iq_i|,q_{floor}\right)}.
-\]
-
-当绝对或相对判据足以证明残差可忽略时通过：
+通过条件：
 
 \[
 \varepsilon_{abs}\le\tau_{abs}
 \quad\lor\quad
-\varepsilon_{rel}\le\tau_{rel}.
+\varepsilon_{rel}\le\tau_{rel}
 \]
 
-采用“或”是为了避免微小流量由于分母接近零而被相对误差错误拒绝，同时也避免大流量只依赖宽松绝对误差。
-
-## 4. 约束违反量
-
-对不等式 \(g_j(\mathbf{x},\mathbf{y})\le 0\)，定义：
-
-\[
-v_j=\max(0,g_j).
-\]
-
-AspenOps 保存每个约束的实际值、阈值、容差与违反量，而不仅保存一个布尔值。该数据可直接用于 Deb feasibility rules、多目标优化、贝叶斯优化或代理模型训练。
-
-## 5. 独立重复认证
-
-同一模型和输入从独立模型副本重复运行 \(R\) 次。对任意输出 \(y_k\)：
-
-\[
-|y_k^{(r)}-y_k^{(0)}|\le\tau_{abs}
-\quad\lor\quad
-\frac{|y_k^{(r)}-y_k^{(0)}|}
-{\max(|y_k^{(r)}|,|y_k^{(0)}|,1)}
-\le\tau_{rel}.
-\]
-
-这能够发现：
-
-- 隐藏热启动依赖；
-- 模型状态污染；
-- 缓存键错误；
-- 随机初始化或求解器不稳定；
-- 读取到旧结果；
-- 自动化层非确定性。
+证据中保存每个项的系数、单位、值、带符号贡献、尺度、残差和容差，而不是只保存一个布尔值。
 
 ---
 
-# 高性能设计
+## Aspen 版本适配：发现本机事实，不猜营销版本
 
-## 1. 为什么持久 Worker 池比逐点启动快
+AspenOps 不维护容易过时的“V14/V15/V16 对照表”。Windows Worker 启动时：
 
-朴素执行：
+1. 优先使用显式 `ASPENOPS_PROGID` / `ASPENOPS_HYSYS_PROGID`；
+2. 扫描 64 位与 32 位 Registry View；
+3. 枚举 `Apwn.Document.*` 与 `HYSYS.Application.*`；
+4. 按数字版本降序尝试；
+5. 使用 `DispatchEx` 创建隔离实例；
+6. 最后使用无版本 ProgID 回退；
+7. 把实际成功 ProgID、应用暴露版本和运行能力写入证据与缓存身份。
 
-\[
-T_{naive}\approx N(T_{start}+T_{open}+T_{solve}+T_{read}).
-\]
-
-AspenOps 持久 CasePool：
-
-\[
-T_{pool}\approx
-W(T_{start}+T_{open})+
-\frac{N_{unique}}{W}(T_{solve}+T_{verify})+
-T_{IPC}+T_{schedule}.
-\]
-
-真正的加速来自：
-
-- Aspen 只启动一次；
-- 模型只打开一次；
-- 每个点只跨一次 IPC；
-- 相同物理请求在调度前去重；
-- 可复现工况使用内容寻址缓存；
-- 多个 Worker 使用私有模型并行；
-- 到达点数或寿命阈值后自动回收 Worker，控制长时间 COM 泄漏。
-
-## 2. 并发不是越大越好
-
-有效 Worker 数为：
-
-\[
-W_{effective}=\min
-\left(
-W_{configured},
-W_{license},
-W_{memory},
-W_{stability}
-\right).
-\]
-
-AspenOps 明确把许可证席位放入并发上限：
+兼容性必须逐层报告：
 
 ```text
-ASPENOPS_LICENSE_SLOTS=2
-ASPENOPS_MAX_WORKERS=8
+Discovered → Instantiated → Model opened → Converged → Physically certified
 ```
 
-实际只启动 2 个 Worker。
-
-推荐从 1 个 Worker 开始，使用真实模型测量：
-
-- Aspen 启动与打开耗时；
-- 单点平均与 P95 求解时间；
-- 每个实例内存；
-- 许可证等待；
-- Worker 运行多少点后稳定性下降；
-- 并发增加后的吞吐量拐点。
-
-## 3. 动态任务领取
-
-Aspen 工况耗时通常高度不均匀。固定把点平均切成 \(W\) 个块会造成长尾 Worker 拖慢全批次。AspenOps 使用共享任务队列：空闲 Worker 动态领取下一工况，从而降低 makespan。
-
-## 4. 内容寻址缓存
-
-缓存键不是“输入变量字典”这么简单，而是：
-
-\[
-K=H(
-V_{runtime},
-B,
-H(M),
-H(R),
-Q_{physical}
-),
-\]
-
-其中：
-
-- \(V_{runtime}\)：AspenOps 运行时 Schema 与版本；
-- \(B\)：后端类型；
-- \(H(M)\)：模型文件 SHA-256；
-- \(H(R)\)：语义注册表 SHA-256；
-- \(Q_{physical}\)：去除标签后真正影响求解的请求。
-
-因此：
-
-- 模型改变，缓存自动失效；
-- Tree Path 注册表改变，缓存自动失效；
-- 运行时语义改变，缓存自动失效；
-- `point_index`、显示名称和实验标签不会制造假缓存未命中。
-
-默认只缓存通过的、从重初始化状态得到的结果。热启动结果不进入确定性缓存。
+前一层永远不能冒充后一层。
 
 ---
 
-# 安全模型：让 Agent 有能力，但没有任意权力
+## Aspen Plus 与 HYSYS 的安全调用模型
 
-## 语义注册表
+### Aspen Plus
 
-Agent 发送：
+- 私有复制 `.bkp` / `.apw` / `.apwz`；
+- 解析并缓存已验证的 Tree Node；
+- 写前读取原值，写后回读；
+- 批写中途失败时逆序回滚；
+- 收集项目配置的状态节点和 Engine 消息；
+- 正负证据冲突时失败关闭；
+- `Engine.Running == False` 只表示停止运行，不表示收敛。
 
-```json
-{
-  "key": "stream.input.temperature",
-  "identifiers": {"stream": "FEED"},
-  "value": 95.0,
-  "unit": "C"
-}
-```
+### Aspen HYSYS
 
-项目注册表解析为候选路径：
+默认采用工程师拥有的 Spreadsheet Contract：
 
 ```text
-\Data\Streams\FEED\Input\TEMP\MIXED
-\Data\Streams\FEED\Input\TEMP
+Semantic Key → Registry → Spreadsheet + Cell → HYSYS internal binding
 ```
 
-每个语义变量声明：
-
-- 读写权限；
-- 原生单位和物理量维度；
-- 下限、上限与整数约束；
-- 必需标识符；
-- 后端类型；
-- 候选 Tree Path 或 HYSYS Spreadsheet locator；
-- 验证状态与工程说明。
-
-标识符只允许安全字符。反斜线、模板语法和路径穿越式输入会在调用 Aspen 之前被拒绝。
-
-## HYSYS Spreadsheet Contract
-
-HYSYS 对象模型广泛、复杂且版本敏感。AspenOps 1.0 默认采用项目拥有的 Spreadsheet 桥：
-
-1. 工程师在 HYSYS case 内建立专用 Spreadsheet；
-2. 将允许读取、写入和判定收敛的变量绑定到单元格；
-3. 在注册表中定义 `spreadsheet` 与 `cell`；
-4. Agent 只访问这些语义变量。
-
-这比向 LLM 暴露完整 `Flowsheet.Operations`、流股对象和任意方法调用更可控，也更容易跨版本验证。
-
-## 明确不提供
-
-MCP Server 不提供：
-
-- 任意 Shell；
-- 任意 Python；
-- VBA 执行；
-- `eval`；
-- 通用 `call_com_method`；
-- 任意 Tree Path 写入；
-- 全机 Aspen 进程终止；
-- 自动覆盖源模型。
+HYSYS Solver 进入空闲状态不被解释为通用收敛。生产请求必须提供项目验证过的 Spreadsheet 收敛信号；没有该信号，dry-run 直接拒绝。
 
 ---
 
-# 快速开始
+## 高性能执行模型
 
-## 跨平台控制平面验证
+逐点启动：
 
-无需 Aspen：
+\[
+T_{naive}\approx N(T_{start}+T_{open}+T_{write}+T_{solve}+T_{read})
+\]
+
+持久 CasePool：
+
+\[
+T_{pool}\approx W(T_{start}+T_{open})+
+\frac{N_{unique}}{W}(T_{write}+T_{solve}+T_{read})+T_{IPC}
+\]
+
+有效并发：
+
+\[
+W_{effective}=\min(W_{configured},W_{license},W_{memory},W_{stable},N_{miss})
+\]
+
+1.2 的性能策略：
+
+- Worker 懒启动，缓存全命中时不额外消耗许可证；
+- Worker 数受唯一未命中工况数约束；
+- 一个物理工况只进行一次主要 IPC；
+- 动态领取任务，避免固定分块长尾；
+- 重复物理点执行一次，结果不可变扇出；
+- Tree/Spreadsheet 解析结果缓存；
+- 内容寻址缓存绑定运行时、实际 ProgID、模型、注册表和求解配置；
+- Worker 按任务数、年龄、进程状态回收；
+- 只有幂等的 reinitialize 传输失败可以有限重试；
+- warm-start 是一条有序状态轨迹，不缓存、不去重、不跨 Worker、不静默重试。
+
+### 同机 Mock 控制平面对照基准
+
+48 个唯一工况，每种 Worker 配置 5 轮：
+
+| Worker | 1.1 throughput | 1.2 throughput | 变化 |
+|---:|---:|---:|---:|
+| 1 | 32.58 points/s | 33.08 points/s | +1.53% |
+| 2 | 51.49 points/s | 50.73 points/s | -1.48% |
+| 4 | 55.54 points/s | 54.20 points/s | -2.41% |
+
+常规饱和批次的差异处于小幅波动范围：1 Worker 略有提升，2/4 Worker 略有回退。因此 1.2 不宣称普遍吞吐加速；其确定性收益是减少无用实例、避免错误重试和降低许可证占用。
+
+这组数字证明控制平面的调度、IPC 与缓存行为，**不代表真实 Aspen Solver 或 CUDA 被加速**。真实最优 Worker 数必须在目标模型、许可证和内存约束下重新测量。
+
+---
+
+## 内容寻址缓存
+
+\[
+K=H(V_{runtime},P_{protocol},B,P_{COM},H(M),H(R),H(C),Q_{physical})
+\]
+
+缓存身份包含 AspenOps Schema、Worker 协议、后端、实际 COM ProgID、模型 SHA-256、语义注册表 SHA-256、求解器和收敛配置以及真实物理输入。实验名称、提交时间和 `point_index` 不进入物理身份。失败结果默认不长期缓存。
+
+---
+
+## 后台作业
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running
+    pending --> cancelled
+    running --> completed
+    running --> failed
+    running --> interrupted: service restart
+```
+
+SQLite WAL 保存请求、状态、时间、结果、证据路径和错误。服务重启时遗留的 `running` 不伪装成成功，而是标记为 `interrupted`。
+
+---
+
+## NVIDIA 风格的分层数字孪生
+
+AspenOps 借鉴 NVIDIA Physical AI 与数字孪生体系中的**分层、可观测、可回退和证据化**思想，但不堆砌无收益基础设施：
+
+```mermaid
+flowchart TB
+    L0[L0 真实装置 / 历史数据] --> L1[L1 数据接入 / 时间同步 / 质量码]
+    L1 --> L2[L2 状态估计 / 校准]
+    L2 --> L3[L3 Aspen 高保真机理模型]
+    L3 --> L4[L4 GPU ROM / Surrogate + Uncertainty]
+    L4 --> L5[L5 DOE / 优化 / 场景管理]
+    L5 --> L6[L6 Agent 编排 / 权限 / 审批]
+    L6 --> L7[L7 操作员可视化 / 证据审计]
+    L4 -->|越界或高不确定性| L3
+```
+
+明确边界：
+
+- Aspen 是高保真热力学与流程方程求解器；
+- NVIDIA GPU 适合代理模型、ROM、贝叶斯优化、不确定性传播和结果分析；
+- 不宣称 CUDA 可以直接加速 Aspen COM `Run2()`；
+- 代理模型必须记录训练数据、版本、适用域和不确定性；
+- 超出适用域时回退 Aspen；
+- 默认采用 shadow mode，未经批准不闭环写入生产装置；
+- Omniverse 只能是可选 USD 可视化 Adapter，不是热力学求解器，也不是 Core 强依赖。
+
+---
+
+## 安装
+
+### 跨平台开发与 Mock
 
 ```bash
-git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
-cd AspenOps-Agent
-uv sync --extra dev --extra agent
-
+uv sync --extra dev --extra agent --extra report
+uv run aspenops version
+uv run aspenops doctor
 uv run aspenops demo
-uv run aspenops benchmark --points 24 --workers 1,2,4
-uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```
 
-完整质量门：
-
-```bash
-uv run ruff check .
-uv run mypy src
-uv run pytest --cov=aspenops_nexus --cov-report=term-missing
-uv build
-uv run python scripts/check_mcp.py
-```
-
-## Windows + Aspen Plus
+### Windows Aspen 工作站
 
 ```powershell
-git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
-cd AspenOps-Agent
-powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
-```
-
-`.env` 示例：
-
-```text
-ASPENOPS_BACKEND=aspen_plus
-ASPENOPS_MODE=default
-ASPENOPS_ALLOWED_ROOTS=D:/AspenModels;D:/AspenResults
-ASPENOPS_LICENSE_SLOTS=1
-ASPENOPS_MAX_WORKERS=1
-ASPENOPS_TIMEOUT_S=1200
-ASPENOPS_STARTUP_TIMEOUT_S=90
-ASPENOPS_WORKER_MAX_POINTS=200
-ASPENOPS_WORKER_MAX_AGE_S=14400
-ASPENOPS_VISIBLE=0
-```
-
-诊断本机 Automation Server：
-
-```powershell
+uv sync --extra windows --extra agent --extra dev --extra report
+$env:ASPENOPS_BACKEND = "aspen_plus"
+$env:ASPENOPS_ALLOWED_ROOTS = "D:/AspenModels;D:/AspenResults"
+$env:ASPENOPS_LICENSE_SLOTS = "1"
 uv run aspenops doctor --probe
 ```
 
-验证请求而不启动 Aspen：
-
-```powershell
-uv run aspenops dry-run D:/AspenModels/request.json
-```
-
-运行并生成证据包：
-
-```powershell
-uv run aspenops run-batch D:/AspenModels/request.json `
-  --output D:/AspenResults/results.json `
-  --bundle D:/AspenResults/run-bundle.zip
-```
-
-验证证据包没有被篡改：
-
-```powershell
-uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
-```
+不要把许可证、客户模型、私有动力学、凭据或真实运行数据提交到 GitHub。
 
 ---
 
-# 标准请求
+## 请求示例
 
 ```json
 {
   "backend": "aspen_plus",
-  "model_path": "D:/AspenModels/case.bkp",
-  "registry_path": "D:/AspenModels/case.registry.json",
+  "model_path": "D:/AspenModels/column.bkp",
+  "registry_path": "D:/AspenModels/column.registry.json",
   "workers": 2,
-  "reset_mode": "reinitialize",
-  "timeout_s": 1200,
-  "base_writes": [],
-  "points": [
+  "base_writes": [
     {
-      "metadata": {"name": "design-001"},
-      "writes": [
-        {
-          "key": "stream.input.temperature",
-          "identifiers": {"stream": "FEED"},
-          "value": 95.0,
-          "unit": "C"
-        },
-        {
-          "key": "block.input.reflux_ratio",
-          "identifiers": {"block": "COL1"},
-          "value": 2.5,
-          "unit": "1"
-        }
-      ]
+      "key": "stream.input.temperature",
+      "identifiers": {"stream": "FEED"},
+      "value": 95.0,
+      "unit": "C"
     }
+  ],
+  "points": [
+    {"writes": [{"key": "block.input.reflux_ratio", "identifiers": {"block": "COL1"}, "value": 1.8, "unit": "1"}]},
+    {"writes": [{"key": "block.input.reflux_ratio", "identifiers": {"block": "COL1"}, "value": 2.0, "unit": "1"}]}
   ],
   "reads": [
-    {
-      "key": "stream.output.purity",
-      "identifiers": {"stream": "PRODUCT"},
-      "unit": "fraction",
-      "required": true
-    },
-    {
-      "key": "block.output.reboiler_duty",
-      "identifiers": {"block": "COL1"},
-      "unit": "kW"
-    }
-  ],
-  "constraints": [
-    {
-      "name": "product_spec",
-      "key": "stream.output.purity",
-      "identifiers": {"stream": "PRODUCT"},
-      "operator": ">=",
-      "value": 0.995,
-      "tolerance": 0.000001,
-      "unit": "fraction"
-    }
-  ],
-  "balances": [
-    {
-      "name": "overall_mass",
-      "terms": [
-        {
-          "key": "feed.mass_flow",
-          "identifiers": {"stream": "FEED"},
-          "coefficient": 1.0,
-          "unit": "kg/h"
-        },
-        {
-          "key": "product.mass_flow",
-          "identifiers": {"stream": "PRODUCT"},
-          "coefficient": -1.0,
-          "unit": "kg/h"
-        },
-        {
-          "key": "waste.mass_flow",
-          "identifiers": {"stream": "WASTE"},
-          "coefficient": -1.0,
-          "unit": "kg/h"
-        }
-      ],
-      "abs_tol": 0.1,
-      "rel_tol": 0.0001
-    }
+    {"key": "stream.output.purity", "identifiers": {"stream": "PRODUCT"}, "unit": "fraction"}
   ]
 }
 ```
 
+```bash
+uv run aspenops dry-run request.json
+uv run aspenops run request.json
+uv run aspenops submit request.json
+uv run aspenops job <job-id>
+```
+
 ---
 
-# Codex 原生使用
+## Codex、Claude Code 与 MCP
 
-仓库包含 `.codex/config.toml`。进入项目后：
+仓库包含 `.codex/config.toml`、`.mcp.json`、`AGENTS.md` 和 `CLAUDE.md`。
 
-```powershell
-codex mcp list
-```
-
-推荐任务指令：
-
-```text
-只通过 AspenOps 操作 Aspen。
-先调用 system_info，随后读取案例语义注册表并 dry-run。
-将 200 点 Latin Hypercube DOE 提交为后台任务；不得构造原始 Tree Path。
-仅把 communication_ok、engine_ok、converged、feasible 和守恒判据全部通过的点
-纳入结果表。返回不可行点的违反量、运行证据包路径和模型/注册表哈希。
-```
-
-工具顺序：
+推荐操作顺序：
 
 ```text
 system_info
 → list_semantic_variables
 → dry_run_request
-→ submit_batch
+→ submit_batch / run_batch_sync
 → job_status
 → job_result
 → verify_evidence_bundle
 ```
 
+十个窄 MCP 工具：
+
+1. `system_info`
+2. `list_semantic_variables`
+3. `dry_run_request`
+4. `run_batch_sync`
+5. `submit_batch`
+6. `job_status`
+7. `job_result`
+8. `list_recent_jobs`
+9. `cancel_job`
+10. `verify_evidence_bundle`
+
+不存在任意 Shell、任意 Python、VBA、通用 COM 反射、无限制 Tree Path 写入或全机进程清理工具。
+
 ---
 
-# Claude Code 原生使用
+## 测试与发布门
 
-仓库根目录包含 `.mcp.json`：
-
-```powershell
-claude mcp list
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+uv run pytest -W error::ResourceWarning \
+  --cov=aspenops --cov-branch --cov-fail-under=85
+uv run python scripts/check_release_consistency.py
+uv run python scripts/check_mcp.py
+uv build --clear
+uv run python scripts/release_gate.py
 ```
 
-`CLAUDE.md` 定义了项目级操作契约。Claude Code 不应该自己生成 `win32com` 脚本绕过 AspenOps。
+真实 Aspen 资格门位于 `.github/workflows/windows-aspen-certification.yml` 和 `scripts/run_real_certification.ps1`。资格报告必须记录实际 ProgID、Aspen 暴露版本、模型和注册表 SHA-256、三次独立 fresh-instance 结果、收敛、约束和守恒。
 
 ---
 
-# 后台任务与耐久状态
+## 已知边界
 
-长任务写入 SQLite WAL 作业库：
-
-```text
-pending → running → completed
-                  ↘ failed
-pending → cancelled
-running + service restart → interrupted
-```
-
-任务拥有：
-
-- `job_id`；
-- 规范化请求哈希；
-- 创建、开始、结束与更新时间；
-- Worker owner；
-- 取消请求；
-- 结果与证据包位置；
-- 失败原因。
-
-服务重启后，遗留的 `running` 任务会被标记为 `interrupted`，不会静默伪装成成功。
+- 公开 CI 没有 Aspen 软件和许可证，因此只能验证控制平面；
+- Registry 发现不能替代某个具体 Aspen Release 的资格认证；
+- 语义路径必须针对真实模型验证；
+- HYSYS 需要显式 Spreadsheet 收敛契约；
+- warm-start 是路径相关实验，不保证可并行；
+- Mock 性能不能用于采购 Aspen 许可证或规划生产吞吐量；
+- Omniverse、GPU ROM 和云编排是可选扩展，不属于 Aspen Core 求解认证。
 
 ---
 
-# 证据包
+## 安全
 
-每次运行可生成 ZIP：
+- 只允许配置根目录下的模型和注册表；
+- Agent 默认只能访问语义 Key；
+- 单位、边界、读写权限和 identifiers 在 COM 前验证；
+- 主模型只读，Worker 使用私有副本；
+- 超时只清理当前 Worker 的后代进程；
+- 证据绑定请求、模型、注册表、运行时和结果哈希；
+- 私有模型、许可证和客户数据由 `.gitignore` 和流程规则排除。
 
-```text
-manifest.json
-request.json
-results.json
-environment.json
-README.txt
-```
-
-`manifest.json` 包含：
-
-- AspenOps 版本和 Runtime Schema；
-- 请求 SHA-256；
-- 结果 SHA-256；
-- 模型 SHA-256；
-- 注册表 SHA-256；
-- 结果数量；
-- 全部工况是否通过。
-
-这使工艺模拟从“某个人电脑上跑过一次”变成可以进入实验记录、模型治理、审计和 CI/CD 的可验证计算对象。
+详见 [SECURITY.md](SECURITY.md)、[架构](docs/architecture.md)、[性能](docs/performance.md)、[认证](docs/certification.md) 和 [Windows 安装](docs/windows-setup.md)。
 
 ---
 
-# DOE、优化与代理模型
+## 许可证与引用
 
-项目内置：
-
-- Latin Hypercube；
-- bounded grid；
-- nearest-neighbor ordering；
-- 有界 `DE/best/1/bin` 差分进化；
-- Deb-style feasibility ordering；
-- 确定性随机种子。
-
-推荐工作流：
-
-```text
-小规模真实 Aspen DOE
-→ 检查失败区域与守恒
-→ 训练带可行域分类器的代理模型
-→ 在代理模型上进行大规模搜索
-→ 将 Pareto / 最优候选返回 Aspen 复核
-→ 独立重复认证
-```
-
-不要让强化学习或进化算法在没有缓存、超时、失败惩罚和许可证控制的情况下无限直接调用 Aspen。
-
----
-
-# 测试与发布门禁
-
-公共 CI 在 Python 3.11、3.12、3.13 上执行：
-
-```text
-Ruff
-strict mypy
-Pytest + coverage
-wheel/sdist build
-Mock end-to-end demo
-MCP surface verification
-```
-
-真实 Aspen 通过单独的自托管 Windows 工作流认证：
-
-```text
-.github/workflows/windows-aspen-certification.yml
-```
-
-资格案例应满足：
-
-- 非保密；
-- 在 Aspen GUI 中已经稳定收敛；
-- 输入输出范围覆盖典型工况；
-- 注册表路径经 Variable Explorer 人工核验；
-- 包含至少一个物料或能量守恒；
-- 包含至少一个产品或设备约束；
-- 可从独立模型副本重复运行；
-- 记录目标 Aspen 版本、ProgID 和许可证环境。
-
----
-
-# 诚实边界
-
-AspenOps 1.0 当前明确支持：
-
-- Aspen Plus 稳态案例的 COM 自动化；
-- HYSYS 的安全 Spreadsheet Bridge；
-- Codex / Claude Code 的本地 STDIO MCP；
-- 后台批处理、缓存、并发、超时、验证、认证和证据。
-
-它不宣称：
-
-- 公共 Linux CI 已经运行真实 Aspen；
-- 任意 Aspen 版本、任意模块、任意模型无需资格测试即可兼容；
-- `Run2()` 返回即代表热力学和工程结果正确；
-- HYSYS 全对象模型已经以统一方式封装；
-- Aspen Dynamics、ACM、完整 PBE/动态模型已经由稳态后端原生覆盖；
-- LLM 可以替代物性方法选择、反应机理、设备设计规范和工程审查。
-
-这种边界不是缺点，而是可信工业软件必须具备的证据纪律。
-
----
-
-# 仓库结构
-
-```text
-src/aspenops_nexus/
-  compat.py                 最新注册 COM Server 的运行时发现
-  registry.py               语义变量、单位、边界、路径防注入
-  units.py                  显式工程单位代数
-  worker.py                 spawn 进程、STA、协议关联、硬超时
-  pool.py                   持久 CasePool、动态调度、回收、去重
-  scheduler.py              SQLite WAL 耐久后台作业
-  evaluation.py             五重状态、约束和守恒残差
-  cache.py                  内容寻址结果缓存
-  certification.py          独立重复认证
-  provenance.py             防篡改运行证据包
-  optimizer.py              约束感知差分进化
-  design.py                 DOE 与工况排序
-  mcp_server.py             窄接口 MCP Server
-  backends/
-    aspen_plus.py           Aspen Plus COM adapter
-    hysys.py                HYSYS Spreadsheet adapter
-    mock.py                 跨平台确定性测试后端
-
-tests/                      单元、集成、故障边界与调度测试
-examples/                   请求、注册表和 Mock 案例
-docs/                       架构、性能、认证、安全和 Windows 部署
-.github/workflows/           公共 CI 与真实 Aspen 自托管认证
-```
-
----
-
-# 许可证与专有数据
-
-代码采用 Apache-2.0。
-
-Aspen Plus、Aspen HYSYS、模型文件、物性数据库、供应商文档和许可证仍受各自条款约束。不要向公开仓库提交：
-
-- 客户 `.bkp`、`.apw`、`.apwz`、`.hsc`；
-- 专有动力学和物性参数；
-- 许可证文件；
-- 账号、Token、内部路径或网络信息；
-- 包含商业工艺数据的证据包。
-
----
-
-<div align="center">
-
-## Let agents design the experiment. Let Aspen solve the physics. Let AspenOps enforce the truth.
-
-**AspenOps 1.0 — deterministic process simulation for the agentic era.**
-
-</div>
+Apache-2.0。引用信息见 [CITATION.cff](CITATION.cff)。Aspen Plus、Aspen HYSYS、NVIDIA 和 Omniverse 是其各自权利人的商标；本项目不包含供应商软件、许可证或专有模型。
