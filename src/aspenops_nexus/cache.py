@@ -114,9 +114,7 @@ class ResultCache:
             "CREATE INDEX IF NOT EXISTS idx_result_cache_eviction ON result_cache(state, last_hit_at, created_at)"
         )
 
-    def _migrate_legacy_schema(
-        self, connection: sqlite3.Connection, columns: set[str]
-    ) -> None:
+    def _migrate_legacy_schema(self, connection: sqlite3.Connection, columns: set[str]) -> None:
         expected = {"cache_key", "payload", "created_at", "hit_count", "last_hit_at"}
         if not expected.issubset(columns):
             raise CacheError("Unrecognized legacy cache schema; refusing destructive migration")
