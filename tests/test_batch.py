@@ -215,8 +215,7 @@ def test_cross_pool_single_flight_runs_one_physical_evaluation(tmp_path: Path) -
         ThreadPoolExecutor(max_workers=2) as executor,
     ):
         futures = [
-            executor.submit(pool.evaluate_many, [evaluation])
-            for pool in (first_pool, second_pool)
+            executor.submit(pool.evaluate_many, [evaluation]) for pool in (first_pool, second_pool)
         ]
         results = [future.result()[0] for future in futures]
 
@@ -239,22 +238,28 @@ def test_warm_start_requires_single_worker_and_exclusive_batch(tmp_path: Path) -
     warm = EvaluationRequest.from_dict({**base, "reset_mode": "warm_start"})
     cold = EvaluationRequest.from_dict({**base, "reset_mode": "reinitialize"})
 
-    with CasePool(
-        backend_name="mock",
-        model_path=resource("mock-case.json"),
-        registry_path=resource("node-registry.json"),
-        workers=2,
-        visible=False,
-        cache_path=tmp_path / "multi-cache.sqlite3",
-    ) as pool, pytest.raises(ValueError, match="exactly one worker"):
+    with (
+        CasePool(
+            backend_name="mock",
+            model_path=resource("mock-case.json"),
+            registry_path=resource("node-registry.json"),
+            workers=2,
+            visible=False,
+            cache_path=tmp_path / "multi-cache.sqlite3",
+        ) as pool,
+        pytest.raises(ValueError, match="exactly one worker"),
+    ):
         pool.evaluate_many([warm])
 
-    with CasePool(
-        backend_name="mock",
-        model_path=resource("mock-case.json"),
-        registry_path=resource("node-registry.json"),
-        workers=1,
-        visible=False,
-        cache_path=tmp_path / "mixed-cache.sqlite3",
-    ) as pool, pytest.raises(ValueError, match="cannot be mixed"):
+    with (
+        CasePool(
+            backend_name="mock",
+            model_path=resource("mock-case.json"),
+            registry_path=resource("node-registry.json"),
+            workers=1,
+            visible=False,
+            cache_path=tmp_path / "mixed-cache.sqlite3",
+        ) as pool,
+        pytest.raises(ValueError, match="cannot be mixed"),
+    ):
         pool.evaluate_many([warm, cold])
