@@ -1,0 +1,51 @@
+{
+  "schema": "aspenops.repository-baseline/v1",
+  "generated_at": "2026-07-14",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "default_branch": "main",
+  "base_commit": "8283744093a210c07da16ffe006968776dff9547",
+  "target_branch": "agent/aspenops-1.4-mathematical-database-hardening",
+  "current_version": "1.0.0",
+  "target_version": "1.4.0",
+  "version_decision": {
+    "v1_4_0_ref_found": false,
+    "plain_1_4_0_ref_found": false,
+    "decision": "Use 1.4.0; no resolvable 1.4.0 ref was found."
+  },
+  "rejected_candidate": {
+    "ref": "agent/aspenops-1.2-production-runtime",
+    "commit": "524621bd6eb99157e621f34cdb5ee31a5399f588",
+    "reason": "CI run 29304737430 failed at ruff on all matrix jobs; package migration points to missing aspenops.cli while tests still target aspenops_nexus."
+  },
+  "open_pull_requests": [
+    {"number": 15, "draft": true, "head": "agent/aspenops-1.2-production-runtime", "head_sha": "524621bd6eb99157e621f34cdb5ee31a5399f588", "ci": "FAIL"},
+    {"number": 8, "draft": true, "head": "agent/harden-runtime-safety", "head_sha": "6b01e0bf53fddf933127180ddf0b2b8b4ba17d94", "mergeable": false}
+  ],
+  "closed_pull_requests_observed": [2, 3, 4, 5, 6, 7, 9, 10, 11],
+  "tags": {
+    "observed": ["v1.0.0"],
+    "complete_listing": false,
+    "note": "v1.0.0 is corroborated by PR #2; direct complete tag enumeration is not exposed by the connected action surface."
+  },
+  "releases": {"items": [], "complete_listing": false, "status": "BLOCKED_BY_CONNECTOR_SURFACE"},
+  "workflows": [
+    {"path": ".github/workflows/ci.yml", "name": "CI", "python": ["3.11", "3.12", "3.13"], "coverage_gate_percent": 63},
+    {"path": ".github/workflows/windows-aspen-certification.yml", "name": "Licensed Windows Aspen certification"}
+  ],
+  "source_package": "src/aspenops_nexus",
+  "distribution": "aspenops-nexus",
+  "test_count": null,
+  "coverage_gate": 63,
+  "main_commit_statuses": [],
+  "portable_ci": "NOT_REVALIDATED",
+  "real_aspen": "BLOCKED",
+  "physical_certification": "BLOCKED",
+  "product_design_interactive_audit": "BLOCKED_NOT_WORK_MODE",
+  "audit_complete": false,
+  "truthfulness": {
+    "files_not_read_are_not_marked_reviewed": true,
+    "mock_is_not_real_aspen": true,
+    "run2_is_not_convergence": true,
+    "convergence_is_not_physical_certification": true
+  }
+}
