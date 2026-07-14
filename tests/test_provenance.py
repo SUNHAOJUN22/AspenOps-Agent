@@ -47,7 +47,8 @@ def rewrite_bundle(source: Path, target: Path, replacements: dict[str, bytes]) -
         target, "w", compression=zipfile.ZIP_DEFLATED
     ) as output:
         for info in archive.infolist():
-            output.writestr(info.filename, replacements.get(info.filename, archive.read(info.filename)))
+            payload = replacements.get(info.filename, archive.read(info.filename))
+            output.writestr(info.filename, payload)
 
 
 def test_evidence_bundle_roundtrip_is_exact_and_blocked_for_mock(tmp_path: Path) -> None:
