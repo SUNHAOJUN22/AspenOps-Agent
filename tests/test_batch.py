@@ -246,9 +246,8 @@ def test_warm_start_requires_single_worker_and_exclusive_batch(tmp_path: Path) -
         workers=2,
         visible=False,
         cache_path=tmp_path / "multi-cache.sqlite3",
-    ) as pool:
-        with pytest.raises(ValueError, match="exactly one worker"):
-            pool.evaluate_many([warm])
+    ) as pool, pytest.raises(ValueError, match="exactly one worker"):
+        pool.evaluate_many([warm])
 
     with CasePool(
         backend_name="mock",
@@ -257,6 +256,5 @@ def test_warm_start_requires_single_worker_and_exclusive_batch(tmp_path: Path) -
         workers=1,
         visible=False,
         cache_path=tmp_path / "mixed-cache.sqlite3",
-    ) as pool:
-        with pytest.raises(ValueError, match="cannot be mixed"):
-            pool.evaluate_many([warm, cold])
+    ) as pool, pytest.raises(ValueError, match="cannot be mixed"):
+        pool.evaluate_many([warm, cold])
