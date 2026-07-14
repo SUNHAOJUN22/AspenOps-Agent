@@ -135,9 +135,7 @@ def differential_evolution(
             forced = rng.randrange(len(normalized_bounds))
             trial_values: list[float] = []
             for dimension_index, _bound in enumerate(normalized_bounds):
-                mutant = a[dimension_index] + mutation * (
-                    b[dimension_index] - c[dimension_index]
-                )
+                mutant = a[dimension_index] + mutation * (b[dimension_index] - c[dimension_index])
                 value = (
                     mutant
                     if rng.random() < crossover or dimension_index == forced
