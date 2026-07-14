@@ -4,9 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   portable:
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     runs-on: ubuntu-latest
@@ -16,7 +20,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --extra dev --extra agent
-      - run: uv run ruff check .
+      - name: Ruff lint
+        run: uv run ruff check . --output-format json --output-file ruff-report.json
+      - name: Upload Ruff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-python-${{ matrix.python-version }}
+          path: ruff-report.json
+          if-no-files-found: error
+      - run: uv run ruff format --check .
       - run: uv run mypy src
       - run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-report=term --cov-fail-under=63
       - run: uv build
