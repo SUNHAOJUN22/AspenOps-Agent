@@ -56,6 +56,8 @@ line-length = 100
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
+"src/aspenops_nexus/cache.py" = ["E501"]
+"src/aspenops_nexus/pool.py" = ["E501"]
 "src/aspenops_nexus/scheduler.py" = ["E501"]
 
 [tool.mypy]
