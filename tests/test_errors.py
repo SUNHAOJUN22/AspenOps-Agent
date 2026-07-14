@@ -9,7 +9,7 @@ from aspenops_nexus.errors import (
 
 
 def test_error_codes_are_unique_and_stable() -> None:
-    assert len(ERROR_BY_CODE) == 19
+    assert len(ERROR_BY_CODE) == 20
     assert len(ERROR_BY_CODE) == len(set(ERROR_BY_CODE))
     assert ERROR_BY_CODE["UNIT_ERROR"] is UnitError
 
