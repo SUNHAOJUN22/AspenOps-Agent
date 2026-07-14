@@ -38,7 +38,15 @@ jobs:
           name: ruff-format-python-${{ matrix.python-version }}
           path: ruff-format.diff
           if-no-files-found: error
-      - run: uv run mypy src
+      - name: Strict mypy
+        run: uv run mypy src > mypy-report.txt
+      - name: Upload mypy evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mypy-python-${{ matrix.python-version }}
+          path: mypy-report.txt
+          if-no-files-found: error
       - run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-report=term --cov-fail-under=63
       - run: uv build
       - run: uv run aspenops demo
