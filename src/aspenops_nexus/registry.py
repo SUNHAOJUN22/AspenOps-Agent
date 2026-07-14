@@ -148,9 +148,7 @@ class NodeRegistry:
         locator = node.get("locator", {})
         if not paths and not locator:
             raise RegistryError(f"Node {key} requires at least one path or locator")
-        if not isinstance(paths, list) or not all(
-            isinstance(path, str) and path for path in paths
-        ):
+        if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
             raise RegistryError(f"paths for {key} must be a list of non-empty strings")
         if not isinstance(locator, dict):
             raise RegistryError(f"locator for {key} must be an object")
