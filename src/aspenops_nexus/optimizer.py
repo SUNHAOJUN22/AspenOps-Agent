@@ -98,7 +98,8 @@ def differential_evolution(
 
     def project(values: Sequence[float]) -> tuple[float, ...]:
         projected: list[float] = []
-        for index, (value, (lower, upper)) in enumerate(zip(values, normalized_bounds, strict=True)):
+        pairs = zip(values, normalized_bounds, strict=True)
+        for index, (value, (lower, upper)) in enumerate(pairs):
             bounded = min(upper, max(lower, float(value)))
             if index in integers:
                 bounded = float(min(math.floor(upper), max(math.ceil(lower), round(bounded))))
