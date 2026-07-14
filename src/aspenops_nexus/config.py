@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+
+_VALID_BACKENDS = {"mock", "aspen_plus", "hysys"}
+_VALID_MODES = {"readonly", "default", "enhanced"}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -26,8 +31,8 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
 
 def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
     value = float(os.getenv(name, str(default)))
-    if value < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
+    if not math.isfinite(value) or value < minimum:
+        raise ValueError(f"{name} must be finite and >= {minimum}")
     return value
 
 
@@ -47,6 +52,27 @@ class Settings:
     cache_failures: bool = False
     scheduler_poll_s: float = 0.25
 
+    def __post_init__(self) -> None:
+        if self.backend not in _VALID_BACKENDS:
+            raise ValueError(f"Unsupported backend={self.backend!r}")
+        if self.mode not in _VALID_MODES:
+            raise ValueError(f"Unsupported mode={self.mode!r}")
+        for name, value in (
+            ("license_slots", self.license_slots),
+            ("max_workers", self.max_workers),
+            ("worker_max_points", self.worker_max_points),
+        ):
+            if isinstance(value, bool) or value < 1:
+                raise ValueError(f"{name} must be an integer >= 1")
+        for name, value, minimum in (
+            ("timeout_s", self.timeout_s, 0.001),
+            ("startup_timeout_s", self.startup_timeout_s, 0.001),
+            ("worker_max_age_s", self.worker_max_age_s, 1.0),
+            ("scheduler_poll_s", self.scheduler_poll_s, 0.01),
+        ):
+            if not math.isfinite(value) or value < minimum:
+                raise ValueError(f"{name} must be finite and >= {minimum}")
+
     @classmethod
     def from_env(cls) -> Settings:
         roots = tuple(
@@ -57,10 +83,10 @@ class Settings:
         slots = _env_int("ASPENOPS_LICENSE_SLOTS", 1)
         max_workers = _env_int("ASPENOPS_MAX_WORKERS", slots)
         backend = os.getenv("ASPENOPS_BACKEND", "mock").strip().lower()
-        if backend not in {"mock", "aspen_plus", "hysys"}:
+        if backend not in _VALID_BACKENDS:
             raise ValueError(f"Unsupported ASPENOPS_BACKEND={backend!r}")
         mode = os.getenv("ASPENOPS_MODE", "default").strip().lower()
-        if mode not in {"readonly", "default", "enhanced"}:
+        if mode not in _VALID_MODES:
             raise ValueError(f"Unsupported ASPENOPS_MODE={mode!r}")
         return cls(
             backend=backend,
@@ -80,4 +106,4 @@ class Settings:
 
     @property
     def effective_workers(self) -> int:
-        return max(1, min(self.max_workers, self.license_slots))
+        return min(self.max_workers, self.license_slots)
