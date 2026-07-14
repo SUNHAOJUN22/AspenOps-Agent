@@ -1,5 +1,9 @@
+import json
+from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import as_file, files
 from pathlib import Path
+
+import pytest
 
 from aspenops_nexus.batch import run_batch_document
 from aspenops_nexus.config import Settings
@@ -162,3 +166,97 @@ def test_worker_recycles_after_point_budget(tmp_path: Path) -> None:
     ) as pool:
         results = pool.evaluate_many(requests)
     assert [item.diagnostics["worker"]["generation"] for item in results] == [0, 1]
+
+
+def test_cross_pool_single_flight_runs_one_physical_evaluation(tmp_path: Path) -> None:
+    from aspenops_nexus.models import EvaluationRequest
+    from aspenops_nexus.pool import CasePool
+
+    model_data = json.loads(resource("mock-case.json").read_text(encoding="utf-8"))
+    model_data["solve_delay_ms"] = 250
+    model_path = tmp_path / "delayed-mock-case.json"
+    model_path.write_text(json.dumps(model_data), encoding="utf-8")
+    registry_path = resource("node-registry.json")
+    cache_path = tmp_path / "shared-cache.sqlite3"
+    evaluation = EvaluationRequest.from_dict(
+        {
+            "model_path": str(model_path),
+            "registry_path": str(registry_path),
+            "backend": "mock",
+            "writes": [],
+            "reads": [
+                {
+                    "key": "stream.output.purity",
+                    "identifiers": {"stream": "PRODUCT"},
+                    "unit": "fraction",
+                }
+            ],
+            "timeout_s": 5,
+        }
+    )
+
+    with (
+        CasePool(
+            backend_name="mock",
+            model_path=model_path,
+            registry_path=registry_path,
+            workers=1,
+            visible=False,
+            cache_path=cache_path,
+        ) as first_pool,
+        CasePool(
+            backend_name="mock",
+            model_path=model_path,
+            registry_path=registry_path,
+            workers=1,
+            visible=False,
+            cache_path=cache_path,
+        ) as second_pool,
+        ThreadPoolExecutor(max_workers=2) as executor,
+    ):
+        futures = [
+            executor.submit(pool.evaluate_many, [evaluation])
+            for pool in (first_pool, second_pool)
+        ]
+        results = [future.result()[0] for future in futures]
+
+    assert results[0].request_hash == results[1].request_hash
+    assert sorted(result.cache_hit for result in results) == [False, True]
+
+
+def test_warm_start_requires_single_worker_and_exclusive_batch(tmp_path: Path) -> None:
+    from aspenops_nexus.models import EvaluationRequest
+    from aspenops_nexus.pool import CasePool
+
+    base = {
+        "model_path": str(resource("mock-case.json")),
+        "registry_path": str(resource("node-registry.json")),
+        "backend": "mock",
+        "writes": [],
+        "reads": [],
+        "timeout_s": 5,
+    }
+    warm = EvaluationRequest.from_dict({**base, "reset_mode": "warm_start"})
+    cold = EvaluationRequest.from_dict({**base, "reset_mode": "reinitialize"})
+
+    with CasePool(
+        backend_name="mock",
+        model_path=resource("mock-case.json"),
+        registry_path=resource("node-registry.json"),
+        workers=2,
+        visible=False,
+        cache_path=tmp_path / "multi-cache.sqlite3",
+    ) as pool:
+        with pytest.raises(ValueError, match="exactly one worker"):
+            pool.evaluate_many([warm])
+
+    with CasePool(
+        backend_name="mock",
+        model_path=resource("mock-case.json"),
+        registry_path=resource("node-registry.json"),
+        workers=1,
+        visible=False,
+        cache_path=tmp_path / "mixed-cache.sqlite3",
+    ) as pool:
+        with pytest.raises(ValueError, match="cannot be mixed"):
+            pool.evaluate_many([warm, cold])
