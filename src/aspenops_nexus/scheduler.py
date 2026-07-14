@@ -151,9 +151,7 @@ class JobStore:
         )
 
     def _migrate_legacy_schema(self, connection: sqlite3.Connection) -> None:
-        columns = {
-            str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
-        }
+        columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
         expected = {
             "job_id",
             "request_hash",
@@ -398,7 +396,9 @@ class JobStore:
                 """,
                 (job_id,),
             ).fetchone()
-        return None if row is None else self._record_from_row(row)
+        if row is None:
+            return None
+        return self._record_from_row(row)
 
     def list_recent(self, limit: int = 20) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
