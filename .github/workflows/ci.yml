@@ -29,7 +29,15 @@ jobs:
           name: ruff-python-${{ matrix.python-version }}
           path: ruff-report.json
           if-no-files-found: error
-      - run: uv run ruff format --check .
+      - name: Ruff format
+        run: uv run ruff format --check --diff . > ruff-format.diff
+      - name: Upload Ruff format evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-format-python-${{ matrix.python-version }}
+          path: ruff-format.diff
+          if-no-files-found: error
       - run: uv run mypy src
       - run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-report=term --cov-fail-under=63
       - run: uv build
