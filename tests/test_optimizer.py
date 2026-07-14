@@ -32,7 +32,7 @@ def test_deb_rules_and_ties_are_deterministic() -> None:
 
 def test_maximization_direction_is_supported() -> None:
     best = differential_evolution(
-        lambda x: (-(x[0] - 1.5) ** 2, 0.0),
+        lambda x: (-((x[0] - 1.5) ** 2), 0.0),
         [(-5.0, 5.0)],
         objective_direction="maximize",
         population_size=16,
