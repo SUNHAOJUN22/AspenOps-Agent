@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, cast
 
 BackendName = Literal["mock", "aspen_plus", "hysys"]
 ConstraintOperator = Literal["<", "<=", ">", ">=", "=="]
 ResetMode = Literal["reinitialize", "warm_start"]
+
+
+def _finite_float(value: Any, name: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be numeric, not Boolean")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if not math.isfinite(numeric):
+        raise ValueError(f"{name} must be finite")
+    return numeric
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,23 +64,41 @@ class ConstraintSpec:
     unit: str | None = None
     name: str = ""
     tolerance: float = 0.0
+    scale: float | None = None
+    weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.operator not in {"<", "<=", ">", ">=", "=="}:
+            raise ValueError(f"Unsupported constraint operator: {self.operator}")
+        if not math.isfinite(self.value):
+            raise ValueError("Constraint value must be finite")
+        if not math.isfinite(self.tolerance) or self.tolerance < 0.0:
+            raise ValueError("Constraint tolerance must be finite and nonnegative")
+        if self.scale is not None and (not math.isfinite(self.scale) or self.scale <= 0.0):
+            raise ValueError("Constraint scale must be finite and strictly positive")
+        if not math.isfinite(self.weight) or self.weight < 0.0:
+            raise ValueError("Constraint weight must be finite and nonnegative")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ConstraintSpec:
         operator = str(data.get("operator", ">="))
         if operator not in {"<", "<=", ">", ">=", "=="}:
             raise ValueError(f"Unsupported constraint operator: {operator}")
-        tolerance = float(data.get("tolerance", 0.0))
-        if tolerance < 0:
-            raise ValueError("Constraint tolerance cannot be negative")
+        raw_scale = data.get("scale")
         return cls(
             key=str(data["key"]),
             identifiers={str(k): str(v) for k, v in data.get("identifiers", {}).items()},
             operator=cast(ConstraintOperator, operator),
-            value=float(data["value"]),
+            value=_finite_float(data["value"], "constraint value"),
             unit=None if data.get("unit") is None else str(data["unit"]),
             name=str(data.get("name", "")),
-            tolerance=tolerance,
+            tolerance=_finite_float(data.get("tolerance", 0.0), "constraint tolerance"),
+            scale=(
+                None
+                if raw_scale is None
+                else _finite_float(raw_scale, "constraint normalization scale")
+            ),
+            weight=_finite_float(data.get("weight", 1.0), "constraint weight"),
         )
 
 
@@ -78,12 +109,16 @@ class BalanceTerm:
     coefficient: float
     unit: str | None = None
 
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.coefficient):
+            raise ValueError("Balance coefficient must be finite")
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BalanceTerm:
         return cls(
             key=str(data["key"]),
             identifiers={str(k): str(v) for k, v in data.get("identifiers", {}).items()},
-            coefficient=float(data.get("coefficient", 1.0)),
+            coefficient=_finite_float(data.get("coefficient", 1.0), "balance coefficient"),
             unit=None if data.get("unit") is None else str(data["unit"]),
         )
 
@@ -93,27 +128,38 @@ class BalanceSpec:
     name: str
     terms: tuple[BalanceTerm, ...]
     expected: float = 0.0
+    unit: str | None = None
     abs_tol: float = 1e-6
     rel_tol: float = 1e-6
     floor: float = 1e-12
 
+    def __post_init__(self) -> None:
+        if not self.terms:
+            raise ValueError("A balance requires at least one term")
+        for name, value in (
+            ("expected", self.expected),
+            ("abs_tol", self.abs_tol),
+            ("rel_tol", self.rel_tol),
+            ("floor", self.floor),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"Balance {name} must be finite")
+        if self.abs_tol < 0.0 or self.rel_tol < 0.0:
+            raise ValueError("Balance tolerances cannot be negative")
+        if self.floor <= 0.0:
+            raise ValueError("Balance floor must be strictly positive")
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BalanceSpec:
         terms = tuple(BalanceTerm.from_dict(item) for item in data.get("terms", []))
-        if not terms:
-            raise ValueError("A balance requires at least one term")
-        abs_tol = float(data.get("abs_tol", 1e-6))
-        rel_tol = float(data.get("rel_tol", 1e-6))
-        floor = float(data.get("floor", 1e-12))
-        if min(abs_tol, rel_tol, floor) < 0:
-            raise ValueError("Balance tolerances and floor cannot be negative")
         return cls(
             name=str(data["name"]),
             terms=terms,
-            expected=float(data.get("expected", 0.0)),
-            abs_tol=abs_tol,
-            rel_tol=rel_tol,
-            floor=floor,
+            expected=_finite_float(data.get("expected", 0.0), "balance expected value"),
+            unit=None if data.get("unit") is None else str(data["unit"]),
+            abs_tol=_finite_float(data.get("abs_tol", 1e-6), "balance absolute tolerance"),
+            rel_tol=_finite_float(data.get("rel_tol", 1e-6), "balance relative tolerance"),
+            floor=_finite_float(data.get("floor", 1e-12), "balance scale floor"),
         )
 
 
@@ -130,6 +176,16 @@ class EvaluationRequest:
     timeout_s: float = 1200.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.backend not in {"mock", "aspen_plus", "hysys"}:
+            raise ValueError(f"Unsupported backend: {self.backend}")
+        if self.reset_mode not in {"reinitialize", "warm_start"}:
+            raise ValueError(f"Unsupported reset_mode: {self.reset_mode}")
+        if not self.model_path.strip() or not self.registry_path.strip():
+            raise ValueError("model_path and registry_path must not be blank")
+        if not math.isfinite(self.timeout_s) or self.timeout_s <= 0.0:
+            raise ValueError("timeout_s must be finite and positive")
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvaluationRequest:
         backend = str(data.get("backend", "mock"))
@@ -141,9 +197,6 @@ class EvaluationRequest:
         reset_mode = str(reset_raw)
         if reset_mode not in {"reinitialize", "warm_start"}:
             raise ValueError(f"Unsupported reset_mode: {reset_mode}")
-        timeout_s = float(data.get("timeout_s", 1200.0))
-        if timeout_s <= 0:
-            raise ValueError("timeout_s must be positive")
         return cls(
             model_path=str(data["model_path"]),
             registry_path=str(data["registry_path"]),
@@ -153,7 +206,7 @@ class EvaluationRequest:
             constraints=tuple(ConstraintSpec.from_dict(x) for x in data.get("constraints", [])),
             balances=tuple(BalanceSpec.from_dict(x) for x in data.get("balances", [])),
             reset_mode=cast(ResetMode, reset_mode),
-            timeout_s=timeout_s,
+            timeout_s=_finite_float(data.get("timeout_s", 1200.0), "timeout_s"),
             metadata=dict(data.get("metadata", {})),
         )
 
@@ -183,7 +236,7 @@ class EvaluationResult:
     violations: list[str]
     diagnostics: dict[str, Any]
     elapsed_s: float
-    balance_residuals: dict[str, dict[str, float]] = field(default_factory=dict)
+    balance_residuals: dict[str, dict[str, float | str]] = field(default_factory=dict)
     cache_hit: bool = False
     request_hash: str = ""
     worker_id: int | None = None
