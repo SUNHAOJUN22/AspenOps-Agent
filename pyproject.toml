@@ -3,14 +3,14 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aspenops-nexus"
-version = "1.0.0"
-description = "A deterministic, process-isolated and license-aware Aspen execution fabric for AI coding agents."
+name = "aspenops-agent"
+dynamic = ["version"]
+description = "A deterministic, process-isolated, license-aware Aspen Plus and HYSYS execution runtime for AI agents."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {file = "LICENSE"}
 authors = [{name = "SUNHAOJUN22"}]
-keywords = ["aspen-plus", "hysys", "mcp", "codex", "claude-code", "process-simulation"]
+keywords = ["aspen-plus", "hysys", "mcp", "codex", "claude-code", "process-simulation", "digital-twin"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: Apache Software License",
@@ -25,6 +25,7 @@ dependencies = ["psutil>=5.9"]
 [project.optional-dependencies]
 windows = ["pywin32>=306; platform_system == 'Windows'"]
 agent = ["mcp>=1.9"]
+report = ["matplotlib>=3.9", "reportlab>=4.2"]
 dev = [
   "build>=1.2",
   "mypy>=1.15",
@@ -36,16 +37,19 @@ dev = [
 ]
 
 [project.scripts]
-aspenops = "aspenops_nexus.cli:main"
-aspenops-mcp = "aspenops_nexus.mcp_server:main"
+aspenops = "aspenops.cli:main"
+aspenops-mcp = "aspenops.mcp_server:main"
+
+[tool.hatch.version]
+path = "src/aspenops/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aspenops_nexus"]
+packages = ["src/aspenops"]
 
 [tool.hatch.build]
 include = [
-  "src/aspenops_nexus/**/*.py",
-  "src/aspenops_nexus/data/*.json",
+  "src/aspenops/**/*.py",
+  "src/aspenops/data/*.json",
 ]
 
 [tool.ruff]
@@ -53,12 +57,16 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = ["E", "F", "I", "B", "UP", "SIM", "C4", "PIE", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-packages = ["aspenops_nexus"]
+packages = ["aspenops"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
