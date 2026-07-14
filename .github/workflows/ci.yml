@@ -47,7 +47,26 @@ jobs:
           name: mypy-python-${{ matrix.python-version }}
           path: mypy-report.txt
           if-no-files-found: error
-      - run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-report=term --cov-fail-under=63
+      - name: Portable pytest
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-report=term \
+            --cov-report=xml:coverage.xml \
+            --junitxml=pytest-junit.xml \
+            --cov-fail-under=63 2>&1 | tee pytest-report.txt
+      - name: Upload pytest evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-python-${{ matrix.python-version }}
+          path: |
+            pytest-report.txt
+            pytest-junit.xml
+            coverage.xml
+          if-no-files-found: warn
       - run: uv build
       - run: uv run aspenops demo
       - run: uv run python scripts/check_mcp.py
