@@ -25,9 +25,13 @@ class StateMachineSpec:
             raise ValueError(f"{self.name}: terminal states must be declared")
         for source, target in self.transitions:
             if source not in self.states or target not in self.states:
-                raise ValueError(f"{self.name}: transition {source}->{target} references unknown state")
+                raise ValueError(
+                    f"{self.name}: transition {source}->{target} references unknown state"
+                )
             if source in self.terminal:
-                raise ValueError(f"{self.name}: terminal state {source} cannot have outgoing transitions")
+                raise ValueError(
+                    f"{self.name}: terminal state {source} cannot have outgoing transitions"
+                )
             if source == target:
                 raise ValueError(
                     f"{self.name}: idempotency must be handled explicitly, not as a self-transition"
