@@ -185,10 +185,7 @@ class SurrogateManifest:
         return canonical_hash(self.to_dict())
 
     def compatible_with(self, model_sha256: str, registry_sha256: str) -> bool:
-        return (
-            model_sha256 == self.aspen_model_sha256
-            and registry_sha256 == self.registry_sha256
-        )
+        return model_sha256 == self.aspen_model_sha256 and registry_sha256 == self.registry_sha256
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,8 +212,7 @@ def _matrix_norm_inf(matrix: list[list[float]]) -> float:
 def _inverse(matrix: list[list[float]]) -> list[list[float]]:
     size = len(matrix)
     augmented = [
-        [*row, *(1.0 if i == j else 0.0 for j in range(size))]
-        for i, row in enumerate(matrix)
+        [*row, *(1.0 if i == j else 0.0 for j in range(size))] for i, row in enumerate(matrix)
     ]
     for column in range(size):
         pivot_row = max(range(column, size), key=lambda row: abs(augmented[row][column]))
@@ -303,17 +299,14 @@ def validate_covariance(
             return candidate, cholesky, condition, regularization
         regularization = diagonal_scale * 10.0 ** (-12 + attempt)
     raise SurrogateDomainError(
-        "Covariance matrix remains singular or ill-conditioned above "
-        f"{condition_limit:g}"
+        f"Covariance matrix remains singular or ill-conditioned above {condition_limit:g}"
     )
 
 
 def _mahalanobis(delta: list[float], cholesky: list[list[float]]) -> float:
     transformed: list[float] = []
     for row in range(len(delta)):
-        subtotal = math.fsum(
-            cholesky[row][index] * transformed[index] for index in range(row)
-        )
+        subtotal = math.fsum(cholesky[row][index] * transformed[index] for index in range(row))
         transformed.append((delta[row] - subtotal) / cholesky[row][row])
     return math.sqrt(math.fsum(value * value for value in transformed))
 
