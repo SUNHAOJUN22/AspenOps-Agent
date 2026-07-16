@@ -4,7 +4,7 @@ import json
 import math
 import os
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,12 @@ def _positive_int(value: int, name: str) -> int:
     return value
 
 
-def _number_parser(name: str, max_chars: int, *, integer: bool) -> Any:
+def _number_parser(
+    name: str,
+    max_chars: int,
+    *,
+    integer: bool,
+) -> Callable[[str], int | float]:
     def parse(text: str) -> int | float:
         if len(text) > max_chars:
             raise ValidationError(
@@ -175,11 +180,15 @@ def read_json_object(
     source = source.resolve()
     if not source.is_file():
         raise ValidationError(f"JSON input is not a regular file: {source}")
-    size = source.stat().st_size
-    if size > byte_limit:
-        raise ValidationError(f"{source} is {size} bytes; maximum is {byte_limit} bytes")
+    with source.open("rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        if size > byte_limit:
+            raise ValidationError(f"{source} is {size} bytes; maximum is {byte_limit} bytes")
+        raw = handle.read(byte_limit + 1)
+    if len(raw) > byte_limit:
+        raise ValidationError(f"{source} grew beyond the maximum {byte_limit} bytes while reading")
     return strict_json_object(
-        source.read_bytes(),
+        raw,
         name=str(source),
         max_depth=max_depth,
         max_nodes=max_nodes,
@@ -212,6 +221,8 @@ def atomic_write_bytes(
 ) -> Path:
     if not isinstance(payload, bytes):
         raise TypeError("payload must be bytes")
+    if isinstance(mode, bool) or not isinstance(mode, int) or not 0 <= mode <= 0o777:
+        raise ValueError("mode must be an integer between 0 and 0o777")
     target = Path(path).expanduser()
     if target.is_symlink():
         raise ValidationError(f"Refusing symbolic-link output target: {target}")
@@ -225,15 +236,23 @@ def atomic_write_bytes(
         dir=target.parent,
     )
     temporary = Path(temporary_name)
+    descriptor_open = True
     try:
-        os.fchmod(descriptor, mode)
+        if os.name != "nt":
+            os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb", closefd=True) as handle:
+            descriptor_open = False
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        if not overwrite and target.exists():
-            raise FileExistsError(f"Refusing to overwrite existing file: {target}")
-        os.replace(temporary, target)
+        if overwrite:
+            os.replace(temporary, target)
+        else:
+            try:
+                os.link(temporary, target)
+            except FileExistsError as exc:
+                raise FileExistsError(f"Refusing to overwrite existing file: {target}") from exc
+            temporary.unlink()
         if os.name != "nt":
             directory_descriptor = os.open(target.parent, os.O_RDONLY)
             try:
@@ -242,6 +261,8 @@ def atomic_write_bytes(
                 os.close(directory_descriptor)
         return target
     finally:
+        if descriptor_open:
+            os.close(descriptor)
         if temporary.exists():
             temporary.unlink()
 
