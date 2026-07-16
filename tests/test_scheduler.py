@@ -11,7 +11,7 @@ from aspenops_nexus.scheduler import BackgroundScheduler, JobStateError, JobStor
 
 
 def test_background_scheduler(tmp_path: Path) -> None:
-    scheduler = BackgroundScheduler(Settings(state_dir=tmp_path, max_workers=1, license_slots=1))
+    scheduler = BackgroundScheduler(Settings(state_dir=tmp_path, max_workers=2, license_slots=2))
     job_id = scheduler.submit(request())
     deadline = time.monotonic() + 20
     record = None
