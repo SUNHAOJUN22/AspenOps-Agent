@@ -116,9 +116,7 @@ class Settings:
             cache_failures=_env_bool("ASPENOPS_CACHE_FAILURES", False),
             scheduler_poll_s=_env_float("ASPENOPS_SCHEDULER_POLL_S", 0.25, 0.01),
             max_batch_points=_env_int("ASPENOPS_MAX_BATCH_POINTS", 10_000),
-            max_operations_per_request=_env_int(
-                "ASPENOPS_MAX_OPERATIONS_PER_REQUEST", 10_000
-            ),
+            max_operations_per_request=_env_int("ASPENOPS_MAX_OPERATIONS_PER_REQUEST", 10_000),
             max_request_bytes=_env_int("ASPENOPS_MAX_REQUEST_BYTES", 10 * 1024 * 1024),
         )
 
