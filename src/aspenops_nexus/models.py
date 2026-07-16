@@ -493,12 +493,7 @@ class EvaluationResult:
             "cache_hit",
         ):
             setattr(self, field_name, _strict_bool(getattr(self, field_name), field_name))
-        expected_ok = (
-            self.communication_ok
-            and self.engine_ok
-            and self.converged
-            and self.feasible
-        )
+        expected_ok = self.communication_ok and self.engine_ok and self.converged and self.feasible
         if self.ok != expected_ok:
             raise ValueError(
                 "ok must equal communication_ok AND engine_ok AND converged AND feasible"
@@ -586,8 +581,7 @@ class EvaluationResult:
             values=_json_object(data["values"], "values"),
             units=cast(dict[str, str | None], _mapping(data["units"], "units")),
             violations=[
-                _string(item, "violation")
-                for item in _sequence(data["violations"], "violations")
+                _string(item, "violation") for item in _sequence(data["violations"], "violations")
             ],
             diagnostics=_json_object(data["diagnostics"], "diagnostics"),
             elapsed_s=data["elapsed_s"],
