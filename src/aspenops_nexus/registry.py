@@ -90,20 +90,20 @@ class NodeRegistry:
     @staticmethod
     def _validate_template(key: str, template: str, identifiers: tuple[str, ...]) -> None:
         try:
-            parsed = string.Formatter().parse(template)
-            for _literal, field_name, format_spec, conversion in parsed:
-                if field_name is None:
-                    continue
-                if field_name not in identifiers:
-                    raise RegistryError(
-                        f"Template for {key} references undeclared identifier {field_name!r}"
-                    )
-                if format_spec or conversion:
-                    raise RegistryError(
-                        f"Template for {key} may only use plain identifier placeholders"
-                    )
+            parsed = tuple(string.Formatter().parse(template))
         except ValueError as exc:
             raise RegistryError(f"Invalid template for {key}: {template!r}") from exc
+        for _literal, field_name, format_spec, conversion in parsed:
+            if field_name is None:
+                continue
+            if field_name not in identifiers:
+                raise RegistryError(
+                    f"Template for {key} references undeclared identifier {field_name!r}"
+                )
+            if format_spec or conversion:
+                raise RegistryError(
+                    f"Template for {key} may only use plain identifier placeholders"
+                )
 
     @classmethod
     def _validate_definition(cls, key: str, node: dict[str, Any]) -> None:
