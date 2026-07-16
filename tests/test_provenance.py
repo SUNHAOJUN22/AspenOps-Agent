@@ -43,9 +43,10 @@ def results() -> list[dict]:
 
 
 def rewrite_bundle(source: Path, target: Path, replacements: dict[str, bytes]) -> None:
-    with zipfile.ZipFile(source) as archive, zipfile.ZipFile(
-        target, "w", compression=zipfile.ZIP_DEFLATED
-    ) as output:
+    with (
+        zipfile.ZipFile(source) as archive,
+        zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as output,
+    ):
         for info in archive.infolist():
             payload = replacements.get(info.filename, archive.read(info.filename))
             output.writestr(info.filename, payload)
