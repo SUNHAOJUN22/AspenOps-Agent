@@ -50,6 +50,9 @@ class Settings:
     state_dir: Path = Path("var")
     cache_failures: bool = False
     scheduler_poll_s: float = 0.25
+    max_batch_points: int = 10_000
+    max_operations_per_request: int = 10_000
+    max_request_bytes: int = 10 * 1024 * 1024
 
     def __post_init__(self) -> None:
         if self.backend not in _VALID_BACKENDS:
@@ -60,8 +63,15 @@ class Settings:
             ("license_slots", self.license_slots),
             ("max_workers", self.max_workers),
             ("worker_max_points", self.worker_max_points),
+            ("max_batch_points", self.max_batch_points),
+            ("max_operations_per_request", self.max_operations_per_request),
+            ("max_request_bytes", self.max_request_bytes),
         ):
-            if isinstance(integer_value, bool) or integer_value < 1:
+            if (
+                isinstance(integer_value, bool)
+                or not isinstance(integer_value, int)
+                or integer_value < 1
+            ):
                 raise ValueError(f"{integer_name} must be an integer >= 1")
         for float_name, float_value, minimum in (
             ("timeout_s", self.timeout_s, 0.001),
@@ -69,7 +79,7 @@ class Settings:
             ("worker_max_age_s", self.worker_max_age_s, 1.0),
             ("scheduler_poll_s", self.scheduler_poll_s, 0.01),
         ):
-            if not math.isfinite(float_value) or float_value < minimum:
+            if isinstance(float_value, bool) or not math.isfinite(float_value) or float_value < minimum:
                 raise ValueError(f"{float_name} must be finite and >= {minimum}")
 
     @classmethod
@@ -101,6 +111,11 @@ class Settings:
             state_dir=Path(os.getenv("ASPENOPS_STATE_DIR", "var")).expanduser().resolve(),
             cache_failures=_env_bool("ASPENOPS_CACHE_FAILURES", False),
             scheduler_poll_s=_env_float("ASPENOPS_SCHEDULER_POLL_S", 0.25, 0.01),
+            max_batch_points=_env_int("ASPENOPS_MAX_BATCH_POINTS", 10_000),
+            max_operations_per_request=_env_int(
+                "ASPENOPS_MAX_OPERATIONS_PER_REQUEST", 10_000
+            ),
+            max_request_bytes=_env_int("ASPENOPS_MAX_REQUEST_BYTES", 10 * 1024 * 1024),
         )
 
     @property
