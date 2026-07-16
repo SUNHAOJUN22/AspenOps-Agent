@@ -297,10 +297,8 @@ def verify_run_bundle(path: str | Path) -> dict[str, Any]:
             )
             checks.update(
                 {
-                    "request_sha256": canonical_hash(request)
-                    == manifest.get("request_sha256"),
-                    "results_sha256": canonical_hash(results)
-                    == manifest.get("results_sha256"),
+                    "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
+                    "results_sha256": canonical_hash(results) == manifest.get("results_sha256"),
                     "result_count": isinstance(results, list)
                     and len(results) == manifest.get("result_count"),
                     "registry_sha256": _sha256_bytes(payloads["registry.snapshot.json"])
