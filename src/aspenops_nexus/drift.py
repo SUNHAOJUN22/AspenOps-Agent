@@ -71,7 +71,7 @@ def _validate_bins(bins: list[float] | tuple[float, ...]) -> tuple[float, ...]:
     normalized = tuple(float(value) for value in bins)
     if not normalized or not all(math.isfinite(value) for value in normalized):
         raise ValueError("PSI bins must contain finite cut points")
-    if any(left >= right for left, right in zip(normalized, normalized[1:], strict=True)):
+    if any(left >= right for left, right in zip(normalized, normalized[1:])):
         raise ValueError("PSI bins must be strictly increasing")
     return normalized
 
