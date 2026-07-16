@@ -15,7 +15,7 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CovarianceSpace = Literal["standardized"]
 
 
-def _finite(value: object, name: str) -> float:
+def _finite(value: Any, name: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{name} must be numeric, not Boolean")
     try:
@@ -90,12 +90,12 @@ class SurrogateManifest:
     def __post_init__(self) -> None:
         if self.schema != "aspenops.surrogate-manifest/v1":
             raise ValueError(f"Unsupported surrogate manifest schema: {self.schema!r}")
-        for value, name in (
+        for hash_value, name in (
             (self.aspen_model_sha256, "aspen_model_sha256"),
             (self.registry_sha256, "registry_sha256"),
             (self.dataset_sha256, "dataset_sha256"),
         ):
-            _validate_hash(value, name)
+            _validate_hash(hash_value, name)
         features = tuple(self.features)
         outputs = tuple(self.outputs)
         if not features or not outputs:
@@ -119,10 +119,10 @@ class SurrogateManifest:
         if not isinstance(self.metrics, Mapping):
             raise TypeError("metrics must be a mapping")
         normalized_metrics: dict[str, float] = {}
-        for metric, value in self.metrics.items():
+        for metric, metric_value in self.metrics.items():
             if not isinstance(metric, str) or not metric.strip():
                 raise ValueError("Metric names must be non-empty strings")
-            normalized_metrics[metric] = _finite(value, f"metric {metric}")
+            normalized_metrics[metric] = _finite(metric_value, f"metric {metric}")
         immutable_metrics = MappingProxyType(dict(sorted(normalized_metrics.items())))
         object.__setattr__(self, "metrics", immutable_metrics)
         standardized_limit = _finite(
