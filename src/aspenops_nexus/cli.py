@@ -39,7 +39,6 @@ def _demo_request() -> dict[str, Any]:
         "backend": "mock",
         "model_path": str(_resource_path("mock-case.json")),
         "registry_path": str(_resource_path("node-registry.json")),
-        "workers": 2,
         "reset_mode": "reinitialize",
         "timeout_s": 30,
         "base_writes": [
