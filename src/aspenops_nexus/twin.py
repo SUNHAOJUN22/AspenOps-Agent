@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -24,10 +25,31 @@ class TwinSignals:
     aspen_available: bool
 
     def __post_init__(self) -> None:
+        boolean_fields = (
+            "data_quality_ok",
+            "freshness_ok",
+            "state_estimation_ok",
+            "surrogate_compatible",
+            "in_applicability_domain",
+            "constraints_feasible",
+            "near_constraint_boundary",
+            "approval_required",
+            "approval_valid",
+            "aspen_available",
+        )
+        for field_name in boolean_fields:
+            if not isinstance(getattr(self, field_name), bool):
+                raise TypeError(f"{field_name} must be Boolean")
         if self.drift not in {"OK", "WARNING", "BLOCK"}:
             raise ValueError(f"Unsupported drift state: {self.drift}")
-        if self.uncertainty < 0.0 or self.uncertainty_limit < 0.0:
-            raise ValueError("Uncertainty and its limit must be nonnegative")
+        for field_name in ("uncertainty", "uncertainty_limit"):
+            raw = getattr(self, field_name)
+            if isinstance(raw, bool):
+                raise ValueError(f"{field_name} must be numeric, not Boolean")
+            numeric = float(raw)
+            if not math.isfinite(numeric) or numeric < 0.0:
+                raise ValueError(f"{field_name} must be finite and nonnegative")
+            object.__setattr__(self, field_name, numeric)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +65,11 @@ class RouteDecision:
 def _fallback(signals: TwinSignals, reason: str, trace: list[str]) -> RouteDecision:
     if signals.aspen_available:
         return RouteDecision("ASPEN", reason, tuple(trace))
-    return RouteDecision("BLOCKED", f"{reason}; Aspen fallback unavailable", tuple(trace))
+    return RouteDecision(
+        "BLOCKED",
+        f"{reason}; Aspen fallback unavailable",
+        tuple(trace),
+    )
 
 
 def route_twin(signals: TwinSignals) -> RouteDecision:
@@ -62,10 +88,14 @@ def route_twin(signals: TwinSignals) -> RouteDecision:
         return _fallback(signals, "surrogate manifest is incompatible", trace)
     trace.append("Applicability Domain")
     if not signals.in_applicability_domain:
-        return _fallback(signals, "surrogate input is outside applicability domain", trace)
+        return _fallback(
+            signals,
+            "surrogate input is outside applicability domain",
+            trace,
+        )
     trace.append("Drift")
     if signals.drift == "BLOCK":
-        return RouteDecision("BLOCKED", "severe surrogate drift", tuple(trace))
+        return _fallback(signals, "severe surrogate drift", trace)
     if signals.drift == "WARNING":
         return _fallback(signals, "surrogate drift warning", trace)
     trace.append("Uncertainty")
@@ -73,11 +103,22 @@ def route_twin(signals: TwinSignals) -> RouteDecision:
         return _fallback(signals, "surrogate uncertainty exceeds limit", trace)
     trace.append("Constraints")
     if not signals.constraints_feasible:
-        return RouteDecision("BLOCKED", "physical or operating constraints are violated", tuple(trace))
-    if signals.near_constraint_boundary:
-        return RouteDecision("APPROVAL_REQUIRED", "constraints are near a governed boundary", tuple(trace))
+        return RouteDecision(
+            "BLOCKED",
+            "physical or operating constraints are violated",
+            tuple(trace),
+        )
     trace.append("Approval")
-    if signals.approval_required and not signals.approval_valid:
-        return RouteDecision("APPROVAL_REQUIRED", "valid bound approval is missing", tuple(trace))
+    governed_boundary = signals.near_constraint_boundary or signals.approval_required
+    if governed_boundary and not signals.approval_valid:
+        return RouteDecision(
+            "APPROVAL_REQUIRED",
+            "valid bound approval is missing for a governed boundary",
+            tuple(trace),
+        )
     trace.append("Route")
-    return RouteDecision("SURROGATE", "all surrogate governance gates passed", tuple(trace))
+    return RouteDecision(
+        "SURROGATE",
+        "all surrogate governance gates passed",
+        tuple(trace),
+    )
