@@ -53,7 +53,12 @@ def test_point_and_operation_limits_are_hard_failures() -> None:
                         "key": "stream.output.purity",
                         "identifiers": {"stream": "PRODUCT"},
                         "unit": "fraction",
-                    }
+                    },
+                    {
+                        "key": "block.output.reboiler_duty",
+                        "identifiers": {"block": "C1"},
+                        "unit": "kW",
+                    },
                 ],
             },
             max_operations_per_request=1,
