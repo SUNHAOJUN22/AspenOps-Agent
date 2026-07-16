@@ -29,9 +29,7 @@ def test_legacy_reinitialize_requires_boolean_and_cannot_conflict() -> None:
     with pytest.raises(ValueError, match="Boolean"):
         EvaluationRequest.from_dict({**BASE, "reinitialize": "false"})
     with pytest.raises(ValueError, match="conflicts"):
-        EvaluationRequest.from_dict(
-            {**BASE, "reinitialize": False, "reset_mode": "reinitialize"}
-        )
+        EvaluationRequest.from_dict({**BASE, "reinitialize": False, "reset_mode": "reinitialize"})
 
 
 def test_invalid_backend_and_timeout_are_rejected() -> None:
@@ -87,9 +85,7 @@ def test_duplicate_reads_writes_and_balance_names_are_rejected() -> None:
         "unit": "K",
     }
     with pytest.raises(ValueError, match="Duplicate write"):
-        EvaluationRequest.from_dict(
-            {**BASE, "writes": [duplicate_write, duplicate_write]}
-        )
+        EvaluationRequest.from_dict({**BASE, "writes": [duplicate_write, duplicate_write]})
     duplicate_read = {
         "key": "stream.output.purity",
         "identifiers": {"stream": "PRODUCT"},
