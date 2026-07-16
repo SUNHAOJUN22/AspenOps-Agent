@@ -214,7 +214,17 @@ class ConstraintSpec:
     def from_dict(cls, data: dict[str, Any]) -> ConstraintSpec:
         _reject_unknown(
             data,
-            {"key", "identifiers", "operator", "value", "unit", "name", "tolerance", "scale", "weight"},
+            {
+                "key",
+                "identifiers",
+                "operator",
+                "value",
+                "unit",
+                "name",
+                "tolerance",
+                "scale",
+                "weight",
+            },
             "ConstraintSpec",
         )
         if "key" not in data or "value" not in data:
@@ -483,9 +493,16 @@ class EvaluationResult:
             "cache_hit",
         ):
             setattr(self, field_name, _strict_bool(getattr(self, field_name), field_name))
-        expected_ok = self.communication_ok and self.engine_ok and self.converged and self.feasible
+        expected_ok = (
+            self.communication_ok
+            and self.engine_ok
+            and self.converged
+            and self.feasible
+        )
         if self.ok != expected_ok:
-            raise ValueError("ok must equal communication_ok AND engine_ok AND converged AND feasible")
+            raise ValueError(
+                "ok must equal communication_ok AND engine_ok AND converged AND feasible"
+            )
         self.values = _json_object(self.values, "values")
         raw_units = _mapping(self.units, "units")
         normalized_units: dict[str, str | None] = {}
@@ -498,9 +515,7 @@ class EvaluationResult:
             self.violations, str | bytes | bytearray
         ):
             raise TypeError("violations must be an array")
-        self.violations = [
-            _string(item, "violation") for item in self.violations
-        ]
+        self.violations = [_string(item, "violation") for item in self.violations]
         self.diagnostics = _json_object(self.diagnostics, "diagnostics")
         elapsed = _finite_float(self.elapsed_s, "elapsed_s")
         if elapsed < 0.0:
@@ -514,13 +529,12 @@ class EvaluationResult:
         self.request_hash = _string(self.request_hash, "request_hash", allow_empty=True)
         if self.request_hash and not _SHA256_RE.fullmatch(self.request_hash):
             raise ValueError("request_hash must be empty or a lowercase SHA-256 digest")
-        if self.worker_id is not None:
-            if (
-                isinstance(self.worker_id, bool)
-                or not isinstance(self.worker_id, int)
-                or self.worker_id < 0
-            ):
-                raise ValueError("worker_id must be a nonnegative integer or None")
+        if self.worker_id is not None and (
+            isinstance(self.worker_id, bool)
+            or not isinstance(self.worker_id, int)
+            or self.worker_id < 0
+        ):
+            raise ValueError("worker_id must be a nonnegative integer or None")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
