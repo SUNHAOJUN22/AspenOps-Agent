@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .errors import ValidationError
+from .jsonio import ensure_json_array, ensure_json_object, json_bytes, read_json_object
 from .models import EvaluationRequest, VariableWrite
 from .policy import Policy
 from .pool import CasePool
@@ -30,35 +31,29 @@ _VALID_BACKENDS = {"mock", "aspen_plus", "hysys"}
 
 
 def _object(value: Any, name: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{name} must be a JSON object")
-    if not all(isinstance(key, str) for key in value):
-        raise ValueError(f"{name} keys must be strings")
-    return dict(value)
+    return ensure_json_object(value, name=name)
 
 
 def _array(value: Any, name: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise ValueError(f"{name} must be a JSON array")
-    return list(value)
+    return ensure_json_array(value, name=name)
 
 
 def _reject_unknown(data: dict[str, Any], allowed: set[str], name: str) -> None:
     unknown = sorted(set(data) - allowed)
     if unknown:
-        raise ValueError(f"Unknown fields in {name}: {', '.join(unknown)}")
+        raise ValidationError(f"Unknown fields in {name}: {', '.join(unknown)}")
 
 
 def _positive_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(f"{name} must be an integer >= 1")
+        raise ValidationError(f"{name} must be an integer >= 1")
     return value
 
 
 def _requested_workers(data: dict[str, Any], settings: Settings) -> int:
     workers = _positive_int(data.get("workers", settings.effective_workers), "workers")
     if workers > settings.effective_workers:
-        raise ValueError(
+        raise ValidationError(
             f"workers={workers} exceeds effective worker cap {settings.effective_workers}"
         )
     return workers
@@ -69,27 +64,20 @@ def _operation_count(request: EvaluationRequest) -> int:
     return len(request.writes) + len(request.reads) + len(request.constraints) + balance_terms
 
 
-def _strict_json_object(raw: bytes, name: str) -> dict[str, Any]:
-    def reject_constant(value: str) -> None:
-        raise ValueError(f"{name} contains non-finite JSON constant {value!r}")
-
-    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        output: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in output:
-                raise ValueError(f"{name} contains duplicate JSON key {key!r}")
-            output[key] = value
-        return output
-
-    try:
-        value = json.loads(
-            raw,
-            object_pairs_hook=reject_duplicates,
-            parse_constant=reject_constant,
+def _bounded_snapshot(data: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    request = ensure_json_object(data, name="Batch request")
+    encoded = json_bytes(request, indent=None)
+    if len(encoded) > settings.max_request_bytes:
+        raise ValidationError(
+            f"Batch request is {len(encoded)} bytes; maximum is {settings.max_request_bytes} bytes"
         )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{name} must be strict UTF-8 JSON: {exc}") from exc
-    return _object(value, name)
+    return read_json_object_bytes(encoded, name="Batch request")
+
+
+def read_json_object_bytes(raw: bytes, *, name: str) -> dict[str, Any]:
+    from .jsonio import strict_json_object
+
+    return strict_json_object(raw, name=name)
 
 
 def expand_batch_document(
@@ -102,12 +90,12 @@ def expand_batch_document(
     batch = _object(data, "Batch request")
     _reject_unknown(batch, _BATCH_FIELDS, "Batch request")
     if "model_path" not in batch or "registry_path" not in batch:
-        raise ValueError("Batch request requires model_path and registry_path")
+        raise ValidationError("Batch request requires model_path and registry_path")
     if default_backend not in _VALID_BACKENDS:
-        raise ValueError(f"Unsupported default backend: {default_backend!r}")
+        raise ValidationError(f"Unsupported default backend: {default_backend!r}")
     backend = batch.get("backend", default_backend)
     if not isinstance(backend, str) or backend not in _VALID_BACKENDS:
-        raise ValueError(f"Unsupported backend: {backend!r}")
+        raise ValidationError(f"Unsupported backend: {backend!r}")
     point_limit = _positive_int(max_points, "max_points")
     operation_limit = _positive_int(
         max_operations_per_request,
@@ -133,9 +121,9 @@ def expand_batch_document(
     ]
     points = _array(batch.get("points", [{}]), "points")
     if not points:
-        raise ValueError("points must be a non-empty list")
+        raise ValidationError("points must be a non-empty list")
     if len(points) > point_limit:
-        raise ValueError(f"points count {len(points)} exceeds maximum {point_limit}")
+        raise ValidationError(f"points count {len(points)} exceeds maximum {point_limit}")
     requests: list[EvaluationRequest] = []
     for point_index, point in enumerate(points):
         writes = list(base_writes)
@@ -157,7 +145,7 @@ def expand_batch_document(
                 f"Point {point_index} metadata",
             )
         else:
-            raise ValueError(f"Point {point_index} must be an object or a writes list")
+            raise ValidationError(f"Point {point_index} must be an object or a writes list")
         request_data = dict(common)
         request_data["writes"] = [
             {
@@ -175,7 +163,7 @@ def expand_batch_document(
         request = EvaluationRequest.from_dict(request_data)
         operations = _operation_count(request)
         if operations > operation_limit:
-            raise ValueError(
+            raise ValidationError(
                 f"Point {point_index} has {operations} semantic operations; "
                 f"maximum is {operation_limit}"
             )
@@ -184,27 +172,41 @@ def expand_batch_document(
 
 
 def _expand_with_settings(data: dict[str, Any], settings: Settings) -> list[EvaluationRequest]:
+    snapshot = _bounded_snapshot(data, settings)
     return expand_batch_document(
-        data,
+        snapshot,
         default_backend=settings.backend,
         max_points=settings.max_batch_points,
         max_operations_per_request=settings.max_operations_per_request,
     )
 
 
+def _input_paths(
+    requests: list[EvaluationRequest],
+    settings: Settings,
+) -> tuple[Path, Path]:
+    policy = Policy(settings.mode, settings.allowed_roots)
+    model_path = policy.assert_input_file(requests[0].model_path)
+    registry_path = policy.assert_input_file(
+        requests[0].registry_path,
+        max_bytes=settings.max_request_bytes,
+        suffixes=(".json",),
+    )
+    return model_path, registry_path
+
+
 def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]:
     requests = _expand_with_settings(data, settings)
     workers = _requested_workers(data, settings)
+    model_path, registry_path = _input_paths(requests, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
-    model_path = policy.assert_path(requests[0].model_path)
-    registry_path = policy.assert_path(requests[0].registry_path)
     registry = NodeRegistry(registry_path)
     checked = 0
     writes = 0
     reads = 0
     for request in requests:
         if request.backend != requests[0].backend:
-            raise ValueError("All requests in one batch must use the same backend")
+            raise ValidationError("All requests in one batch must use the same backend")
         if request.writes:
             policy.assert_writes_allowed()
         for write in request.writes:
@@ -246,9 +248,7 @@ def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[st
     dry_run_document(data, settings)
     requests = _expand_with_settings(data, settings)
     workers = _requested_workers(data, settings)
-    policy = Policy(settings.mode, settings.allowed_roots)
-    model_path = policy.assert_path(requests[0].model_path)
-    registry_path = policy.assert_path(requests[0].registry_path)
+    model_path, registry_path = _input_paths(requests, settings)
     cache_path = settings.state_dir / "cache.sqlite3"
     with CasePool(
         backend_name=requests[0].backend,
@@ -266,11 +266,11 @@ def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[st
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
-    request_path = Path(path).expanduser().resolve()
-    size = request_path.stat().st_size
-    if size > settings.max_request_bytes:
-        raise ValueError(
-            f"Request file is {size} bytes; maximum is {settings.max_request_bytes} bytes"
-        )
-    data = _strict_json_object(request_path.read_bytes(), str(request_path))
+    policy = Policy(settings.mode, settings.allowed_roots)
+    request_path = policy.assert_input_file(
+        path,
+        max_bytes=settings.max_request_bytes,
+        suffixes=(".json",),
+    )
+    data = read_json_object(request_path, max_bytes=settings.max_request_bytes)
     return run_batch_document(data, settings)
