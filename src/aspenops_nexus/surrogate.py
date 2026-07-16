@@ -123,7 +123,8 @@ class SurrogateManifest:
             if not isinstance(metric, str) or not metric.strip():
                 raise ValueError("Metric names must be non-empty strings")
             normalized_metrics[metric] = _finite(value, f"metric {metric}")
-        object.__setattr__(self, "metrics", MappingProxyType(dict(sorted(normalized_metrics.items()))))
+        immutable_metrics = MappingProxyType(dict(sorted(normalized_metrics.items())))
+        object.__setattr__(self, "metrics", immutable_metrics)
         standardized_limit = _finite(
             self.standardized_distance_limit,
             "standardized distance limit",
