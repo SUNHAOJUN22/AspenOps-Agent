@@ -8,6 +8,7 @@ from typing import Any
 
 from ..compat import discover_hysys_candidates
 from ..registry import ResolvedNode
+from ..solver_status import assess_convergence
 from .base import BackendError, SimulatorBackend
 
 
@@ -135,15 +136,12 @@ class HysysBackend(SimulatorBackend):
                 break
             except Exception:
                 continue
-        # HYSYS has no universally reliable case-level convergence Boolean exposed across releases.
-        # A project should bind a convergence/status indicator into the Spreadsheet and
-        # declare it as a constraint. The backend reports solver state honestly; evaluation
-        # handles project checks.
+        assessment = assess_convergence([], idle)
         return {
             "engine_returned": True,
             "engine_idle": idle,
-            "converged": idle is not False,
-            "convergence_evidence": "solver-state; project spreadsheet constraint recommended",
+            "converged": assessment.converged,
+            "convergence_evidence": assessment.to_dict(),
             "backend": self.name,
             "progid": self.progid,
             "solve_elapsed_s": time.perf_counter() - started,
