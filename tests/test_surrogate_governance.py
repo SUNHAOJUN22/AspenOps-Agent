@@ -194,13 +194,9 @@ def test_twin_governance_order_and_routes() -> None:
     assert route_twin(base_signals(constraints_feasible=False)).route == "BLOCKED"
     assert route_twin(base_signals(near_constraint_boundary=True)).route == "APPROVAL_REQUIRED"
     assert route_twin(base_signals(approval_required=True)).route == "APPROVAL_REQUIRED"
-    approved = route_twin(
-        base_signals(near_constraint_boundary=True, approval_valid=True)
-    )
+    approved = route_twin(base_signals(near_constraint_boundary=True, approval_valid=True))
     assert approved.route == "SURROGATE"
-    no_fallback = route_twin(
-        base_signals(in_applicability_domain=False, aspen_available=False)
-    )
+    no_fallback = route_twin(base_signals(in_applicability_domain=False, aspen_available=False))
     assert no_fallback.route == "BLOCKED"
 
 
