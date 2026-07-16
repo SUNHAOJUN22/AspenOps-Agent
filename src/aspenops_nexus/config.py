@@ -79,7 +79,11 @@ class Settings:
             ("worker_max_age_s", self.worker_max_age_s, 1.0),
             ("scheduler_poll_s", self.scheduler_poll_s, 0.01),
         ):
-            if isinstance(float_value, bool) or not math.isfinite(float_value) or float_value < minimum:
+            if (
+                isinstance(float_value, bool)
+                or not math.isfinite(float_value)
+                or float_value < minimum
+            ):
                 raise ValueError(f"{float_name} must be finite and >= {minimum}")
 
     @classmethod
