@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import platform
 import time
@@ -12,6 +13,7 @@ import psutil
 
 from ..compat import discover_aspen_plus_candidates
 from ..registry import ResolvedNode
+from ..solver_status import assess_convergence
 from .base import BackendError, SimulatorBackend
 
 _DEFAULT_STATUS_PATHS = (
@@ -19,8 +21,17 @@ _DEFAULT_STATUS_PATHS = (
     r"\Data\Results Summary\Run-Status\Output\STATUS",
     r"\Data\Results Summary\Run-Status\Output\UOSSTAT2",
 )
-_POSITIVE = ("converged", "completed", "complete", "success", "successful", "ok")
-_NEGATIVE = ("error", "failed", "failure", "not converged", "incomplete", "aborted", "fatal")
+
+
+def _configured_delay(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    try:
+        value = float(default if raw is None else raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be finite and nonnegative") from exc
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"{name} must be finite and nonnegative")
+    return value
 
 
 def _aspen_pids() -> set[int]:
@@ -98,7 +109,9 @@ class AspenPlusBackend(SimulatorBackend):
                 "Unable to create Aspen Plus Automation Server. Tried registered ProgIDs: "
                 + " | ".join(self.open_errors)
             )
-        time.sleep(float(os.getenv("ASPENOPS_COM_SETTLE_S", "0.25")))
+        settle_s = _configured_delay("ASPENOPS_COM_SETTLE_S", 0.25)
+        if settle_s:
+            time.sleep(settle_s)
         self.owned_pids = _aspen_pids() - before
 
     @staticmethod
@@ -141,7 +154,6 @@ class AspenPlusBackend(SimulatorBackend):
             self._coinitialized = False
 
     def cleanup_owned_pids(self) -> None:
-        # Only processes created after this worker opened its document are eligible for cleanup.
         for pid in sorted(self.owned_pids):
             try:
                 process = psutil.Process(pid)
@@ -194,7 +206,6 @@ class AspenPlusBackend(SimulatorBackend):
     def write(self, node: ResolvedNode, value: Any) -> None:
         target = self._find_node(node)
         target.Value = value
-        # Read-after-write catches paths that are syntactically valid but not writable in this mode.
         observed = target.Value
         if isinstance(value, (int, float)) and isinstance(observed, (int, float)):
             tolerance = 1e-10 + 1e-8 * max(abs(float(value)), 1.0)
@@ -252,11 +263,6 @@ class AspenPlusBackend(SimulatorBackend):
         engine.Run2()
         status_values = self._status_values()
         messages = self._engine_messages()
-        evidence_text = " | ".join(
-            [str(item.get("value", "")) for item in status_values] + messages
-        ).lower()
-        negative = sorted({marker for marker in _NEGATIVE if marker in evidence_text})
-        positive = sorted({marker for marker in _POSITIVE if marker in evidence_text})
         engine_idle: bool | None = None
         for attribute in ("IsRunning", "Running"):
             try:
@@ -264,21 +270,18 @@ class AspenPlusBackend(SimulatorBackend):
                 break
             except Exception:
                 continue
-        # Run2 returning is necessary but not sufficient. Explicit negative evidence always fails.
-        # Explicit success is strongest. When a release exposes no status object, an idle
-        # engine with
-        # no error evidence is accepted as implicit convergence and marked accordingly.
-        explicit = bool(positive or status_values)
-        converged = not negative and (bool(positive) or engine_idle is not False)
+        raw_evidence = [item.get("value") for item in status_values]
+        raw_evidence.extend(messages)
+        assessment = assess_convergence(raw_evidence, engine_idle)
         return {
             "engine_returned": True,
             "engine_idle": engine_idle,
-            "converged": converged,
-            "convergence_evidence": "explicit" if explicit else "implicit",
+            "converged": assessment.converged,
+            "convergence_evidence": assessment.to_dict(),
             "status_nodes": status_values,
             "messages": messages,
-            "positive_markers": positive,
-            "negative_markers": negative,
+            "positive_markers": list(assessment.positive_evidence),
+            "negative_markers": list(assessment.negative_evidence),
             "backend": self.name,
             "progid": self.progid,
             "solve_elapsed_s": time.perf_counter() - started,
