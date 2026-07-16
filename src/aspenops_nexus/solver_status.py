@@ -49,16 +49,22 @@ def assess_convergence(
     status_values: list[Any] | tuple[Any, ...],
     engine_idle: bool | None,
 ) -> ConvergenceAssessment:
-    raw_status = tuple(str(value).strip() for value in status_values if value is not None)
-    normalized = tuple(value.casefold() for value in raw_status if value)
+    if engine_idle is not None and not isinstance(engine_idle, bool):
+        raise TypeError("engine_idle must be Boolean or None")
+    pairs = tuple(
+        (raw, raw.casefold())
+        for raw in (str(value).strip() for value in status_values if value is not None)
+        if raw
+    )
+    raw_status = tuple(raw for raw, _text in pairs)
     positive = tuple(
         raw
-        for raw, text in zip(raw_status, normalized, strict=True)
+        for raw, text in pairs
         if any(marker in text for marker in _POSITIVE_MARKERS)
     )
     negative = tuple(
         raw
-        for raw, text in zip(raw_status, normalized, strict=True)
+        for raw, text in pairs
         if any(marker in text for marker in _NEGATIVE_MARKERS)
     )
     explicit = bool(positive or negative)
