@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
 from .errors import ValidationError
-from .jsonio import ensure_json_array, ensure_json_object, json_bytes, read_json_object
+from .jsonio import (
+    ensure_json_array,
+    ensure_json_object,
+    json_bytes,
+    read_json_object,
+    strict_json_object,
+)
 from .models import EvaluationRequest, VariableWrite
 from .policy import Policy
 from .pool import CasePool
@@ -28,6 +35,18 @@ _BATCH_FIELDS = {
 }
 _POINT_FIELDS = {"writes", "metadata"}
 _VALID_BACKENDS = {"mock", "aspen_plus", "hysys"}
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedBatch:
+    requests: tuple[EvaluationRequest, ...]
+    workers: int
+    model_path: Path
+    registry_path: Path
+    registry: NodeRegistry
+    writes: int
+    reads: int
+    semantic_operations: int
 
 
 def _object(value: Any, name: str) -> dict[str, Any]:
@@ -71,13 +90,7 @@ def _bounded_snapshot(data: dict[str, Any], settings: Settings) -> dict[str, Any
         raise ValidationError(
             f"Batch request is {len(encoded)} bytes; maximum is {settings.max_request_bytes} bytes"
         )
-    return read_json_object_bytes(encoded, name="Batch request")
-
-
-def read_json_object_bytes(raw: bytes, *, name: str) -> dict[str, Any]:
-    from .jsonio import strict_json_object
-
-    return strict_json_object(raw, name=name)
+    return strict_json_object(encoded, name="Batch request")
 
 
 def expand_batch_document(
@@ -171,20 +184,17 @@ def expand_batch_document(
     return requests
 
 
-def _expand_with_settings(data: dict[str, Any], settings: Settings) -> list[EvaluationRequest]:
+def _prepare_batch(data: dict[str, Any], settings: Settings) -> _PreparedBatch:
     snapshot = _bounded_snapshot(data, settings)
-    return expand_batch_document(
-        snapshot,
-        default_backend=settings.backend,
-        max_points=settings.max_batch_points,
-        max_operations_per_request=settings.max_operations_per_request,
+    requests = tuple(
+        expand_batch_document(
+            snapshot,
+            default_backend=settings.backend,
+            max_points=settings.max_batch_points,
+            max_operations_per_request=settings.max_operations_per_request,
+        )
     )
-
-
-def _input_paths(
-    requests: list[EvaluationRequest],
-    settings: Settings,
-) -> tuple[Path, Path]:
+    workers = _requested_workers(snapshot, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
     model_path = policy.assert_input_file(requests[0].model_path)
     registry_path = policy.assert_input_file(
@@ -192,14 +202,6 @@ def _input_paths(
         max_bytes=settings.max_request_bytes,
         suffixes=(".json",),
     )
-    return model_path, registry_path
-
-
-def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]:
-    requests = _expand_with_settings(data, settings)
-    workers = _requested_workers(data, settings)
-    model_path, registry_path = _input_paths(requests, settings)
-    policy = Policy(settings.mode, settings.allowed_roots)
     registry = NodeRegistry(registry_path)
     checked = 0
     writes = 0
@@ -229,32 +231,43 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
                 node = registry.resolve(term.key, term.identifiers)
                 registry.validate_backend(node, request.backend)
                 checked += 1
+    return _PreparedBatch(
+        requests=requests,
+        workers=workers,
+        model_path=model_path,
+        registry_path=registry_path,
+        registry=registry,
+        writes=writes,
+        reads=reads,
+        semantic_operations=checked,
+    )
+
+
+def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    prepared = _prepare_batch(data, settings)
     return {
         "ok": True,
-        "backend": requests[0].backend,
-        "model_path": str(model_path),
-        "registry_path": str(registry_path),
-        "registry_sha256": registry.sha256,
-        "evaluations": len(requests),
-        "writes": writes,
-        "reads": reads,
-        "semantic_operations": checked,
-        "requested_workers": workers,
+        "backend": prepared.requests[0].backend,
+        "model_path": str(prepared.model_path),
+        "registry_path": str(prepared.registry_path),
+        "registry_sha256": prepared.registry.sha256,
+        "evaluations": len(prepared.requests),
+        "writes": prepared.writes,
+        "reads": prepared.reads,
+        "semantic_operations": prepared.semantic_operations,
+        "requested_workers": prepared.workers,
         "effective_worker_cap": settings.effective_workers,
     }
 
 
 def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[str, Any]]:
-    dry_run_document(data, settings)
-    requests = _expand_with_settings(data, settings)
-    workers = _requested_workers(data, settings)
-    model_path, registry_path = _input_paths(requests, settings)
+    prepared = _prepare_batch(data, settings)
     cache_path = settings.state_dir / "cache.sqlite3"
     with CasePool(
-        backend_name=requests[0].backend,
-        model_path=model_path,
-        registry_path=registry_path,
-        workers=workers,
+        backend_name=prepared.requests[0].backend,
+        model_path=prepared.model_path,
+        registry_path=prepared.registry_path,
+        workers=prepared.workers,
         visible=settings.visible,
         cache_path=cache_path,
         worker_max_points=settings.worker_max_points,
@@ -262,7 +275,7 @@ def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[st
         startup_timeout_s=settings.startup_timeout_s,
         cache_failures=settings.cache_failures,
     ) as pool:
-        return [result.to_dict() for result in pool.evaluate_many(requests)]
+        return [result.to_dict() for result in pool.evaluate_many(list(prepared.requests))]
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
