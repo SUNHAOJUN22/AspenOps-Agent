@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import re
 import string
@@ -9,16 +8,43 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .errors import RegistryError
+from .jsonio import strict_json_object
 from .units import UnitError, convert, dimension
-
-
-class RegistryError(ValueError):
-    pass
-
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_. -]{1,128}$")
 _IDENTIFIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _VALID_BACKENDS = {"any", "mock", "aspen_plus", "hysys"}
+_TOP_LEVEL_FIELDS = {"name", "version", "schema", "nodes"}
+_NODE_FIELDS = {
+    "access",
+    "unit",
+    "quantity",
+    "lower",
+    "upper",
+    "integer",
+    "backend",
+    "identifiers",
+    "paths",
+    "locator",
+    "verification",
+    "description",
+}
+_REGISTRY_SCHEMA = "aspenops.registry/v1"
+
+
+def _string(value: Any, name: str, *, allow_empty: bool = False) -> str:
+    if not isinstance(value, str):
+        raise RegistryError(f"{name} must be a string")
+    if not allow_empty and not value.strip():
+        raise RegistryError(f"{name} must not be blank")
+    return value
+
+
+def _reject_unknown(data: dict[str, Any], allowed: set[str], name: str) -> None:
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise RegistryError(f"Unknown fields in {name}: {', '.join(unknown)}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,28 +76,34 @@ class NodeRegistry:
 
     def __init__(self, path: str | Path):
         self.path = Path(path).expanduser().resolve()
+        if not self.path.is_file():
+            raise RegistryError(f"Registry path is not a regular file: {self.path}")
         raw = self.path.read_bytes()
         self.sha256 = hashlib.sha256(raw).hexdigest()
         try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
+            data = strict_json_object(raw, name=str(self.path))
+        except ValueError as exc:
+            if isinstance(exc, RegistryError):
+                raise
             raise RegistryError(f"Invalid registry JSON: {exc}") from exc
-        if not isinstance(data, dict):
-            raise RegistryError("Registry root must be an object")
+        _reject_unknown(data, _TOP_LEVEL_FIELDS, "registry root")
         nodes = data.get("nodes", {})
         if not isinstance(nodes, dict) or not nodes:
             raise RegistryError("Registry must contain a non-empty 'nodes' object")
+        self.name = _string(data.get("name", self.path.stem), "registry name")
+        self.version = _string(data.get("version", "1.0"), "registry version")
+        self.schema = _string(data.get("schema", _REGISTRY_SCHEMA), "registry schema")
+        if self.schema != _REGISTRY_SCHEMA:
+            raise RegistryError(f"Unsupported registry schema: {self.schema!r}")
         self._nodes: dict[str, dict[str, Any]] = {}
         for key, value in nodes.items():
             if not isinstance(key, str) or not key.strip():
                 raise RegistryError("Semantic keys must be non-empty strings")
             if not isinstance(value, dict):
                 raise RegistryError(f"Registry node {key!r} must be an object")
+            _reject_unknown(value, _NODE_FIELDS, f"registry node {key!r}")
             self._validate_definition(key, value)
             self._nodes[key] = dict(value)
-        self.name = str(data.get("name", self.path.stem))
-        self.version = str(data.get("version", "1.0"))
-        self.schema = str(data.get("schema", "aspenops.registry/v1"))
 
     @staticmethod
     def _finite_bound(key: str, name: str, value: Any) -> float | None:
@@ -107,15 +139,20 @@ class NodeRegistry:
 
     @classmethod
     def _validate_definition(cls, key: str, node: dict[str, Any]) -> None:
-        access = str(node.get("access", "read"))
+        access = _string(node.get("access", "read"), f"access for {key}")
         if access not in {"read", "write", "readwrite"}:
             raise RegistryError(f"Invalid access for {key}: {access}")
-        unit = None if node.get("unit") is None else str(node["unit"])
-        quantity = None if node.get("quantity") is None else str(node["quantity"])
-        unit_dimension = None if unit is None else dimension(unit)
+        unit = None if node.get("unit") is None else _string(node["unit"], f"unit for {key}")
+        quantity = (
+            None
+            if node.get("quantity") is None
+            else _string(node["quantity"], f"quantity for {key}")
+        )
+        try:
+            unit_dimension = None if unit is None else dimension(unit)
+        except UnitError as exc:
+            raise RegistryError(f"Invalid unit for {key}: {exc}") from exc
         if quantity is not None:
-            if not quantity.strip():
-                raise RegistryError(f"Quantity for {key} must not be blank")
             if unit_dimension is None:
                 raise RegistryError(f"Quantity {quantity!r} for {key} requires a canonical unit")
             if quantity != unit_dimension:
@@ -130,7 +167,7 @@ class NodeRegistry:
         integer = node.get("integer", False)
         if not isinstance(integer, bool):
             raise RegistryError(f"integer for {key} must be a JSON Boolean")
-        backend = str(node.get("backend", "aspen_plus"))
+        backend = _string(node.get("backend", "aspen_plus"), f"backend for {key}")
         if backend not in _VALID_BACKENDS:
             raise RegistryError(f"Invalid backend for {key}: {backend!r}")
         raw_identifiers = node.get("identifiers", [])
@@ -150,8 +187,20 @@ class NodeRegistry:
             raise RegistryError(f"Node {key} requires at least one path or locator")
         if not isinstance(paths, list) or not all(isinstance(path, str) and path for path in paths):
             raise RegistryError(f"paths for {key} must be a list of non-empty strings")
+        if len(paths) != len(set(paths)):
+            raise RegistryError(f"paths for {key} must be unique")
         if not isinstance(locator, dict):
             raise RegistryError(f"locator for {key} must be an object")
+        verification = _string(
+            node.get("verification", "project-required"),
+            f"verification for {key}",
+        )
+        description = _string(
+            node.get("description", ""),
+            f"description for {key}",
+            allow_empty=True,
+        )
+        del verification, description
         for path in paths:
             cls._validate_template(key, path, identifiers)
         for locator_key, locator_value in locator.items():
@@ -194,13 +243,20 @@ class NodeRegistry:
                 )
 
     def resolve(self, key: str, identifiers: dict[str, str]) -> ResolvedNode:
+        if not isinstance(key, str) or not key.strip():
+            raise RegistryError("Semantic key must be a non-empty string")
+        if not isinstance(identifiers, dict) or not all(
+            isinstance(name, str) and isinstance(value, str)
+            for name, value in identifiers.items()
+        ):
+            raise RegistryError("Identifiers must be an object of string keys and string values")
         try:
             node = self._nodes[key]
         except KeyError as exc:
             raise RegistryError(f"Unknown semantic key: {key}") from exc
-        normalized = {str(k): str(v) for k, v in identifiers.items()}
+        normalized = dict(identifiers)
         self._validate_identifiers(normalized)
-        required = tuple(str(x) for x in node.get("identifiers", []))
+        required = tuple(node.get("identifiers", []))
         missing = [name for name in required if name not in normalized]
         extra = [name for name in normalized if name not in required]
         if missing:
@@ -208,30 +264,36 @@ class NodeRegistry:
         if extra:
             raise RegistryError(f"Unexpected identifiers for {key}: {', '.join(extra)}")
         try:
-            paths = tuple(str(path).format(**normalized) for path in node.get("paths", []))
+            paths = tuple(path.format(**normalized) for path in node.get("paths", []))
             locator = {
-                str(k): (str(v).format(**normalized) if isinstance(v, str) else v)
-                for k, v in dict(node.get("locator", {})).items()
+                locator_key: (
+                    locator_value.format(**normalized)
+                    if isinstance(locator_value, str)
+                    else locator_value
+                )
+                for locator_key, locator_value in node.get("locator", {}).items()
             }
         except KeyError as exc:
             raise RegistryError(f"Unresolved identifier {exc.args[0]!r} for {key}") from exc
         return ResolvedNode(
             key=key,
-            access=str(node.get("access", "read")),
-            native_unit=None if node.get("unit") is None else str(node["unit"]),
-            quantity=None if node.get("quantity") is None else str(node["quantity"]),
+            access=node.get("access", "read"),
+            native_unit=node.get("unit"),
+            quantity=node.get("quantity"),
             paths=paths,
             identifiers=normalized,
             lower=self._finite_bound(key, "lower", node.get("lower")),
             upper=self._finite_bound(key, "upper", node.get("upper")),
             integer=node.get("integer", False),
-            backend=str(node.get("backend", "aspen_plus")),
+            backend=node.get("backend", "aspen_plus"),
             locator=locator,
-            verification=str(node.get("verification", "project-required")),
-            description=str(node.get("description", "")),
+            verification=node.get("verification", "project-required"),
+            description=node.get("description", ""),
         )
 
     def validate_backend(self, node: ResolvedNode, backend: str) -> None:
+        if backend not in _VALID_BACKENDS - {"any"}:
+            raise RegistryError(f"Unsupported execution backend: {backend!r}")
         if backend == "mock":
             return
         if node.backend not in {backend, "any"}:
@@ -252,6 +314,10 @@ class NodeRegistry:
                 value_type = type(value).__name__
                 raise RegistryError(f"Numeric variable {node.key} cannot receive {value_type}")
             return value
+        if not isinstance(value, int | float):
+            raise RegistryError(
+                f"Numeric variable {node.key} requires int or float, not {type(value).__name__}"
+            )
         try:
             numeric = convert(float(value), unit, node.native_unit)
         except UnitError as exc:
