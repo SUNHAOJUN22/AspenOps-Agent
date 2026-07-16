@@ -47,6 +47,20 @@ jobs:
           name: mypy-python-${{ matrix.python-version }}
           path: mypy-report.txt
           if-no-files-found: error
+      - name: Logic-risk scan
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python scripts/scan_logic_risks.py 2>&1 | tee logic-risk-scan.txt
+      - name: Upload logic-risk evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logic-risk-python-${{ matrix.python-version }}
+          path: |
+            reports/logic-risk-scan.json
+            logic-risk-scan.txt
+          if-no-files-found: error
       - name: Portable pytest
         shell: bash
         run: |
