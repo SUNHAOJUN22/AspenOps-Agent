@@ -58,14 +58,10 @@ def assess_convergence(
     )
     raw_status = tuple(raw for raw, _text in pairs)
     positive = tuple(
-        raw
-        for raw, text in pairs
-        if any(marker in text for marker in _POSITIVE_MARKERS)
+        raw for raw, text in pairs if any(marker in text for marker in _POSITIVE_MARKERS)
     )
     negative = tuple(
-        raw
-        for raw, text in pairs
-        if any(marker in text for marker in _NEGATIVE_MARKERS)
+        raw for raw, text in pairs if any(marker in text for marker in _NEGATIVE_MARKERS)
     )
     explicit = bool(positive or negative)
     converged = bool(positive) and not negative and engine_idle is not False
