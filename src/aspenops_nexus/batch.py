@@ -10,39 +10,157 @@ from .policy import Policy
 from .pool import CasePool
 from .registry import NodeRegistry
 
+_BATCH_FIELDS = {
+    "model_path",
+    "registry_path",
+    "backend",
+    "workers",
+    "reads",
+    "constraints",
+    "balances",
+    "reset_mode",
+    "reinitialize",
+    "timeout_s",
+    "metadata",
+    "base_writes",
+    "points",
+}
+_POINT_FIELDS = {"writes", "metadata"}
+_VALID_BACKENDS = {"mock", "aspen_plus", "hysys"}
 
-def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
-    if not isinstance(data, dict):
-        raise ValueError("Batch request must be a JSON object")
-    common = {
-        "model_path": data["model_path"],
-        "registry_path": data["registry_path"],
-        "backend": data.get("backend", "mock"),
-        "reads": data.get("reads", []),
-        "constraints": data.get("constraints", []),
-        "balances": data.get("balances", []),
-        "reset_mode": data.get(
-            "reset_mode", "reinitialize" if data.get("reinitialize", True) else "warm_start"
-        ),
-        "timeout_s": data.get("timeout_s", 1200),
-        "metadata": data.get("metadata", {}),
+
+def _object(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be a JSON object")
+    if not all(isinstance(key, str) for key in value):
+        raise ValueError(f"{name} keys must be strings")
+    return dict(value)
+
+
+def _array(value: Any, name: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"{name} must be a JSON array")
+    return list(value)
+
+
+def _reject_unknown(data: dict[str, Any], allowed: set[str], name: str) -> None:
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown fields in {name}: {', '.join(unknown)}")
+
+
+def _positive_int(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be an integer >= 1")
+    return value
+
+
+def _requested_workers(data: dict[str, Any], settings: Settings) -> int:
+    workers = _positive_int(data.get("workers", settings.effective_workers), "workers")
+    if workers > settings.effective_workers:
+        raise ValueError(
+            f"workers={workers} exceeds effective worker cap {settings.effective_workers}"
+        )
+    return workers
+
+
+def _operation_count(request: EvaluationRequest) -> int:
+    balance_terms = sum(len(balance.terms) for balance in request.balances)
+    return (
+        len(request.writes)
+        + len(request.reads)
+        + len(request.constraints)
+        + balance_terms
+    )
+
+
+def _strict_json_object(raw: bytes, name: str) -> dict[str, Any]:
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"{name} contains non-finite JSON constant {value!r}")
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        output: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in output:
+                raise ValueError(f"{name} contains duplicate JSON key {key!r}")
+            output[key] = value
+        return output
+
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{name} must be strict UTF-8 JSON: {exc}") from exc
+    return _object(value, name)
+
+
+def expand_batch_document(
+    data: dict[str, Any],
+    *,
+    default_backend: str = "mock",
+    max_points: int = 10_000,
+    max_operations_per_request: int = 10_000,
+) -> list[EvaluationRequest]:
+    batch = _object(data, "Batch request")
+    _reject_unknown(batch, _BATCH_FIELDS, "Batch request")
+    if "model_path" not in batch or "registry_path" not in batch:
+        raise ValueError("Batch request requires model_path and registry_path")
+    if default_backend not in _VALID_BACKENDS:
+        raise ValueError(f"Unsupported default backend: {default_backend!r}")
+    backend = batch.get("backend", default_backend)
+    if not isinstance(backend, str) or backend not in _VALID_BACKENDS:
+        raise ValueError(f"Unsupported backend: {backend!r}")
+    point_limit = _positive_int(max_points, "max_points")
+    operation_limit = _positive_int(
+        max_operations_per_request,
+        "max_operations_per_request",
+    )
+    common: dict[str, Any] = {
+        "model_path": batch["model_path"],
+        "registry_path": batch["registry_path"],
+        "backend": backend,
+        "reads": _array(batch.get("reads", []), "reads"),
+        "constraints": _array(batch.get("constraints", []), "constraints"),
+        "balances": _array(batch.get("balances", []), "balances"),
+        "timeout_s": batch.get("timeout_s", 1200.0),
+        "metadata": _object(batch.get("metadata", {}), "metadata"),
     }
-    base_writes = [VariableWrite.from_dict(x) for x in data.get("base_writes", [])]
-    points = data.get("points", [{}])
-    if not isinstance(points, list) or not points:
+    if "reset_mode" in batch:
+        common["reset_mode"] = batch["reset_mode"]
+    if "reinitialize" in batch:
+        common["reinitialize"] = batch["reinitialize"]
+    base_writes = [
+        VariableWrite.from_dict(_object(item, "base write"))
+        for item in _array(batch.get("base_writes", []), "base_writes")
+    ]
+    points = _array(batch.get("points", [{}]), "points")
+    if not points:
         raise ValueError("points must be a non-empty list")
+    if len(points) > point_limit:
+        raise ValueError(f"points count {len(points)} exceeds maximum {point_limit}")
     requests: list[EvaluationRequest] = []
     for point_index, point in enumerate(points):
         writes = list(base_writes)
         point_metadata: dict[str, Any] = {}
         if isinstance(point, list):
-            writes.extend(VariableWrite.from_dict(x) for x in point)
+            writes.extend(
+                VariableWrite.from_dict(_object(item, f"point {point_index} write"))
+                for item in point
+            )
         elif isinstance(point, dict):
-            raw_writes = point.get("writes", [])
-            if not isinstance(raw_writes, list):
-                raise ValueError(f"Point {point_index} writes must be a list")
-            writes.extend(VariableWrite.from_dict(x) for x in raw_writes)
-            point_metadata = dict(point.get("metadata", {}))
+            point_object = _object(point, f"Point {point_index}")
+            _reject_unknown(point_object, _POINT_FIELDS, f"Point {point_index}")
+            writes.extend(
+                VariableWrite.from_dict(_object(item, f"point {point_index} write"))
+                for item in _array(point_object.get("writes", []), f"Point {point_index} writes")
+            )
+            point_metadata = _object(
+                point_object.get("metadata", {}),
+                f"Point {point_index} metadata",
+            )
         else:
             raise ValueError(f"Point {point_index} must be an object or a writes list")
         request_data = dict(common)
@@ -59,20 +177,39 @@ def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
         metadata.update(point_metadata)
         metadata["point_index"] = point_index
         request_data["metadata"] = metadata
-        requests.append(EvaluationRequest.from_dict(request_data))
+        request = EvaluationRequest.from_dict(request_data)
+        operations = _operation_count(request)
+        if operations > operation_limit:
+            raise ValueError(
+                f"Point {point_index} has {operations} semantic operations; "
+                f"maximum is {operation_limit}"
+            )
+        requests.append(request)
     return requests
 
 
+def _expand_with_settings(data: dict[str, Any], settings: Settings) -> list[EvaluationRequest]:
+    return expand_batch_document(
+        data,
+        default_backend=settings.backend,
+        max_points=settings.max_batch_points,
+        max_operations_per_request=settings.max_operations_per_request,
+    )
+
+
 def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    requests = _expand_with_settings(data, settings)
+    workers = _requested_workers(data, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
-    model_path = policy.assert_path(data["model_path"])
-    registry_path = policy.assert_path(data["registry_path"])
-    requests = expand_batch_document(data)
+    model_path = policy.assert_path(requests[0].model_path)
+    registry_path = policy.assert_path(requests[0].registry_path)
     registry = NodeRegistry(registry_path)
     checked = 0
     writes = 0
     reads = 0
     for request in requests:
+        if request.backend != requests[0].backend:
+            raise ValueError("All requests in one batch must use the same backend")
         if request.writes:
             policy.assert_writes_allowed()
         for write in request.writes:
@@ -87,14 +224,17 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
             reads += 1
             checked += 1
         for constraint in request.constraints:
-            registry.resolve(constraint.key, constraint.identifiers)
+            node = registry.resolve(constraint.key, constraint.identifiers)
+            registry.validate_backend(node, request.backend)
             checked += 1
         for balance in request.balances:
             for term in balance.terms:
-                registry.resolve(term.key, term.identifiers)
+                node = registry.resolve(term.key, term.identifiers)
+                registry.validate_backend(node, request.backend)
                 checked += 1
     return {
         "ok": True,
+        "backend": requests[0].backend,
         "model_path": str(model_path),
         "registry_path": str(registry_path),
         "registry_sha256": registry.sha256,
@@ -102,23 +242,21 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
         "writes": writes,
         "reads": reads,
         "semantic_operations": checked,
-        "requested_workers": int(data.get("workers", settings.effective_workers)),
+        "requested_workers": workers,
         "effective_worker_cap": settings.effective_workers,
     }
 
 
 def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[str, Any]]:
     dry_run_document(data, settings)
+    requests = _expand_with_settings(data, settings)
+    workers = _requested_workers(data, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
-    model_path = policy.assert_path(data["model_path"])
-    registry_path = policy.assert_path(data["registry_path"])
-    requests = expand_batch_document(data)
-    workers = max(
-        1, min(int(data.get("workers", settings.effective_workers)), settings.effective_workers)
-    )
+    model_path = policy.assert_path(requests[0].model_path)
+    registry_path = policy.assert_path(requests[0].registry_path)
     cache_path = settings.state_dir / "cache.sqlite3"
     with CasePool(
-        backend_name=str(data.get("backend", settings.backend)),
+        backend_name=requests[0].backend,
         model_path=model_path,
         registry_path=registry_path,
         workers=workers,
@@ -133,5 +271,11 @@ def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[st
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    request_path = Path(path).expanduser().resolve()
+    size = request_path.stat().st_size
+    if size > settings.max_request_bytes:
+        raise ValueError(
+            f"Request file is {size} bytes; maximum is {settings.max_request_bytes} bytes"
+        )
+    data = _strict_json_object(request_path.read_bytes(), str(request_path))
     return run_batch_document(data, settings)
