@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .errors import UnitError
+from .errors import UnitError as UnitError
 
 
 @dataclass(frozen=True, slots=True)
