@@ -66,12 +66,7 @@ def _requested_workers(data: dict[str, Any], settings: Settings) -> int:
 
 def _operation_count(request: EvaluationRequest) -> int:
     balance_terms = sum(len(balance.terms) for balance in request.balances)
-    return (
-        len(request.writes)
-        + len(request.reads)
-        + len(request.constraints)
-        + balance_terms
-    )
+    return len(request.writes) + len(request.reads) + len(request.constraints) + balance_terms
 
 
 def _strict_json_object(raw: bytes, name: str) -> dict[str, Any]:
