@@ -64,7 +64,8 @@ def _validate_tree(
                     raise ValidationError(f"{location} contains a non-string object key")
                 if len(key) > max_string_chars:
                     raise ValidationError(
-                        f"{location} contains an object key longer than {max_string_chars} characters"
+                        f"{location} contains an object key longer than "
+                        f"{max_string_chars} characters"
                     )
                 stack.append((item, depth + 1, f"{location}.{key}"))
         elif isinstance(current, list):
