@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .evaluation_plan import EvaluationPlanCompiler
 from .models import EvaluationRequest, VariableWrite
 from .policy import Policy
 from .pool import CasePool
@@ -69,30 +70,11 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
     registry_path = policy.assert_path(data["registry_path"])
     requests = expand_batch_document(data)
     registry = NodeRegistry(registry_path)
-    checked = 0
-    writes = 0
-    reads = 0
-    for request in requests:
-        if request.writes:
-            policy.assert_writes_allowed()
-        for write in request.writes:
-            node = registry.resolve(write.key, write.identifiers)
-            registry.validate_backend(node, request.backend)
-            registry.validate_write(node, write.value, write.unit)
-            writes += 1
-            checked += 1
-        for read in request.reads:
-            node = registry.resolve(read.key, read.identifiers)
-            registry.validate_backend(node, request.backend)
-            reads += 1
-            checked += 1
-        for constraint in request.constraints:
-            registry.resolve(constraint.key, constraint.identifiers)
-            checked += 1
-        for balance in request.balances:
-            for term in balance.terms:
-                registry.resolve(term.key, term.identifiers)
-                checked += 1
+    plans = [EvaluationPlanCompiler.compile(registry, request, policy) for request in requests]
+    writes = sum(plan.estimated_io.declared_writes for plan in plans)
+    declared_reads = sum(plan.estimated_io.declared_reads for plan in plans)
+    unique_reads = sum(plan.estimated_io.unique_read_nodes for plan in plans)
+    semantic_operations = writes + declared_reads
     return {
         "ok": True,
         "model_path": str(model_path),
@@ -100,8 +82,11 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
         "registry_sha256": registry.sha256,
         "evaluations": len(requests),
         "writes": writes,
-        "reads": reads,
-        "semantic_operations": checked,
+        "reads": len(requests[0].reads) * len(requests),
+        "declared_reads": declared_reads,
+        "unique_read_nodes": unique_reads,
+        "avoided_duplicate_reads": declared_reads - unique_reads,
+        "semantic_operations": semantic_operations,
         "requested_workers": int(data.get("workers", settings.effective_workers)),
         "effective_worker_cap": settings.effective_workers,
     }
