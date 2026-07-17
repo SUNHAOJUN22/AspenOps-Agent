@@ -4,7 +4,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,13 @@ from .worker import (
     start_worker,
     stop_worker,
 )
+
+
+@dataclass(slots=True)
+class _InflightEvaluation:
+    event: threading.Event
+    result: EvaluationResult | None = None
+    error: BaseException | None = None
 
 
 class CasePool:
@@ -54,6 +61,9 @@ class CasePool:
         self._handles: list[WorkerHandle] = []
         self._generation: dict[int, int] = {}
         self._replace_lock = threading.Lock()
+        self._operation_lock = threading.Lock()
+        self._singleflight_lock = threading.Lock()
+        self._inflight: dict[str, _InflightEvaluation] = {}
 
     def __enter__(self) -> CasePool:
         self.start()
@@ -221,6 +231,64 @@ class CasePool:
             request_hash=request_hash,
         )
 
+    def _wait_for_flight(
+        self,
+        flight: _InflightEvaluation,
+        request_hash: str,
+        cancel_check: Callable[[], bool] | None,
+    ) -> EvaluationResult:
+        while not flight.event.wait(0.05):
+            if cancel_check is not None and cancel_check():
+                return self._cancelled_result(request_hash)
+        if flight.error is not None:
+            raise RuntimeError("Singleflight leader failed") from flight.error
+        if flight.result is None:
+            raise RuntimeError("Singleflight completed without a result")
+        result = EvaluationResult.from_dict(flight.result.to_dict())
+        result.cache_source = "inflight_singleflight"
+        result.cache_hit = True
+        return result
+
+    def _evaluate_singleflight(
+        self,
+        request: EvaluationRequest,
+        cancel_check: Callable[[], bool] | None,
+    ) -> EvaluationResult:
+        if not self._handles:
+            self.start()
+        request_hash = self.cache_key(request)
+        if request.reinitialize:
+            cached = self.cache.get(request_hash)
+            if cached is not None:
+                result = EvaluationResult.from_dict(cached)
+                result.cache_source = "persistent_cache"
+                result.cache_hit = True
+                result.request_hash = request_hash
+                return result
+
+        with self._singleflight_lock:
+            flight = self._inflight.get(request_hash)
+            leader = flight is None
+            if flight is None:
+                flight = _InflightEvaluation(threading.Event())
+                self._inflight[request_hash] = flight
+        if not leader:
+            return self._wait_for_flight(flight, request_hash, cancel_check)
+
+        try:
+            with self._operation_lock:
+                result = self._evaluate_many_locked([request], cancel_check=cancel_check)[0]
+            flight.result = EvaluationResult.from_dict(result.to_dict())
+            return result
+        except BaseException as exc:
+            flight.error = exc
+            raise
+        finally:
+            with self._singleflight_lock:
+                if self._inflight.get(request_hash) is flight:
+                    self._inflight.pop(request_hash, None)
+            flight.event.set()
+
     def evaluate_many(
         self,
         requests: list[EvaluationRequest],
@@ -229,6 +297,17 @@ class CasePool:
     ) -> list[EvaluationResult]:
         if not requests:
             return []
+        if len(requests) == 1:
+            return [self._evaluate_singleflight(requests[0], cancel_check)]
+        with self._operation_lock:
+            return self._evaluate_many_locked(requests, cancel_check=cancel_check)
+
+    def _evaluate_many_locked(
+        self,
+        requests: list[EvaluationRequest],
+        *,
+        cancel_check: Callable[[], bool] | None,
+    ) -> list[EvaluationResult]:
         if not self._handles:
             self.start()
         output: list[EvaluationResult | None] = [None] * len(requests)
