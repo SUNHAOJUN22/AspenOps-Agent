@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -40,7 +41,7 @@ def public_pem(key: Ed25519PrivateKey) -> bytes:
 def rewrite_archive(
     source_path: Path,
     target_path: Path,
-    transform: callable,
+    transform: Callable[[str, bytes], bytes | None],
 ) -> None:
     with zipfile.ZipFile(source_path) as source, zipfile.ZipFile(target_path, "w") as target:
         for name in source.namelist():
