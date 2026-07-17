@@ -111,10 +111,10 @@ def write_run_bundle(
         "results.json": _json_bytes(results),
         "environment.json": _json_bytes(_environment()),
         "README.txt": (
-            "This archive is a self-checking AspenOps integrity bundle. Internal hashes detect "
-            "accidental or unsophisticated modification. Cryptographic authenticity requires a "
-            "valid Ed25519 signature from a trusted key.\n"
-        ).encode("utf-8"),
+            b"This archive is a self-checking AspenOps integrity bundle. Internal hashes detect "
+            b"accidental or unsophisticated modification. Cryptographic authenticity requires a "
+            b"valid Ed25519 signature from a trusted key.\n"
+        ),
     }
     signing: dict[str, Any] = {
         "status": "unsigned",
