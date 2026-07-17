@@ -1,0 +1,173 @@
+name: Finalize AspenOps v2
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/finalize-v2-release.yml
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Let consolidation and benchmarks settle
+        run: sleep 360
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev --extra agent
+      - name: Apply any remaining consolidation
+        shell: bash
+        run: |
+          if [ -f scripts/consolidate_v2.py ]; then
+            uv run python scripts/consolidate_v2.py
+          fi
+          if [ -f scripts/finalize_v2_release.py ]; then
+            uv run python scripts/finalize_v2_release.py
+          fi
+      - name: Format and static validation
+        run: |
+          uv run ruff format .
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+      - name: Measure tests and branch coverage
+        run: |
+          mkdir -p var/ci
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/ci/final-coverage.json \
+            --junitxml=var/ci/final-junit.xml
+      - name: Set evidence-based CI threshold
+        shell: python
+        run: |
+          import json
+          import math
+          from pathlib import Path
+
+          coverage = json.loads(Path("var/ci/final-coverage.json").read_text())
+          percent = float(coverage["totals"]["percent_covered"])
+          if percent < 70:
+              raise SystemExit(f"Portable branch coverage {percent:.2f}% is below 70%")
+          threshold = min(80, math.floor(percent))
+          workflow = Path(".github/workflows/ci.yml")
+          text = workflow.read_text()
+          text = text.replace("--cov-fail-under=63", f"--cov-fail-under={threshold}")
+          workflow.write_text(text)
+          Path("var/ci/coverage-threshold.txt").write_text(str(threshold))
+      - name: Verify selected threshold
+        shell: bash
+        run: |
+          threshold=$(cat var/ci/coverage-threshold.txt)
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term \
+            --cov-fail-under="$threshold"
+      - name: Build and smoke tests
+        run: |
+          uv build
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . --output var/benchmarks/final-smoke.json --smoke
+          python -m venv /tmp/aspenops-wheel
+          /tmp/aspenops-wheel/bin/pip install dist/*.whl
+          /tmp/aspenops-wheel/bin/aspenops --version
+      - name: Write final implementation report
+        shell: python
+        run: |
+          import json
+          import xml.etree.ElementTree as ET
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          coverage = json.loads(Path("var/ci/final-coverage.json").read_text())
+          root = ET.parse("var/ci/final-junit.xml").getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+          tests = sum(int(item.attrib.get("tests", 0)) for item in suites)
+          failures = sum(int(item.attrib.get("failures", 0)) for item in suites)
+          errors = sum(int(item.attrib.get("errors", 0)) for item in suites)
+          skipped = sum(int(item.attrib.get("skipped", 0)) for item in suites)
+          threshold = Path("var/ci/coverage-threshold.txt").read_text().strip()
+          totals = coverage["totals"]
+          benchmark = "Portable comparison pending or unavailable."
+          after_path = Path("var/benchmarks/after.json")
+          baseline_path = Path("var/benchmarks/baseline.json")
+          if after_path.exists() and baseline_path.exists():
+              after = json.loads(after_path.read_text())
+              baseline = json.loads(baseline_path.read_text())
+              benchmark = (
+                  f"Baseline measurements: {len(baseline['measurements'])}; "
+                  f"candidate measurements: {len(after['measurements'])}."
+              )
+          report = f"""# AspenOps v2 final implementation report
+
+          Generated: {datetime.now(UTC).isoformat()}
+
+          ## Delivery
+
+          - PR: #18
+          - Branch: `agent/aspenops-v2-reliability-performance`
+          - Portable test count: {tests}
+          - Failures: {failures}
+          - Errors: {errors}
+          - Skipped: {skipped}
+          - Branch coverage: {totals['percent_covered_display']}%
+          - Enforced portable CI threshold: {threshold}%
+          - Covered lines: {totals['covered_lines']}
+          - Missing lines: {totals['missing_lines']}
+
+          ## Implemented
+
+          - fail-closed convergence and stable-idle evidence;
+          - verified write rollback and tainted Worker recycling;
+          - unique-node EvaluationPlan compilation;
+          - content cache provenance and cross-call singleflight;
+          - persistent license-aware CasePools;
+          - leased jobs, heartbeat, bounded retries and deadline cancellation;
+          - Windows Job Object supervision with verified fallback ownership;
+          - member-level integrity bundles and optional Ed25519 signatures;
+          - budgeted batch constrained mixed-variable optimization and Pareto output;
+          - CLI/MCP optimization interfaces;
+          - portable baseline/candidate benchmark tooling.
+
+          ## Benchmark
+
+          {benchmark}
+
+          ## Qualification boundary
+
+          Portable CI proves control-plane, Mock and Fake-contract behavior only.
+          Real Aspen status remains `PENDING_REAL_ASPEN_CERTIFICATION` until the
+          licensed self-hosted Windows protocol in
+          `docs/real-aspen-certification.md` passes.
+
+          ## Review status
+
+          PR #18 remains Draft because licensed Aspen qualification is pending.
+          """
+          Path("docs/final-implementation-report.md").write_text(report, encoding="utf-8")
+      - name: Commit final release evidence
+        run: |
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "release: finalize AspenOps 2.0 portable evidence"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
+      - name: Publish final report to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 18 --body-file docs/final-implementation-report.md
