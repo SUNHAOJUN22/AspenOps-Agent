@@ -15,10 +15,36 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev --extra agent
-      - run: uv run ruff check .
-      - run: uv run mypy src
-      - run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-report=term --cov-fail-under=63
-      - run: uv build
-      - run: uv run aspenops demo
-      - run: uv run python scripts/check_mcp.py
+      - name: Sync dependencies
+        run: uv sync --extra dev --extra agent
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Strict mypy
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          uv run mypy src 2>&1 | tee var/ci/mypy-${{ matrix.python-version }}.log
+      - name: Pytest with coverage
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-report=term \
+            --cov-fail-under=63 \
+            2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
+      - name: Build distributions
+        run: uv build
+      - name: Run portable demo
+        run: uv run aspenops demo
+      - name: Verify MCP surface
+        run: uv run python scripts/check_mcp.py
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics-python-${{ matrix.python-version }}
+          path: var/ci
+          if-no-files-found: ignore
