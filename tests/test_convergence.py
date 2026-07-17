@@ -27,10 +27,7 @@ def sequence_reader(values: list[bool | None]) -> Callable[[], bool | None]:
 
     def read() -> bool | None:
         nonlocal last
-        try:
-            last = next(remaining)
-        except StopIteration:
-            pass
+        last = next(remaining, last)
         return last
 
     return read
