@@ -6,6 +6,12 @@ from typing import Any, Literal, cast
 BackendName = Literal["mock", "aspen_plus", "hysys"]
 ConstraintOperator = Literal["<", "<=", ">", ">=", "=="]
 ResetMode = Literal["reinitialize", "warm_start"]
+CacheSource = Literal[
+    "computed",
+    "persistent_cache",
+    "same_batch_dedup",
+    "inflight_singleflight",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,10 +171,15 @@ class EvaluationRequest:
         return asdict(self)
 
     def physical_identity(self) -> dict[str, Any]:
-        """Return only solver-relevant fields; labels never change cache identity."""
-        identity = self.to_dict()
-        identity.pop("metadata", None)
-        return identity
+        """Return solver and verification semantics without locations or execution policy."""
+        return {
+            "backend": self.backend,
+            "reset_mode": self.reset_mode,
+            "writes": [asdict(item) for item in self.writes],
+            "reads": [asdict(item) for item in self.reads],
+            "constraints": [asdict(item) for item in self.constraints],
+            "balances": [asdict(item) for item in self.balances],
+        }
 
 
 @dataclass(slots=True)
@@ -184,6 +195,7 @@ class EvaluationResult:
     diagnostics: dict[str, Any]
     elapsed_s: float
     balance_residuals: dict[str, dict[str, float]] = field(default_factory=dict)
+    cache_source: CacheSource = "computed"
     cache_hit: bool = False
     request_hash: str = ""
     worker_id: int | None = None
@@ -195,4 +207,6 @@ class EvaluationResult:
     def from_dict(cls, data: dict[str, Any]) -> EvaluationResult:
         normalized = dict(data)
         normalized.setdefault("engine_ok", bool(normalized.get("communication_ok", False)))
+        normalized.setdefault("cache_source", "computed")
+        normalized.setdefault("cache_hit", normalized["cache_source"] != "computed")
         return cls(**normalized)
