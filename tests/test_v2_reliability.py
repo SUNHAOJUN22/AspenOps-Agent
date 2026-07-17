@@ -12,8 +12,10 @@ from aspenops_nexus.backends.base import (
 )
 from aspenops_nexus.backends.mock import MockBackend
 from aspenops_nexus.evaluation import evaluate
-from aspenops_nexus.models import EvaluationRequest
+from aspenops_nexus.models import EvaluationRequest, EvaluationResult
+from aspenops_nexus.pool import CasePool
 from aspenops_nexus.registry import NodeRegistry, ResolvedNode
+from aspenops_nexus.worker import WorkerHandle
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"
@@ -150,3 +152,49 @@ def test_rollback_failure_taints_transaction() -> None:
         backend.bulk_write([(nodes[0], 10.0), (nodes[1], 20.0)])
     assert caught.value.state is TransactionState.TAINTED
     assert caught.value.rollback_errors
+
+
+def test_rollback_comparison_uses_numeric_tolerance_and_exact_discrete_types() -> None:
+    backend = RollbackFailureBackend()
+    assert backend.values_equal(1.0 + 1e-11, 1.0)
+    assert not backend.values_equal(1.1, 1.0)
+    assert backend.values_equal("converged", "converged")
+    assert not backend.values_equal(True, 1)
+
+
+def test_tainted_worker_is_recycled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_evaluate(handle: WorkerHandle, request: EvaluationRequest) -> EvaluationResult:
+        del request
+        return EvaluationResult(
+            ok=False,
+            communication_ok=True,
+            engine_ok=False,
+            converged=False,
+            feasible=False,
+            values={},
+            units={},
+            violations=["write_transaction:tainted"],
+            diagnostics={"worker_tainted": True},
+            elapsed_s=0.0,
+            worker_id=handle.worker_id,
+        )
+
+    monkeypatch.setattr("aspenops_nexus.pool.evaluate_on_worker", fake_evaluate)
+    with CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=tmp_path / "cache.sqlite3",
+    ) as pool:
+        result = pool.evaluate_many([request_with_duplicate_reads()])[0]
+        assert pool._handles[0].generation == 1
+
+    worker = result.diagnostics["worker"]
+    assert worker["worker_recycled"] is True
+    assert worker["recycle_reason"] == "tainted"
+    assert worker["old_generation"] == 0
+    assert worker["new_generation"] == 1
