@@ -16,7 +16,27 @@ class Candidate:
         return self.violation <= 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class DifferentialEvolutionResult:
+    best: Candidate
+    population: tuple[Candidate, ...]
+    evaluations: int
+    generations: int
+
+
+@dataclass(frozen=True, slots=True)
+class ParetoPoint:
+    x: tuple[float, ...]
+    objectives: tuple[float, ...]
+    violation: float = 0.0
+
+    @property
+    def feasible(self) -> bool:
+        return self.violation <= 0.0
+
+
 def better(a: Candidate, b: Candidate) -> Candidate:
+    """Deb feasibility ordering followed by scalar objective minimization."""
     if a.feasible and not b.feasible:
         return a
     if b.feasible and not a.feasible:
@@ -24,6 +44,132 @@ def better(a: Candidate, b: Candidate) -> Candidate:
     if a.feasible and b.feasible:
         return a if a.objective <= b.objective else b
     return a if a.violation <= b.violation else b
+
+
+def dominates(a: ParetoPoint, b: ParetoPoint) -> bool:
+    if a.feasible and not b.feasible:
+        return True
+    if b.feasible and not a.feasible:
+        return False
+    if not a.feasible and not b.feasible:
+        return a.violation < b.violation
+    no_worse = all(left <= right for left, right in zip(a.objectives, b.objectives, strict=True))
+    strictly_better = any(
+        left < right for left, right in zip(a.objectives, b.objectives, strict=True)
+    )
+    return no_worse and strictly_better
+
+
+def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
+    output: list[ParetoPoint] = []
+    for candidate in points:
+        if any(dominates(existing, candidate) for existing in points if existing is not candidate):
+            continue
+        if candidate not in output:
+            output.append(candidate)
+    return tuple(output)
+
+
+def _validate_parameters(
+    bounds: Sequence[tuple[float, float]],
+    population_size: int,
+    generations: int,
+    mutation: float,
+    crossover: float,
+) -> None:
+    if not bounds:
+        raise ValueError("bounds must not be empty")
+    if population_size < 4:
+        raise ValueError("population_size must be at least 4")
+    if generations < 0:
+        raise ValueError("generations cannot be negative")
+    if mutation <= 0:
+        raise ValueError("mutation must be positive")
+    if not 0 <= crossover <= 1:
+        raise ValueError("crossover must be between zero and one")
+    if any(upper <= lower for lower, upper in bounds):
+        raise ValueError("every upper bound must exceed its lower bound")
+
+
+def differential_evolution_batch(
+    evaluate_many: Callable[
+        [Sequence[tuple[float, ...]]], Sequence[tuple[float, float]]
+    ],
+    bounds: Sequence[tuple[float, float]],
+    *,
+    population_size: int = 20,
+    generations: int = 40,
+    mutation: float = 0.8,
+    crossover: float = 0.9,
+    seed: int = 0,
+    max_evaluations: int | None = None,
+    checkpoint: Callable[[int, tuple[Candidate, ...], int], None] | None = None,
+) -> DifferentialEvolutionResult:
+    """Run bounded DE/best/1/bin with one batch evaluation per generation."""
+    _validate_parameters(bounds, population_size, generations, mutation, crossover)
+    budget = max_evaluations or population_size * (generations + 1)
+    if budget < population_size:
+        raise ValueError("max_evaluations must cover the initial population")
+    allowed_generations = min(generations, (budget - population_size) // population_size)
+    rng = random.Random(seed)
+
+    def random_vector() -> tuple[float, ...]:
+        return tuple(rng.uniform(lower, upper) for lower, upper in bounds)
+
+    def score_batch(vectors: Sequence[tuple[float, ...]]) -> list[Candidate]:
+        scores = list(evaluate_many(vectors))
+        if len(scores) != len(vectors):
+            raise ValueError("evaluate_many returned a different number of scores")
+        return [
+            Candidate(vector, float(objective), max(0.0, float(violation)))
+            for vector, (objective, violation) in zip(vectors, scores, strict=True)
+        ]
+
+    vectors = [random_vector() for _ in range(population_size)]
+    population = score_batch(vectors)
+    evaluations = population_size
+    if checkpoint is not None:
+        checkpoint(0, tuple(population), evaluations)
+
+    completed_generations = 0
+    for generation in range(1, allowed_generations + 1):
+        trial_vectors: list[tuple[float, ...]] = []
+        for index, target in enumerate(population):
+            candidates = [item for item in range(population_size) if item != index]
+            a_index, b_index, c_index = rng.sample(candidates, 3)
+            a = population[a_index].x
+            b = population[b_index].x
+            c = population[c_index].x
+            forced = rng.randrange(len(bounds))
+            trial_values: list[float] = []
+            for dimension, (lower, upper) in enumerate(bounds):
+                mutant = a[dimension] + mutation * (b[dimension] - c[dimension])
+                value = (
+                    mutant
+                    if rng.random() < crossover or dimension == forced
+                    else target.x[dimension]
+                )
+                trial_values.append(min(upper, max(lower, value)))
+            trial_vectors.append(tuple(trial_values))
+        trials = score_batch(trial_vectors)
+        evaluations += population_size
+        population = [
+            better(trial, target)
+            for trial, target in zip(trials, population, strict=True)
+        ]
+        completed_generations = generation
+        if checkpoint is not None:
+            checkpoint(generation, tuple(population), evaluations)
+
+    best = population[0]
+    for candidate in population[1:]:
+        best = better(candidate, best)
+    return DifferentialEvolutionResult(
+        best=best,
+        population=tuple(population),
+        evaluations=evaluations,
+        generations=completed_generations,
+    )
 
 
 def differential_evolution(
@@ -36,38 +182,19 @@ def differential_evolution(
     crossover: float = 0.9,
     seed: int = 0,
 ) -> Candidate:
-    if population_size < 4:
-        raise ValueError("population_size must be at least 4")
-    rng = random.Random(seed)
+    """Compatibility wrapper around the batch optimizer."""
 
-    def random_vector() -> tuple[float, ...]:
-        return tuple(rng.uniform(lower, upper) for lower, upper in bounds)
+    def evaluate_many(
+        vectors: Sequence[tuple[float, ...]],
+    ) -> Sequence[tuple[float, float]]:
+        return [evaluate(vector) for vector in vectors]
 
-    def score(x: tuple[float, ...]) -> Candidate:
-        objective, violation = evaluate(x)
-        return Candidate(x, float(objective), max(0.0, float(violation)))
-
-    population = [score(random_vector()) for _ in range(population_size)]
-    for _ in range(generations):
-        next_population: list[Candidate] = []
-        for i, target in enumerate(population):
-            candidates = [j for j in range(population_size) if j != i]
-            a_i, b_i, c_i = rng.sample(candidates, 3)
-            a, b, c = population[a_i].x, population[b_i].x, population[c_i].x
-            forced = rng.randrange(len(bounds))
-            trial_values: list[float] = []
-            for dimension, (lower, upper) in enumerate(bounds):
-                mutant = a[dimension] + mutation * (b[dimension] - c[dimension])
-                value = (
-                    mutant
-                    if rng.random() < crossover or dimension == forced
-                    else target.x[dimension]
-                )
-                trial_values.append(min(upper, max(lower, value)))
-            trial = score(tuple(trial_values))
-            next_population.append(better(trial, target))
-        population = next_population
-    best = population[0]
-    for candidate in population[1:]:
-        best = better(candidate, best)
-    return best
+    return differential_evolution_batch(
+        evaluate_many,
+        bounds,
+        population_size=population_size,
+        generations=generations,
+        mutation=mutation,
+        crossover=crossover,
+        seed=seed,
+    ).best
