@@ -78,11 +78,10 @@ class NodeRegistry:
         role = str(node.get("role", "variable"))
         if role not in {"variable", "convergence"}:
             raise RegistryError(f"Invalid role for {key}: {role}")
-        if role == "convergence":
-            if access not in {"read", "readwrite"}:
-                raise RegistryError(f"Convergence node {key} must be readable")
-            if node.get("identifiers", []):
-                raise RegistryError(f"Convergence node {key} cannot require identifiers")
+        if role == "convergence" and access not in {"read", "readwrite"}:
+            raise RegistryError(f"Convergence node {key} must be readable")
+        if role == "convergence" and node.get("identifiers", []):
+            raise RegistryError(f"Convergence node {key} cannot require identifiers")
         unit = node.get("unit")
         if unit is not None:
             dimension(str(unit))
