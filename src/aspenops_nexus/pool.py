@@ -91,11 +91,52 @@ class CasePool:
             generation=self._generation.get(worker_id, 0),
         )
 
+    def _recycle_reason(self, handle: WorkerHandle) -> str | None:
+        if not handle.process.is_alive():
+            return "crash"
+        if handle.evaluations >= self.worker_max_points:
+            return "point_budget"
+        if time.monotonic() - handle.started_monotonic >= self.worker_max_age_s:
+            return "age"
+        return None
+
     def _requires_recycle(self, handle: WorkerHandle) -> bool:
-        return (
-            not handle.process.is_alive()
-            or handle.evaluations >= self.worker_max_points
-            or time.monotonic() - handle.started_monotonic >= self.worker_max_age_s
+        return self._recycle_reason(handle) is not None
+
+    @staticmethod
+    def _result_recycle_reason(handle: WorkerHandle, result: EvaluationResult) -> str | None:
+        if bool(result.diagnostics.get("worker_tainted")):
+            return "tainted"
+        violations = set(result.violations)
+        if "worker_timeout" in violations:
+            return "timeout"
+        if violations.intersection(
+            {"worker_protocol_error", "worker_send_failed", "worker_receive_failed"}
+        ):
+            return "protocol_error"
+        if not handle.process.is_alive():
+            return "crash"
+        return None
+
+    @staticmethod
+    def _annotate_recycle(
+        result: EvaluationResult,
+        *,
+        reason: str,
+        old_generation: int,
+        new_generation: int,
+    ) -> None:
+        worker_diagnostics = result.diagnostics.get("worker")
+        if not isinstance(worker_diagnostics, dict):
+            worker_diagnostics = {}
+            result.diagnostics["worker"] = worker_diagnostics
+        worker_diagnostics.update(
+            {
+                "worker_recycled": True,
+                "recycle_reason": reason,
+                "old_generation": old_generation,
+                "new_generation": new_generation,
+            }
         )
 
     def _replace(self, index: int) -> WorkerHandle:
@@ -157,11 +198,28 @@ class CasePool:
                 except queue.Empty:
                     return
                 try:
-                    if self._requires_recycle(handle):
+                    recycle_event: tuple[str, int, int] | None = None
+                    pre_reason = self._recycle_reason(handle)
+                    if pre_reason is not None:
+                        old_generation = handle.generation
                         handle = self._replace(handle_index)
+                        recycle_event = (pre_reason, old_generation, handle.generation)
+
                     result = evaluate_on_worker(handle, request)
-                    if not handle.process.is_alive():
+                    post_reason = self._result_recycle_reason(handle, result)
+                    if post_reason is not None:
+                        old_generation = handle.generation
                         handle = self._replace(handle_index)
+                        recycle_event = (post_reason, old_generation, handle.generation)
+                    if recycle_event is not None:
+                        reason, old_generation, new_generation = recycle_event
+                        self._annotate_recycle(
+                            result,
+                            reason=reason,
+                            old_generation=old_generation,
+                            new_generation=new_generation,
+                        )
+
                     result.request_hash = key
                     if self._cacheable(request, result):
                         self.cache.put(key, result.to_dict())
