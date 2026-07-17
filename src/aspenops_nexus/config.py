@@ -48,6 +48,9 @@ class Settings:
     scheduler_poll_s: float = 0.25
     max_resident_cases: int = 2
     pool_idle_timeout_s: float = 1800.0
+    job_lease_s: float = 30.0
+    cancellation_grace_s: float = 2.0
+    job_max_attempts: int = 3
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -82,6 +85,11 @@ class Settings:
             pool_idle_timeout_s=_env_float(
                 "ASPENOPS_POOL_IDLE_TIMEOUT_S", 1800.0, 1.0
             ),
+            job_lease_s=_env_float("ASPENOPS_JOB_LEASE_S", 30.0, 1.0),
+            cancellation_grace_s=_env_float(
+                "ASPENOPS_CANCELLATION_GRACE_S", 2.0, 0.0
+            ),
+            job_max_attempts=_env_int("ASPENOPS_JOB_MAX_ATTEMPTS", 3),
         )
 
     @property
