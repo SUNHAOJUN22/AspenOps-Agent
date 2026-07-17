@@ -1,0 +1,32 @@
+name: Windows control-plane contracts
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-contracts:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev --extra windows --extra agent
+      - name: Static quality
+        run: |
+          uv run ruff check src tests
+          uv run mypy src
+      - name: Process and backend contracts
+        run: |
+          uv run pytest -W error::ResourceWarning `
+            tests/test_windows_job.py `
+            tests/test_aspen_process_ownership.py `
+            tests/test_convergence.py `
+            tests/test_backends_convergence.py `
+            tests/test_worker_dispatch.py `
+            tests/test_worker_recycle.py
