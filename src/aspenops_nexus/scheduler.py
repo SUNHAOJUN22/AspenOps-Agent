@@ -12,6 +12,7 @@ from typing import Any
 from .batch import dry_run_document, run_batch_document
 from .config import Settings
 from .hashing import canonical_hash
+from .pool_manager import PoolManager
 from .provenance import write_run_bundle
 
 
@@ -194,6 +195,16 @@ class BackgroundScheduler:
         self.settings = settings
         self.settings.state_dir.mkdir(parents=True, exist_ok=True)
         self.store = JobStore(self.settings.state_dir / "jobs.sqlite3")
+        self.pool_manager = PoolManager(
+            cache_path=self.settings.state_dir / "cache.sqlite3",
+            license_slots=self.settings.license_slots,
+            max_resident_cases=self.settings.max_resident_cases,
+            idle_timeout_s=self.settings.pool_idle_timeout_s,
+            worker_max_points=self.settings.worker_max_points,
+            worker_max_age_s=self.settings.worker_max_age_s,
+            startup_timeout_s=self.settings.startup_timeout_s,
+            cache_failures=self.settings.cache_failures,
+        )
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.owner = f"scheduler-{uuid.uuid4().hex[:12]}"
@@ -209,6 +220,8 @@ class BackgroundScheduler:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=5)
+        if not self._thread or not self._thread.is_alive():
+            self.pool_manager.close()
 
     def submit(self, request: dict[str, Any]) -> str:
         dry_run_document(request, self.settings)
@@ -219,11 +232,16 @@ class BackgroundScheduler:
         while not self._stop.is_set():
             claimed = self.store.claim_next(self.owner)
             if claimed is None:
+                self.pool_manager.evict_idle()
                 self._stop.wait(self.settings.scheduler_poll_s)
                 continue
             job_id, request = claimed
             try:
-                results = run_batch_document(request, self.settings)
+                results = run_batch_document(
+                    request,
+                    self.settings,
+                    pool_manager=self.pool_manager,
+                )
                 record = self.store.get(job_id)
                 if record and record["cancel_requested"]:
                     self.store.fail(
