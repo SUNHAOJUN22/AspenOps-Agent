@@ -61,6 +61,9 @@ class SimulatorBackend(ABC):
     @abstractmethod
     def runtime_identity(self) -> dict[str, Any]: ...
 
+    def configure_convergence_nodes(self, nodes: list[ResolvedNode]) -> None:
+        del nodes
+
     def capabilities(self) -> dict[str, Any]:
         return {
             "backend": self.name,
