@@ -16,11 +16,7 @@ from .worker import WorkerHandle, evaluate_on_worker, start_worker, stop_worker
 
 
 class CasePool:
-    """Persistent, process-isolated simulator pool.
-
-    Each Worker owns one staged model, one COM STA and one simulator document. Threads only
-    dispatch IPC; COM proxies never cross process or apartment boundaries.
-    """
+    """Persistent, process-isolated simulator pool."""
 
     def __init__(
         self,
@@ -148,11 +144,19 @@ class CasePool:
             self._handles[index] = new
             return new
 
+    def _runtime_cache_identity(self) -> dict[str, Any]:
+        if not self._handles:
+            return {"backend": self.backend_name}
+        identity = dict(self._handles[0].runtime)
+        identity.pop("model_path", None)
+        return identity
+
     def cache_key(self, request: EvaluationRequest) -> str:
         identity = {
             "schema": RUNTIME_SCHEMA,
             "runtime_version": __version__,
             "backend": self.backend_name,
+            "runtime_identity": self._runtime_cache_identity(),
             "model_sha256": self.model_sha256,
             "registry_sha256": self.registry.sha256,
             "request": request.physical_identity(),
@@ -177,6 +181,7 @@ class CasePool:
                 cached = self.cache.get(key)
                 if cached is not None:
                     result = EvaluationResult.from_dict(cached)
+                    result.cache_source = "persistent_cache"
                     result.cache_hit = True
                     result.request_hash = key
                     output[index] = result
@@ -206,6 +211,8 @@ class CasePool:
                         recycle_event = (pre_reason, old_generation, handle.generation)
 
                     result = evaluate_on_worker(handle, request)
+                    result.cache_source = "computed"
+                    result.cache_hit = False
                     post_reason = self._result_recycle_reason(handle, result)
                     if post_reason is not None:
                         old_generation = handle.generation
@@ -226,7 +233,9 @@ class CasePool:
                     with result_lock:
                         for ordinal, index in enumerate(indexes):
                             clone = EvaluationResult.from_dict(result.to_dict())
-                            clone.cache_hit = ordinal > 0
+                            if ordinal > 0:
+                                clone.cache_source = "same_batch_dedup"
+                                clone.cache_hit = True
                             output[index] = clone
                 except BaseException as exc:
                     with result_lock:
