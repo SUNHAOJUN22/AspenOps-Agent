@@ -3,6 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,13 @@ from .cache import ResultCache
 from .hashing import canonical_hash, sha256_file
 from .models import EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry
-from .worker import WorkerHandle, evaluate_on_worker, start_worker, stop_worker
+from .worker import (
+    WorkerHandle,
+    abort_worker,
+    evaluate_on_worker,
+    start_worker,
+    stop_worker,
+)
 
 
 class CasePool:
@@ -72,9 +79,11 @@ class CasePool:
             raise
 
     def close(self) -> None:
-        for handle in self._handles:
+        with self._replace_lock:
+            handles = list(self._handles)
+            self._handles.clear()
+        for handle in handles:
             stop_worker(handle)
-        self._handles.clear()
 
     def _new_handle(self, worker_id: int) -> WorkerHandle:
         return start_worker(
@@ -95,9 +104,6 @@ class CasePool:
         if time.monotonic() - handle.started_monotonic >= self.worker_max_age_s:
             return "age"
         return None
-
-    def _requires_recycle(self, handle: WorkerHandle) -> bool:
-        return self._recycle_reason(handle) is not None
 
     @staticmethod
     def _result_recycle_reason(handle: WorkerHandle, result: EvaluationResult) -> str | None:
@@ -135,14 +141,43 @@ class CasePool:
             }
         )
 
-    def _replace(self, index: int) -> WorkerHandle:
+    def _replace(
+        self,
+        index: int,
+        *,
+        expected: WorkerHandle | None = None,
+        force: bool = False,
+    ) -> WorkerHandle:
         with self._replace_lock:
-            old = self._handles[index]
-            stop_worker(old)
-            self._generation[old.worker_id] = old.generation + 1
-            new = self._new_handle(old.worker_id)
+            current = self._handles[index]
+            if expected is not None and current is not expected:
+                return current
+            if force:
+                abort_worker(current)
+            else:
+                stop_worker(current)
+            self._generation[current.worker_id] = current.generation + 1
+            new = self._new_handle(current.worker_id)
             self._handles[index] = new
             return new
+
+    def force_recycle_all(self, reason: str = "cancel_deadline") -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        for index in range(len(self._handles)):
+            expected = self._handles[index]
+            old_generation = expected.generation
+            replacement = self._replace(index, expected=expected, force=True)
+            if replacement is expected:
+                continue
+            events.append(
+                {
+                    "worker_id": expected.worker_id,
+                    "reason": reason,
+                    "old_generation": old_generation,
+                    "new_generation": replacement.generation,
+                }
+            )
+        return events
 
     def _runtime_cache_identity(self) -> dict[str, Any]:
         if not self._handles:
@@ -168,7 +203,30 @@ class CasePool:
             return False
         return result.ok or self.cache_failures
 
-    def evaluate_many(self, requests: list[EvaluationRequest]) -> list[EvaluationResult]:
+    @staticmethod
+    def _cancelled_result(request_hash: str) -> EvaluationResult:
+        return EvaluationResult(
+            ok=False,
+            communication_ok=False,
+            engine_ok=False,
+            converged=False,
+            feasible=False,
+            values={},
+            units={},
+            violations=["batch_cancelled"],
+            diagnostics={"cancelled_before_execution": True},
+            elapsed_s=0.0,
+            cache_source="computed",
+            cache_hit=False,
+            request_hash=request_hash,
+        )
+
+    def evaluate_many(
+        self,
+        requests: list[EvaluationRequest],
+        *,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> list[EvaluationResult]:
         if not requests:
             return []
         if not self._handles:
@@ -203,11 +261,18 @@ class CasePool:
                 except queue.Empty:
                     return
                 try:
+                    if cancel_check is not None and cancel_check():
+                        cancelled = self._cancelled_result(key)
+                        with result_lock:
+                            for index in indexes:
+                                output[index] = replace(cancelled)
+                        continue
+
                     recycle_event: tuple[str, int, int] | None = None
                     pre_reason = self._recycle_reason(handle)
                     if pre_reason is not None:
                         old_generation = handle.generation
-                        handle = self._replace(handle_index)
+                        handle = self._replace(handle_index, expected=handle)
                         recycle_event = (pre_reason, old_generation, handle.generation)
 
                     result = evaluate_on_worker(handle, request)
@@ -216,7 +281,7 @@ class CasePool:
                     post_reason = self._result_recycle_reason(handle, result)
                     if post_reason is not None:
                         old_generation = handle.generation
-                        handle = self._replace(handle_index)
+                        handle = self._replace(handle_index, expected=handle)
                         recycle_event = (post_reason, old_generation, handle.generation)
                     if recycle_event is not None:
                         reason, old_generation, new_generation = recycle_event
