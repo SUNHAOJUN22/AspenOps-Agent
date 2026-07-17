@@ -1,0 +1,38 @@
+name: Apply process supervision
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/apply-process-supervision.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev --extra agent
+      - name: Apply supervision integration
+        run: uv run python scripts/apply_process_supervision.py
+      - name: Validate supervision integration
+        run: |
+          uv run ruff check .
+          uv run mypy src
+          uv run pytest tests/test_windows_job.py tests/test_aspen_process_ownership.py \
+            tests/test_worker_dispatch.py tests/test_worker_recycle.py
+      - name: Commit supervision integration
+        run: |
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: prove Aspen process ownership before cleanup"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
