@@ -179,7 +179,7 @@ def _cleanup_handle(handle: WorkerHandle) -> None:
 
 
 def abort_worker(handle: WorkerHandle) -> None:
-    """Immediately terminate only this AspenOps-owned worker and clean its staged model."""
+    """Immediately recycle this AspenOps-owned worker and its staged model."""
     _terminate(handle)
     _cleanup_handle(handle)
 
@@ -231,7 +231,15 @@ def evaluate_on_worker(handle: WorkerHandle, request: EvaluationRequest) -> Eval
             "worker_send_failed",
             {"exception": f"{type(exc).__name__}: {exc}", "generation": handle.generation},
         )
-    if not handle.connection.poll(request.timeout_s):
+    try:
+        response_ready = handle.connection.poll(request.timeout_s)
+    except (EOFError, OSError) as exc:
+        return _failure_result(
+            handle,
+            "worker_receive_failed",
+            {"exception": f"{type(exc).__name__}: {exc}", "generation": handle.generation},
+        )
+    if not response_ready:
         _terminate(handle)
         return _failure_result(
             handle,
