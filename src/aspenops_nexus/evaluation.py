@@ -111,25 +111,30 @@ def evaluate(
 
         constraint_details: list[dict[str, Any]] = []
         total_constraint_violation = 0.0
-        for index, compiled in enumerate(active_plan.constraints):
+        for index, compiled_constraint in enumerate(active_plan.constraints):
             actual = float(
                 _converted(
-                    raw_by_identity[compiled.identity], compiled.node, compiled.spec.unit
+                    raw_by_identity[compiled_constraint.identity],
+                    compiled_constraint.node,
+                    compiled_constraint.spec.unit,
                 )
             )
-            violation = _constraint_violation(compiled.spec, actual)
+            violation = _constraint_violation(compiled_constraint.spec, actual)
             passed = violation <= 0.0
-            name = compiled.spec.name or f"constraint_{index}"
+            name = compiled_constraint.spec.name or f"constraint_{index}"
             total_constraint_violation += violation
             constraint_details.append(
                 {
                     "name": name,
                     "actual": actual,
-                    "operator": compiled.spec.operator,
-                    "limit": compiled.spec.value,
-                    "tolerance": compiled.spec.tolerance,
+                    "operator": compiled_constraint.spec.operator,
+                    "limit": compiled_constraint.spec.value,
+                    "tolerance": compiled_constraint.spec.tolerance,
                     "violation": violation,
-                    "unit": compiled.spec.unit or compiled.node.native_unit,
+                    "unit": (
+                        compiled_constraint.spec.unit
+                        or compiled_constraint.node.native_unit
+                    ),
                     "passed": passed,
                 }
             )
@@ -140,36 +145,38 @@ def evaluate(
             diagnostics["constraints"] = constraint_details
             diagnostics["total_constraint_violation"] = total_constraint_violation
 
-        for compiled in active_plan.balances:
+        for compiled_balance in active_plan.balances:
             signed_terms: list[float] = []
             absolute_terms: list[float] = []
-            for term in compiled.terms:
+            for compiled_term in compiled_balance.terms:
                 converted = float(
                     _converted(
-                        raw_by_identity[term.identity], term.node, term.spec.unit
+                        raw_by_identity[compiled_term.identity],
+                        compiled_term.node,
+                        compiled_term.spec.unit,
                     )
                 )
-                signed = term.spec.coefficient * converted
+                signed = compiled_term.spec.coefficient * converted
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
-            residual = math.fsum(signed_terms) - compiled.spec.expected
-            scale = max(math.fsum(absolute_terms), compiled.spec.floor)
+            residual = math.fsum(signed_terms) - compiled_balance.spec.expected
+            scale = max(math.fsum(absolute_terms), compiled_balance.spec.floor)
             relative = abs(residual) / scale
             passed = (
-                abs(residual) <= compiled.spec.abs_tol
-                or relative <= compiled.spec.rel_tol
+                abs(residual) <= compiled_balance.spec.abs_tol
+                or relative <= compiled_balance.spec.rel_tol
             )
-            balance_residuals[compiled.spec.name] = {
+            balance_residuals[compiled_balance.spec.name] = {
                 "residual": residual,
                 "absolute": abs(residual),
                 "scale": scale,
                 "relative": relative,
-                "abs_tol": compiled.spec.abs_tol,
-                "rel_tol": compiled.spec.rel_tol,
+                "abs_tol": compiled_balance.spec.abs_tol,
+                "rel_tol": compiled_balance.spec.rel_tol,
                 "passed": 1.0 if passed else 0.0,
             }
             if not passed:
-                violations.append(f"balance_failed:{compiled.spec.name}")
+                violations.append(f"balance_failed:{compiled_balance.spec.name}")
                 feasible = False
 
         if not engine_ok:
