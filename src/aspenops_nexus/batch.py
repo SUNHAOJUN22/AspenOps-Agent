@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config import Settings
 from .evaluation_plan import EvaluationPlanCompiler
@@ -10,6 +10,9 @@ from .models import EvaluationRequest, VariableWrite
 from .policy import Policy
 from .pool import CasePool
 from .registry import NodeRegistry
+
+if TYPE_CHECKING:
+    from .pool_manager import PoolManager
 
 
 def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
@@ -92,7 +95,36 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
     }
 
 
-def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[str, Any]]:
+def _evaluate_with_new_pool(
+    *,
+    backend_name: str,
+    model_path: Path,
+    registry_path: Path,
+    workers: int,
+    settings: Settings,
+    requests: list[EvaluationRequest],
+) -> list[dict[str, Any]]:
+    with CasePool(
+        backend_name=backend_name,
+        model_path=model_path,
+        registry_path=registry_path,
+        workers=workers,
+        visible=settings.visible,
+        cache_path=settings.state_dir / "cache.sqlite3",
+        worker_max_points=settings.worker_max_points,
+        worker_max_age_s=settings.worker_max_age_s,
+        startup_timeout_s=settings.startup_timeout_s,
+        cache_failures=settings.cache_failures,
+    ) as pool:
+        return [result.to_dict() for result in pool.evaluate_many(requests)]
+
+
+def run_batch_document(
+    data: dict[str, Any],
+    settings: Settings,
+    *,
+    pool_manager: PoolManager | None = None,
+) -> list[dict[str, Any]]:
     dry_run_document(data, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
     model_path = policy.assert_path(data["model_path"])
@@ -101,18 +133,22 @@ def run_batch_document(data: dict[str, Any], settings: Settings) -> list[dict[st
     workers = max(
         1, min(int(data.get("workers", settings.effective_workers)), settings.effective_workers)
     )
-    cache_path = settings.state_dir / "cache.sqlite3"
-    with CasePool(
-        backend_name=str(data.get("backend", settings.backend)),
+    backend_name = str(data.get("backend", settings.backend))
+    if pool_manager is None:
+        return _evaluate_with_new_pool(
+            backend_name=backend_name,
+            model_path=model_path,
+            registry_path=registry_path,
+            workers=workers,
+            settings=settings,
+            requests=requests,
+        )
+    with pool_manager.acquire(
+        backend_name=backend_name,
         model_path=model_path,
         registry_path=registry_path,
         workers=workers,
         visible=settings.visible,
-        cache_path=cache_path,
-        worker_max_points=settings.worker_max_points,
-        worker_max_age_s=settings.worker_max_age_s,
-        startup_timeout_s=settings.startup_timeout_s,
-        cache_failures=settings.cache_failures,
     ) as pool:
         return [result.to_dict() for result in pool.evaluate_many(requests)]
 
