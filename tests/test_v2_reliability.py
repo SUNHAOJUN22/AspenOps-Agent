@@ -68,7 +68,11 @@ class RollbackFailureBackend(SimulatorBackend):
         self.values[node.key] = value
 
     def run(self) -> dict[str, Any]:
-        return {"engine_returned": True, "convergence_state": "converged", "converged": True}
+        return {
+            "engine_returned": True,
+            "convergence_state": "converged",
+            "converged": True,
+        }
 
     def runtime_identity(self) -> dict[str, Any]:
         return {"backend": self.name}
@@ -121,12 +125,27 @@ def test_evaluation_reads_duplicate_node_once() -> None:
     assert result.diagnostics["io"]["com_reads"] == 1
 
 
+def node(key: str) -> ResolvedNode:
+    return ResolvedNode(
+        key=key,
+        access="readwrite",
+        native_unit=None,
+        quantity=None,
+        paths=(key,),
+        identifiers={},
+        lower=None,
+        upper=None,
+        integer=False,
+        backend="mock",
+        locator={},
+        verification="",
+        description="",
+    )
+
+
 def test_rollback_failure_taints_transaction() -> None:
     backend = RollbackFailureBackend()
-    nodes = [
-        ResolvedNode("a", "readwrite", None, None, ("a",), {}, None, None, False, "mock", {}, "", ""),
-        ResolvedNode("b", "readwrite", None, None, ("b",), {}, None, None, False, "mock", {}, "", ""),
-    ]
+    nodes = [node("a"), node("b")]
     with pytest.raises(WriteTransactionError) as caught:
         backend.bulk_write([(nodes[0], 10.0), (nodes[1], 20.0)])
     assert caught.value.state is TransactionState.TAINTED
