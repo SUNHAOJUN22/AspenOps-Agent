@@ -18,7 +18,7 @@ Required workflow:
 2. Inspect the case-specific semantic registry with list_semantic_variables.
 3. Call dry_run_request before any write or solve.
 4. Use run_batch_sync only for small bounded work; submit_batch for DOE/optimization.
-5. Poll job_status and fetch job_result. Preserve the returned evidence bundle.
+5. Poll job_status and fetch job_result. Preserve the returned integrity bundle.
 6. Accept a process result only when ok=true. Communication, engine return, convergence,
    feasibility and balances are separate states.
 
@@ -37,12 +37,14 @@ def build_server(settings: Settings | None = None) -> Any:
     active_settings.state_dir.mkdir(parents=True, exist_ok=True)
     scheduler = BackgroundScheduler(active_settings)
     scheduler.start()
-    mcp = FastMCP("AspenOps 1.0", instructions=INSTRUCTIONS)
+    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS)
 
     @mcp.tool()
     def system_info() -> dict[str, Any]:
         """Return runtime, policy, worker limits and locally registered Aspen COM candidates."""
-        return diagnose(active_settings, probe=False)
+        result = diagnose(active_settings, probe=False)
+        result["pool_manager"] = scheduler.pool_manager.stats()
+        return result
 
     @mcp.tool()
     def list_semantic_variables(registry_path: str) -> dict[str, Any]:
@@ -69,7 +71,12 @@ def build_server(settings: Settings | None = None) -> Any:
         validation = dry_run_document(request, active_settings)
         if validation["evaluations"] > 16:
             raise ValueError("Synchronous MCP runs are limited to 16 points; use submit_batch")
-        return {"validation": validation, "results": run_batch_document(request, active_settings)}
+        results = run_batch_document(
+            request,
+            active_settings,
+            pool_manager=scheduler.pool_manager,
+        )
+        return {"validation": validation, "results": results}
 
     @mcp.tool()
     def submit_batch(request: dict[str, Any]) -> dict[str, str]:
@@ -78,28 +85,31 @@ def build_server(settings: Settings | None = None) -> Any:
 
     @mcp.tool()
     def job_status(job_id: str) -> dict[str, Any]:
-        """Return durable pending/running/completed/failed/cancelled/interrupted state."""
+        """Return durable leased job state and progress metadata."""
         record = scheduler.store.get(job_id)
         return {"found": record is not None, "job": record}
 
     @mcp.tool()
     def job_result(job_id: str) -> dict[str, Any]:
-        """Return completed point results and immutable evidence-bundle path."""
+        """Return completed or cancelled point results and integrity-bundle path."""
         record = scheduler.store.get(job_id)
         if record is None:
             return {"found": False}
-        if record["status"] != "completed":
+        if record["status"] not in {"completed", "cancelled"}:
             return {
                 "found": True,
                 "status": record["status"],
                 "error": record["error"],
+                "error_class": record["error_class"],
                 "cancel_requested": record["cancel_requested"],
+                "last_completed_point": record["last_completed_point"],
             }
         return {
             "found": True,
-            "status": "completed",
+            "status": record["status"],
             "results": record["results"],
             "bundle_path": record["bundle_path"],
+            "last_completed_point": record["last_completed_point"],
         }
 
     @mcp.tool()
@@ -109,12 +119,12 @@ def build_server(settings: Settings | None = None) -> Any:
 
     @mcp.tool()
     def cancel_job(job_id: str) -> dict[str, Any]:
-        """Cancel pending work or mark running work for cancellation after its isolated call."""
-        return {"cancel_requested": scheduler.store.cancel(job_id)}
+        """Cancel pending work or enforce a deadline on an active isolated worker call."""
+        return {"cancel_requested": scheduler.cancel(job_id)}
 
     @mcp.tool()
     def verify_evidence_bundle(bundle_path: str) -> dict[str, Any]:
-        """Verify request/result hashes and structural integrity of a run evidence bundle."""
+        """Verify request/result hashes and structural integrity of a run bundle."""
         path = Policy(active_settings.mode, active_settings.allowed_roots).assert_path(bundle_path)
         return verify_run_bundle(path)
 
