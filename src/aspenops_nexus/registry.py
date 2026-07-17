@@ -32,6 +32,7 @@ class ResolvedNode:
     locator: dict[str, Any]
     verification: str
     description: str
+    role: str = "variable"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -74,6 +75,14 @@ class NodeRegistry:
         access = str(node.get("access", "read"))
         if access not in {"read", "write", "readwrite"}:
             raise RegistryError(f"Invalid access for {key}: {access}")
+        role = str(node.get("role", "variable"))
+        if role not in {"variable", "convergence"}:
+            raise RegistryError(f"Invalid role for {key}: {role}")
+        if role == "convergence":
+            if access not in {"read", "readwrite"}:
+                raise RegistryError(f"Convergence node {key} must be readable")
+            if node.get("identifiers", []):
+                raise RegistryError(f"Convergence node {key} cannot require identifiers")
         unit = node.get("unit")
         if unit is not None:
             dimension(str(unit))
@@ -108,6 +117,7 @@ class NodeRegistry:
                     "upper": node.get("upper"),
                     "integer": bool(node.get("integer", False)),
                     "backend": node.get("backend", "aspen_plus"),
+                    "role": node.get("role", "variable"),
                     "verification": node.get("verification", "project-required"),
                     "description": node.get("description", ""),
                 }
@@ -159,7 +169,20 @@ class NodeRegistry:
             locator=locator,
             verification=str(node.get("verification", "project-required")),
             description=str(node.get("description", "")),
+            role=str(node.get("role", "variable")),
         )
+
+    def convergence_nodes(self, backend: str) -> list[ResolvedNode]:
+        output: list[ResolvedNode] = []
+        for key in self.keys():
+            definition = self._nodes[key]
+            if str(definition.get("role", "variable")) != "convergence":
+                continue
+            node_backend = str(definition.get("backend", "aspen_plus"))
+            if backend != "mock" and node_backend not in {backend, "any"}:
+                continue
+            output.append(self.resolve(key, {}))
+        return output
 
     def validate_backend(self, node: ResolvedNode, backend: str) -> None:
         if backend == "mock":
