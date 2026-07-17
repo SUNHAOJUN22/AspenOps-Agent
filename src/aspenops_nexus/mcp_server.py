@@ -27,7 +27,11 @@ Python/VBA/shell/COM execution, or represent Mock output as licensed Aspen physi
 """.strip()
 
 
-def build_server(settings: Settings | None = None) -> Any:
+def build_server(
+    settings: Settings | None = None,
+    *,
+    start_scheduler: bool = True,
+) -> Any:
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
@@ -36,7 +40,8 @@ def build_server(settings: Settings | None = None) -> Any:
     active_settings = settings or Settings.from_env()
     active_settings.state_dir.mkdir(parents=True, exist_ok=True)
     scheduler = BackgroundScheduler(active_settings)
-    scheduler.start()
+    if start_scheduler:
+        scheduler.start()
     mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS)
 
     @mcp.tool()
