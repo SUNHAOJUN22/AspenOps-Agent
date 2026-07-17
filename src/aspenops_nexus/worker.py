@@ -43,6 +43,7 @@ def _worker_main(
     registry = NodeRegistry(registry_path)
     try:
         backend.open(Path(source_model), visible=visible)
+        backend.configure_convergence_nodes(registry.convergence_nodes(backend_name))
         connection.send(
             {
                 "protocol": 1,
