@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-import time
 import uuid
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -90,25 +90,7 @@ class JobStore:
                 )
                 """
             )
-            now = _now()
-            connection.execute(
-                """
-                UPDATE jobs
-                SET status='cancelled', error='service restarted during cancellation',
-                    finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL
-                WHERE status IN ('claimed','running','cancelling') AND cancel_requested=1
-                """,
-                (now, now),
-            )
-            connection.execute(
-                """
-                UPDATE jobs
-                SET status='retry_wait', error='service restarted while job held a lease',
-                    updated_at=?, lease_owner=NULL, lease_expires_at=NULL
-                WHERE status IN ('claimed','running') AND cancel_requested=0
-                """,
-                (now,),
-            )
+            self._recover_after_restart(connection)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30)
@@ -142,6 +124,27 @@ class JobStore:
                 json.dumps(payload or {}, ensure_ascii=False, allow_nan=False),
                 _now(),
             ),
+        )
+
+    def _recover_after_restart(self, connection: sqlite3.Connection) -> None:
+        now = _now()
+        connection.execute(
+            """
+            UPDATE jobs
+            SET status='cancelled', error='service restarted during cancellation',
+                finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL
+            WHERE status IN ('claimed','running','cancelling') AND cancel_requested=1
+            """,
+            (now, now),
+        )
+        connection.execute(
+            """
+            UPDATE jobs
+            SET status='retry_wait', error='service restarted while job held a lease',
+                updated_at=?, lease_owner=NULL, lease_expires_at=NULL
+            WHERE status IN ('claimed','running') AND cancel_requested=0
+            """,
+            (now,),
         )
 
     def create(self, request: dict[str, Any], max_attempts: int = 3) -> str:
@@ -625,11 +628,10 @@ class BackgroundScheduler:
     def _watch_active_jobs(self) -> None:
         interval = max(0.05, min(self.settings.scheduler_poll_s, self.settings.job_lease_s / 3))
         while not self._stop.wait(interval):
-            for job_id in self._active_snapshot():
-                self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s)
-            due = self.store.cancellation_due()
             active = self._active_snapshot()
-            for job_id in due:
+            for job_id in active:
+                self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s)
+            for job_id in self.store.cancellation_due():
                 pool = active.get(job_id)
                 events = [] if pool is None else pool.force_recycle_all("cancel_deadline")
                 self.store.mark_abort_dispatched(job_id, events)
@@ -678,8 +680,8 @@ class BackgroundScheduler:
                     request,
                     self.settings,
                     pool_manager=self.pool_manager,
-                    cancel_check=lambda: self.store.is_cancel_requested(job_id),
-                    pool_observer=lambda pool: self._observe_pool(job_id, pool),
+                    cancel_check=partial(self.store.is_cancel_requested, job_id),
+                    pool_observer=partial(self._observe_pool, job_id),
                 )
                 last_completed = self._last_completed_point(results)
                 self.store.append_progress(job_id, results, last_completed)
