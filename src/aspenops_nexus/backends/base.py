@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
@@ -35,6 +36,9 @@ class WriteTransactionError(BackendError):
 
 class SimulatorBackend(ABC):
     name: str
+    rollback_abs_tol: float = 1e-10
+    rollback_rel_tol: float = 1e-8
+    rollback_floor: float = 1.0
 
     @abstractmethod
     def open(self, model_path: Path, *, visible: bool = False) -> None: ...
@@ -66,6 +70,21 @@ class SimulatorBackend(ABC):
             "process_isolation_required": self.name != "mock",
         }
 
+    def values_equal(self, observed: Any, expected: Any) -> bool:
+        """Compare backend values while preserving exact semantics for discrete data."""
+        if isinstance(observed, bool | str) or isinstance(expected, bool | str):
+            return type(observed) is type(expected) and observed == expected
+        try:
+            observed_value = float(observed)
+            expected_value = float(expected)
+        except (TypeError, ValueError):
+            return observed == expected
+        if not math.isfinite(observed_value) or not math.isfinite(expected_value):
+            return observed_value == expected_value
+        absolute = abs(observed_value - expected_value)
+        scale = max(abs(observed_value), abs(expected_value), self.rollback_floor)
+        return absolute <= self.rollback_abs_tol or absolute / scale <= self.rollback_rel_tol
+
     def bulk_write(self, items: list[tuple[ResolvedNode, Any]]) -> None:
         """Apply writes with verified best-effort rollback.
 
@@ -93,7 +112,7 @@ class SimulatorBackend(ABC):
                 try:
                     self.write(node, original)
                     observed = self.read(node)
-                    if observed != original:
+                    if not self.values_equal(observed, original):
                         rollback_errors.append(
                             f"{node.key}: rollback verification mismatch "
                             f"{observed!r} != {original!r}"
