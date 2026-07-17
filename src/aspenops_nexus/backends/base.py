@@ -78,7 +78,7 @@ class SimulatorBackend(ABC):
             observed_value = float(observed)
             expected_value = float(expected)
         except (TypeError, ValueError):
-            return observed == expected
+            return bool(observed == expected)
         if not math.isfinite(observed_value) or not math.isfinite(expected_value):
             return observed_value == expected_value
         absolute = abs(observed_value - expected_value)
