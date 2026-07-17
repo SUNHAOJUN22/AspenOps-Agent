@@ -18,7 +18,11 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev --extra agent
       - name: Ruff
-        run: uv run ruff check .
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          uv run ruff check . 2>&1 | tee var/ci/ruff-${{ matrix.python-version }}.log
       - name: Strict mypy
         shell: bash
         run: |
