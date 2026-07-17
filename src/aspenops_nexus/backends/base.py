@@ -95,7 +95,8 @@ class SimulatorBackend(ABC):
                     observed = self.read(node)
                     if observed != original:
                         rollback_errors.append(
-                            f"{node.key}: rollback verification mismatch {observed!r} != {original!r}"
+                            f"{node.key}: rollback verification mismatch "
+                            f"{observed!r} != {original!r}"
                         )
                 except Exception as rollback_exc:
                     rollback_errors.append(
