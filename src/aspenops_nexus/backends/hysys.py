@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 import time
 from contextlib import suppress
@@ -7,18 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from ..compat import discover_hysys_candidates
+from ..convergence import ConvergenceState, classify_convergence, poll_engine_idle
 from ..registry import ResolvedNode
 from .base import BackendError, SimulatorBackend
 
 
 class HysysBackend(SimulatorBackend):
-    """Conservative HYSYS adapter using a project-owned Spreadsheet contract.
-
-    HYSYS exposes a broad and version-sensitive object model. AspenOps deliberately narrows the
-    agent surface to cells in a designated Spreadsheet operation. The case author binds process
-    variables and convergence indicators to those cells; the registry then supplies stable semantic
-    keys. This avoids unrestricted COM traversal while preserving practical read/write coverage.
-    """
+    """Conservative HYSYS adapter using a project-owned Spreadsheet contract."""
 
     name = "hysys"
 
@@ -28,6 +24,7 @@ class HysysBackend(SimulatorBackend):
         self.model_path: Path | None = None
         self.progid: str | None = None
         self.open_errors: list[str] = []
+        self.convergence_nodes: tuple[ResolvedNode, ...] = ()
         self._coinitialized = False
 
     def open(self, model_path: Path, *, visible: bool = False) -> None:
@@ -65,6 +62,9 @@ class HysysBackend(SimulatorBackend):
         raise BackendError(
             "Unable to create HYSYS Automation Server: " + " | ".join(self.open_errors)
         )
+
+    def configure_convergence_nodes(self, nodes: list[ResolvedNode]) -> None:
+        self.convergence_nodes = tuple(nodes)
 
     def close(self) -> None:
         if self.case is not None:
@@ -122,28 +122,80 @@ class HysysBackend(SimulatorBackend):
     def read(self, node: ResolvedNode) -> Any:
         return self._cell(node).CellValue
 
+    @staticmethod
+    def _solver_running(solver: Any) -> bool | None:
+        for attribute in ("IsSolving", "Solving"):
+            try:
+                value = getattr(solver, attribute)
+                if callable(value):
+                    value = value()
+                return bool(value)
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _normalize_convergence_value(value: Any) -> Any:
+        if isinstance(value, bool):
+            return "converged" if value else "not converged"
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+            if numeric == 1.0:
+                return "converged"
+            if numeric == 0.0:
+                return "not converged"
+        return value
+
+    def _status_values(self) -> list[dict[str, Any]]:
+        output: list[dict[str, Any]] = []
+        for node in self.convergence_nodes:
+            try:
+                raw = self.read(node)
+                output.append(
+                    {
+                        "key": node.key,
+                        "source": "registry",
+                        "raw_value": raw,
+                        "value": self._normalize_convergence_value(raw),
+                    }
+                )
+            except Exception as exc:
+                output.append(
+                    {
+                        "key": node.key,
+                        "source": "registry",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+        return output
+
     def run(self) -> dict[str, Any]:
         if self.case is None:
             raise BackendError("No HYSYS case is open")
         started = time.perf_counter()
         solver = self.case.Solver
         solver.CanSolve = True
-        idle: bool | None = None
-        for attribute in ("IsSolving", "Solving"):
-            try:
-                idle = not bool(getattr(solver, attribute))
-                break
-            except Exception:
-                continue
-        # HYSYS has no universally reliable case-level convergence Boolean exposed across releases.
-        # A project should bind a convergence/status indicator into the Spreadsheet and
-        # declare it as a constraint. The backend reports solver state honestly; evaluation
-        # handles project checks.
+        idle = poll_engine_idle(
+            lambda: self._solver_running(solver),
+            timeout_s=float(os.getenv("ASPENOPS_HYSYS_STATUS_TIMEOUT_S", "1200")),
+            poll_interval_s=float(os.getenv("ASPENOPS_HYSYS_STATUS_POLL_S", "0.25")),
+            stable_samples=int(os.getenv("ASPENOPS_HYSYS_STATUS_STABLE_SAMPLES", "3")),
+        )
+        status_values = self._status_values()
+        evidence = classify_convergence(
+            engine_returned=True,
+            idle=idle,
+            status_nodes=status_values,
+            messages=[],
+            source="hysys",
+        )
         return {
             "engine_returned": True,
-            "engine_idle": idle,
-            "converged": idle is not False,
-            "convergence_evidence": "solver-state; project spreadsheet constraint recommended",
+            "engine_idle": evidence.engine_idle,
+            "converged": evidence.state is ConvergenceState.CONVERGED,
+            "convergence_state": evidence.state.value,
+            "convergence_evidence": evidence.to_dict(),
+            "status_nodes": status_values,
             "backend": self.name,
             "progid": self.progid,
             "solve_elapsed_s": time.perf_counter() - started,
@@ -166,5 +218,6 @@ class HysysBackend(SimulatorBackend):
             "exposed": exposed,
             "model_path": None if self.model_path is None else str(self.model_path),
             "contract": "project-owned HYSYS Spreadsheet bridge",
+            "convergence_contract_nodes": [node.key for node in self.convergence_nodes],
             "capabilities": self.capabilities(),
         }
