@@ -46,6 +46,8 @@ class Settings:
     state_dir: Path = Path("var")
     cache_failures: bool = False
     scheduler_poll_s: float = 0.25
+    max_resident_cases: int = 2
+    pool_idle_timeout_s: float = 1800.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -76,6 +78,10 @@ class Settings:
             state_dir=Path(os.getenv("ASPENOPS_STATE_DIR", "var")).expanduser().resolve(),
             cache_failures=_env_bool("ASPENOPS_CACHE_FAILURES", False),
             scheduler_poll_s=_env_float("ASPENOPS_SCHEDULER_POLL_S", 0.25, 0.01),
+            max_resident_cases=_env_int("ASPENOPS_MAX_RESIDENT_CASES", 2),
+            pool_idle_timeout_s=_env_float(
+                "ASPENOPS_POOL_IDLE_TIMEOUT_S", 1800.0, 1.0
+            ),
         )
 
     @property
