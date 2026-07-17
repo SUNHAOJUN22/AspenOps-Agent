@@ -1,7 +1,19 @@
 {
   "name": "hysys-spreadsheet-bridge-example",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "nodes": {
+    "solver.status.converged": {
+      "backend": "hysys",
+      "access": "read",
+      "role": "convergence",
+      "identifiers": [],
+      "paths": [],
+      "locator": {
+        "spreadsheet": "ASPENOPS_IO",
+        "cell": "C1"
+      },
+      "description": "Project-owned Boolean, 0/1, or textual convergence indicator."
+    },
     "stream.input.temperature": {
       "backend": "hysys",
       "access": "readwrite",
