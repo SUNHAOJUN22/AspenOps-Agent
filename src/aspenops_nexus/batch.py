@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -95,6 +96,25 @@ def dry_run_document(data: dict[str, Any], settings: Settings) -> dict[str, Any]
     }
 
 
+def _run_on_pool(
+    pool: CasePool,
+    requests: list[EvaluationRequest],
+    *,
+    cancel_check: Callable[[], bool] | None,
+    pool_observer: Callable[[CasePool | None], None] | None,
+) -> list[dict[str, Any]]:
+    if pool_observer is not None:
+        pool_observer(pool)
+    try:
+        return [
+            result.to_dict()
+            for result in pool.evaluate_many(requests, cancel_check=cancel_check)
+        ]
+    finally:
+        if pool_observer is not None:
+            pool_observer(None)
+
+
 def _evaluate_with_new_pool(
     *,
     backend_name: str,
@@ -103,6 +123,8 @@ def _evaluate_with_new_pool(
     workers: int,
     settings: Settings,
     requests: list[EvaluationRequest],
+    cancel_check: Callable[[], bool] | None,
+    pool_observer: Callable[[CasePool | None], None] | None,
 ) -> list[dict[str, Any]]:
     with CasePool(
         backend_name=backend_name,
@@ -116,7 +138,12 @@ def _evaluate_with_new_pool(
         startup_timeout_s=settings.startup_timeout_s,
         cache_failures=settings.cache_failures,
     ) as pool:
-        return [result.to_dict() for result in pool.evaluate_many(requests)]
+        return _run_on_pool(
+            pool,
+            requests,
+            cancel_check=cancel_check,
+            pool_observer=pool_observer,
+        )
 
 
 def run_batch_document(
@@ -124,6 +151,8 @@ def run_batch_document(
     settings: Settings,
     *,
     pool_manager: PoolManager | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+    pool_observer: Callable[[CasePool | None], None] | None = None,
 ) -> list[dict[str, Any]]:
     dry_run_document(data, settings)
     policy = Policy(settings.mode, settings.allowed_roots)
@@ -142,6 +171,8 @@ def run_batch_document(
             workers=workers,
             settings=settings,
             requests=requests,
+            cancel_check=cancel_check,
+            pool_observer=pool_observer,
         )
     with pool_manager.acquire(
         backend_name=backend_name,
@@ -150,7 +181,12 @@ def run_batch_document(
         workers=workers,
         visible=settings.visible,
     ) as pool:
-        return [result.to_dict() for result in pool.evaluate_many(requests)]
+        return _run_on_pool(
+            pool,
+            requests,
+            cancel_check=cancel_check,
+            pool_observer=pool_observer,
+        )
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
