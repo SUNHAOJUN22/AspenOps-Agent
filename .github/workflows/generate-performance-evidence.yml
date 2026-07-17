@@ -1,0 +1,65 @@
+name: Generate performance evidence
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/generate-performance-evidence.yml
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Let consolidation settle
+        run: sleep 180
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev --extra agent
+      - name: Prepare baseline worktree
+        run: |
+          git fetch origin main
+          git worktree add /tmp/aspenops-main origin/main
+      - name: Run baseline matrix
+        env:
+          PYTHONPATH: /tmp/aspenops-main/src
+        run: |
+          .venv/bin/python scripts/run_benchmark_matrix.py \
+            --repo-root /tmp/aspenops-main \
+            --output var/benchmarks/baseline.json
+      - name: Run candidate matrix
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          .venv/bin/python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/benchmarks/after.json
+      - name: Generate comparison documents
+        run: |
+          .venv/bin/python scripts/compare_benchmarks.py \
+            --baseline var/benchmarks/baseline.json \
+            --after var/benchmarks/after.json \
+            --baseline-doc docs/performance-baseline.md \
+            --after-doc docs/performance-after.md
+      - name: Validate benchmark tools
+        run: |
+          uv run ruff check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py
+          uv run mypy scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . --output var/benchmarks/smoke.json --smoke
+      - name: Commit benchmark evidence
+        run: |
+          rm .github/workflows/generate-performance-evidence.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "perf: publish portable benchmark evidence"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
