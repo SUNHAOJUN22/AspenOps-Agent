@@ -4,10 +4,11 @@ import json
 import time
 from pathlib import Path
 
+from test_batch import request
+
 from aspenops_nexus.config import Settings
 from aspenops_nexus.pool_manager import PoolManager
 from aspenops_nexus.scheduler import BackgroundScheduler
-from test_batch import request
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"
