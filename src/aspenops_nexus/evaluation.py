@@ -5,18 +5,10 @@ import time
 from typing import Any
 
 from .backends.base import SimulatorBackend, TransactionState, WriteTransactionError
+from .evaluation_plan import EvaluationPlan, EvaluationPlanCompiler, node_identity
 from .models import ConstraintSpec, EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry, ResolvedNode
 from .units import convert
-
-
-def _value_key(key: str, identifiers: dict[str, str]) -> str:
-    suffix = ",".join(f"{k}={v}" for k, v in sorted(identifiers.items()))
-    return key if not suffix else f"{key}:{suffix}"
-
-
-def _node_identity(node: ResolvedNode) -> str:
-    return _value_key(node.key, node.identifiers)
 
 
 def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
@@ -54,6 +46,7 @@ def evaluate(
     request: EvaluationRequest,
     *,
     worker_id: int | None = None,
+    plan: EvaluationPlan | None = None,
 ) -> EvaluationResult:
     started = time.perf_counter()
     violations: list[str] = []
@@ -66,43 +59,26 @@ def evaluate(
     values: dict[str, Any] = {}
     units: dict[str, str | None] = {}
     try:
-        write_items: list[tuple[ResolvedNode, Any]] = []
-        for write in request.writes:
-            node = registry.resolve(write.key, write.identifiers)
-            registry.validate_backend(node, request.backend)
-            validated = registry.validate_write(node, write.value, write.unit)
-            write_items.append((node, validated))
-
-        read_pairs: list[tuple[Any, ResolvedNode]] = []
-        unique_nodes: dict[str, ResolvedNode] = {}
-        for read in request.reads:
-            node = registry.resolve(read.key, read.identifiers)
-            registry.validate_backend(node, request.backend)
-            read_pairs.append((read, node))
-            unique_nodes.setdefault(_node_identity(node), node)
-        resolved_constraints: list[tuple[ConstraintSpec, ResolvedNode]] = []
-        for constraint in request.constraints:
-            node = registry.resolve(constraint.key, constraint.identifiers)
-            registry.validate_backend(node, request.backend)
-            resolved_constraints.append((constraint, node))
-            unique_nodes.setdefault(_node_identity(node), node)
-        resolved_balances: list[tuple[Any, list[tuple[Any, ResolvedNode]]]] = []
-        for balance in request.balances:
-            terms: list[tuple[Any, ResolvedNode]] = []
-            for term in balance.terms:
-                node = registry.resolve(term.key, term.identifiers)
-                registry.validate_backend(node, request.backend)
-                terms.append((term, node))
-                unique_nodes.setdefault(_node_identity(node), node)
-            resolved_balances.append((balance, terms))
-        diagnostics["state_trace"].append("validated")
+        active_plan = plan or EvaluationPlanCompiler.compile(registry, request)
+        diagnostics["state_trace"].append("plan_compiled")
+        diagnostics["io"] = {
+            "declared_writes": active_plan.estimated_io.declared_writes,
+            "unique_write_nodes": active_plan.estimated_io.unique_write_nodes,
+            "declared_reads": active_plan.estimated_io.declared_reads,
+            "unique_read_nodes": active_plan.estimated_io.unique_read_nodes,
+            "avoided_duplicate_reads": active_plan.estimated_io.avoided_duplicate_reads,
+            "com_reads": active_plan.estimated_io.unique_read_nodes,
+            "com_writes": active_plan.estimated_io.declared_writes,
+        }
 
         if request.reinitialize:
             backend.reinitialize()
             diagnostics["state_trace"].append("reinitialized")
         else:
             diagnostics["state_trace"].append("warm_start")
-        backend.bulk_write(write_items)
+        backend.bulk_write(
+            [(compiled.node, compiled.native_value) for compiled in active_plan.writes]
+        )
         diagnostics["state_trace"].append("writes_committed")
 
         run_info = backend.run()
@@ -114,54 +90,46 @@ def evaluate(
         diagnostics["runtime"] = backend.runtime_identity()
         diagnostics["state_trace"].append("engine_returned")
 
-        ordered_nodes = list(unique_nodes.values())
         raw_by_identity = dict(
             zip(
-                (_node_identity(node) for node in ordered_nodes),
-                backend.bulk_read(ordered_nodes),
+                (node_identity(node) for node in active_plan.unique_reads),
+                backend.bulk_read(list(active_plan.unique_reads)),
                 strict=True,
             )
         )
-        declared_read_count = len(read_pairs) + len(resolved_constraints) + sum(
-            len(terms) for _, terms in resolved_balances
-        )
-        diagnostics["io"] = {
-            "unique_write_nodes": len(write_items),
-            "unique_read_nodes": len(ordered_nodes),
-            "avoided_duplicate_reads": max(0, declared_read_count - len(ordered_nodes)),
-            "com_reads": len(ordered_nodes),
-            "com_writes": len(write_items),
-        }
 
-        for read, node in read_pairs:
-            output_key = _value_key(read.key, read.identifiers)
-            converted = _converted(raw_by_identity[_node_identity(node)], node, read.unit)
-            values[output_key] = converted
-            units[output_key] = read.unit or node.native_unit
-            if read.required and not _finite(converted):
-                violations.append(f"non_finite_required_output:{output_key}")
+        for binding in active_plan.output_bindings:
+            converted = _converted(
+                raw_by_identity[binding.identity], binding.node, binding.spec.unit
+            )
+            values[binding.output_key] = converted
+            units[binding.output_key] = binding.spec.unit or binding.node.native_unit
+            if binding.spec.required and not _finite(converted):
+                violations.append(f"non_finite_required_output:{binding.output_key}")
                 feasible = False
         diagnostics["state_trace"].append("outputs_read")
 
         constraint_details: list[dict[str, Any]] = []
         total_constraint_violation = 0.0
-        for index, (constraint, node) in enumerate(resolved_constraints):
+        for index, compiled in enumerate(active_plan.constraints):
             actual = float(
-                _converted(raw_by_identity[_node_identity(node)], node, constraint.unit)
+                _converted(
+                    raw_by_identity[compiled.identity], compiled.node, compiled.spec.unit
+                )
             )
-            violation = _constraint_violation(constraint, actual)
+            violation = _constraint_violation(compiled.spec, actual)
             passed = violation <= 0.0
-            name = constraint.name or f"constraint_{index}"
+            name = compiled.spec.name or f"constraint_{index}"
             total_constraint_violation += violation
             constraint_details.append(
                 {
                     "name": name,
                     "actual": actual,
-                    "operator": constraint.operator,
-                    "limit": constraint.value,
-                    "tolerance": constraint.tolerance,
+                    "operator": compiled.spec.operator,
+                    "limit": compiled.spec.value,
+                    "tolerance": compiled.spec.tolerance,
                     "violation": violation,
-                    "unit": constraint.unit or node.native_unit,
+                    "unit": compiled.spec.unit or compiled.node.native_unit,
                     "passed": passed,
                 }
             )
@@ -172,31 +140,36 @@ def evaluate(
             diagnostics["constraints"] = constraint_details
             diagnostics["total_constraint_violation"] = total_constraint_violation
 
-        for balance, terms in resolved_balances:
+        for compiled in active_plan.balances:
             signed_terms: list[float] = []
             absolute_terms: list[float] = []
-            for term, node in terms:
+            for term in compiled.terms:
                 converted = float(
-                    _converted(raw_by_identity[_node_identity(node)], node, term.unit)
+                    _converted(
+                        raw_by_identity[term.identity], term.node, term.spec.unit
+                    )
                 )
-                signed = term.coefficient * converted
+                signed = term.spec.coefficient * converted
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
-            residual = math.fsum(signed_terms) - balance.expected
-            scale = max(math.fsum(absolute_terms), balance.floor)
+            residual = math.fsum(signed_terms) - compiled.spec.expected
+            scale = max(math.fsum(absolute_terms), compiled.spec.floor)
             relative = abs(residual) / scale
-            passed = abs(residual) <= balance.abs_tol or relative <= balance.rel_tol
-            balance_residuals[balance.name] = {
+            passed = (
+                abs(residual) <= compiled.spec.abs_tol
+                or relative <= compiled.spec.rel_tol
+            )
+            balance_residuals[compiled.spec.name] = {
                 "residual": residual,
                 "absolute": abs(residual),
                 "scale": scale,
                 "relative": relative,
-                "abs_tol": balance.abs_tol,
-                "rel_tol": balance.rel_tol,
+                "abs_tol": compiled.spec.abs_tol,
+                "rel_tol": compiled.spec.rel_tol,
                 "passed": 1.0 if passed else 0.0,
             }
             if not passed:
-                violations.append(f"balance_failed:{balance.name}")
+                violations.append(f"balance_failed:{compiled.spec.name}")
                 feasible = False
 
         if not engine_ok:
