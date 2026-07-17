@@ -87,40 +87,46 @@ class EvaluationPlanCompiler:
 
         compiled_writes: list[CompiledWrite] = []
         write_identities: set[str] = set()
-        for spec in request.writes:
-            node = registry.resolve(spec.key, spec.identifiers)
-            registry.validate_backend(node, request.backend)
-            native_value = registry.validate_write(node, spec.value, spec.unit)
-            compiled_writes.append(CompiledWrite(spec, node, native_value))
-            write_identities.add(node_identity(node))
+        for write_spec in request.writes:
+            write_node = registry.resolve(write_spec.key, write_spec.identifiers)
+            registry.validate_backend(write_node, request.backend)
+            native_value = registry.validate_write(
+                write_node, write_spec.value, write_spec.unit
+            )
+            compiled_writes.append(CompiledWrite(write_spec, write_node, native_value))
+            write_identities.add(node_identity(write_node))
 
         unique_reads: dict[str, ResolvedNode] = {}
         output_bindings: list[OutputBinding] = []
-        for spec in request.reads:
-            node = registry.resolve(spec.key, spec.identifiers)
-            registry.validate_backend(node, request.backend)
-            identity = node_identity(node)
-            unique_reads.setdefault(identity, node)
-            output_bindings.append(OutputBinding(spec, node, identity, identity))
+        for read_spec in request.reads:
+            read_node = registry.resolve(read_spec.key, read_spec.identifiers)
+            registry.validate_backend(read_node, request.backend)
+            identity = node_identity(read_node)
+            unique_reads.setdefault(identity, read_node)
+            output_bindings.append(OutputBinding(read_spec, read_node, identity, identity))
 
         constraints: list[CompiledConstraint] = []
-        for spec in request.constraints:
-            node = registry.resolve(spec.key, spec.identifiers)
-            registry.validate_backend(node, request.backend)
-            identity = node_identity(node)
-            unique_reads.setdefault(identity, node)
-            constraints.append(CompiledConstraint(spec, node, identity))
+        for constraint_spec in request.constraints:
+            constraint_node = registry.resolve(
+                constraint_spec.key, constraint_spec.identifiers
+            )
+            registry.validate_backend(constraint_node, request.backend)
+            identity = node_identity(constraint_node)
+            unique_reads.setdefault(identity, constraint_node)
+            constraints.append(
+                CompiledConstraint(constraint_spec, constraint_node, identity)
+            )
 
         balances: list[CompiledBalance] = []
-        for spec in request.balances:
+        for balance_spec in request.balances:
             terms: list[CompiledBalanceTerm] = []
-            for term_spec in spec.terms:
-                node = registry.resolve(term_spec.key, term_spec.identifiers)
-                registry.validate_backend(node, request.backend)
-                identity = node_identity(node)
-                unique_reads.setdefault(identity, node)
-                terms.append(CompiledBalanceTerm(term_spec, node, identity))
-            balances.append(CompiledBalance(spec, tuple(terms)))
+            for term_spec in balance_spec.terms:
+                term_node = registry.resolve(term_spec.key, term_spec.identifiers)
+                registry.validate_backend(term_node, request.backend)
+                identity = node_identity(term_node)
+                unique_reads.setdefault(identity, term_node)
+                terms.append(CompiledBalanceTerm(term_spec, term_node, identity))
+            balances.append(CompiledBalance(balance_spec, tuple(terms)))
 
         declared_reads = (
             len(output_bindings)
