@@ -31,6 +31,20 @@ def wait_for_status(
     return record
 
 
+def wait_for_active_pool(
+    scheduler: BackgroundScheduler,
+    job_id: str,
+    *,
+    timeout_s: float = 10.0,
+) -> bool:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if job_id in scheduler._active_snapshot():
+            return True
+        time.sleep(0.02)
+    return False
+
+
 def test_background_scheduler(tmp_path: Path) -> None:
     scheduler = BackgroundScheduler(Settings(state_dir=tmp_path, max_workers=1, license_slots=1))
     job_id = scheduler.submit(request())
@@ -62,6 +76,8 @@ def test_running_job_is_cancelled_after_deadline(tmp_path: Path) -> None:
     job_id = scheduler.submit(batch)
     running = wait_for_status(scheduler, job_id, {"running", "completed", "failed"})
     assert running is not None and running["status"] == "running"
+    assert wait_for_active_pool(scheduler, job_id)
+    time.sleep(0.1)
     assert scheduler.cancel(job_id)
     record = wait_for_status(scheduler, job_id, {"cancelled", "failed", "dead_letter"})
     events = scheduler.store.events(job_id)
