@@ -4,15 +4,16 @@ import json
 import math
 import os
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from .batch import run_batch_document
 from .config import Settings
 from .optimizer import (
     Candidate,
+    DifferentialEvolutionResult,
     ParetoPoint,
     differential_evolution_batch,
     pareto_front,
@@ -23,13 +24,81 @@ if TYPE_CHECKING:
 
 VariableKind = Literal["continuous", "integer", "categorical", "ordinal"]
 ObjectiveDirection = Literal["minimize", "maximize"]
+VariableValue: TypeAlias = str | int | float | bool
+ObjectMap: TypeAlias = dict[str, object]
 
 
 class OptimizationCancelled(RuntimeError):
     pass
 
 
-def _output_key(key: str, identifiers: dict[str, str]) -> str:
+def _object_map(value: object, *, label: str) -> ObjectMap:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object")
+    raw = cast(dict[object, object], value)
+    return {str(key): item for key, item in raw.items()}
+
+
+def _optional_object_map(value: object) -> ObjectMap:
+    if not isinstance(value, dict):
+        return {}
+    raw = cast(dict[object, object], value)
+    return {str(key): item for key, item in raw.items()}
+
+
+def _object_sequence(value: object, *, label: str) -> list[object]:
+    if not isinstance(value, list | tuple):
+        raise ValueError(f"{label} must be an array")
+    return list(cast(Sequence[object], value))
+
+
+def _required(data: Mapping[str, object], key: str) -> object:
+    if key not in data:
+        raise ValueError(f"Missing required optimization field: {key}")
+    return data[key]
+
+
+def _text(value: object, *, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    return value
+
+
+def _number(value: object, *, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be numeric")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be finite")
+    return number
+
+
+def _integer(value: object, *, label: str) -> int:
+    number = _number(value, label=label)
+    integer = int(number)
+    if number != integer:
+        raise ValueError(f"{label} must be an integer")
+    return integer
+
+
+def _choice(value: object) -> VariableValue:
+    if isinstance(value, bool | str | int | float):
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("Optimization choices must be finite")
+        return value
+    raise ValueError(
+        f"Optimization choices must be scalar JSON values, got {type(value).__name__}"
+    )
+
+
+def _finite_output(value: object) -> float | None:
+    if isinstance(value, bool | int | float):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    return None
+
+
+def _output_key(key: str, identifiers: Mapping[str, str]) -> str:
     suffix = ",".join(f"{name}={value}" for name, value in sorted(identifiers.items()))
     return key if not suffix else f"{key}:{suffix}"
 
@@ -43,27 +112,46 @@ class VariableSpec:
     unit: str | None = None
     lower: float | None = None
     upper: float | None = None
-    choices: tuple[str | int | float | bool, ...] = ()
+    choices: tuple[VariableValue, ...] = ()
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> VariableSpec:
-        kind = str(data.get("kind", "continuous"))
-        if kind not in {"continuous", "integer", "categorical", "ordinal"}:
-            raise ValueError(f"Unsupported optimization variable kind: {kind}")
-        choices = tuple(data.get("choices", []))
-        lower = None if data.get("lower") is None else float(data["lower"])
-        upper = None if data.get("upper") is None else float(data["upper"])
+    def from_mapping(cls, data: Mapping[str, object]) -> VariableSpec:
+        key = _text(_required(data, "key"), label="variable key")
+        kind_value = data.get("kind", "continuous")
+        kind_text = _text(kind_value, label="variable kind")
+        if kind_text not in {"continuous", "integer", "categorical", "ordinal"}:
+            raise ValueError(f"Unsupported optimization variable kind: {kind_text}")
+        kind = cast(VariableKind, kind_text)
+
+        identifiers_raw = _optional_object_map(data.get("identifiers", {}))
+        identifiers = {name: str(value) for name, value in identifiers_raw.items()}
+        unit_value = data.get("unit")
+        unit = None if unit_value is None else _text(unit_value, label="variable unit")
+        name_value = data.get("name", key)
+        name = _text(name_value, label="variable name")
+
+        lower_value = data.get("lower")
+        upper_value = data.get("upper")
+        lower = None if lower_value is None else _number(lower_value, label="lower bound")
+        upper = None if upper_value is None else _number(upper_value, label="upper bound")
+        choices_value = data.get("choices", [])
+        choices = tuple(
+            _choice(item)
+            for item in _object_sequence(choices_value, label="variable choices")
+        )
+
         if kind in {"categorical", "ordinal"}:
             if len(choices) < 2:
                 raise ValueError(f"{kind} variable requires at least two choices")
         elif lower is None or upper is None or upper <= lower:
             raise ValueError(f"{kind} variable requires lower < upper")
+
         return cls(
-            name=str(data.get("name", data["key"])),
-            key=str(data["key"]),
-            identifiers={str(key): str(value) for key, value in data.get("identifiers", {}).items()},
-            kind=cast(VariableKind, kind),
-            unit=None if data.get("unit") is None else str(data["unit"]),
+            name=name,
+            key=key,
+            identifiers=identifiers,
+            kind=kind,
+            unit=unit,
             lower=lower,
             upper=upper,
             choices=choices,
@@ -76,17 +164,16 @@ class VariableSpec:
             raise ValueError(f"Variable {self.name} has no numeric bounds")
         return self.lower, self.upper
 
-    def decode(self, encoded: float) -> str | int | float | bool:
+    def decode(self, encoded: float) -> VariableValue:
         lower, upper = self.bound()
         bounded = min(upper, max(lower, encoded))
         if self.kind == "continuous":
             return float(bounded)
         if self.kind == "integer":
             return int(round(bounded))
-        index = int(round(bounded))
-        return self.choices[index]
+        return self.choices[int(round(bounded))]
 
-    def write(self, encoded: float) -> dict[str, Any]:
+    def write(self, encoded: float) -> dict[str, object]:
         return {
             "key": self.key,
             "identifiers": self.identifiers,
@@ -102,21 +189,27 @@ class ObjectiveSpec:
     weight: float = 1.0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ObjectiveSpec:
-        direction = str(data.get("direction", "minimize"))
-        if direction not in {"minimize", "maximize"}:
-            raise ValueError(f"Unsupported objective direction: {direction}")
-        if "output_key" in data:
-            output_key = str(data["output_key"])
+    def from_mapping(cls, data: Mapping[str, object]) -> ObjectiveSpec:
+        direction_value = data.get("direction", "minimize")
+        direction_text = _text(direction_value, label="objective direction")
+        if direction_text not in {"minimize", "maximize"}:
+            raise ValueError(f"Unsupported objective direction: {direction_text}")
+        direction = cast(ObjectiveDirection, direction_text)
+
+        output_value = data.get("output_key")
+        if output_value is not None:
+            output_key = _text(output_value, label="objective output_key")
         else:
-            output_key = _output_key(
-                str(data["key"]),
-                {str(key): str(value) for key, value in data.get("identifiers", {}).items()},
-            )
-        weight = float(data.get("weight", 1.0))
-        if not math.isfinite(weight) or weight <= 0:
-            raise ValueError("Objective weight must be finite and positive")
-        return cls(output_key, cast(ObjectiveDirection, direction), weight)
+            key = _text(_required(data, "key"), label="objective key")
+            identifiers_raw = _optional_object_map(data.get("identifiers", {}))
+            identifiers = {name: str(value) for name, value in identifiers_raw.items()}
+            output_key = _output_key(key, identifiers)
+
+        weight_value = data.get("weight", 1.0)
+        weight = _number(weight_value, label="objective weight")
+        if weight <= 0:
+            raise ValueError("Objective weight must be positive")
+        return cls(output_key=output_key, direction=direction, weight=weight)
 
     def minimized_value(self, value: float) -> float:
         return value if self.direction == "minimize" else -value
@@ -132,62 +225,98 @@ class OptimizationBudget:
     seed: int = 0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> OptimizationBudget:
-        population_size = int(data.get("population_size", 20))
-        generations = int(data.get("generations", 40))
+    def from_mapping(cls, data: Mapping[str, object]) -> OptimizationBudget:
+        population_size = _integer(
+            data.get("population_size", 20), label="population_size"
+        )
+        generations = _integer(data.get("generations", 40), label="generations")
         default_evaluations = population_size * (generations + 1)
-        max_evaluations = int(data.get("max_evaluations", default_evaluations))
+        max_evaluations = _integer(
+            data.get("max_evaluations", default_evaluations),
+            label="max_evaluations",
+        )
+        mutation = _number(data.get("mutation", 0.8), label="mutation")
+        crossover = _number(data.get("crossover", 0.9), label="crossover")
+        seed = _integer(data.get("seed", 0), label="seed")
         if population_size < 4:
             raise ValueError("population_size must be at least four")
         if generations < 0 or max_evaluations < population_size:
             raise ValueError("Optimization budget is inconsistent")
+        if mutation <= 0 or not 0 <= crossover <= 1:
+            raise ValueError("Invalid mutation or crossover setting")
         return cls(
             population_size=population_size,
             generations=generations,
             max_evaluations=max_evaluations,
-            mutation=float(data.get("mutation", 0.8)),
-            crossover=float(data.get("crossover", 0.9)),
-            seed=int(data.get("seed", 0)),
+            mutation=mutation,
+            crossover=crossover,
+            seed=seed,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class OptimizationProblem:
-    base_request: dict[str, Any]
+    base_request: ObjectMap
     variables: tuple[VariableSpec, ...]
     objectives: tuple[ObjectiveSpec, ...]
     budget: OptimizationBudget
     checkpoint_path: Path | None = None
 
     @classmethod
-    def from_document(cls, document: dict[str, Any]) -> OptimizationProblem:
-        raw = document.get("optimization")
-        if not isinstance(raw, dict):
-            raise ValueError("Optimization document requires an 'optimization' object")
-        variables = tuple(VariableSpec.from_dict(item) for item in raw.get("variables", []))
+    def from_document(cls, document: Mapping[str, object]) -> OptimizationProblem:
+        optimization = _object_map(
+            _required(document, "optimization"), label="optimization"
+        )
+        variable_items = _object_sequence(
+            optimization.get("variables", []), label="optimization variables"
+        )
+        variables = tuple(
+            VariableSpec.from_mapping(_object_map(item, label="optimization variable"))
+            for item in variable_items
+        )
         if not variables:
             raise ValueError("Optimization requires at least one variable")
-        objective_items = raw.get("objectives")
-        if objective_items is None and raw.get("objective") is not None:
-            objective_items = [raw["objective"]]
-        objectives = tuple(ObjectiveSpec.from_dict(item) for item in objective_items or [])
+
+        objectives_value = optimization.get("objectives")
+        if objectives_value is None and optimization.get("objective") is not None:
+            objectives_value = [optimization["objective"]]
+        objective_items = _object_sequence(
+            objectives_value if objectives_value is not None else [],
+            label="optimization objectives",
+        )
+        objectives = tuple(
+            ObjectiveSpec.from_mapping(_object_map(item, label="optimization objective"))
+            for item in objective_items
+        )
         if not objectives:
             raise ValueError("Optimization requires at least one objective")
-        base_request = {key: value for key, value in document.items() if key != "optimization"}
-        base_request.pop("points", None)
-        checkpoint = raw.get("checkpoint_path")
+
+        base_request = {
+            key: value
+            for key, value in document.items()
+            if key not in {"optimization", "points"}
+        }
+        budget = OptimizationBudget.from_mapping(
+            _optional_object_map(optimization.get("budget", {}))
+        )
+        checkpoint_value = optimization.get("checkpoint_path")
+        checkpoint_path = (
+            None
+            if checkpoint_value is None
+            else Path(_text(checkpoint_value, label="checkpoint_path")).expanduser()
+        )
         return cls(
             base_request=base_request,
             variables=variables,
             objectives=objectives,
-            budget=OptimizationBudget.from_dict(dict(raw.get("budget", {}))),
-            checkpoint_path=None if checkpoint is None else Path(str(checkpoint)).expanduser(),
+            budget=budget,
+            checkpoint_path=checkpoint_path,
         )
 
     def bounds(self) -> tuple[tuple[float, float], ...]:
         return tuple(variable.bound() for variable in self.variables)
 
-    def decode(self, vector: Sequence[float]) -> dict[str, str | int | float | bool]:
+    def decode(self, vector: Sequence[float]) -> dict[str, VariableValue]:
         return {
             variable.name: variable.decode(value)
             for variable, value in zip(self.variables, vector, strict=True)
@@ -197,7 +326,7 @@ class OptimizationProblem:
 @dataclass(frozen=True, slots=True)
 class OptimizationTracePoint:
     x: tuple[float, ...]
-    decoded: dict[str, str | int | float | bool]
+    decoded: dict[str, VariableValue]
     objectives: tuple[float, ...]
     minimized_objectives: tuple[float, ...]
     scalar_objective: float
@@ -219,21 +348,30 @@ class _Evaluator:
         self.pool_manager = pool_manager
         self.cancel_check = cancel_check
         self.trace: list[OptimizationTracePoint] = []
-        self.raw_results: list[dict[str, Any]] = []
 
     @staticmethod
-    def _violation(result: dict[str, Any]) -> float:
+    def _violation(result: Mapping[str, object]) -> float:
         if bool(result.get("ok")):
             return 0.0
-        diagnostics = result.get("diagnostics", {})
-        total = float(diagnostics.get("total_constraint_violation", 0.0) or 0.0)
-        balances = result.get("balance_residuals", {})
-        total += sum(
-            max(0.0, float(item.get("relative", 0.0)))
-            for item in balances.values()
-            if not bool(item.get("passed"))
-        )
-        violations = set(result.get("violations", []))
+        diagnostics = _optional_object_map(result.get("diagnostics", {}))
+        total_value = _finite_output(diagnostics.get("total_constraint_violation"))
+        total = 0.0 if total_value is None else total_value
+
+        balances_value = result.get("balance_residuals", {})
+        if isinstance(balances_value, dict):
+            balances = cast(dict[object, object], balances_value)
+            for balance_value in balances.values():
+                balance = _optional_object_map(balance_value)
+                if not bool(balance.get("passed")):
+                    relative = _finite_output(balance.get("relative"))
+                    if relative is not None:
+                        total += max(0.0, relative)
+
+        violations_value = result.get("violations", [])
+        if isinstance(violations_value, list | tuple | set):
+            violations = {str(item) for item in cast(Sequence[object], violations_value)}
+        else:
+            violations = set()
         if any(name.startswith("constraint_failed:") for name in violations):
             total += 1.0
         if any(name.startswith("balance_failed:") for name in violations):
@@ -244,75 +382,70 @@ class _Evaluator:
             total += 100_000.0
         return max(total, 1e-12)
 
-    def __call__(
+    def evaluate_many(
         self,
         vectors: Sequence[tuple[float, ...]],
     ) -> Sequence[tuple[float, float]]:
         if self.cancel_check is not None and self.cancel_check():
             raise OptimizationCancelled("Optimization cancellation requested")
-        points = [
-            {
-                "metadata": {"optimization_index": index},
-                "writes": [
-                    variable.write(value)
-                    for variable, value in zip(
-                        self.problem.variables,
-                        vector,
-                        strict=True,
-                    )
-                ],
-            }
-            for index, vector in enumerate(vectors)
-        ]
-        request = dict(self.problem.base_request)
+        points: list[dict[str, object]] = []
+        for index, vector in enumerate(vectors):
+            writes = [
+                variable.write(value)
+                for variable, value in zip(self.problem.variables, vector, strict=True)
+            ]
+            points.append(
+                {
+                    "metadata": {"optimization_index": index},
+                    "writes": writes,
+                }
+            )
+
+        request: ObjectMap = dict(self.problem.base_request)
         request["points"] = points
         results = run_batch_document(
-            request,
+            cast(dict[str, Any], request),
             self.settings,
             pool_manager=self.pool_manager,
             cancel_check=self.cancel_check,
         )
         scores: list[tuple[float, float]] = []
-        for vector, result in zip(vectors, results, strict=True):
-            values = result.get("values", {})
+        for vector, raw_result in zip(vectors, results, strict=True):
+            result = cast(Mapping[str, object], raw_result)
+            values = _optional_object_map(result.get("values", {}))
             objective_values: list[float] = []
-            minimized: list[float] = []
+            minimized_values: list[float] = []
             missing = False
             for objective in self.problem.objectives:
-                raw = values.get(objective.output_key)
-                if raw is None:
+                value = _finite_output(values.get(objective.output_key))
+                if value is None:
                     missing = True
                     value = 1e12
-                else:
-                    value = float(raw)
-                    if not math.isfinite(value):
-                        missing = True
-                        value = 1e12
                 objective_values.append(value)
-                minimized.append(objective.minimized_value(value))
+                minimized_values.append(objective.minimized_value(value))
             scalar = sum(
                 objective.weight * value
                 for objective, value in zip(
                     self.problem.objectives,
-                    minimized,
+                    minimized_values,
                     strict=True,
                 )
             )
             violation = self._violation(result)
             if missing:
                 violation += 1_000_000.0
-            trace = OptimizationTracePoint(
-                x=tuple(vector),
-                decoded=self.problem.decode(vector),
-                objectives=tuple(objective_values),
-                minimized_objectives=tuple(minimized),
-                scalar_objective=scalar,
-                violation=violation,
-                ok=bool(result.get("ok")) and not missing,
-                request_hash=str(result.get("request_hash", "")),
+            self.trace.append(
+                OptimizationTracePoint(
+                    x=tuple(vector),
+                    decoded=self.problem.decode(vector),
+                    objectives=tuple(objective_values),
+                    minimized_objectives=tuple(minimized_values),
+                    scalar_objective=scalar,
+                    violation=violation,
+                    ok=bool(result.get("ok")) and not missing,
+                    request_hash=str(result.get("request_hash", "")),
+                )
             )
-            self.trace.append(trace)
-            self.raw_results.append(result)
             scores.append((scalar, violation))
         return scores
 
@@ -323,23 +456,36 @@ def _write_checkpoint(
     population: tuple[Candidate, ...],
     evaluations: int,
 ) -> None:
-    path = path.expanduser().resolve()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    resolved = path.expanduser().resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": "aspenops.optimization-checkpoint/v1",
         "generation": generation,
         "evaluations": evaluations,
         "population": [asdict(candidate) for candidate in population],
     }
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temporary = resolved.with_name(f".{resolved.name}.{uuid.uuid4().hex}.tmp")
     try:
         temporary.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False),
             encoding="utf-8",
         )
-        os.replace(temporary, path)
+        os.replace(temporary, resolved)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _checkpoint_callback(
+    path: Path,
+) -> Callable[[int, tuple[Candidate, ...], int], None]:
+    def callback(
+        generation: int,
+        population: tuple[Candidate, ...],
+        evaluations: int,
+    ) -> None:
+        _write_checkpoint(path, generation, population, evaluations)
+
+    return callback
 
 
 def run_optimization_document(
@@ -349,22 +495,21 @@ def run_optimization_document(
     pool_manager: PoolManager | None = None,
     cancel_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
-    problem = OptimizationProblem.from_document(document)
+    normalized_document: ObjectMap = {
+        str(key): value for key, value in document.items()
+    }
+    problem = OptimizationProblem.from_document(normalized_document)
     evaluator = _Evaluator(problem, settings, pool_manager, cancel_check)
+    checkpoint = (
+        None
+        if problem.checkpoint_path is None
+        else _checkpoint_callback(problem.checkpoint_path)
+    )
 
-    checkpoint: Callable[[int, tuple[Candidate, ...], int], None] | None = None
-    if problem.checkpoint_path is not None:
-        checkpoint = partial_checkpoint = lambda generation, population, evaluations: _write_checkpoint(
-            problem.checkpoint_path,
-            generation,
-            population,
-            evaluations,
-        )
-        del partial_checkpoint
-
+    run: DifferentialEvolutionResult | None
     try:
         run = differential_evolution_batch(
-            evaluator,
+            evaluator.evaluate_many,
             problem.bounds(),
             population_size=problem.budget.population_size,
             generations=problem.budget.generations,
@@ -376,8 +521,8 @@ def run_optimization_document(
         )
         status = "completed"
     except OptimizationCancelled:
-        status = "cancelled"
         run = None
+        status = "cancelled"
 
     pareto_points = pareto_front(
         [
@@ -395,15 +540,19 @@ def run_optimization_document(
         }
         for point in pareto_points
     ]
-    best = None
+
+    best: dict[str, object] | None = None
     if run is not None:
+        matching = [point for point in evaluator.trace if point.x == run.best.x]
+        if not matching:
+            raise RuntimeError("Optimization best candidate has no trace record")
         best_trace = min(
-            (
-                point
-                for point in evaluator.trace
-                if point.x == run.best.x
+            matching,
+            key=lambda point: (
+                point.violation > 0,
+                point.violation,
+                point.scalar_objective,
             ),
-            key=lambda point: (point.violation > 0, point.violation, point.scalar_objective),
         )
         best = {
             "x": list(run.best.x),
@@ -413,10 +562,17 @@ def run_optimization_document(
             "violation": run.best.violation,
             "feasible": run.best.feasible,
         }
+
+    backend = problem.base_request.get("backend", settings.backend)
+    qualification = (
+        "control-plane-only"
+        if backend == "mock"
+        else "licensed-runtime-pending-engineering-review"
+    )
     return {
         "schema": "aspenops.optimization-result/v1",
         "status": status,
-        "backend": problem.base_request.get("backend", settings.backend),
+        "backend": backend,
         "evaluations": len(evaluator.trace),
         "generations": 0 if run is None else run.generations,
         "best": best,
@@ -424,10 +580,6 @@ def run_optimization_document(
         "variables": [asdict(variable) for variable in problem.variables],
         "objectives": [asdict(objective) for objective in problem.objectives],
         "budget": asdict(problem.budget),
-        "qualification": (
-            "control-plane-only"
-            if problem.base_request.get("backend", settings.backend) == "mock"
-            else "licensed-runtime-pending-engineering-review"
-        ),
+        "qualification": qualification,
         "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
     }
