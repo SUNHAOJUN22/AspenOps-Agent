@@ -172,6 +172,18 @@ def _terminate(handle: WorkerHandle) -> None:
         handle.process.join(timeout=5)
 
 
+def _cleanup_handle(handle: WorkerHandle) -> None:
+    with suppress(OSError):
+        handle.connection.close()
+    shutil.rmtree(handle.staged_model.parent, ignore_errors=True)
+
+
+def abort_worker(handle: WorkerHandle) -> None:
+    """Immediately terminate only this AspenOps-owned worker and clean its staged model."""
+    _terminate(handle)
+    _cleanup_handle(handle)
+
+
 def stop_worker(handle: WorkerHandle, timeout_s: float = 10.0) -> None:
     request_id = uuid.uuid4().hex
     try:
@@ -185,8 +197,7 @@ def stop_worker(handle: WorkerHandle, timeout_s: float = 10.0) -> None:
         pass
     finally:
         _terminate(handle)
-        handle.connection.close()
-        shutil.rmtree(handle.staged_model.parent, ignore_errors=True)
+        _cleanup_handle(handle)
 
 
 def _failure_result(
