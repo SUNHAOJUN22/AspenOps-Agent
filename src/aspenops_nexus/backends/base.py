@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from contextlib import suppress
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,26 @@ from ..registry import ResolvedNode
 
 class BackendError(RuntimeError):
     pass
+
+
+class TransactionState(StrEnum):
+    PREPARED = "prepared"
+    APPLYING = "applying"
+    VERIFIED = "verified"
+    ROLLED_BACK = "rolled_back"
+    ROLLBACK_FAILED = "rollback_failed"
+    TAINTED = "tainted"
+
+
+@dataclass(slots=True)
+class WriteTransactionError(BackendError):
+    state: TransactionState
+    cause: BaseException
+    rollback_errors: tuple[str, ...] = ()
+
+    def __str__(self) -> str:
+        suffix = "" if not self.rollback_errors else f"; rollback_errors={self.rollback_errors!r}"
+        return f"write transaction {self.state}: {type(self.cause).__name__}: {self.cause}{suffix}"
 
 
 class SimulatorBackend(ABC):
@@ -39,25 +60,51 @@ class SimulatorBackend(ABC):
     def capabilities(self) -> dict[str, Any]:
         return {
             "backend": self.name,
-            "bulk_read": True,
-            "bulk_write": True,
-            "rollback": True,
+            "bulk_read": "simulated",
+            "bulk_write": "simulated",
+            "rollback": "verified_best_effort",
             "process_isolation_required": self.name != "mock",
         }
 
     def bulk_write(self, items: list[tuple[ResolvedNode, Any]]) -> None:
+        """Apply writes with verified best-effort rollback.
+
+        Every original is captured before any mutation. If a write or its backend-specific
+        read-after-write verification fails, all nodes that may have been touched are restored and
+        verified. A failed verification taints the worker and must trigger recycling upstream.
+        """
+        if not items:
+            return
         originals: list[tuple[ResolvedNode, Any]] = []
-        completed = 0
+        try:
+            for node, _ in items:
+                originals.append((node, self.read(node)))
+        except Exception as exc:
+            raise WriteTransactionError(TransactionState.PREPARED, exc) from exc
+
+        touched = 0
         try:
             for node, value in items:
-                originals.append((node, self.read(node)))
+                touched += 1
                 self.write(node, value)
-                completed += 1
-        except Exception:
-            for node, original in reversed(originals[:completed]):
-                with suppress(Exception):
+        except Exception as exc:
+            rollback_errors: list[str] = []
+            for node, original in reversed(originals[:touched]):
+                try:
                     self.write(node, original)
-            raise
+                    observed = self.read(node)
+                    if observed != original:
+                        rollback_errors.append(
+                            f"{node.key}: rollback verification mismatch {observed!r} != {original!r}"
+                        )
+                except Exception as rollback_exc:
+                    rollback_errors.append(
+                        f"{node.key}: {type(rollback_exc).__name__}: {rollback_exc}"
+                    )
+            state = (
+                TransactionState.TAINTED if rollback_errors else TransactionState.ROLLED_BACK
+            )
+            raise WriteTransactionError(state, exc, tuple(rollback_errors)) from exc
 
     def bulk_read(self, nodes: list[ResolvedNode]) -> list[Any]:
         return [self.read(node) for node in nodes]
