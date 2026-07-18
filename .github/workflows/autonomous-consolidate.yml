@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: aspenops-v2-autonomous-consolidation
@@ -26,18 +27,26 @@ jobs:
         with:
           python-version: "3.12"
       - name: Sync dependencies
-        run: uv sync --extra dev --extra agent
-      - name: Apply deterministic consolidation
-        run: uv run python scripts/autonomous_consolidate.py
-      - name: Normalize source and tests
-        shell: bash
-        run: |
-          uv run ruff check --fix .
-          uv run ruff format .
-      - name: Static quality
         shell: bash
         run: |
           mkdir -p var/ci
+          set -o pipefail
+          uv sync --extra dev --extra agent 2>&1 | tee var/ci/sync.log
+      - name: Apply deterministic consolidation
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python scripts/autonomous_consolidate.py \
+            2>&1 | tee var/ci/consolidate.log
+      - name: Normalize source and tests
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run ruff check --fix . 2>&1 | tee var/ci/ruff-fix.log
+          uv run ruff format . 2>&1 | tee var/ci/format-write.log
+      - name: Static quality
+        shell: bash
+        run: |
           set -o pipefail
           uv run ruff format --check . 2>&1 | tee var/ci/format.log
           uv run ruff check . 2>&1 | tee var/ci/ruff.log
@@ -57,21 +66,26 @@ jobs:
       - name: Build and smoke
         shell: bash
         run: |
-          uv build
-          uv run aspenops --version
-          uv run aspenops demo
-          uv run python scripts/check_mcp.py
+          set -o pipefail
+          uv build 2>&1 | tee var/ci/build.log
+          uv run aspenops --version 2>&1 | tee var/ci/version.log
+          uv run aspenops demo 2>&1 | tee var/ci/demo.log
+          uv run python scripts/check_mcp.py 2>&1 | tee var/ci/mcp.log
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . \
             --output var/ci/benchmark-smoke.json \
-            --smoke
+            --smoke 2>&1 | tee var/ci/benchmark.log
       - name: Wheel install smoke
         shell: bash
         run: |
+          set -o pipefail
           python -m venv /tmp/aspenops-wheel
-          /tmp/aspenops-wheel/bin/pip install dist/*.whl
-          /tmp/aspenops-wheel/bin/aspenops --version
-          /tmp/aspenops-wheel/bin/aspenops demo
+          /tmp/aspenops-wheel/bin/pip install dist/*.whl \
+            2>&1 | tee var/ci/wheel-install.log
+          /tmp/aspenops-wheel/bin/aspenops --version \
+            2>&1 | tee var/ci/wheel-version.log
+          /tmp/aspenops-wheel/bin/aspenops demo \
+            2>&1 | tee var/ci/wheel-demo.log
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,6 +93,27 @@ jobs:
           name: autonomous-consolidation-evidence
           path: var/ci
           if-no-files-found: ignore
+      - name: Publish failure diagnostics
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Autonomous consolidation failure"
+            echo
+            echo "Commit: $GITHUB_SHA"
+            echo
+            for file in var/ci/*.log; do
+              [ -e "$file" ] || continue
+              echo "### $(basename "$file")"
+              echo '```text'
+              tail -n 120 "$file"
+              echo '```'
+              echo
+            done
+          } > var/ci/pr-failure.md
+          gh pr comment 18 --body-file var/ci/pr-failure.md
       - name: Commit consolidated implementation
         shell: bash
         run: |
