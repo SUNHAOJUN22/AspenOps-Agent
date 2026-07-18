@@ -26,35 +26,40 @@ Never invent Aspen tree paths, bypass allowed roots, overwrite the source model,
 Python/VBA/shell/COM execution, or represent Mock output as licensed Aspen physical validation.
 """.strip()
 
+TOOL_NAMES = (
+    "system_info",
+    "list_semantic_variables",
+    "dry_run_request",
+    "run_batch_sync",
+    "submit_batch",
+    "submit_optimization",
+    "optimization_status",
+    "optimization_result",
+    "cancel_optimization",
+    "job_status",
+    "job_result",
+    "list_recent_jobs",
+    "cancel_job",
+    "verify_evidence_bundle",
+)
 
-def build_server(
-    settings: Settings | None = None,
-    *,
-    start_scheduler: bool = True,
-) -> Any:
-    try:
-        from mcp.server.fastmcp import FastMCP
-    except ImportError as exc:
-        raise RuntimeError("Install the 'agent' extra: uv sync --extra agent") from exc
 
-    active_settings = settings or Settings.from_env()
-    active_settings.state_dir.mkdir(parents=True, exist_ok=True)
-    scheduler = BackgroundScheduler(active_settings)
-    if start_scheduler:
-        scheduler.start()
-    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS)
+class AspenOpsTools:
+    """Transport-independent MCP tool facade over one durable Scheduler."""
 
-    @mcp.tool()
-    def system_info() -> dict[str, Any]:
+    def __init__(self, settings: Settings, scheduler: BackgroundScheduler) -> None:
+        self.settings = settings
+        self.scheduler = scheduler
+
+    def system_info(self) -> dict[str, Any]:
         """Return runtime, policy, worker limits and locally registered Aspen COM candidates."""
-        result = diagnose(active_settings, probe=False)
-        result["pool_manager"] = scheduler.pool_manager.stats()
+        result = diagnose(self.settings, probe=False)
+        result["pool_manager"] = self.scheduler.pool_manager.stats()
         return result
 
-    @mcp.tool()
-    def list_semantic_variables(registry_path: str) -> dict[str, Any]:
+    def list_semantic_variables(self, registry_path: str) -> dict[str, Any]:
         """List allowlisted variables, units, identifiers and verification status."""
-        policy = Policy(active_settings.mode, active_settings.allowed_roots)
+        policy = Policy(self.settings.mode, self.settings.allowed_roots)
         path = policy.assert_path(registry_path)
         registry = NodeRegistry(path)
         return {
@@ -65,52 +70,44 @@ def build_server(
             "variables": registry.describe(),
         }
 
-    @mcp.tool()
-    def dry_run_request(request: dict[str, Any]) -> dict[str, Any]:
+    def dry_run_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Validate paths, policy, semantic keys, identifiers, units, bounds and worker caps."""
-        return dry_run_document(request, active_settings)
+        return dry_run_document(request, self.settings)
 
-    @mcp.tool()
-    def run_batch_sync(request: dict[str, Any]) -> dict[str, Any]:
+    def run_batch_sync(self, request: dict[str, Any]) -> dict[str, Any]:
         """Run a small batch synchronously; prefer submit_batch for long simulator work."""
-        validation = dry_run_document(request, active_settings)
+        validation = dry_run_document(request, self.settings)
         if validation["evaluations"] > 16:
             raise ValueError("Synchronous MCP runs are limited to 16 points; use submit_batch")
         results = run_batch_document(
             request,
-            active_settings,
-            pool_manager=scheduler.pool_manager,
+            self.settings,
+            pool_manager=self.scheduler.pool_manager,
         )
         return {"validation": validation, "results": results}
 
-    @mcp.tool()
-    def submit_batch(request: dict[str, Any]) -> dict[str, str]:
+    def submit_batch(self, request: dict[str, Any]) -> dict[str, str]:
         """Validate and submit a durable background batch; returns a stable job ID."""
-        return {"job_id": scheduler.submit(request)}
+        return {"job_id": self.scheduler.submit(request)}
 
-    @mcp.tool()
-    def submit_optimization(request: dict[str, Any]) -> dict[str, str]:
+    def submit_optimization(self, request: dict[str, Any]) -> dict[str, str]:
         """Submit a durable budgeted optimization job."""
         if "optimization" not in request:
             raise ValueError("Optimization request requires an optimization object")
-        return {"job_id": scheduler.submit(request)}
+        return {"job_id": self.scheduler.submit(request)}
 
-    @mcp.tool()
-    def optimization_status(job_id: str) -> dict[str, Any]:
+    def optimization_status(self, job_id: str) -> dict[str, Any]:
         """Return durable optimization lease, progress and cancellation state."""
-        record = scheduler.store.get(job_id)
+        record = self.scheduler.store.get(job_id)
         return {"found": record is not None, "job": record}
 
-    @mcp.tool()
-    def optimization_result(job_id: str) -> dict[str, Any]:
+    def optimization_result(self, job_id: str) -> dict[str, Any]:
         """Return the completed or cancelled optimization result."""
-        record = scheduler.store.get(job_id)
+        record = self.scheduler.store.get(job_id)
         if record is None:
             return {"found": False}
         results = record.get("results")
-        result = None
-        if isinstance(results, list) and results:
-            result = results[0]
+        result = results[0] if isinstance(results, list) and results else None
         return {
             "found": True,
             "status": record["status"],
@@ -119,21 +116,18 @@ def build_server(
             "error": record["error"],
         }
 
-    @mcp.tool()
-    def cancel_optimization(job_id: str) -> dict[str, Any]:
+    def cancel_optimization(self, job_id: str) -> dict[str, Any]:
         """Cancel a pending optimization or enforce its active worker deadline."""
-        return {"cancel_requested": scheduler.cancel(job_id)}
+        return {"cancel_requested": self.scheduler.cancel(job_id)}
 
-    @mcp.tool()
-    def job_status(job_id: str) -> dict[str, Any]:
+    def job_status(self, job_id: str) -> dict[str, Any]:
         """Return durable leased job state and progress metadata."""
-        record = scheduler.store.get(job_id)
+        record = self.scheduler.store.get(job_id)
         return {"found": record is not None, "job": record}
 
-    @mcp.tool()
-    def job_result(job_id: str) -> dict[str, Any]:
+    def job_result(self, job_id: str) -> dict[str, Any]:
         """Return completed or cancelled point results and integrity-bundle path."""
-        record = scheduler.store.get(job_id)
+        record = self.scheduler.store.get(job_id)
         if record is None:
             return {"found": False}
         if record["status"] not in {"completed", "cancelled"}:
@@ -153,22 +147,39 @@ def build_server(
             "last_completed_point": record["last_completed_point"],
         }
 
-    @mcp.tool()
-    def list_recent_jobs(limit: int = 20) -> dict[str, Any]:
+    def list_recent_jobs(self, limit: int = 20) -> dict[str, Any]:
         """List recent durable jobs without exposing request bodies or proprietary model data."""
-        return {"jobs": scheduler.store.list_recent(limit)}
+        return {"jobs": self.scheduler.store.list_recent(limit)}
 
-    @mcp.tool()
-    def cancel_job(job_id: str) -> dict[str, Any]:
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
         """Cancel pending work or enforce a deadline on an active isolated worker call."""
-        return {"cancel_requested": scheduler.cancel(job_id)}
+        return {"cancel_requested": self.scheduler.cancel(job_id)}
 
-    @mcp.tool()
-    def verify_evidence_bundle(bundle_path: str) -> dict[str, Any]:
+    def verify_evidence_bundle(self, bundle_path: str) -> dict[str, Any]:
         """Verify request/result hashes and structural integrity of a run bundle."""
-        path = Policy(active_settings.mode, active_settings.allowed_roots).assert_path(bundle_path)
+        path = Policy(self.settings.mode, self.settings.allowed_roots).assert_path(bundle_path)
         return verify_run_bundle(path)
 
+
+def build_server(
+    settings: Settings | None = None,
+    *,
+    start_scheduler: bool = True,
+) -> Any:
+    try:
+        from mcp.server.fastmcp import FastMCP
+    except ImportError as exc:
+        raise RuntimeError("Install the 'agent' extra: uv sync --extra agent") from exc
+
+    active_settings = settings or Settings.from_env()
+    active_settings.state_dir.mkdir(parents=True, exist_ok=True)
+    scheduler = BackgroundScheduler(active_settings)
+    if start_scheduler:
+        scheduler.start()
+    tools = AspenOpsTools(active_settings, scheduler)
+    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS)
+    for name in TOOL_NAMES:
+        mcp.tool()(getattr(tools, name))
     return mcp
 
 
