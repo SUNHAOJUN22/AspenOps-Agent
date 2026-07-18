@@ -98,3 +98,4 @@ jobs:
           name: pr-consolidation-evidence
           path: var/ci
           if-no-files-found: error
+          include-hidden-files: true
