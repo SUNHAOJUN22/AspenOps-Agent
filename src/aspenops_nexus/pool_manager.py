@@ -82,8 +82,7 @@ class PoolManager:
         expired = [
             lookup_key
             for lookup_key, record in self._records.items()
-            if record.leases == 0
-            and now - record.last_used_monotonic >= self.idle_timeout_s
+            if record.leases == 0 and now - record.last_used_monotonic >= self.idle_timeout_s
         ]
         for lookup_key in expired:
             self._close_record(lookup_key)

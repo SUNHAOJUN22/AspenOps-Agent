@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aspenops-nexus"
-version = "1.0.0"
+version = "2.0.0"
 description = "A deterministic, process-isolated and license-aware Aspen execution fabric for AI coding agents."
 readme = "README.md"
 requires-python = ">=3.11"

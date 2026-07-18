@@ -13,6 +13,12 @@ import psutil
 from ..compat import discover_aspen_plus_candidates
 from ..convergence import ConvergenceState, classify_convergence, poll_engine_idle
 from ..registry import ResolvedNode
+from ..windows_job import (
+    ProcessFingerprint,
+    fingerprint_matches,
+    is_descendant,
+    process_fingerprint,
+)
 from .base import BackendError, SimulatorBackend
 
 _DEFAULT_STATUS_PATHS = (
@@ -22,13 +28,17 @@ _DEFAULT_STATUS_PATHS = (
 )
 
 
-def _aspen_pids() -> set[int]:
-    result: set[int] = set()
+def _aspen_processes() -> dict[int, ProcessFingerprint]:
+    result: dict[int, ProcessFingerprint] = {}
     for process in psutil.process_iter(["pid", "name"]):
         try:
             name = str(process.info.get("name") or "").lower()
-            if name in {"aspenplus.exe", "apwn.exe"} or "aspenplus" in name:
-                result.add(int(process.info["pid"]))
+            if name not in {"aspenplus.exe", "apwn.exe"} and "aspenplus" not in name:
+                continue
+            pid = int(process.info["pid"])
+            fingerprint = process_fingerprint(pid)
+            if fingerprint is not None:
+                result[pid] = fingerprint
         except (psutil.Error, KeyError, TypeError, ValueError):
             continue
     return result
@@ -58,10 +68,15 @@ class AspenPlusBackend(SimulatorBackend):
         self.progid: str | None = None
         self.model_path: Path | None = None
         self.path_cache: dict[str, str] = {}
-        self.owned_pids: set[int] = set()
+        self.owned_processes: dict[int, ProcessFingerprint] = {}
+        self.job_managed = False
+        self.worker_pid = os.getpid()
         self.open_errors: list[str] = []
         self.convergence_nodes: tuple[ResolvedNode, ...] = ()
         self._coinitialized = False
+
+    def set_process_supervision(self, job_managed: bool) -> None:
+        self.job_managed = job_managed
 
     def open(self, model_path: Path, *, visible: bool = False) -> None:
         if platform.system() != "Windows":
@@ -73,7 +88,7 @@ class AspenPlusBackend(SimulatorBackend):
             raise BackendError("Install the 'windows' extra to use Aspen Plus") from exc
         pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
         self._coinitialized = True
-        before = _aspen_pids()
+        before = _aspen_processes()
         path = model_path.expanduser().resolve()
         if not path.is_file():
             raise BackendError(f"Aspen model does not exist: {path}")
@@ -99,7 +114,12 @@ class AspenPlusBackend(SimulatorBackend):
                 + " | ".join(self.open_errors)
             )
         time.sleep(float(os.getenv("ASPENOPS_COM_SETTLE_S", "0.25")))
-        self.owned_pids = _aspen_pids() - before
+        after = _aspen_processes()
+        self.owned_processes = {
+            pid: fingerprint
+            for pid, fingerprint in after.items()
+            if pid not in before and is_descendant(pid, self.worker_pid)
+        }
 
     def configure_convergence_nodes(self, nodes: list[ResolvedNode]) -> None:
         self.convergence_nodes = tuple(nodes)
@@ -144,15 +164,21 @@ class AspenPlusBackend(SimulatorBackend):
             self._coinitialized = False
 
     def cleanup_owned_pids(self) -> None:
-        # This remains a compatibility fallback until Windows Job Object ownership is certified.
-        for pid in sorted(self.owned_pids):
+        if self.job_managed:
+            return
+        for fingerprint in sorted(self.owned_processes.values(), key=lambda item: item.pid):
+            if not fingerprint_matches(fingerprint):
+                continue
+            if not is_descendant(fingerprint.pid, self.worker_pid):
+                continue
             try:
-                process = psutil.Process(pid)
+                process = psutil.Process(fingerprint.pid)
                 process.terminate()
                 process.wait(timeout=5)
             except psutil.TimeoutExpired:
-                with suppress(psutil.Error):
-                    process.kill()
+                if fingerprint_matches(fingerprint):
+                    with suppress(psutil.Error):
+                        process.kill()
             except psutil.Error:
                 continue
 
@@ -309,7 +335,8 @@ class AspenPlusBackend(SimulatorBackend):
             "backend": self.name,
             "progid": self.progid,
             "solve_elapsed_s": time.perf_counter() - started,
-            "owned_pids": sorted(self.owned_pids),
+            "owned_pids": sorted(self.owned_processes),
+            "job_managed": self.job_managed,
         }
 
     def runtime_identity(self) -> dict[str, Any]:

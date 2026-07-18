@@ -52,9 +52,7 @@ def main() -> None:
     for item in baseline["measurements"]:
         baseline_lines.append(
             "| {scenario} | {points} | {workers} | {cache_mode} | "
-            "{throughput_points_s:.3f} | {p95_point_s:.6f} | {rss_delta} |".format(
-                **item
-            )
+            "{throughput_points_s:.3f} | {p95_point_s:.6f} | {rss_delta} |".format(**item)
         )
 
     after_lines = [

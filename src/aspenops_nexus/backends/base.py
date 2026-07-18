@@ -61,6 +61,9 @@ class SimulatorBackend(ABC):
     @abstractmethod
     def runtime_identity(self) -> dict[str, Any]: ...
 
+    def set_process_supervision(self, job_managed: bool) -> None:
+        del job_managed
+
     def configure_convergence_nodes(self, nodes: list[ResolvedNode]) -> None:
         del nodes
 
@@ -124,9 +127,7 @@ class SimulatorBackend(ABC):
                     rollback_errors.append(
                         f"{node.key}: {type(rollback_exc).__name__}: {rollback_exc}"
                     )
-            state = (
-                TransactionState.TAINTED if rollback_errors else TransactionState.ROLLED_BACK
-            )
+            state = TransactionState.TAINTED if rollback_errors else TransactionState.ROLLED_BACK
             raise WriteTransactionError(state, exc, tuple(rollback_errors)) from exc
 
     def bulk_read(self, nodes: list[ResolvedNode]) -> list[Any]:

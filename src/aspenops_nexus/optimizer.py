@@ -92,9 +92,7 @@ def _validate_parameters(
 
 
 def differential_evolution_batch(
-    evaluate_many: Callable[
-        [Sequence[tuple[float, ...]]], Sequence[tuple[float, float]]
-    ],
+    evaluate_many: Callable[[Sequence[tuple[float, ...]]], Sequence[tuple[float, float]]],
     bounds: Sequence[tuple[float, float]],
     *,
     population_size: int = 20,
@@ -154,8 +152,7 @@ def differential_evolution_batch(
         trials = score_batch(trial_vectors)
         evaluations += population_size
         population = [
-            better(trial, target)
-            for trial, target in zip(trials, population, strict=True)
+            better(trial, target) for trial, target in zip(trials, population, strict=True)
         ]
         completed_generations = generation
         if checkpoint is not None:

@@ -90,9 +90,7 @@ class EvaluationPlanCompiler:
         for write_spec in request.writes:
             write_node = registry.resolve(write_spec.key, write_spec.identifiers)
             registry.validate_backend(write_node, request.backend)
-            native_value = registry.validate_write(
-                write_node, write_spec.value, write_spec.unit
-            )
+            native_value = registry.validate_write(write_node, write_spec.value, write_spec.unit)
             compiled_writes.append(CompiledWrite(write_spec, write_node, native_value))
             write_identities.add(node_identity(write_node))
 
@@ -107,15 +105,11 @@ class EvaluationPlanCompiler:
 
         constraints: list[CompiledConstraint] = []
         for constraint_spec in request.constraints:
-            constraint_node = registry.resolve(
-                constraint_spec.key, constraint_spec.identifiers
-            )
+            constraint_node = registry.resolve(constraint_spec.key, constraint_spec.identifiers)
             registry.validate_backend(constraint_node, request.backend)
             identity = node_identity(constraint_node)
             unique_reads.setdefault(identity, constraint_node)
-            constraints.append(
-                CompiledConstraint(constraint_spec, constraint_node, identity)
-            )
+            constraints.append(CompiledConstraint(constraint_spec, constraint_node, identity))
 
         balances: list[CompiledBalance] = []
         for balance_spec in request.balances:

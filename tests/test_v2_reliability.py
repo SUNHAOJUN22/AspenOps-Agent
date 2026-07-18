@@ -162,9 +162,7 @@ def test_rollback_comparison_uses_numeric_tolerance_and_exact_discrete_types() -
     assert not backend.values_equal(True, 1)
 
 
-def test_tainted_worker_is_recycled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_tainted_worker_is_recycled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_evaluate(handle: WorkerHandle, request: EvaluationRequest) -> EvaluationResult:
         del request
         return EvaluationResult(

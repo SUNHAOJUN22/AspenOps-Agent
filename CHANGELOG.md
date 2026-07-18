@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 - 2026-07-18
+
+- fail-closed convergence evidence for Aspen Plus and HYSYS;
+- verified write rollback with tainted Worker recycling;
+- compiled unique-node evaluation plans and cache-source provenance;
+- cross-call singleflight and persistent license-aware CasePools;
+- leased durable jobs, heartbeats, cancellation deadlines and idempotent commits;
+- Windows Job Object supervision with process-fingerprint fallback;
+- member-level integrity manifests and optional Ed25519 signatures;
+- budgeted batch constrained optimization with mixed variables and Pareto results;
+- portable baseline/candidate benchmark evidence and expanded CI contracts.
+
 ## 1.0.0 - 2026-07-13
 
 - Introduced runtime discovery of versioned Aspen Plus and HYSYS COM Automation Servers.

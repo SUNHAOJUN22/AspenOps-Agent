@@ -159,8 +159,7 @@ def classify_convergence(
     normalized_nodes = tuple(dict(item) for item in status_nodes)
     normalized_messages = tuple(str(item) for item in messages)
     evidence_text = " | ".join(
-        [str(item.get("value", "")) for item in normalized_nodes]
-        + list(normalized_messages)
+        [str(item.get("value", "")) for item in normalized_nodes] + list(normalized_messages)
     )
     negative = _markers(evidence_text, _NEGATIVE_PATTERNS)
     positive = _markers(evidence_text, _POSITIVE_PATTERNS)

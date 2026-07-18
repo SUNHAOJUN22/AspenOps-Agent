@@ -20,6 +20,7 @@ from .optimizer import (
 )
 
 if TYPE_CHECKING:
+    from .pool import CasePool
     from .pool_manager import PoolManager
 
 VariableKind = Literal["continuous", "integer", "categorical", "ordinal"]
@@ -86,9 +87,7 @@ def _choice(value: object) -> VariableValue:
         if isinstance(value, float) and not math.isfinite(value):
             raise ValueError("Optimization choices must be finite")
         return value
-    raise ValueError(
-        f"Optimization choices must be scalar JSON values, got {type(value).__name__}"
-    )
+    raise ValueError(f"Optimization choices must be scalar JSON values, got {type(value).__name__}")
 
 
 def _finite_output(value: object) -> float | None:
@@ -136,8 +135,7 @@ class VariableSpec:
         upper = None if upper_value is None else _number(upper_value, label="upper bound")
         choices_value = data.get("choices", [])
         choices = tuple(
-            _choice(item)
-            for item in _object_sequence(choices_value, label="variable choices")
+            _choice(item) for item in _object_sequence(choices_value, label="variable choices")
         )
 
         if kind in {"categorical", "ordinal"}:
@@ -226,9 +224,7 @@ class OptimizationBudget:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> OptimizationBudget:
-        population_size = _integer(
-            data.get("population_size", 20), label="population_size"
-        )
+        population_size = _integer(data.get("population_size", 20), label="population_size")
         generations = _integer(data.get("generations", 40), label="generations")
         default_evaluations = population_size * (generations + 1)
         max_evaluations = _integer(
@@ -264,9 +260,7 @@ class OptimizationProblem:
 
     @classmethod
     def from_document(cls, document: Mapping[str, object]) -> OptimizationProblem:
-        optimization = _object_map(
-            _required(document, "optimization"), label="optimization"
-        )
+        optimization = _object_map(_required(document, "optimization"), label="optimization")
         variable_items = _object_sequence(
             optimization.get("variables", []), label="optimization variables"
         )
@@ -292,9 +286,7 @@ class OptimizationProblem:
             raise ValueError("Optimization requires at least one objective")
 
         base_request = {
-            key: value
-            for key, value in document.items()
-            if key not in {"optimization", "points"}
+            key: value for key, value in document.items() if key not in {"optimization", "points"}
         }
         budget = OptimizationBudget.from_mapping(
             _optional_object_map(optimization.get("budget", {}))
@@ -342,11 +334,13 @@ class _Evaluator:
         settings: Settings,
         pool_manager: PoolManager | None,
         cancel_check: Callable[[], bool] | None,
+        pool_observer: Callable[[CasePool | None], None] | None,
     ) -> None:
         self.problem = problem
         self.settings = settings
         self.pool_manager = pool_manager
         self.cancel_check = cancel_check
+        self.pool_observer = pool_observer
         self.trace: list[OptimizationTracePoint] = []
 
     @staticmethod
@@ -408,6 +402,7 @@ class _Evaluator:
             self.settings,
             pool_manager=self.pool_manager,
             cancel_check=self.cancel_check,
+            pool_observer=self.pool_observer,
         )
         scores: list[tuple[float, float]] = []
         for vector, raw_result in zip(vectors, results, strict=True):
@@ -494,16 +489,13 @@ def run_optimization_document(
     *,
     pool_manager: PoolManager | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    pool_observer: Callable[[CasePool | None], None] | None = None,
 ) -> dict[str, Any]:
-    normalized_document: ObjectMap = {
-        str(key): value for key, value in document.items()
-    }
+    normalized_document: ObjectMap = {str(key): value for key, value in document.items()}
     problem = OptimizationProblem.from_document(normalized_document)
-    evaluator = _Evaluator(problem, settings, pool_manager, cancel_check)
+    evaluator = _Evaluator(problem, settings, pool_manager, cancel_check, pool_observer)
     checkpoint = (
-        None
-        if problem.checkpoint_path is None
-        else _checkpoint_callback(problem.checkpoint_path)
+        None if problem.checkpoint_path is None else _checkpoint_callback(problem.checkpoint_path)
     )
 
     run: DifferentialEvolutionResult | None
@@ -565,9 +557,7 @@ def run_optimization_document(
 
     backend = problem.base_request.get("backend", settings.backend)
     qualification = (
-        "control-plane-only"
-        if backend == "mock"
-        else "licensed-runtime-pending-engineering-review"
+        "control-plane-only" if backend == "mock" else "licensed-runtime-pending-engineering-review"
     )
     return {
         "schema": "aspenops.optimization-result/v1",

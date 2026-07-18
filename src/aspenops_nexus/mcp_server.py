@@ -89,6 +89,42 @@ def build_server(
         return {"job_id": scheduler.submit(request)}
 
     @mcp.tool()
+    def submit_optimization(request: dict[str, Any]) -> dict[str, str]:
+        """Submit a durable budgeted optimization job."""
+        if "optimization" not in request:
+            raise ValueError("Optimization request requires an optimization object")
+        return {"job_id": scheduler.submit(request)}
+
+    @mcp.tool()
+    def optimization_status(job_id: str) -> dict[str, Any]:
+        """Return durable optimization lease, progress and cancellation state."""
+        record = scheduler.store.get(job_id)
+        return {"found": record is not None, "job": record}
+
+    @mcp.tool()
+    def optimization_result(job_id: str) -> dict[str, Any]:
+        """Return the completed or cancelled optimization result."""
+        record = scheduler.store.get(job_id)
+        if record is None:
+            return {"found": False}
+        results = record.get("results")
+        result = None
+        if isinstance(results, list) and results:
+            result = results[0]
+        return {
+            "found": True,
+            "status": record["status"],
+            "result": result,
+            "bundle_path": record["bundle_path"],
+            "error": record["error"],
+        }
+
+    @mcp.tool()
+    def cancel_optimization(job_id: str) -> dict[str, Any]:
+        """Cancel a pending optimization or enforce its active worker deadline."""
+        return {"cancel_requested": scheduler.cancel(job_id)}
+
+    @mcp.tool()
     def job_status(job_id: str) -> dict[str, Any]:
         """Return durable leased job state and progress metadata."""
         record = scheduler.store.get(job_id)

@@ -13,6 +13,7 @@ from typing import Any
 from .batch import dry_run_document, run_batch_document
 from .config import Settings
 from .hashing import canonical_hash
+from .optimization import OptimizationProblem, run_optimization_document
 from .pool import CasePool
 from .pool_manager import PoolManager
 from .provenance import write_run_bundle
@@ -99,9 +100,7 @@ class JobStore:
 
     @classmethod
     def _ensure_columns(cls, connection: sqlite3.Connection) -> None:
-        existing = {
-            str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
-        }
+        existing = {str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
         for name, definition in cls._MIGRATIONS.items():
             if name not in existing:
                 connection.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
@@ -218,9 +217,7 @@ class JobStore:
         for row in retryable:
             self._event(connection, str(row[0]), "lease_expired")
 
-    def claim_next(
-        self, owner: str, lease_s: float = 30.0
-    ) -> tuple[str, dict[str, Any]] | None:
+    def claim_next(self, owner: str, lease_s: float = 30.0) -> tuple[str, dict[str, Any]] | None:
         with self._lock, closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             now = _now()
@@ -611,7 +608,14 @@ class BackgroundScheduler:
             self.pool_manager.close()
 
     def submit(self, request: dict[str, Any]) -> str:
-        dry_run_document(request, self.settings)
+        if "optimization" in request:
+            OptimizationProblem.from_document(request)
+            dry_run_document(
+                {key: value for key, value in request.items() if key != "optimization"},
+                self.settings,
+            )
+        else:
+            dry_run_document(request, self.settings)
         self.start()
         return self.store.create(request, self.settings.job_max_attempts)
 
@@ -676,13 +680,25 @@ class BackgroundScheduler:
             if not self.store.mark_running(job_id, self.owner, self.settings.job_lease_s):
                 continue
             try:
-                results = run_batch_document(
-                    request,
-                    self.settings,
-                    pool_manager=self.pool_manager,
-                    cancel_check=partial(self.store.is_cancel_requested, job_id),
-                    pool_observer=partial(self._observe_pool, job_id),
-                )
+                cancel_check = partial(self.store.is_cancel_requested, job_id)
+                pool_observer = partial(self._observe_pool, job_id)
+                if "optimization" in request:
+                    optimization_result = run_optimization_document(
+                        request,
+                        self.settings,
+                        pool_manager=self.pool_manager,
+                        cancel_check=cancel_check,
+                        pool_observer=pool_observer,
+                    )
+                    results = [optimization_result]
+                else:
+                    results = run_batch_document(
+                        request,
+                        self.settings,
+                        pool_manager=self.pool_manager,
+                        cancel_check=cancel_check,
+                        pool_observer=pool_observer,
+                    )
                 last_completed = self._last_completed_point(results)
                 self.store.append_progress(job_id, results, last_completed)
                 record = self.store.get(job_id)

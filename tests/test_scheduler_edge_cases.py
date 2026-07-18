@@ -11,20 +11,26 @@ def test_retryable_errors_move_to_retry_then_dead_letter(tmp_path: Path) -> None
     job_id = store.create({"x": 1}, max_attempts=2)
     assert store.claim_next("worker-a") is not None
     assert store.mark_running(job_id, "worker-a")
-    assert store.retry_or_fail(
-        job_id,
-        "temporary license failure",
-        "transient_license",
-        retryable=True,
-    ) == "retry_wait"
+    assert (
+        store.retry_or_fail(
+            job_id,
+            "temporary license failure",
+            "transient_license",
+            retryable=True,
+        )
+        == "retry_wait"
+    )
     assert store.claim_next("worker-b") is not None
     assert store.mark_running(job_id, "worker-b")
-    assert store.retry_or_fail(
-        job_id,
-        "temporary license failure",
-        "transient_license",
-        retryable=True,
-    ) == "dead_letter"
+    assert (
+        store.retry_or_fail(
+            job_id,
+            "temporary license failure",
+            "transient_license",
+            retryable=True,
+        )
+        == "dead_letter"
+    )
     record = store.get(job_id)
     assert record is not None
     assert record["status"] == "dead_letter"
@@ -36,12 +42,15 @@ def test_non_retryable_error_fails_immediately(tmp_path: Path) -> None:
     job_id = store.create({"x": 1})
     assert store.claim_next("worker-a") is not None
     assert store.mark_running(job_id, "worker-a")
-    assert store.retry_or_fail(
-        job_id,
-        "invalid registry",
-        "invalid_request",
-        retryable=False,
-    ) == "failed"
+    assert (
+        store.retry_or_fail(
+            job_id,
+            "invalid registry",
+            "invalid_request",
+            retryable=False,
+        )
+        == "failed"
+    )
     assert store.get(job_id)["status"] == "failed"
 
 
@@ -96,9 +105,7 @@ def test_schema_migrates_legacy_job_table(tmp_path: Path) -> None:
         )
     JobStore(path)
     with sqlite3.connect(path) as connection:
-        columns = {
-            str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)")
-        }
+        columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(jobs)")}
     assert {
         "lease_owner",
         "lease_expires_at",

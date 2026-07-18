@@ -131,10 +131,7 @@ def evaluate(
                     "limit": compiled_constraint.spec.value,
                     "tolerance": compiled_constraint.spec.tolerance,
                     "violation": violation,
-                    "unit": (
-                        compiled_constraint.spec.unit
-                        or compiled_constraint.node.native_unit
-                    ),
+                    "unit": (compiled_constraint.spec.unit or compiled_constraint.node.native_unit),
                     "passed": passed,
                 }
             )

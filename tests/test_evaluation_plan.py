@@ -77,9 +77,10 @@ def test_physical_identity_ignores_locations_timeout_and_metadata(tmp_path: Path
 
 
 def test_verification_semantics_change_physical_identity() -> None:
-    assert request(constraint_limit=0.5).physical_identity() != request(
-        constraint_limit=0.9
-    ).physical_identity()
+    assert (
+        request(constraint_limit=0.5).physical_identity()
+        != request(constraint_limit=0.9).physical_identity()
+    )
 
 
 def test_same_content_different_paths_share_cache_key(tmp_path: Path) -> None:

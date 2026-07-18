@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from test_optimization import document
 
 from aspenops_nexus.config import Settings
 from aspenops_nexus.optimization import (
@@ -13,11 +14,10 @@ from aspenops_nexus.optimization import (
     VariableSpec,
     run_optimization_document,
 )
-from test_optimization import document
 
 
 def test_variable_kinds_decode_and_validate() -> None:
-    integer = VariableSpec.from_dict(
+    integer = VariableSpec.from_mapping(
         {
             "name": "stages",
             "key": "block.input.stages",
@@ -28,7 +28,7 @@ def test_variable_kinds_decode_and_validate() -> None:
             "unit": "1",
         }
     )
-    category = VariableSpec.from_dict(
+    category = VariableSpec.from_mapping(
         {
             "name": "mode",
             "key": "mode",
@@ -39,30 +39,26 @@ def test_variable_kinds_decode_and_validate() -> None:
     assert integer.decode(19.6) == 20
     assert category.decode(1.7) == "c"
     with pytest.raises(ValueError, match="Unsupported"):
-        VariableSpec.from_dict({"key": "x", "kind": "invalid"})
+        VariableSpec.from_mapping({"key": "x", "kind": "invalid"})
     with pytest.raises(ValueError, match="at least two choices"):
-        VariableSpec.from_dict(
-            {"key": "x", "kind": "categorical", "choices": ["only"]}
-        )
+        VariableSpec.from_mapping({"key": "x", "kind": "categorical", "choices": ["only"]})
     with pytest.raises(ValueError, match="lower < upper"):
-        VariableSpec.from_dict(
-            {"key": "x", "kind": "continuous", "lower": 2, "upper": 1}
-        )
+        VariableSpec.from_mapping({"key": "x", "kind": "continuous", "lower": 2, "upper": 1})
 
 
 def test_objective_and_budget_validation() -> None:
-    maximize = ObjectiveSpec.from_dict(
+    maximize = ObjectiveSpec.from_mapping(
         {"output_key": "purity", "direction": "maximize", "weight": 2}
     )
     assert maximize.minimized_value(0.9) == -0.9
     with pytest.raises(ValueError, match="direction"):
-        ObjectiveSpec.from_dict({"output_key": "x", "direction": "sideways"})
+        ObjectiveSpec.from_mapping({"output_key": "x", "direction": "sideways"})
     with pytest.raises(ValueError, match="positive"):
-        ObjectiveSpec.from_dict({"output_key": "x", "weight": 0})
+        ObjectiveSpec.from_mapping({"output_key": "x", "weight": 0})
     with pytest.raises(ValueError, match="at least four"):
-        OptimizationBudget.from_dict({"population_size": 3})
+        OptimizationBudget.from_mapping({"population_size": 3})
     with pytest.raises(ValueError, match="inconsistent"):
-        OptimizationBudget.from_dict(
+        OptimizationBudget.from_mapping(
             {"population_size": 4, "generations": 3, "max_evaluations": 3}
         )
 

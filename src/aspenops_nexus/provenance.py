@@ -182,9 +182,7 @@ def write_run_bundle(
     return output
 
 
-def _verify_v1(
-    manifest: dict[str, Any], request: Any, results: Any
-) -> dict[str, Any]:
+def _verify_v1(manifest: dict[str, Any], request: Any, results: Any) -> dict[str, Any]:
     checks = {
         "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
         "results_sha256": canonical_hash(results) == manifest.get("results_sha256"),
@@ -282,10 +280,9 @@ def verify_run_bundle(
                     member_checks[str(name)] = False
                     continue
                 payload = archive.read(str(name))
-                member_checks[str(name)] = (
-                    _sha256_bytes(payload) == declaration.get("sha256")
-                    and len(payload) == declaration.get("size")
-                )
+                member_checks[str(name)] = _sha256_bytes(payload) == declaration.get(
+                    "sha256"
+                ) and len(payload) == declaration.get("size")
 
             semantic_checks = {
                 "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),

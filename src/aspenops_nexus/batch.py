@@ -107,8 +107,7 @@ def _run_on_pool(
         pool_observer(pool)
     try:
         return [
-            result.to_dict()
-            for result in pool.evaluate_many(requests, cancel_check=cancel_check)
+            result.to_dict() for result in pool.evaluate_many(requests, cancel_check=cancel_check)
         ]
     finally:
         if pool_observer is not None:

@@ -13,6 +13,8 @@ from .benchmark import benchmark_worker_matrix
 from .certification import certify_batch_document
 from .config import Settings
 from .doctor import diagnose
+from .optimization import run_optimization_document
+from .pool_manager import PoolManager
 from .provenance import verify_run_bundle, write_run_bundle
 from .scheduler import BackgroundScheduler
 
@@ -163,6 +165,34 @@ def command_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_optimize(args: argparse.Namespace) -> int:
+    settings = Settings.from_env()
+    document = _load(args.request)
+    with PoolManager(
+        cache_path=settings.state_dir / "cache.sqlite3",
+        license_slots=settings.license_slots,
+        max_resident_cases=settings.max_resident_cases,
+        idle_timeout_s=settings.pool_idle_timeout_s,
+        worker_max_points=settings.worker_max_points,
+        worker_max_age_s=settings.worker_max_age_s,
+        startup_timeout_s=settings.startup_timeout_s,
+        cache_failures=settings.cache_failures,
+    ) as pool_manager:
+        result = run_optimization_document(
+            document,
+            settings,
+            pool_manager=pool_manager,
+        )
+    output = Path(args.output).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
+    _json_print({"result_path": str(output), "result": result})
+    return 0 if result["status"] == "completed" else 2
+
+
 def command_certify(args: argparse.Namespace) -> int:
     report = certify_batch_document(
         _load(args.request),
@@ -197,7 +227,7 @@ def command_mcp(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="aspenops",
-        description="AspenOps 1.0 deterministic execution fabric for Aspen automation",
+        description="AspenOps 2.0 deterministic execution fabric for Aspen automation",
     )
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -233,6 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--model", default=str(_resource_path("mock-case.json")))
     benchmark.add_argument("--registry", default=str(_resource_path("node-registry.json")))
     benchmark.set_defaults(func=command_benchmark)
+
+    optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
+    optimize.add_argument("request")
+    optimize.add_argument("--output", default="var/optimization-result.json")
+    optimize.set_defaults(func=command_optimize)
 
     certify = sub.add_parser("certify", help="Repeat from independent model copies")
     certify.add_argument("request")

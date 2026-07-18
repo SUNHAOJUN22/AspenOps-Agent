@@ -1,5 +1,5 @@
-"""AspenOps 1.0 — deterministic execution fabric for Aspen automation."""
+"""AspenOps 2.0 — deterministic execution fabric for Aspen automation."""
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
-RUNTIME_SCHEMA = "aspenops.runtime/v1"
+RUNTIME_SCHEMA = "aspenops.runtime/v2"

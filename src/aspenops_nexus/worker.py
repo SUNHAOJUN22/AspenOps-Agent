@@ -16,6 +16,7 @@ from .backends.factory import create_backend
 from .evaluation import evaluate
 from .models import EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry
+from .windows_job import WindowsJobScope
 
 
 @dataclass(slots=True)
@@ -41,16 +42,21 @@ def _worker_main(
 ) -> None:
     backend = create_backend(backend_name)
     registry = NodeRegistry(registry_path)
+    job_scope = WindowsJobScope()
+    job_scope.start()
+    backend.set_process_supervision(job_scope.managed)
     try:
         backend.open(Path(source_model), visible=visible)
         backend.configure_convergence_nodes(registry.convergence_nodes(backend_name))
+        runtime = backend.runtime_identity()
+        runtime["process_supervision"] = job_scope.identity()
         connection.send(
             {
                 "protocol": 1,
                 "kind": "ready",
                 "worker_id": worker_id,
                 "generation": generation,
-                "runtime": backend.runtime_identity(),
+                "runtime": runtime,
             }
         )
         while True:
@@ -109,6 +115,8 @@ def _worker_main(
                 cleanup()
         except Exception:
             pass
+        finally:
+            job_scope.close()
 
 
 def start_worker(
