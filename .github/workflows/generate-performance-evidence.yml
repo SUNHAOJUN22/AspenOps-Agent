@@ -6,10 +6,18 @@ on:
     branches: [main]
     paths:
       - .github/workflows/generate-performance-evidence.yml
+      - scripts/run_benchmark_matrix.py
+      - scripts/compare_benchmarks.py
+      - pyproject.toml
+      - src/aspenops_nexus/py.typed
   push:
     branches: [agent/aspenops-v2-reliability-performance]
     paths:
       - .github/workflows/generate-performance-evidence.yml
+      - scripts/run_benchmark_matrix.py
+      - scripts/compare_benchmarks.py
+      - pyproject.toml
+      - src/aspenops_nexus/py.typed
 
 permissions:
   contents: read
