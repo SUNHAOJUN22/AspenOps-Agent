@@ -5,8 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: aspenops-v2-pr-consolidation
@@ -69,21 +68,33 @@ jobs:
           /tmp/aspenops-wheel/bin/pip install dist/*.whl
           /tmp/aspenops-wheel/bin/aspenops --version
           /tmp/aspenops-wheel/bin/aspenops demo
-      - name: Upload evidence
-        if: always()
+      - name: Materialize verified tree evidence
+        shell: bash
+        run: |
+          git add -A
+          git diff --cached --name-status > var/ci/changed-files.tsv
+          mkdir -p var/ci/consolidated-tree
+          while IFS=$'\t' read -r status path extra; do
+            case "$status" in
+              A|M)
+                mkdir -p "var/ci/consolidated-tree/$(dirname "$path")"
+                cp "$path" "var/ci/consolidated-tree/$path"
+                ;;
+              D)
+                printf '%s\n' "$path" >> var/ci/deleted-files.txt
+                ;;
+              R*)
+                printf '%s\n' "$path" >> var/ci/deleted-files.txt
+                mkdir -p "var/ci/consolidated-tree/$(dirname "$extra")"
+                cp "$extra" "var/ci/consolidated-tree/$extra"
+                ;;
+            esac
+          done < var/ci/changed-files.tsv
+          git diff --cached --binary > var/ci/consolidated.patch
+          git rev-parse HEAD > var/ci/base-head.txt
+      - name: Upload verified implementation and evidence
         uses: actions/upload-artifact@v4
         with:
           name: pr-consolidation-evidence
           path: var/ci
-          if-no-files-found: ignore
-      - name: Commit only after all gates pass
-        shell: bash
-        run: |
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "release: consolidate AspenOps 2.0 implementation"
-          git fetch origin agent/aspenops-v2-reliability-performance
-          git rebase origin/agent/aspenops-v2-reliability-performance
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+          if-no-files-found: error
