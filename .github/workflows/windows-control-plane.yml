@@ -43,8 +43,8 @@ jobs:
             tests/test_aspen_process_ownership.py `
             tests/test_convergence.py `
             tests/test_backends_convergence.py `
-            tests/test_worker_dispatch.py `
-            tests/test_worker_recycle.py *>&1 |
+            tests/test_v2_reliability.py `
+            tests/test_singleflight.py *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows diagnostics
