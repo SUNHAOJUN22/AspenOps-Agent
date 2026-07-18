@@ -47,6 +47,7 @@ packages = ["src/aspenops_nexus"]
 [tool.hatch.build]
 include = [
   "src/aspenops_nexus/**/*.py",
+  "src/aspenops_nexus/py.typed",
   "src/aspenops_nexus/data/*.json",
 ]
 
