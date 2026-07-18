@@ -3,9 +3,16 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections import Counter
 from contextlib import closing
 from pathlib import Path
 from typing import Any
+
+_SQLITE_PARAMETER_BATCH = 900
+
+
+def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> list[list[str]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 class ResultCache:
@@ -33,33 +40,56 @@ class ResultCache:
         connection.execute("PRAGMA busy_timeout=30000")
         return connection
 
-    def get(self, key: str) -> dict[str, Any] | None:
+    def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        if not keys:
+            return {}
+        counts = Counter(keys)
+        unique_keys = list(counts)
+        encoded: dict[str, str] = {}
         with self._lock, closing(self._connect()) as connection, connection:
-            row = connection.execute(
-                "SELECT payload FROM result_cache WHERE cache_key = ?", (key,)
-            ).fetchone()
-            if row is not None:
-                connection.execute(
+            for batch in _chunks(unique_keys):
+                placeholders = ",".join("?" for _ in batch)
+                rows = connection.execute(
+                    f"SELECT cache_key, payload FROM result_cache WHERE cache_key IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                encoded.update((str(row[0]), str(row[1])) for row in rows)
+            if encoded:
+                connection.executemany(
                     """
                     UPDATE result_cache
-                    SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
+                    SET hit_count = hit_count + ?, last_hit_at = CURRENT_TIMESTAMP
                     WHERE cache_key = ?
                     """,
-                    (key,),
+                    [(counts[key], key) for key in encoded],
                 )
-        return None if row is None else json.loads(str(row[0]))
+        return {key: json.loads(payload) for key, payload in encoded.items()}
 
-    def put(self, key: str, payload: dict[str, Any]) -> None:
-        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    def get(self, key: str) -> dict[str, Any] | None:
+        return self.get_many([key]).get(key)
+
+    def put_many(self, payloads: dict[str, dict[str, Any]]) -> None:
+        if not payloads:
+            return
+        rows = [
+            (
+                key,
+                json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False),
+            )
+            for key, payload in payloads.items()
+        ]
         with self._lock, closing(self._connect()) as connection, connection:
-            connection.execute(
+            connection.executemany(
                 """
                 INSERT INTO result_cache(cache_key, payload)
                 VALUES (?, ?)
                 ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload
                 """,
-                (key, encoded),
+                rows,
             )
+
+    def put(self, key: str, payload: dict[str, Any]) -> None:
+        self.put_many({key: payload})
 
     def stats(self) -> dict[str, int]:
         with self._lock, closing(self._connect()) as connection:
