@@ -30,6 +30,15 @@ def replace_if_present(path: Path, old: str, new: str) -> None:
         path.write_text(text.replace(old, new), encoding="utf-8")
 
 
+def normalize_staged_migrations(root: Path) -> None:
+    supervision = root / "scripts/apply_process_supervision.py"
+    replace_if_present(
+        supervision,
+        "# Only processes created after this worker opened its document are eligible for cleanup.",
+        "# This remains a compatibility fallback until Windows Job Object ownership is certified.",
+    )
+
+
 def enforce_release_identity(root: Path) -> None:
     replace_if_present(root / "pyproject.toml", 'version = "1.0.0"', 'version = "2.0.0"')
     init = root / "src/aspenops_nexus/__init__.py"
@@ -78,6 +87,7 @@ def validate_markers(root: Path) -> None:
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
+    normalize_staged_migrations(root)
     run_if_present(root, "scripts/consolidate_v2.py")
     run_if_present(root, "scripts/apply_optimization_interfaces.py")
     run_if_present(root, "scripts/apply_process_supervision.py")
