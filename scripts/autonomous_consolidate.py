@@ -9,6 +9,7 @@ TEMPORARY_FILES = (
     ".github/workflows/apply-process-supervision.yml",
     ".github/workflows/consolidate-v2.yml",
     ".github/workflows/finalize-v2-release.yml",
+    ".github/workflows/pr-autonomous-consolidate.yml",
     "scripts/apply_optimization_interfaces.py",
     "scripts/apply_process_supervision.py",
     "scripts/consolidate_v2.py",
