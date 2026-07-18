@@ -282,6 +282,7 @@ def evaluate_on_worker(handle: WorkerHandle, request: EvaluationRequest) -> Eval
             {"message": message, "expected_request_id": request_id},
         )
     result = EvaluationResult.from_dict(message["result"])
+    result.worker_id = handle.worker_id
     handle.evaluations += 1
     result.diagnostics.setdefault("worker", {})
     result.diagnostics["worker"].update(
