@@ -12,13 +12,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeAlias
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey,
-    Ed25519PublicKey,
-)
-
 from . import RUNTIME_SCHEMA, __version__
 from .hashing import canonical_hash, sha256_file
 
@@ -55,26 +48,46 @@ def _read_key_source(source: KeySource) -> bytes:
     return Path(source).expanduser().read_bytes()
 
 
-def _load_private_key(source: KeySource) -> Ed25519PrivateKey:
+def _load_private_key(source: KeySource) -> Any:
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the 'signing' extra to create Ed25519 integrity bundles"
+        ) from exc
     key = serialization.load_pem_private_key(_read_key_source(source), password=None)
     if not isinstance(key, Ed25519PrivateKey):
         raise TypeError("Signing key must be an Ed25519 private key")
     return key
 
 
-def _load_public_key(source: KeySource) -> Ed25519PublicKey:
+def _load_public_key(source: KeySource) -> Any:
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the 'signing' extra to verify Ed25519 integrity bundles"
+        ) from exc
     key = serialization.load_pem_public_key(_read_key_source(source))
     if not isinstance(key, Ed25519PublicKey):
         raise TypeError("Verification key must be an Ed25519 public key")
     return key
 
 
-def _key_id(public_key: Ed25519PublicKey) -> str:
+def _key_id(public_key: Any) -> str:
+    try:
+        from cryptography.hazmat.primitives import serialization
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the 'signing' extra to process Ed25519 integrity bundles"
+        ) from exc
     raw = public_key.public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
-    return _sha256_bytes(raw)[:32]
+    return _sha256_bytes(bytes(raw))[:32]
 
 
 def _member_record(payload: bytes) -> dict[str, Any]:
@@ -121,7 +134,7 @@ def write_run_bundle(
         "algorithm": None,
         "key_id": None,
     }
-    private_key: Ed25519PrivateKey | None = None
+    private_key: Any = None
     if signing_private_key is not None:
         private_key = _load_private_key(signing_private_key)
         signing = {
@@ -186,6 +199,36 @@ def _verify_v1(
         "manifest": manifest,
         "boundary": "Legacy v1 bundles provide internal hash checks but no authenticity proof.",
     }
+
+
+def _verify_signature(
+    *,
+    archive: zipfile.ZipFile,
+    manifest: dict[str, Any],
+    signing: dict[str, Any],
+    verification_public_key: KeySource | None,
+) -> tuple[bool | None, str | None]:
+    manifest_key_id = str(signing.get("key_id", ""))
+    archived_key_id = archive.read("signing-key-id.txt").decode("utf-8")
+    if archived_key_id != manifest_key_id:
+        return False, "signing key ID does not match manifest"
+    if verification_public_key is None:
+        return None, "verification public key is required"
+    public_key = _load_public_key(verification_public_key)
+    if _key_id(public_key) != manifest_key_id:
+        return False, "verification public key ID does not match manifest"
+    try:
+        from cryptography.exceptions import InvalidSignature
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the 'signing' extra to verify Ed25519 integrity bundles"
+        ) from exc
+    try:
+        signature = base64.b64decode(archive.read("manifest.sig"), validate=True)
+        public_key.verify(signature, _canonical_bytes(manifest))
+        return True, None
+    except (InvalidSignature, ValueError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
 
 
 def verify_run_bundle(
@@ -259,28 +302,12 @@ def verify_run_bundle(
             signature_valid: bool | None = None
             signature_error: str | None = None
             if signed:
-                manifest_key_id = str(signing.get("key_id", ""))
-                archived_key_id = archive.read("signing-key-id.txt").decode("utf-8")
-                if archived_key_id != manifest_key_id:
-                    signature_valid = False
-                    signature_error = "signing key ID does not match manifest"
-                elif verification_public_key is None:
-                    signature_error = "verification public key is required"
-                else:
-                    public_key = _load_public_key(verification_public_key)
-                    if _key_id(public_key) != manifest_key_id:
-                        signature_valid = False
-                        signature_error = "verification public key ID does not match manifest"
-                    else:
-                        try:
-                            signature = base64.b64decode(
-                                archive.read("manifest.sig"), validate=True
-                            )
-                            public_key.verify(signature, _canonical_bytes(manifest))
-                            signature_valid = True
-                        except (InvalidSignature, ValueError) as exc:
-                            signature_valid = False
-                            signature_error = f"{type(exc).__name__}: {exc}"
+                signature_valid, signature_error = _verify_signature(
+                    archive=archive,
+                    manifest=manifest,
+                    signing=signing,
+                    verification_public_key=verification_public_key,
+                )
     except (OSError, zipfile.BadZipFile, json.JSONDecodeError, KeyError) as exc:
         return {
             "ok": False,
