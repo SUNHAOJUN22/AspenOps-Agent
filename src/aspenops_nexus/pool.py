@@ -189,12 +189,27 @@ class CasePool:
             )
         return events
 
+    @staticmethod
+    def _stable_runtime_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                str(key): CasePool._stable_runtime_value(item)
+                for key, item in value.items()
+                if key not in {"model_path", "worker_pid", "pid", "error"}
+            }
+        if isinstance(value, list):
+            return [CasePool._stable_runtime_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(CasePool._stable_runtime_value(item) for item in value)
+        return value
+
     def _runtime_cache_identity(self) -> dict[str, Any]:
         if not self._handles:
             return {"backend": self.backend_name}
-        identity = dict(self._handles[0].runtime)
-        identity.pop("model_path", None)
-        return identity
+        stable = self._stable_runtime_value(self._handles[0].runtime)
+        if not isinstance(stable, dict):
+            raise RuntimeError("Worker runtime identity must be an object")
+        return stable
 
     def cache_key(self, request: EvaluationRequest) -> str:
         identity = {
