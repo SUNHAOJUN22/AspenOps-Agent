@@ -4,7 +4,7 @@ import os
 import platform
 from contextlib import suppress
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, cast
 
 import psutil
 
@@ -91,17 +91,21 @@ class WindowsJobScope:
             import win32con
             import win32job
 
-            handle = win32job.CreateJobObject(None, f"AspenOps-{os.getpid()}")
-            limits = win32job.QueryInformationJobObject(
+            # pywin32 exposes dynamic handle-returning APIs whose third-party stubs
+            # incorrectly model CreateJobObject as returning None. Keep the dynamic
+            # boundary local and preserve strict typing everywhere else.
+            job_api = cast(Any, win32job)
+            handle = job_api.CreateJobObject(None, f"AspenOps-{os.getpid()}")
+            limits = job_api.QueryInformationJobObject(
                 handle,
-                win32job.JobObjectExtendedLimitInformation,
+                job_api.JobObjectExtendedLimitInformation,
             )
             limits["BasicLimitInformation"]["LimitFlags"] |= (
-                win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                job_api.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
             )
-            win32job.SetInformationJobObject(
+            job_api.SetInformationJobObject(
                 handle,
-                win32job.JobObjectExtendedLimitInformation,
+                job_api.JobObjectExtendedLimitInformation,
                 limits,
             )
             process_handle = win32api.OpenProcess(
@@ -110,7 +114,7 @@ class WindowsJobScope:
                 os.getpid(),
             )
             try:
-                win32job.AssignProcessToJobObject(handle, process_handle)
+                job_api.AssignProcessToJobObject(handle, process_handle)
             finally:
                 win32api.CloseHandle(process_handle)
             self._handle = handle
