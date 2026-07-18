@@ -29,7 +29,7 @@ def process_fingerprint(pid: int) -> ProcessFingerprint | None:
             parent_pid=int(process.ppid()),
             executable=str(process.exe()),
         )
-    except (psutil.Error, OSError, ValueError):
+    except (psutil.Error, OSError, ValueError, KeyError):
         return None
 
 
