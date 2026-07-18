@@ -26,6 +26,14 @@ def format_change(value: float | None) -> str:
     return "n/a" if value is None else f"{value:+.2f}%"
 
 
+def regression_label(throughput_change: float | None, p95_change: float | None) -> str:
+    if throughput_change is not None and throughput_change < -5.0:
+        return "throughput regression >5%"
+    if p95_change is not None and p95_change > 5.0:
+        return "P95 regression >5%"
+    return "none"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", required=True)
@@ -46,12 +54,13 @@ def main() -> None:
         "",
         baseline["boundary"],
         "",
-        "| Scenario | Points | Workers | Cache | Throughput (points/s) | P95 (s) | RSS delta |",
-        "|---|---:|---:|---|---:|---:|---:|",
+        "| Scenario | Points | Workers | Duplicate ratio | Cache | "
+        "Throughput (points/s) | P95 (s) | RSS delta |",
+        "|---|---:|---:|---:|---|---:|---:|---:|",
     ]
     for item in baseline["measurements"]:
         baseline_lines.append(
-            "| {scenario} | {points} | {workers} | {cache_mode} | "
+            "| {scenario} | {points} | {workers} | {duplicate_ratio:.0%} | {cache_mode} | "
             "{throughput_points_s:.3f} | {p95_point_s:.6f} | {rss_delta} |".format(**item)
         )
 
@@ -62,10 +71,12 @@ def main() -> None:
         "",
         after["boundary"],
         "",
-        "| Scenario | Points | Workers | Throughput | Throughput change | P95 change |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Scenario | Points | Workers | Duplicate ratio | Cache | Throughput | "
+        "Throughput change | P95 change | Regression |",
+        "|---|---:|---:|---:|---|---:|---:|---:|---|",
     ]
-    for identity, candidate in after_map.items():
+    for identity in sorted(after_map):
+        candidate = after_map[identity]
         reference = baseline_map.get(identity)
         if reference is None:
             continue
@@ -79,8 +90,9 @@ def main() -> None:
         )
         after_lines.append(
             f"| {candidate['scenario']} | {candidate['points']} | {candidate['workers']} | "
+            f"{candidate['duplicate_ratio']:.0%} | {candidate['cache_mode']} | "
             f"{candidate['throughput_points_s']:.3f} | {format_change(throughput_change)} | "
-            f"{format_change(p95_change)} |"
+            f"{format_change(p95_change)} | {regression_label(throughput_change, p95_change)} |"
         )
 
     after_lines.extend(
