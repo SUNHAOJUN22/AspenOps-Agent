@@ -8,9 +8,8 @@ import traceback
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
-from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .backends.factory import create_backend
 from .evaluation import evaluate
@@ -19,11 +18,21 @@ from .registry import NodeRegistry
 from .windows_job import WindowsJobScope
 
 
+class IPCConnection(Protocol):
+    def send(self, obj: Any) -> None: ...
+
+    def recv(self) -> Any: ...
+
+    def poll(self, timeout: float = 0.0) -> bool: ...
+
+    def close(self) -> None: ...
+
+
 @dataclass(slots=True)
 class WorkerHandle:
     worker_id: int
     process: Any
-    connection: Connection
+    connection: IPCConnection
     staged_model: Path
     runtime: dict[str, Any]
     generation: int = 0
@@ -34,7 +43,7 @@ class WorkerHandle:
 def _worker_main(
     worker_id: int,
     generation: int,
-    connection: Connection,
+    connection: IPCConnection,
     backend_name: str,
     source_model: str,
     registry_path: str,
