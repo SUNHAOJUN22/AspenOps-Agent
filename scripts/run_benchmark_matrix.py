@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
+import shutil
 import statistics
 import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import psutil
@@ -15,10 +18,12 @@ import psutil
 from aspenops_nexus.models import EvaluationRequest, VariableRead, VariableWrite
 from aspenops_nexus.pool import CasePool
 
-try:
-    from aspenops_nexus.pool_manager import PoolManager
-except ImportError:
-    PoolManager = None  # type: ignore[misc,assignment]
+
+def load_pool_manager_module() -> ModuleType | None:
+    try:
+        return importlib.import_module("aspenops_nexus.pool_manager")
+    except ImportError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,10 +63,16 @@ def build_requests(
     timeout_s: float = 30.0,
     failing: bool = False,
 ) -> list[EvaluationRequest]:
+    if points < 1:
+        raise ValueError("points must be positive")
+    if not 0.0 <= duplicate_ratio < 1.0:
+        raise ValueError("duplicate_ratio must be in [0, 1)")
     unique_count = max(1, round(points * (1.0 - duplicate_ratio)))
     unique: list[EvaluationRequest] = []
     for index in range(unique_count):
-        temperature = 200.0 if failing else 50.0 + (index % 60)
+        # One monotonic value guarantees genuinely unique physical requests for the
+        # duplicate_ratio=0 case. The ranges remain inside the example registry bounds.
+        temperature = (250.0 if failing else 50.0) + index * 0.1
         unique.append(
             EvaluationRequest(
                 model_path=str(model_path),
@@ -77,7 +88,7 @@ def build_requests(
                     VariableWrite(
                         "block.input.reflux_ratio",
                         {"block": "COL1"},
-                        1.2 + 0.03 * (index % 30),
+                        1.2 + index * 0.0001,
                         "1",
                     ),
                 ),
@@ -118,30 +129,33 @@ def measure_pool(
     failing: bool = False,
 ) -> Measurement:
     state_dir = Path(tempfile.mkdtemp(prefix="aspenops-benchmark-"))
-    cache_path = state_dir / "cache.sqlite3"
-    requests = build_requests(
-        model_path=model_path,
-        registry_path=registry_path,
-        points=points,
-        duplicate_ratio=duplicate_ratio,
-        failing=failing,
-    )
-    process = psutil.Process(os.getpid())
-    rss_before = int(process.memory_info().rss)
-    with CasePool(
-        backend_name="mock",
-        model_path=model_path,
-        registry_path=registry_path,
-        workers=workers,
-        visible=False,
-        cache_path=cache_path,
-    ) as pool:
-        if warm_cache:
-            pool.evaluate_many(requests)
-        started = time.perf_counter()
-        results = pool.evaluate_many(requests)
-        elapsed = time.perf_counter() - started
-    rss_after = int(process.memory_info().rss)
+    try:
+        cache_path = state_dir / "cache.sqlite3"
+        requests = build_requests(
+            model_path=model_path,
+            registry_path=registry_path,
+            points=points,
+            duplicate_ratio=duplicate_ratio,
+            failing=failing,
+        )
+        process = psutil.Process(os.getpid())
+        rss_before = int(process.memory_info().rss)
+        with CasePool(
+            backend_name="mock",
+            model_path=model_path,
+            registry_path=registry_path,
+            workers=workers,
+            visible=False,
+            cache_path=cache_path,
+        ) as pool:
+            if warm_cache:
+                pool.evaluate_many(requests)
+            started = time.perf_counter()
+            results = pool.evaluate_many(requests)
+            elapsed = time.perf_counter() - started
+        rss_after = int(process.memory_info().rss)
+    finally:
+        shutil.rmtree(state_dir, ignore_errors=True)
     latencies = [float(item.elapsed_s) for item in results]
     sources: dict[str, int] = {}
     for item in results:
@@ -173,39 +187,47 @@ def sequential_job_measurement(
     registry_path: Path,
     workers: int,
 ) -> dict[str, Any]:
-    if PoolManager is None:
+    pool_manager_module = load_pool_manager_module()
+    manager_type = (
+        None if pool_manager_module is None else getattr(pool_manager_module, "PoolManager", None)
+    )
+    if manager_type is None:
         return {
             "scenario": "ten_sequential_jobs",
             "available": False,
             "reason": "PoolManager is unavailable in this revision",
         }
     state_dir = Path(tempfile.mkdtemp(prefix="aspenops-sequential-"))
-    requests = build_requests(
-        model_path=model_path,
-        registry_path=registry_path,
-        points=10,
-    )
-    started = time.perf_counter()
-    with PoolManager(
-        cache_path=state_dir / "cache.sqlite3",
-        license_slots=workers,
-        max_resident_cases=1,
-        idle_timeout_s=3600,
-    ) as manager:
-        for _ in range(10):
-            with manager.acquire(
-                backend_name="mock",
-                model_path=model_path,
-                registry_path=registry_path,
-                workers=workers,
-                visible=False,
-            ) as pool:
-                pool.evaluate_many(requests)
-        stats = manager.stats()
+    try:
+        requests = build_requests(
+            model_path=model_path,
+            registry_path=registry_path,
+            points=10,
+        )
+        started = time.perf_counter()
+        with manager_type(
+            cache_path=state_dir / "cache.sqlite3",
+            license_slots=workers,
+            max_resident_cases=1,
+            idle_timeout_s=3600,
+        ) as manager:
+            for _ in range(10):
+                with manager.acquire(
+                    backend_name="mock",
+                    model_path=model_path,
+                    registry_path=registry_path,
+                    workers=workers,
+                    visible=False,
+                ) as pool:
+                    pool.evaluate_many(requests)
+            stats = manager.stats()
+        elapsed = time.perf_counter() - started
+    finally:
+        shutil.rmtree(state_dir, ignore_errors=True)
     return {
         "scenario": "ten_sequential_jobs",
         "available": True,
-        "elapsed_s": time.perf_counter() - started,
+        "elapsed_s": elapsed,
         "pool_stats": stats,
     }
 
@@ -261,7 +283,7 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
             )
         )
     return {
-        "schema": "aspenops.benchmark-matrix/v1",
+        "schema": "aspenops.benchmark-matrix/v2",
         "kind": "portable-mock-orchestration",
         "boundary": (
             "These measurements characterize portable orchestration only. They are not Aspen "
