@@ -8,6 +8,9 @@ on:
       - .github/workflows/generate-performance-evidence.yml
       - scripts/run_benchmark_matrix.py
       - scripts/compare_benchmarks.py
+      - src/aspenops_nexus/cache.py
+      - tests/test_cache.py
+      - tests/test_benchmark_scripts.py
       - pyproject.toml
       - src/aspenops_nexus/py.typed
   push:
@@ -16,6 +19,9 @@ on:
       - .github/workflows/generate-performance-evidence.yml
       - scripts/run_benchmark_matrix.py
       - scripts/compare_benchmarks.py
+      - src/aspenops_nexus/cache.py
+      - tests/test_cache.py
+      - tests/test_benchmark_scripts.py
       - pyproject.toml
       - src/aspenops_nexus/py.typed
 
