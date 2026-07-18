@@ -1,21 +1,20 @@
 name: Generate performance evidence
 
 on:
+  workflow_dispatch:
   push:
     branches: [agent/aspenops-v2-reliability-performance]
     paths:
       - .github/workflows/generate-performance-evidence.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Let consolidation settle
-        run: sleep 180
       - uses: actions/checkout@v4
         with:
           ref: agent/aspenops-v2-reliability-performance
@@ -23,8 +22,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev --extra agent
-      - name: Prepare baseline worktree
+      - name: Sync candidate dependencies
+        run: uv sync --extra dev --extra agent
+      - name: Prepare main worktree
         run: |
           git fetch origin main
           git worktree add /tmp/aspenops-main origin/main
@@ -55,11 +55,12 @@ jobs:
           uv run mypy scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . --output var/benchmarks/smoke.json --smoke
-      - name: Commit benchmark evidence
-        run: |
-          rm .github/workflows/generate-performance-evidence.yml
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add -A
-          git commit -m "perf: publish portable benchmark evidence"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+      - name: Upload performance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-evidence
+          path: |
+            var/benchmarks
+            docs/performance-baseline.md
+            docs/performance-after.md
+          if-no-files-found: error
