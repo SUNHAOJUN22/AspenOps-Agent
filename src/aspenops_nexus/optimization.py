@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from .batch import run_batch_document
 from .config import Settings
-from .policy import PolicyError
 from .optimizer import (
     Candidate,
     DifferentialEvolutionResult,
@@ -19,6 +18,7 @@ from .optimizer import (
     differential_evolution_batch,
     pareto_front,
 )
+from .policy import PolicyError
 
 if TYPE_CHECKING:
     from .pool import CasePool
