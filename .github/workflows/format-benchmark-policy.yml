@@ -1,0 +1,46 @@
+name: One-shot format benchmark comparison policy
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/format-benchmark-policy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-format-benchmark-policy
+  cancel-in-progress: false
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Sync locked development dependencies
+        run: uv sync --extra dev
+      - name: Apply repository formatter
+        run: |
+          uv run ruff format scripts/compare_benchmarks.py \
+            tests/test_benchmark_comparison_policy.py
+          uv run ruff check scripts/compare_benchmarks.py \
+            tests/test_benchmark_comparison_policy.py
+      - name: Commit formatting and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/format-benchmark-policy.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add scripts/compare_benchmarks.py \
+            tests/test_benchmark_comparison_policy.py \
+            .github/workflows/format-benchmark-policy.yml
+          git commit -m "style: format benchmark comparison policy"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
