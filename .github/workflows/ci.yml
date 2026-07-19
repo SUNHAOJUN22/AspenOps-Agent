@@ -26,29 +26,43 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Materialize pending owner-fencing patch when staged
+      - name: Materialize staged owner-fencing patch
         shell: bash
         run: |
+          mkdir -p var/ci
           if [[ ! -f scripts/materialize_owner_fencing.py ]]; then
+            echo "No staged owner-fencing materializer." | tee var/ci/materialize-owner-fencing.log
             exit 0
           fi
-          uv sync --extra dev
-          uv run python scripts/materialize_owner_fencing.py
-          uv run ruff format \
+          set -o pipefail
+          python scripts/materialize_owner_fencing.py \
+            2>&1 | tee var/ci/materialize-owner-fencing.log
+          uvx ruff@0.11.13 format \
             src/aspenops_nexus/scheduler.py \
             tests/test_job_store.py \
             tests/test_job_store_owner_fencing.py \
-            tests/test_scheduler_edge_cases.py
-          uv run ruff check \
+            tests/test_scheduler_edge_cases.py \
+            2>&1 | tee -a var/ci/materialize-owner-fencing.log
+          uvx ruff@0.11.13 check \
             src/aspenops_nexus/scheduler.py \
             tests/test_job_store.py \
             tests/test_job_store_owner_fencing.py \
-            tests/test_scheduler_edge_cases.py
+            tests/test_scheduler_edge_cases.py \
+            2>&1 | tee -a var/ci/materialize-owner-fencing.log
           git config user.name "aspenops-ci"
           git config user.email "aspenops-ci@users.noreply.github.com"
           git add -A
-          git commit -m "fix: fence durable job commits by lease owner"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+          git commit -m "fix: fence durable job commits by lease owner" \
+            2>&1 | tee -a var/ci/materialize-owner-fencing.log
+          git push origin HEAD:agent/aspenops-v2-reliability-performance \
+            2>&1 | tee -a var/ci/materialize-owner-fencing.log
+      - name: Upload materializer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owner-fencing-materializer-diagnostics
+          path: var/ci/materialize-owner-fencing.log
+          if-no-files-found: warn
 
   portable:
     strategy:
