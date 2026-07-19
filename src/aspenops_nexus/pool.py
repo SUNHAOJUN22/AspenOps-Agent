@@ -60,7 +60,7 @@ class CasePool:
         self.model_sha256 = sha256_file(self.model_path)
         self._handles: list[WorkerHandle] = []
         self._generation: dict[int, int] = {}
-        self._replace_lock = threading.Lock()
+        self._replace_lock = threading.RLock()
         self._operation_lock = threading.Lock()
         self._singleflight_lock = threading.Lock()
         self._inflight: dict[str, _InflightEvaluation] = {}
@@ -74,19 +74,20 @@ class CasePool:
         self.close()
 
     def start(self) -> None:
-        if self._handles:
-            return
-        started: list[WorkerHandle] = []
-        try:
-            for worker_id in range(self.workers):
-                self._generation[worker_id] = 0
-                handle = self._new_handle(worker_id)
-                started.append(handle)
-            self._handles = started
-        except Exception:
-            for handle in started:
-                stop_worker(handle)
-            raise
+        with self._replace_lock:
+            if self._handles:
+                return
+            started: list[WorkerHandle] = []
+            try:
+                for worker_id in range(self.workers):
+                    self._generation[worker_id] = 0
+                    handle = self._new_handle(worker_id)
+                    started.append(handle)
+                self._handles = started
+            except Exception:
+                for handle in started:
+                    stop_worker(handle)
+                raise
 
     def close(self) -> None:
         with self._replace_lock:
@@ -173,20 +174,21 @@ class CasePool:
 
     def force_recycle_all(self, reason: str = "cancel_deadline") -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
-        for index in range(len(self._handles)):
-            expected = self._handles[index]
-            old_generation = expected.generation
-            replacement = self._replace(index, expected=expected, force=True)
-            if replacement is expected:
-                continue
-            events.append(
-                {
-                    "worker_id": expected.worker_id,
-                    "reason": reason,
-                    "old_generation": old_generation,
-                    "new_generation": replacement.generation,
-                }
-            )
+        with self._replace_lock:
+            for index in range(len(self._handles)):
+                expected = self._handles[index]
+                old_generation = expected.generation
+                replacement = self._replace(index, expected=expected, force=True)
+                if replacement is expected:
+                    continue
+                events.append(
+                    {
+                        "worker_id": expected.worker_id,
+                        "reason": reason,
+                        "old_generation": old_generation,
+                        "new_generation": replacement.generation,
+                    }
+                )
         return events
 
     @staticmethod
@@ -226,7 +228,15 @@ class CasePool:
     def _cacheable(self, request: EvaluationRequest, result: EvaluationResult) -> bool:
         if not request.reinitialize:
             return False
-        return result.ok or self.cache_failures
+        if result.ok:
+            return True
+        if not self.cache_failures:
+            return False
+        return (
+            result.communication_ok
+            and result.engine_ok
+            and not bool(result.diagnostics.get("worker_tainted"))
+        )
 
     @staticmethod
     def _cancelled_result(request_hash: str) -> EvaluationResult:
@@ -325,26 +335,34 @@ class CasePool:
     ) -> list[EvaluationResult]:
         if not self._handles:
             self.start()
+        keyed_requests = [(self.cache_key(request), request) for request in requests]
+        cached_payloads = self.cache.get_many(
+            [key for key, request in keyed_requests if request.reinitialize]
+        )
         output: list[EvaluationResult | None] = [None] * len(requests)
         unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
-        for index, request in enumerate(requests):
-            key = self.cache_key(request)
-            if request.reinitialize:
-                cached = self.cache.get(key)
-                if cached is not None:
-                    result = EvaluationResult.from_dict(cached)
-                    result.cache_source = "persistent_cache"
-                    result.cache_hit = True
-                    result.request_hash = key
-                    output[index] = result
-                    continue
+        for index, (key, request) in enumerate(keyed_requests):
+            cached = cached_payloads.get(key) if request.reinitialize else None
+            if cached is not None:
+                result = EvaluationResult.from_dict(cached)
+                result.cache_source = "persistent_cache"
+                result.cache_hit = True
+                result.request_hash = key
+                output[index] = result
+                continue
             unique.setdefault(key, (request, []))[1].append(index)
+
+        if not unique:
+            if any(item is None for item in output):
+                raise RuntimeError("Internal cache error: one or more results were not assigned")
+            return [replace(item) for item in output if item is not None]
 
         tasks: queue.Queue[tuple[str, EvaluationRequest, list[int]]] = queue.Queue()
         for key, (request, indexes) in unique.items():
             tasks.put((key, request, indexes))
         result_lock = threading.Lock()
         errors: list[BaseException] = []
+        cache_payloads: dict[str, dict[str, Any]] = {}
 
         def worker_loop(handle_index: int) -> None:
             nonlocal output
@@ -387,9 +405,9 @@ class CasePool:
                         )
 
                     result.request_hash = key
-                    if self._cacheable(request, result):
-                        self.cache.put(key, result.to_dict())
                     with result_lock:
+                        if self._cacheable(request, result):
+                            cache_payloads[key] = result.to_dict()
                         for ordinal, index in enumerate(indexes):
                             clone = EvaluationResult.from_dict(result.to_dict())
                             if ordinal > 0:
@@ -404,12 +422,14 @@ class CasePool:
 
         threads = [
             threading.Thread(target=worker_loop, args=(index,), name=f"aspenops-dispatch-{index}")
-            for index in range(min(len(self._handles), max(1, len(unique))))
+            for index in range(min(len(self._handles), len(unique)))
         ]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join()
+        if cache_payloads:
+            self.cache.put_many(cache_payloads)
         if errors:
             raise RuntimeError(f"CasePool dispatch failed: {errors[0]}") from errors[0]
         if any(item is None for item in output):
