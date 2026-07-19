@@ -1,0 +1,270 @@
+name: One-shot materialize optimization contracts v2
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/apply-optimization-contracts-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Patch optimization contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/optimization.py")
+          text = path.read_text(encoding="utf-8")
+          if "from .policy import PolicyError" not in text:
+              text = text.replace(
+                  "from .config import Settings\n",
+                  "from .config import Settings\nfrom .policy import PolicyError\n",
+                  1,
+              )
+
+          start = text.index('        key = _text(_required(data, "key"), label="variable key")')
+          end = text.index("\n\n        return cls(\n", start)
+          variable_block = '''        key = _text(_required(data, "key"), label="variable key").strip()
+                  if not key:
+                      raise ValueError("variable key must not be empty")
+                  kind_text = _text(data.get("kind", "continuous"), label="variable kind").strip()
+                  if kind_text not in {"continuous", "integer", "categorical", "ordinal"}:
+                      raise ValueError(f"Unsupported optimization variable kind: {kind_text}")
+                  kind = cast(VariableKind, kind_text)
+
+                  identifiers_raw = _optional_object_map(data.get("identifiers", {}))
+                  identifiers = {name: str(value) for name, value in identifiers_raw.items()}
+                  unit_value = data.get("unit")
+                  unit = None if unit_value is None else _text(unit_value, label="variable unit")
+                  name = _text(data.get("name", key), label="variable name").strip()
+                  if not name:
+                      raise ValueError("variable name must not be empty")
+
+                  lower_value = data.get("lower")
+                  upper_value = data.get("upper")
+                  lower = None if lower_value is None else _number(lower_value, label="lower bound")
+                  upper = None if upper_value is None else _number(upper_value, label="upper bound")
+                  choices = tuple(
+                      _choice(item)
+                      for item in _object_sequence(data.get("choices", []), label="variable choices")
+                  )
+                  choice_identities = {(type(item).__name__, repr(item)) for item in choices}
+                  if len(choice_identities) != len(choices):
+                      raise ValueError("Optimization variable choices must be unique")
+
+                  if kind in {"categorical", "ordinal"}:
+                      if lower is not None or upper is not None:
+                          raise ValueError(f"{kind} variable cannot define numeric bounds")
+                      if len(choices) < 2:
+                          raise ValueError(f"{kind} variable requires at least two choices")
+                  else:
+                      if choices:
+                          raise ValueError(f"{kind} variable cannot define choices")
+                      if lower is None or upper is None or upper <= lower:
+                          raise ValueError(f"{kind} variable requires lower < upper")
+                      if kind == "integer" and (
+                          not lower.is_integer() or not upper.is_integer()
+                      ):
+                          raise ValueError("integer bounds must be integral")
+          '''
+          text = text[:start] + variable_block + text[end:]
+
+          text = text.replace(
+              '            output_key = _text(output_value, label="objective output_key")',
+              '            output_key = _text(output_value, label="objective output_key").strip()',
+              1,
+          )
+          text = text.replace(
+              '            key = _text(_required(data, "key"), label="objective key")',
+              '            key = _text(_required(data, "key"), label="objective key").strip()',
+              1,
+          )
+          text = text.replace(
+              '            output_key = _output_key(key, identifiers)\n\n        weight_value',
+              '            output_key = _output_key(key, identifiers)\n'
+              '        if not output_key:\n'
+              '            raise ValueError("objective output_key must not be empty")\n\n'
+              '        weight_value',
+              1,
+          )
+
+          text = text.replace(
+              '        if not variables:\n'
+              '            raise ValueError("Optimization requires at least one variable")\n\n'
+              '        objectives_value',
+              '        if not variables:\n'
+              '            raise ValueError("Optimization requires at least one variable")\n'
+              '        variable_names: set[str] = set()\n'
+              '        variable_targets: set[str] = set()\n'
+              '        for variable in variables:\n'
+              '            if variable.name in variable_names:\n'
+              '                raise ValueError(\n'
+              '                    f"Duplicate optimization variable name: {variable.name}"\n'
+              '                )\n'
+              '            variable_names.add(variable.name)\n'
+              '            target = _output_key(variable.key, variable.identifiers)\n'
+              '            if target in variable_targets:\n'
+              '                raise ValueError(f"Duplicate optimization variable target: {target}")\n'
+              '            variable_targets.add(target)\n\n'
+              '        objectives_value',
+              1,
+          )
+          text = text.replace(
+              '        if not objectives:\n'
+              '            raise ValueError("Optimization requires at least one objective")\n\n'
+              '        base_request',
+              '        if not objectives:\n'
+              '            raise ValueError("Optimization requires at least one objective")\n'
+              '        objective_keys: set[str] = set()\n'
+              '        for objective in objectives:\n'
+              '            if objective.output_key in objective_keys:\n'
+              '                raise ValueError(\n'
+              '                    f"Duplicate optimization objective: {objective.output_key}"\n'
+              '                )\n'
+              '            objective_keys.add(objective.output_key)\n\n'
+              '        base_request',
+              1,
+          )
+
+          method = '''    def validate_limits(self, settings: Settings) -> None:
+                  if len(self.variables) > settings.max_optimization_variables:
+                      raise ValueError(
+                          f"Optimization defines {len(self.variables)} variables; limit is "
+                          f"{settings.max_optimization_variables}"
+                      )
+                  if len(self.objectives) > settings.max_optimization_objectives:
+                      raise ValueError(
+                          f"Optimization defines {len(self.objectives)} objectives; limit is "
+                          f"{settings.max_optimization_objectives}"
+                      )
+                  if self.budget.max_evaluations > settings.max_optimization_evaluations:
+                      raise ValueError(
+                          f"Optimization evaluation budget {self.budget.max_evaluations} exceeds "
+                          f"limit {settings.max_optimization_evaluations}"
+                      )
+
+              def checkpoint_for(self, settings: Settings) -> Path | None:
+                  if self.checkpoint_path is None:
+                      return None
+                  candidate = self.checkpoint_path
+                  resolved = (
+                      (settings.state_dir / candidate).expanduser().resolve()
+                      if not candidate.is_absolute()
+                      else candidate.expanduser().resolve()
+                  )
+                  roots = (settings.state_dir.expanduser().resolve(), *settings.allowed_roots)
+                  for root in roots:
+                      try:
+                          resolved.relative_to(root.expanduser().resolve())
+                          return resolved
+                      except ValueError:
+                          continue
+                  raise PolicyError(
+                      f"Optimization checkpoint path is outside allowed roots: {resolved}"
+                  )
+
+          '''
+          bounds_anchor = "    def bounds(self) -> tuple[tuple[float, float], ...]:\n"
+          if "    def validate_limits(self, settings: Settings)" not in text:
+              text = text.replace(bounds_anchor, method + bounds_anchor, 1)
+
+          text = text.replace(
+              '                    value = 1e12\n'
+              '                objective_values.append(value)',
+              '                    value = (\n'
+              '                        -1e12 if objective.direction == "maximize" else 1e12\n'
+              '                    )\n'
+              '                objective_values.append(value)',
+              1,
+          )
+          text = text.replace(
+              '    problem = OptimizationProblem.from_document(normalized_document)\n'
+              '    evaluator = _Evaluator(problem, settings, pool_manager, cancel_check, pool_observer)\n'
+              '    checkpoint = (\n'
+              '        None if problem.checkpoint_path is None else _checkpoint_callback(problem.checkpoint_path)\n'
+              '    )',
+              '    problem = OptimizationProblem.from_document(normalized_document)\n'
+              '    problem.validate_limits(settings)\n'
+              '    evaluator = _Evaluator(problem, settings, pool_manager, cancel_check, pool_observer)\n'
+              '    checkpoint_path = problem.checkpoint_for(settings)\n'
+              '    checkpoint = None if checkpoint_path is None else _checkpoint_callback(checkpoint_path)',
+              1,
+          )
+
+          required = [
+              "variable key must not be empty",
+              "Duplicate optimization variable target",
+              "def validate_limits(self, settings: Settings)",
+              "def checkpoint_for(self, settings: Settings)",
+              "problem.validate_limits(settings)",
+          ]
+          missing = [marker for marker in required if marker not in text]
+          if missing:
+              raise SystemExit(f"optimization patch incomplete: {missing}")
+          path.write_text(text, encoding="utf-8")
+
+          scheduler = Path("src/aspenops_nexus/scheduler.py")
+          scheduler_text = scheduler.read_text(encoding="utf-8")
+          scheduler_text = scheduler_text.replace(
+              '        if "optimization" in request:\n'
+              '            OptimizationProblem.from_document(request)\n'
+              '            dry_run_document(',
+              '        if "optimization" in request:\n'
+              '            problem = OptimizationProblem.from_document(request)\n'
+              '            problem.validate_limits(self.settings)\n'
+              '            dry_run_document(',
+              1,
+          )
+          scheduler.write_text(scheduler_text, encoding="utf-8")
+
+          edge = Path("tests/test_optimization_edge_cases.py")
+          edge_text = edge.read_text(encoding="utf-8").replace(
+              '    checkpoint = tmp_path / "checkpoint.json"\n',
+              '    checkpoint = tmp_path / "state" / "checkpoint.json"\n',
+              1,
+          )
+          edge.write_text(edge_text, encoding="utf-8")
+          PY
+      - name: Format changed Python
+        run: |
+          uv sync --extra dev
+          uv run ruff format \
+            src/aspenops_nexus/batch.py \
+            src/aspenops_nexus/config.py \
+            src/aspenops_nexus/optimization.py \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_batch_resource_limits.py \
+            tests/test_config_resource_budgets.py \
+            tests/test_optimization_contracts.py \
+            tests/test_optimization_edge_cases.py
+      - name: Commit and self-delete
+        shell: bash
+        run: |
+          rm .github/workflows/apply-optimization-contracts-v2.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add src/aspenops_nexus/batch.py \
+            src/aspenops_nexus/config.py \
+            src/aspenops_nexus/optimization.py \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_batch_resource_limits.py \
+            tests/test_config_resource_budgets.py \
+            tests/test_optimization_contracts.py \
+            tests/test_optimization_edge_cases.py \
+            .github/workflows/apply-optimization-contracts-v2.yml
+          git commit -m "fix: bound and disambiguate optimization contracts"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
