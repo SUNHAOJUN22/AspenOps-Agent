@@ -40,6 +40,7 @@ jobs:
           path = Path("scripts/materialize_owner_fencing.py")
           text = path.read_text(encoding="utf-8")
           text = text.replace('"    def fail(\\n"', '"    def fail("')
+          text = text.replace('"    def get(\\n"', '"    def get("')
           text = text.replace('"    def cancellation_due(\\n"', '"    def cancellation_due("')
           text = text.replace('"    def _watch_active_jobs(\\n"', '"    def _watch_active_jobs("')
           path.write_text(text, encoding="utf-8")
