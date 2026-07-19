@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,8 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
 
 def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
     value = float(os.getenv(name, str(default)))
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
     if value < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
     return value
@@ -51,6 +54,12 @@ class Settings:
     job_lease_s: float = 30.0
     cancellation_grace_s: float = 2.0
     job_max_attempts: int = 3
+    max_request_bytes: int = 10_000_000
+    max_batch_points: int = 10_000
+    max_semantic_operations: int = 1_000_000
+    max_optimization_evaluations: int = 10_000
+    max_optimization_variables: int = 64
+    max_optimization_objectives: int = 16
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -86,6 +95,24 @@ class Settings:
             job_lease_s=_env_float("ASPENOPS_JOB_LEASE_S", 30.0, 1.0),
             cancellation_grace_s=_env_float("ASPENOPS_CANCELLATION_GRACE_S", 2.0, 0.0),
             job_max_attempts=_env_int("ASPENOPS_JOB_MAX_ATTEMPTS", 3),
+            max_request_bytes=_env_int("ASPENOPS_MAX_REQUEST_BYTES", 10_000_000),
+            max_batch_points=_env_int("ASPENOPS_MAX_BATCH_POINTS", 10_000),
+            max_semantic_operations=_env_int(
+                "ASPENOPS_MAX_SEMANTIC_OPERATIONS",
+                1_000_000,
+            ),
+            max_optimization_evaluations=_env_int(
+                "ASPENOPS_MAX_OPTIMIZATION_EVALUATIONS",
+                10_000,
+            ),
+            max_optimization_variables=_env_int(
+                "ASPENOPS_MAX_OPTIMIZATION_VARIABLES",
+                64,
+            ),
+            max_optimization_objectives=_env_int(
+                "ASPENOPS_MAX_OPTIMIZATION_OBJECTIVES",
+                16,
+            ),
         )
 
     @property
