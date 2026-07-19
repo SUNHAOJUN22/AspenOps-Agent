@@ -1,0 +1,64 @@
+name: One-shot align worker protocol fixture
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/align-worker-protocol-fixture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Add protocol to successful fake result
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_worker_contracts.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    return {
+                      "kind": "result",
+                      "request_id": command["request_id"],
+                      "result": result().to_dict(),
+                  }
+          '''
+          new = '''    return {
+                      "protocol": 1,
+                      "kind": "result",
+                      "request_id": command["request_id"],
+                      "result": result().to_dict(),
+                  }
+          '''
+          if old not in text:
+              raise SystemExit("worker result response fixture anchor not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+      - name: Validate worker contracts
+        run: |
+          uv sync --extra dev --extra agent
+          uv run ruff format src/aspenops_nexus/worker.py tests/test_worker_contracts.py tests/test_worker_protocol_hardening.py
+          uv run ruff check src/aspenops_nexus/worker.py tests/test_worker_contracts.py tests/test_worker_protocol_hardening.py
+          uv run mypy src/aspenops_nexus/worker.py
+          uv run pytest tests/test_worker_contracts.py tests/test_worker_protocol_hardening.py
+      - name: Commit and self-delete
+        shell: bash
+        run: |
+          rm .github/workflows/align-worker-protocol-fixture.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add tests/test_worker_contracts.py tests/test_worker_protocol_hardening.py src/aspenops_nexus/worker.py .github/workflows/align-worker-protocol-fixture.yml
+          git commit -m "test: align worker protocol contracts"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
