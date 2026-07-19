@@ -781,10 +781,10 @@ class BackgroundScheduler:
                 self._observe_pool(job_id, None)
                 self.store.record_lease_lost(job_id, self.owner, events)
             for job_id in self.store.cancellation_due(owner=self.owner):
-                pool = self._active_snapshot().get(job_id)
-                if pool is None:
+                due_pool = self._active_snapshot().get(job_id)
+                if due_pool is None:
                     continue
-                events = pool.force_recycle_all("cancel_deadline")
+                events = due_pool.force_recycle_all("cancel_deadline")
                 self.store.mark_abort_dispatched(job_id, events, owner=self.owner)
 
     @staticmethod
