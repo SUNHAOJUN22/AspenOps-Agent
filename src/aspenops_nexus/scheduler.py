@@ -270,7 +270,8 @@ class JobStore:
                 UPDATE jobs
                 SET status='claimed', worker_owner=?, lease_owner=?, lease_expires_at=?,
                     heartbeat_at=?, started_at=COALESCE(started_at,?), updated_at=?,
-                    attempt=attempt+1
+                    attempt=attempt+1, error=NULL, error_class=NULL, finished_at=NULL,
+                    cancel_deadline=NULL
                 WHERE job_id=? AND status IN ('pending','retry_wait')
                 """,
                 (owner, owner, lease_expires_at, now, now, now, row[0]),
@@ -295,8 +296,9 @@ class JobStore:
                 UPDATE jobs
                 SET status='running', heartbeat_at=?, lease_expires_at=?, updated_at=?
                 WHERE job_id=? AND status='claimed' AND lease_owner=?
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
                 """,
-                (now, _future(lease_s), now, job_id, owner),
+                (now, _future(lease_s), now, job_id, owner, now),
             )
             if cursor.rowcount == 1:
                 self._event(connection, job_id, "running", {"owner": owner})
@@ -311,8 +313,9 @@ class JobStore:
                 SET heartbeat_at=?, lease_expires_at=?, updated_at=?
                 WHERE job_id=? AND lease_owner=?
                   AND status IN ('claimed','running','cancelling')
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
                 """,
-                (now, _future(lease_s), now, job_id, owner),
+                (now, _future(lease_s), now, job_id, owner, now),
             )
             return cursor.rowcount == 1
 
