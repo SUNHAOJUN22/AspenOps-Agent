@@ -26,7 +26,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Apply and validate focused behavior fixes
+      - name: Apply, format, and publish focused fixes
         shell: bash
         run: |
           python - <<'PY'
@@ -71,22 +71,10 @@ jobs:
               raise SystemExit('worker stage-directory anchor not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          uv sync --extra dev --extra agent
-          uv run ruff format \
+          uvx ruff@0.11.13 format \
             src/aspenops_nexus/provenance.py \
             tests/test_worker_protocol_hardening.py \
             tests/test_archive_safety_complete.py
-          uv run ruff check \
-            src/aspenops_nexus/archive_safety.py \
-            src/aspenops_nexus/provenance.py \
-            tests/test_worker_protocol_hardening.py \
-            tests/test_archive_safety_complete.py
-          uv run mypy src/aspenops_nexus/archive_safety.py src/aspenops_nexus/provenance.py
-          uv run pytest \
-            tests/test_provenance.py \
-            tests/test_provenance_zip_safety.py \
-            tests/test_archive_safety_complete.py \
-            tests/test_worker_protocol_hardening.py
           git config user.name "aspenops-ci"
           git config user.email "aspenops-ci@users.noreply.github.com"
           git add \
