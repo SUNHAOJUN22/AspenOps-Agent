@@ -8,7 +8,7 @@ import shutil
 import statistics
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -44,6 +44,10 @@ class Measurement:
     ok_points: int
     failed_points: int
     cache_sources: dict[str, int]
+    trial_count: int = 1
+    throughput_cv: float = 0.0
+    elapsed_samples_s: tuple[float, ...] = ()
+    throughput_samples_points_s: tuple[float, ...] = ()
 
 
 def percentile(values: list[float], probability: float) -> float:
@@ -117,7 +121,7 @@ def cache_source(result: Any) -> str:
     return "persistent_cache" if bool(getattr(result, "cache_hit", False)) else "computed"
 
 
-def measure_pool(
+def _measure_pool_once(
     *,
     scenario: str,
     model_path: Path,
@@ -181,6 +185,63 @@ def measure_pool(
     )
 
 
+def measure_pool(
+    *,
+    scenario: str,
+    model_path: Path,
+    registry_path: Path,
+    points: int,
+    workers: int,
+    duplicate_ratio: float = 0.0,
+    warm_cache: bool = False,
+    failing: bool = False,
+    trials: int = 1,
+) -> Measurement:
+    if trials < 1:
+        raise ValueError("trials must be positive")
+    measurements = [
+        _measure_pool_once(
+            scenario=scenario,
+            model_path=model_path,
+            registry_path=registry_path,
+            points=points,
+            workers=workers,
+            duplicate_ratio=duplicate_ratio,
+            warm_cache=warm_cache,
+            failing=failing,
+        )
+        for _ in range(trials)
+    ]
+    elapsed_samples = tuple(item.elapsed_s for item in measurements)
+    throughput_samples = tuple(item.throughput_points_s for item in measurements)
+    median_throughput = statistics.median(throughput_samples)
+    representative = min(
+        measurements,
+        key=lambda item: abs(item.throughput_points_s - median_throughput),
+    )
+    mean_throughput = statistics.fmean(throughput_samples)
+    throughput_cv = (
+        0.0
+        if trials < 2 or mean_throughput == 0.0
+        else statistics.pstdev(throughput_samples) / abs(mean_throughput)
+    )
+    return replace(
+        representative,
+        elapsed_s=statistics.median(elapsed_samples),
+        throughput_points_s=median_throughput,
+        p50_point_s=statistics.median(item.p50_point_s for item in measurements),
+        p95_point_s=statistics.median(item.p95_point_s for item in measurements),
+        p99_point_s=statistics.median(item.p99_point_s for item in measurements),
+        rss_before=int(statistics.median(item.rss_before for item in measurements)),
+        rss_after=int(statistics.median(item.rss_after for item in measurements)),
+        rss_delta=int(statistics.median(item.rss_delta for item in measurements)),
+        trial_count=trials,
+        throughput_cv=throughput_cv,
+        elapsed_samples_s=elapsed_samples,
+        throughput_samples_points_s=throughput_samples,
+    )
+
+
 def sequential_job_measurement(
     *,
     model_path: Path,
@@ -232,11 +293,19 @@ def sequential_job_measurement(
     }
 
 
-def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
+def run_matrix(
+    repo_root: Path,
+    *,
+    smoke: bool,
+    trials: int | None = None,
+) -> dict[str, Any]:
     model_path = repo_root / "src/aspenops_nexus/data/mock-case.json"
     registry_path = repo_root / "src/aspenops_nexus/data/node-registry.json"
     point_counts = [10] if smoke else [1, 10, 100, 1000]
     worker_counts = [1, 2] if smoke else [1, 2, 4, 8]
+    trial_count = trials if trials is not None else (1 if smoke else 3)
+    if trial_count < 1:
+        raise ValueError("trials must be positive")
     measurements: list[Measurement] = []
     for points in point_counts:
         for workers in worker_counts:
@@ -247,6 +316,7 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
                     registry_path=registry_path,
                     points=points,
                     workers=workers,
+                    trials=trial_count,
                 )
             )
     if not smoke:
@@ -259,6 +329,7 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
                     points=100,
                     workers=4,
                     duplicate_ratio=ratio,
+                    trials=trial_count,
                 )
             )
         for warm in (False, True):
@@ -270,6 +341,7 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
                     points=100,
                     workers=4,
                     warm_cache=warm,
+                    trials=trial_count,
                 )
             )
         measurements.append(
@@ -280,10 +352,11 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
                 points=20,
                 workers=2,
                 failing=True,
+                trials=trial_count,
             )
         )
     return {
-        "schema": "aspenops.benchmark-matrix/v2",
+        "schema": "aspenops.benchmark-matrix/v3",
         "kind": "portable-mock-orchestration",
         "boundary": (
             "These measurements characterize portable orchestration only. They are not Aspen "
@@ -291,6 +364,7 @@ def run_matrix(repo_root: Path, *, smoke: bool) -> dict[str, Any]:
         ),
         "repo_root": str(repo_root),
         "smoke": smoke,
+        "trials": trial_count,
         "measurements": [asdict(item) for item in measurements],
         "sequential_jobs": sequential_job_measurement(
             model_path=model_path,
@@ -305,10 +379,15 @@ def main() -> None:
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--output", required=True)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--trials", type=int)
     args = parser.parse_args()
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    result = run_matrix(Path(args.repo_root).resolve(), smoke=args.smoke)
+    result = run_matrix(
+        Path(args.repo_root).resolve(),
+        smoke=args.smoke,
+        trials=args.trials,
+    )
     output.write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",
