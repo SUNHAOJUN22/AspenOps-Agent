@@ -126,10 +126,12 @@ def test_all_cached_batch_skips_dispatch_thread_creation(
         cache_path=tmp_path / "cache.sqlite3",
     ) as pool:
         assert all(item.ok for item in pool.evaluate_many(requests))
-        monkeypatch.setattr(
-            "aspenops_nexus.pool.threading.Thread",
-            lambda *args, **kwargs: pytest.fail("dispatch thread created for an all-cache-hit batch"),
-        )
+
+        def unexpected_thread(*args: Any, **kwargs: Any) -> Any:
+            del args, kwargs
+            pytest.fail("dispatch thread created for an all-cache-hit batch")
+
+        monkeypatch.setattr("aspenops_nexus.pool.threading.Thread", unexpected_thread)
         cached = pool.evaluate_many(requests)
     assert all(item.cache_source == "persistent_cache" for item in cached)
 
