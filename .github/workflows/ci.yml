@@ -42,7 +42,7 @@ jobs:
             --cov-report=term-missing \
             --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
             --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
-            --cov-fail-under=75 \
+            --cov-fail-under=81 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
       - name: Build distributions
         run: uv build
