@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -318,12 +317,8 @@ def failure_plan() -> EvaluationPlan:
     return EvaluationPlan(
         writes=(),
         unique_reads=(output_node, constraint_node, inlet_node, outlet_node),
-        output_bindings=(
-            OutputBinding(read, output_node, "output", "output"),
-        ),
-        constraints=(
-            CompiledConstraint(constraint, constraint_node, "constraint"),
-        ),
+        output_bindings=(OutputBinding(read, output_node, "output", "output"),),
+        constraints=(CompiledConstraint(constraint, constraint_node, "constraint"),),
         balances=(
             CompiledBalance(
                 balance,
