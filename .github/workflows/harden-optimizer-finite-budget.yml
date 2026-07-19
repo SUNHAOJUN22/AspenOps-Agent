@@ -1,0 +1,105 @@
+name: One-shot harden optimizer finite values and budget
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/harden-optimizer-finite-budget.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-harden-optimizer-finite-budget
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Patch optimizer validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/optimizer.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("import random\n", "import math\nimport random\n", 1)
+          old_validation = '''    if mutation <= 0:
+                  raise ValueError("mutation must be positive")
+              if not 0 <= crossover <= 1:
+                  raise ValueError("crossover must be between zero and one")
+              if any(upper <= lower for lower, upper in bounds):
+                  raise ValueError("every upper bound must exceed its lower bound")
+          '''
+          new_validation = '''    if not math.isfinite(mutation) or mutation <= 0:
+                  raise ValueError("mutation must be positive and finite")
+              if not math.isfinite(crossover) or not 0 <= crossover <= 1:
+                  raise ValueError("crossover must be finite and between zero and one")
+              if any(
+                  not math.isfinite(lower)
+                  or not math.isfinite(upper)
+                  or upper <= lower
+                  for lower, upper in bounds
+              ):
+                  raise ValueError("every bound must be finite and upper must exceed lower")
+          '''
+          if old_validation not in text:
+              raise SystemExit("optimizer validation block not found")
+          text = text.replace(old_validation, new_validation)
+          old_budget = "    budget = max_evaluations or population_size * (generations + 1)\n"
+          new_budget = (
+              "    budget = (\n"
+              "        population_size * (generations + 1)\n"
+              "        if max_evaluations is None\n"
+              "        else max_evaluations\n"
+              "    )\n"
+          )
+          if old_budget not in text:
+              raise SystemExit("optimizer budget line not found")
+          text = text.replace(old_budget, new_budget)
+          old_scores = '''        return [
+                      Candidate(vector, float(objective), max(0.0, float(violation)))
+                      for vector, (objective, violation) in zip(vectors, scores, strict=True)
+                  ]
+          '''
+          new_scores = '''        candidates: list[Candidate] = []
+                  for vector, (objective, violation) in zip(vectors, scores, strict=True):
+                      objective_value = float(objective)
+                      violation_value = float(violation)
+                      if not math.isfinite(objective_value) or not math.isfinite(violation_value):
+                          raise ValueError("evaluate_many returned a non-finite score")
+                      candidates.append(
+                          Candidate(vector, objective_value, max(0.0, violation_value))
+                      )
+                  return candidates
+          '''
+          if old_scores not in text:
+              raise SystemExit("optimizer score block not found")
+          path.write_text(text.replace(old_scores, new_scores), encoding="utf-8")
+          PY
+      - name: Normalize and validate source
+        run: |
+          uv sync --extra dev
+          uv run ruff check src/aspenops_nexus/optimizer.py
+          uv run ruff format src/aspenops_nexus/optimizer.py
+          uv run mypy src/aspenops_nexus/optimizer.py
+      - name: Commit hardening and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/harden-optimizer-finite-budget.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add src/aspenops_nexus/optimizer.py \
+            .github/workflows/harden-optimizer-finite-budget.yml
+          git commit -m "fix: reject non-finite optimizer inputs and explicit zero budgets"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
