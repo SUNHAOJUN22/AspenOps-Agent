@@ -169,9 +169,7 @@ def test_member_declarations_reject_malformed_shapes(value: Any, message: str) -
 
 
 def test_member_declarations_accept_valid_record() -> None:
-    declarations, error = _validate_member_declarations(
-        {"x": {"sha256": "0" * 64, "size": 0}}
-    )
+    declarations, error = _validate_member_declarations({"x": {"sha256": "0" * 64, "size": 0}})
     assert error is None
     assert declarations == {"x": {"sha256": "0" * 64, "size": 0}}
 

@@ -203,6 +203,7 @@ def test_start_worker_rejects_invalid_ready_identity_and_cleans_every_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stage = tmp_path / "stage"
+    stage.mkdir()
     parent = FakeConnection(
         {
             "protocol": IPC_PROTOCOL,

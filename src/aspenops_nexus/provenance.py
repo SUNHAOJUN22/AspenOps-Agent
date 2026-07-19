@@ -353,7 +353,16 @@ def verify_run_bundle(
             unexpected = sorted(actual_names - expected_names)
             undeclared_missing = sorted(expected_names - actual_names)
 
-            member_checks: dict[str, bool] = {}
+            if signed:
+                signing_missing = sorted({"manifest.sig", "signing-key-id.txt"} - actual_names)
+                if signing_missing:
+                    return _structure_invalid(
+                        "signed archive members are missing",
+                        missing=signing_missing,
+                        manifest=manifest,
+                    )
+
+                member_checks: dict[str, bool] = {}
             for name, declaration in declared_members.items():
                 info = infos.get(name)
                 if info is None:
