@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import sys
 import uuid
 import zipfile
@@ -13,9 +14,18 @@ from pathlib import Path
 from typing import Any, TypeAlias
 
 from . import RUNTIME_SCHEMA, __version__
+from .archive_safety import (
+    DEFAULT_ARCHIVE_LIMITS,
+    ArchiveLimits,
+    ArchiveSafetyError,
+    read_member_bounded,
+    validate_archive,
+)
 from .hashing import canonical_hash, sha256_file
 
 KeySource: TypeAlias = str | Path | bytes
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_RESERVED_MEMBERS = {"manifest.json", "manifest.sig", "signing-key-id.txt"}
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -182,7 +192,20 @@ def write_run_bundle(
     return output
 
 
-def _verify_v1(manifest: dict[str, Any], request: Any, results: Any) -> dict[str, Any]:
+def _structure_invalid(error: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "verification_status": "structure-invalid",
+        "error": error,
+        **extra,
+    }
+
+
+def _verify_v1(
+    manifest: dict[str, Any],
+    request: dict[str, Any],
+    results: list[Any],
+) -> dict[str, Any]:
     checks = {
         "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
         "results_sha256": canonical_hash(results) == manifest.get("results_sha256"),
@@ -199,15 +222,63 @@ def _verify_v1(manifest: dict[str, Any], request: Any, results: Any) -> dict[str
     }
 
 
+def _validate_member_declarations(value: Any) -> tuple[dict[str, dict[str, Any]] | None, str | None]:
+    if not isinstance(value, dict):
+        return None, "manifest members must be an object"
+    declarations: dict[str, dict[str, Any]] = {}
+    for raw_name, raw_declaration in value.items():
+        name = str(raw_name)
+        if name in _RESERVED_MEMBERS:
+            return None, f"reserved member cannot be declared: {name}"
+        if not isinstance(raw_declaration, dict):
+            return None, f"member declaration must be an object: {name}"
+        digest = raw_declaration.get("sha256")
+        size = raw_declaration.get("size")
+        if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
+            return None, f"member declaration has invalid sha256: {name}"
+        if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+            return None, f"member declaration has invalid size: {name}"
+        declarations[name] = {"sha256": digest, "size": size}
+    return declarations, None
+
+
+def _validate_signing(value: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(value, dict):
+        return None, "manifest signing must be an object"
+    status = value.get("status")
+    algorithm = value.get("algorithm")
+    key_id = value.get("key_id")
+    if status == "unsigned":
+        if algorithm is not None or key_id is not None:
+            return None, "unsigned signing metadata must not define algorithm or key_id"
+    elif status == "signed":
+        if algorithm != "Ed25519":
+            return None, "signed bundle must use Ed25519"
+        if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+            return None, "signed bundle key_id must be a non-empty bounded string"
+    else:
+        return None, "manifest signing status must be unsigned or signed"
+    return {"status": status, "algorithm": algorithm, "key_id": key_id}, None
+
+
 def _verify_signature(
     *,
     archive: zipfile.ZipFile,
+    infos: dict[str, zipfile.ZipInfo],
     manifest: dict[str, Any],
     signing: dict[str, Any],
     verification_public_key: KeySource | None,
+    limits: ArchiveLimits,
 ) -> tuple[bool | None, str | None]:
-    manifest_key_id = str(signing.get("key_id", ""))
-    archived_key_id = archive.read("signing-key-id.txt").decode("utf-8")
+    try:
+        archived_key_id = read_member_bounded(
+            archive,
+            infos["signing-key-id.txt"],
+            limits,
+        ).decode("utf-8")
+    except (ArchiveSafetyError, UnicodeDecodeError, KeyError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    manifest_key_id = str(signing["key_id"])
     if archived_key_id != manifest_key_id:
         return False, "signing key ID does not match manifest"
     if verification_public_key is None:
@@ -222,10 +293,11 @@ def _verify_signature(
             "Install the 'signing' extra to verify Ed25519 integrity bundles"
         ) from exc
     try:
-        signature = base64.b64decode(archive.read("manifest.sig"), validate=True)
+        encoded_signature = read_member_bounded(archive, infos["manifest.sig"], limits)
+        signature = base64.b64decode(encoded_signature, validate=True)
         public_key.verify(signature, _canonical_bytes(manifest))
         return True, None
-    except (InvalidSignature, ValueError) as exc:
+    except (ArchiveSafetyError, InvalidSignature, ValueError, KeyError) as exc:
         return False, f"{type(exc).__name__}: {exc}"
 
 
@@ -233,56 +305,63 @@ def verify_run_bundle(
     path: str | Path,
     *,
     verification_public_key: KeySource | None = None,
+    limits: ArchiveLimits = DEFAULT_ARCHIVE_LIMITS,
 ) -> dict[str, Any]:
     bundle = Path(path).expanduser().resolve()
     try:
         with zipfile.ZipFile(bundle) as archive:
-            names = archive.namelist()
-            if len(names) != len(set(names)):
-                return {
-                    "ok": False,
-                    "verification_status": "structure-invalid",
-                    "error": "duplicate archive member names",
-                }
-            actual_names = set(names)
+            infos = validate_archive(bundle, archive, limits)
+            actual_names = set(infos)
             required = {"manifest.json", "request.json", "results.json", "environment.json"}
             missing = sorted(required - actual_names)
             if missing:
-                return {
-                    "ok": False,
-                    "verification_status": "structure-invalid",
-                    "missing": missing,
-                }
-            manifest = json.loads(archive.read("manifest.json"))
-            request = json.loads(archive.read("request.json"))
-            results = json.loads(archive.read("results.json"))
+                return _structure_invalid("required archive members are missing", missing=missing)
+
+            manifest = json.loads(read_member_bounded(archive, infos["manifest.json"], limits))
+            request = json.loads(read_member_bounded(archive, infos["request.json"], limits))
+            results = json.loads(read_member_bounded(archive, infos["results.json"], limits))
+            environment = json.loads(
+                read_member_bounded(archive, infos["environment.json"], limits)
+            )
+            if not isinstance(manifest, dict):
+                return _structure_invalid("manifest.json root must be an object")
+            if not isinstance(request, dict):
+                return _structure_invalid("request.json root must be an object")
+            if not isinstance(results, list):
+                return _structure_invalid("results.json root must be an array")
+            if not isinstance(environment, dict):
+                return _structure_invalid("environment.json root must be an object")
+
             if manifest.get("format") != "aspenops.integrity-bundle/v2":
                 return _verify_v1(manifest, request, results)
 
-            declared_members = manifest.get("members")
-            if not isinstance(declared_members, dict):
-                return {
-                    "ok": False,
-                    "verification_status": "structure-invalid",
-                    "error": "manifest members must be an object",
-                    "manifest": manifest,
-                }
-            signing = manifest.get("signing", {})
-            signed = isinstance(signing, dict) and signing.get("status") == "signed"
+            declared_members, declaration_error = _validate_member_declarations(
+                manifest.get("members")
+            )
+            if declared_members is None:
+                return _structure_invalid(str(declaration_error), manifest=manifest)
+            signing, signing_error = _validate_signing(manifest.get("signing"))
+            if signing is None:
+                return _structure_invalid(str(signing_error), manifest=manifest)
+
+            signed = signing["status"] == "signed"
             expected_names = {"manifest.json", *declared_members}
             if signed:
                 expected_names.update({"manifest.sig", "signing-key-id.txt"})
             unexpected = sorted(actual_names - expected_names)
             undeclared_missing = sorted(expected_names - actual_names)
+
             member_checks: dict[str, bool] = {}
             for name, declaration in declared_members.items():
-                if name not in actual_names or not isinstance(declaration, dict):
-                    member_checks[str(name)] = False
+                info = infos.get(name)
+                if info is None:
+                    member_checks[name] = False
                     continue
-                payload = archive.read(str(name))
-                member_checks[str(name)] = _sha256_bytes(payload) == declaration.get(
-                    "sha256"
-                ) and len(payload) == declaration.get("size")
+                payload = read_member_bounded(archive, info, limits)
+                member_checks[name] = (
+                    _sha256_bytes(payload) == declaration["sha256"]
+                    and len(payload) == declaration["size"]
+                )
 
             semantic_checks = {
                 "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
@@ -301,16 +380,21 @@ def verify_run_bundle(
             if signed:
                 signature_valid, signature_error = _verify_signature(
                     archive=archive,
+                    infos=infos,
                     manifest=manifest,
                     signing=signing,
                     verification_public_key=verification_public_key,
+                    limits=limits,
                 )
-    except (OSError, zipfile.BadZipFile, json.JSONDecodeError, KeyError) as exc:
-        return {
-            "ok": False,
-            "verification_status": "structure-invalid",
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+    except (
+        ArchiveSafetyError,
+        OSError,
+        zipfile.BadZipFile,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        KeyError,
+    ) as exc:
+        return _structure_invalid(f"{type(exc).__name__}: {exc}")
 
     if not content_valid:
         verification_status = "content-invalid"
