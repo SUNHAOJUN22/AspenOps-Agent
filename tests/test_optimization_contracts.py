@@ -171,7 +171,10 @@ def test_absolute_checkpoint_outside_state_or_allowed_roots_is_rejected(tmp_path
     request["optimization"]["checkpoint_path"] = str(allowed / "checkpoint.json")
     result = run_optimization_document(
         request,
-        Settings(state_dir=tmp_path / "state", allowed_roots=(allowed,)),
+        Settings(
+            state_dir=tmp_path / "state",
+            allowed_roots=(ROOT, allowed),
+        ),
     )
     assert result["status"] == "completed"
     assert (allowed / "checkpoint.json").is_file()

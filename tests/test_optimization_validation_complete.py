@@ -385,7 +385,7 @@ def test_evaluator_builds_points_scores_and_missing_output_penalties(
     assert active.trace[0].request_hash == "hash-1"
     assert active.trace[0].ok is True
     assert active.trace[1].ok is False
-    assert active.trace[1].objectives == (1e12, 1e12)
+    assert active.trace[1].objectives == (1e12, -1e12)
 
 
 def test_run_optimization_rejects_untraced_best_candidate(

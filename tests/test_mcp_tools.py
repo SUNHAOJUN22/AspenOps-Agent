@@ -134,7 +134,7 @@ def test_status_and_result_tools_cover_missing_pending_and_completed_jobs(tmp_pa
         assert scheduler.store.mark_running(job_id, "test-owner")
         result_payload = [{"best": {"objective": 1.0}}]
         bundle = tmp_path / "job.zip"
-        assert scheduler.store.complete(job_id, result_payload, bundle, "token")
+        assert scheduler.store.complete(job_id, result_payload, bundle, "token", owner="test-owner")
 
         completed = facade.job_result(job_id)
         optimization = facade.optimization_result(job_id)
