@@ -90,9 +90,12 @@ class EvaluationPlanCompiler:
         for write_spec in request.writes:
             write_node = registry.resolve(write_spec.key, write_spec.identifiers)
             registry.validate_backend(write_node, request.backend)
+            identity = node_identity(write_node)
+            if identity in write_identities:
+                raise ValueError(f"Duplicate write target: {identity}")
             native_value = registry.validate_write(write_node, write_spec.value, write_spec.unit)
             compiled_writes.append(CompiledWrite(write_spec, write_node, native_value))
-            write_identities.add(node_identity(write_node))
+            write_identities.add(identity)
 
         unique_reads: dict[str, ResolvedNode] = {}
         output_bindings: list[OutputBinding] = []
