@@ -187,15 +187,17 @@ def test_creating_workers_count_against_license_capacity(
     first.start()
     assert entered.wait(2.0)
     assert manager.stats()["creating_workers"] == 1
-    with pytest.raises(RuntimeError, match="license budget"):
-        with manager.acquire(
+    with (
+        pytest.raises(RuntimeError, match="license budget"),
+        manager.acquire(
             backend_name="mock",
             model_path=second_files[0],
             registry_path=second_files[1],
             workers=1,
             visible=False,
-        ):
-            pass
+        ),
+    ):
+        pass
     release.set()
     first.join(2.0)
     assert errors == []
