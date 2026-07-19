@@ -139,10 +139,9 @@ class AspenPlusBackend(SimulatorBackend):
     @staticmethod
     def _open_document(document: Any, path: Path) -> None:
         suffix = path.suffix.lower()
-        methods = (("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()) + (
-            "InitFromFile2",
-            "InitFromArchive2",
-            "InitFromFile",
+        preferred = ("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()
+        methods = tuple(
+            dict.fromkeys((*preferred, "InitFromFile2", "InitFromArchive2", "InitFromFile"))
         )
         errors: list[str] = []
         for method_name in methods:
