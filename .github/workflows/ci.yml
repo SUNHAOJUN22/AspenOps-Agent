@@ -29,7 +29,10 @@ jobs:
       - name: Apply, format, and publish focused fixes
         shell: bash
         run: |
-          python - <<'PY'
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            python - <<'PY'
           from pathlib import Path
 
           path = Path('src/aspenops_nexus/provenance.py')
@@ -71,18 +74,27 @@ jobs:
               raise SystemExit('worker stage-directory anchor not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          uvx ruff@0.11.13 format \
-            src/aspenops_nexus/provenance.py \
-            tests/test_worker_protocol_hardening.py \
-            tests/test_archive_safety_complete.py
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add \
-            src/aspenops_nexus/provenance.py \
-            tests/test_worker_protocol_hardening.py \
-            tests/test_archive_safety_complete.py
-          git commit -m "fix: classify signed ZIP structure and startup cleanup"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+            uvx ruff@0.11.13 format \
+              src/aspenops_nexus/provenance.py \
+              tests/test_worker_protocol_hardening.py \
+              tests/test_archive_safety_complete.py
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add \
+              src/aspenops_nexus/provenance.py \
+              tests/test_worker_protocol_hardening.py \
+              tests/test_archive_safety_complete.py
+            git status --short
+            git commit -m "fix: classify signed ZIP structure and startup cleanup"
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/materialize-behavior-fixes.log
+      - name: Upload behavior materializer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavior-materializer-diagnostics
+          path: var/ci/materialize-behavior-fixes.log
+          if-no-files-found: warn
 
   portable:
     strategy:
