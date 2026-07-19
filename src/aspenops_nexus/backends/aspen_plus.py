@@ -49,14 +49,21 @@ def _iter_collection(collection: Any, limit: int = 200) -> Iterable[Any]:
         count = int(collection.Count)
     except Exception:
         return ()
+    bounded_count = min(count, limit)
+    if bounded_count <= 0:
+        return ()
     values: list[Any] = []
-    for index in range(min(count, limit)):
-        for candidate_index in (index, index + 1):
-            try:
-                values.append(collection.Item(candidate_index))
-                break
-            except Exception:
-                continue
+    try:
+        values.append(collection.Item(0))
+        index_base = 0
+    except Exception:
+        index_base = 1
+    start = 1 if index_base == 0 else 0
+    for index in range(start, bounded_count):
+        try:
+            values.append(collection.Item(index + index_base))
+        except Exception:
+            continue
     return values
 
 
