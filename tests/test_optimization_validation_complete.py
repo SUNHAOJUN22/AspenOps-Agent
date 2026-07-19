@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any
 
@@ -93,9 +92,7 @@ def test_scalar_validation_helpers_reject_ambiguous_values() -> None:
     assert optimization_module._finite_output(float("nan")) is None
     assert optimization_module._finite_output("2.5") is None
     assert optimization_module._output_key("key", {}) == "key"
-    assert optimization_module._output_key("key", {"z": "2", "a": "1"}) == (
-        "key:a=1,z=2"
-    )
+    assert optimization_module._output_key("key", {"z": "2", "a": "1"}) == ("key:a=1,z=2")
 
 
 def test_variable_spec_clamps_decodes_and_emits_writes() -> None:
@@ -157,9 +154,7 @@ def test_variable_spec_rejects_invalid_fields_and_missing_bounds() -> None:
             {"key": "x", "name": 1, "kind": "continuous", "lower": 0, "upper": 1}
         )
     with pytest.raises(ValueError, match="lower bound must be numeric"):
-        VariableSpec.from_mapping(
-            {"key": "x", "kind": "continuous", "lower": "0", "upper": 1}
-        )
+        VariableSpec.from_mapping({"key": "x", "kind": "continuous", "lower": "0", "upper": 1})
     with pytest.raises(ValueError, match="variable choices must be an array"):
         VariableSpec.from_mapping({"key": "x", "kind": "categorical", "choices": "a"})
     with pytest.raises(ValueError, match="choices must be finite"):
