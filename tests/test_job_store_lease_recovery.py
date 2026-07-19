@@ -46,6 +46,7 @@ def test_expired_lease_dead_letters_final_attempt(tmp_path: Path) -> None:
     record = store.get(job_id)
     assert record is not None
     assert record["status"] == "dead_letter"
+    assert record["error"] == "job lease expired after final attempt"
     assert record["error_class"] == "lease_expired"
     assert record["finished_at"] is not None
     assert record["lease_owner"] is None
@@ -66,6 +67,7 @@ def test_service_restart_retries_before_final_attempt(tmp_path: Path) -> None:
     record = restarted.get(job_id)
     assert record is not None
     assert record["status"] == "retry_wait"
+    assert record["error"] == "service restarted while job held a lease"
     assert record["error_class"] == "service_restart"
     assert record["finished_at"] is None
     assert record["lease_owner"] is None
@@ -82,6 +84,7 @@ def test_service_restart_dead_letters_final_attempt(tmp_path: Path) -> None:
     record = restarted.get(job_id)
     assert record is not None
     assert record["status"] == "dead_letter"
+    assert record["error"] == "service restarted after final job attempt"
     assert record["error_class"] == "service_restart"
     assert record["finished_at"] is not None
     assert record["lease_owner"] is None
