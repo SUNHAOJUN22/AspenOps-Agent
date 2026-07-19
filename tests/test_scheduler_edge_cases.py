@@ -17,6 +17,7 @@ def test_retryable_errors_move_to_retry_then_dead_letter(tmp_path: Path) -> None
             "temporary license failure",
             "transient_license",
             retryable=True,
+            owner="worker-a",
         )
         == "retry_wait"
     )
@@ -28,6 +29,7 @@ def test_retryable_errors_move_to_retry_then_dead_letter(tmp_path: Path) -> None
             "temporary license failure",
             "transient_license",
             retryable=True,
+            owner="worker-b",
         )
         == "dead_letter"
     )
@@ -48,6 +50,7 @@ def test_non_retryable_error_fails_immediately(tmp_path: Path) -> None:
             "invalid registry",
             "invalid_request",
             retryable=False,
+            owner="worker-a",
         )
         == "failed"
     )

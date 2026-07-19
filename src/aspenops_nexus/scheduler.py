@@ -324,6 +324,8 @@ class JobStore:
         job_id: str,
         results: list[dict[str, Any]],
         last_completed_point: int,
+        *,
+        owner: str,
     ) -> bool:
         now = _now()
         with self._lock, closing(self._connect()) as connection, connection:
@@ -332,12 +334,16 @@ class JobStore:
                 UPDATE jobs
                 SET result_json=?, last_completed_point=?, updated_at=?
                 WHERE job_id=? AND status IN ('running','cancelling')
+                  AND lease_owner=? AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at > ?
                 """,
                 (
                     json.dumps(results, ensure_ascii=False, allow_nan=False),
                     last_completed_point,
                     now,
                     job_id,
+                    owner,
+                    now,
                 ),
             )
             if cursor.rowcount == 1:
@@ -345,7 +351,7 @@ class JobStore:
                     connection,
                     job_id,
                     "progress_committed",
-                    {"last_completed_point": last_completed_point},
+                    {"last_completed_point": last_completed_point, "owner": owner},
                 )
             return cursor.rowcount == 1
 
@@ -355,6 +361,8 @@ class JobStore:
         results: list[dict[str, Any]],
         bundle_path: Path,
         commit_token: str | None = None,
+        *,
+        owner: str,
     ) -> bool:
         token = commit_token or canonical_hash(results)
         now = _now()
@@ -370,8 +378,10 @@ class JobStore:
                 """
                 UPDATE jobs
                 SET status='completed', result_json=?, bundle_path=?, result_commit_token=?,
-                    finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL
-                WHERE job_id=? AND status='running'
+                    finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL,
+                    cancel_deadline=NULL
+                WHERE job_id=? AND status='running' AND lease_owner=?
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
                 """,
                 (
                     json.dumps(results, ensure_ascii=False, allow_nan=False),
@@ -380,10 +390,17 @@ class JobStore:
                     now,
                     now,
                     job_id,
+                    owner,
+                    now,
                 ),
             )
             if cursor.rowcount == 1:
-                self._event(connection, job_id, "completed", {"commit_token": token})
+                self._event(
+                    connection,
+                    job_id,
+                    "completed",
+                    {"commit_token": token, "owner": owner},
+                )
             return cursor.rowcount == 1
 
     def finalize_cancelled(
@@ -391,6 +408,8 @@ class JobStore:
         job_id: str,
         results: list[dict[str, Any]],
         bundle_path: Path | None = None,
+        *,
+        owner: str,
     ) -> bool:
         now = _now()
         with self._lock, closing(self._connect()) as connection, connection:
@@ -400,6 +419,8 @@ class JobStore:
                 SET status='cancelled', result_json=?, bundle_path=?, finished_at=?, updated_at=?,
                     lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
                 WHERE job_id=? AND status IN ('claimed','running','cancelling')
+                  AND cancel_requested=1 AND lease_owner=?
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
                 """,
                 (
                     json.dumps(results, ensure_ascii=False, allow_nan=False),
@@ -407,25 +428,43 @@ class JobStore:
                     now,
                     now,
                     job_id,
+                    owner,
+                    now,
                 ),
             )
             if cursor.rowcount == 1:
-                self._event(connection, job_id, "cancelled")
+                self._event(connection, job_id, "cancelled", {"owner": owner})
             return cursor.rowcount == 1
 
-    def fail(self, job_id: str, error: str, error_class: str = "execution_error") -> None:
+    def fail(
+        self,
+        job_id: str,
+        error: str,
+        error_class: str = "execution_error",
+        *,
+        owner: str,
+    ) -> bool:
         now = _now()
         with self._lock, closing(self._connect()) as connection, connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE jobs
                 SET status='failed', error=?, error_class=?, finished_at=?, updated_at=?,
-                    lease_owner=NULL, lease_expires_at=NULL
-                WHERE job_id=?
+                    lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
+                WHERE job_id=? AND status IN ('claimed','running','cancelling')
+                  AND lease_owner=? AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at > ?
                 """,
-                (error, error_class, now, now, job_id),
+                (error, error_class, now, now, job_id, owner, now),
             )
-            self._event(connection, job_id, "failed", {"error_class": error_class})
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "failed",
+                    {"error_class": error_class, "owner": owner},
+                )
+            return cursor.rowcount == 1
 
     def retry_or_fail(
         self,
@@ -434,17 +473,37 @@ class JobStore:
         error_class: str,
         *,
         retryable: bool,
+        owner: str,
     ) -> str:
         now = _now()
         with self._lock, closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT attempt,max_attempts FROM jobs WHERE job_id=?", (job_id,)
+                """
+                SELECT attempt,max_attempts,cancel_requested,status,lease_owner,
+                       lease_expires_at
+                FROM jobs WHERE job_id=?
+                """,
+                (job_id,),
             ).fetchone()
             if row is None:
+                connection.commit()
                 return "missing"
             attempt = int(row[0])
             max_attempts = int(row[1])
-            if retryable and attempt < max_attempts:
+            lease_valid = (
+                str(row[3]) in {"claimed", "running", "cancelling"}
+                and str(row[4]) == owner
+                and row[5] is not None
+                and str(row[5]) > now
+            )
+            if not lease_valid:
+                connection.commit()
+                return "lease_lost"
+            if bool(row[2]):
+                status = "cancelled"
+                finished_at: str | None = now
+            elif retryable and attempt < max_attempts:
                 status = "retry_wait"
                 finished_at = None
             elif retryable:
@@ -453,21 +512,27 @@ class JobStore:
             else:
                 status = "failed"
                 finished_at = now
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE jobs
                 SET status=?, error=?, error_class=?, finished_at=?, updated_at=?,
-                    lease_owner=NULL, lease_expires_at=NULL
-                WHERE job_id=?
+                    lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
+                WHERE job_id=? AND lease_owner=?
+                  AND status IN ('claimed','running','cancelling')
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
                 """,
-                (status, error, error_class, finished_at, now, job_id),
+                (status, error, error_class, finished_at, now, job_id, owner, now),
             )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return "lease_lost"
             self._event(
                 connection,
                 job_id,
                 status,
-                {"error_class": error_class, "attempt": attempt},
+                {"error_class": error_class, "attempt": attempt, "owner": owner},
             )
+            connection.commit()
             return status
 
     def get(self, job_id: str) -> dict[str, Any] | None:
@@ -567,26 +632,67 @@ class JobStore:
             ).fetchone()
         return bool(row and row[0])
 
-    def cancellation_due(self) -> list[str]:
+    def cancellation_due(self, owner: str | None = None) -> list[str]:
         now = _now()
         with self._lock, closing(self._connect()) as connection:
-            rows = connection.execute(
-                """
-                SELECT job_id FROM jobs
-                WHERE status='cancelling' AND cancel_deadline IS NOT NULL
-                  AND cancel_deadline <= ?
-                """,
-                (now,),
-            ).fetchall()
+            if owner is None:
+                rows = connection.execute(
+                    """
+                    SELECT job_id FROM jobs
+                    WHERE status='cancelling' AND cancel_deadline IS NOT NULL
+                      AND cancel_deadline <= ?
+                    """,
+                    (now,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT job_id FROM jobs
+                    WHERE status='cancelling' AND cancel_deadline IS NOT NULL
+                      AND cancel_deadline <= ? AND lease_owner=?
+                    """,
+                    (now, owner),
+                ).fetchall()
         return [str(row[0]) for row in rows]
 
-    def mark_abort_dispatched(self, job_id: str, events: list[dict[str, Any]]) -> None:
+    def mark_abort_dispatched(
+        self,
+        job_id: str,
+        events: list[dict[str, Any]],
+        *,
+        owner: str,
+    ) -> bool:
         with self._lock, closing(self._connect()) as connection, connection:
-            connection.execute(
-                "UPDATE jobs SET cancel_deadline=NULL,updated_at=? WHERE job_id=?",
-                (_now(), job_id),
+            cursor = connection.execute(
+                """
+                UPDATE jobs SET cancel_deadline=NULL,updated_at=?
+                WHERE job_id=? AND status='cancelling' AND lease_owner=?
+                  AND cancel_deadline IS NOT NULL
+                """,
+                (_now(), job_id, owner),
             )
-            self._event(connection, job_id, "worker_recycle_dispatched", {"events": events})
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "worker_recycle_dispatched",
+                    {"events": events, "owner": owner},
+                )
+            return cursor.rowcount == 1
+
+    def record_lease_lost(
+        self,
+        job_id: str,
+        owner: str,
+        events: list[dict[str, Any]],
+    ) -> None:
+        with self._lock, closing(self._connect()) as connection, connection:
+            self._event(
+                connection,
+                job_id,
+                "lease_lost_worker_recycle",
+                {"events": events, "owner": owner},
+            )
 
 
 class BackgroundScheduler:
@@ -668,12 +774,18 @@ class BackgroundScheduler:
         interval = max(0.05, min(self.settings.scheduler_poll_s, self.settings.job_lease_s / 3))
         while not self._stop.wait(interval):
             active = self._active_snapshot()
-            for job_id in active:
-                self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s)
-            for job_id in self.store.cancellation_due():
-                pool = active.get(job_id)
-                events = [] if pool is None else pool.force_recycle_all("cancel_deadline")
-                self.store.mark_abort_dispatched(job_id, events)
+            for job_id, pool in active.items():
+                if self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s):
+                    continue
+                events = pool.force_recycle_all("lease_lost")
+                self._observe_pool(job_id, None)
+                self.store.record_lease_lost(job_id, self.owner, events)
+            for job_id in self.store.cancellation_due(owner=self.owner):
+                pool = self._active_snapshot().get(job_id)
+                if pool is None:
+                    continue
+                events = pool.force_recycle_all("cancel_deadline")
+                self.store.mark_abort_dispatched(job_id, events, owner=self.owner)
 
     @staticmethod
     def _last_completed_point(results: list[dict[str, Any]]) -> int:
@@ -735,22 +847,34 @@ class BackgroundScheduler:
                         pool_observer=pool_observer,
                     )
                 last_completed = self._last_completed_point(results)
-                self.store.append_progress(job_id, results, last_completed)
+                if not self.store.append_progress(
+                    job_id,
+                    results,
+                    last_completed,
+                    owner=self.owner,
+                ):
+                    continue
                 record = self.store.get(job_id)
+                bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
                 bundle = write_run_bundle(
                     request=request,
                     results=results,
-                    output_path=self.settings.state_dir / "bundles" / f"{job_id}.zip",
+                    output_path=bundle_path,
                 )
                 if record and record["cancel_requested"]:
-                    self.store.finalize_cancelled(job_id, results, bundle)
+                    committed = self.store.finalize_cancelled(
+                        job_id, results, bundle, owner=self.owner
+                    )
                 else:
-                    self.store.complete(
+                    committed = self.store.complete(
                         job_id,
                         results,
                         bundle,
                         commit_token=canonical_hash(results),
+                        owner=self.owner,
                     )
+                if not committed:
+                    bundle.unlink(missing_ok=True)
             except Exception as exc:
                 error_class, retryable = self._classify_error(exc)
                 self.store.retry_or_fail(
@@ -758,6 +882,7 @@ class BackgroundScheduler:
                     f"{type(exc).__name__}: {exc}",
                     error_class,
                     retryable=retryable,
+                    owner=self.owner,
                 )
             finally:
                 self._observe_pool(job_id, None)

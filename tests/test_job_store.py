@@ -25,12 +25,14 @@ def test_job_store_claim_run_complete_and_list(tmp_path: Path) -> None:
         [{"ok": True}],
         tmp_path / "bundle.zip",
         commit_token=token,
+        owner="worker-a",
     )
     assert store.complete(
         job_id,
         [{"ok": True}],
         tmp_path / "bundle.zip",
         commit_token=token,
+        owner="worker-a",
     )
     record = store.get(job_id)
     assert record is not None
@@ -66,7 +68,7 @@ def test_job_store_cancel_running_sets_deadline(tmp_path: Path) -> None:
     assert record["status"] == "cancelling"
     assert record["cancel_requested"] is True
     assert job_id in store.cancellation_due()
-    assert store.finalize_cancelled(job_id, [{"ok": False}])
+    assert store.finalize_cancelled(job_id, [{"ok": False}], owner="worker-a")
     assert store.get(job_id)["status"] == "cancelled"
 
 

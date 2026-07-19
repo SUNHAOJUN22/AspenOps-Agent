@@ -129,8 +129,6 @@ def test_cancellation_deadline_and_abort_dispatch_are_owner_scoped(tmp_path: Pat
     assert store.mark_abort_dispatched(job_id, events, owner="worker-a")
     assert store.get(job_id)["cancel_deadline"] is None
     event = next(
-        item
-        for item in store.events(job_id)
-        if item["event"] == "worker_recycle_dispatched"
+        item for item in store.events(job_id) if item["event"] == "worker_recycle_dispatched"
     )
     assert event["payload"] == {"events": events, "owner": "worker-a"}
