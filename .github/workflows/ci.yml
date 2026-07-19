@@ -26,7 +26,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Format, clean, and publish
+      - name: Format and publish Python files
         shell: bash
         run: |
           mkdir -p var/ci
@@ -36,20 +36,12 @@ jobs:
               src/aspenops_nexus/provenance.py \
               tests/test_pool_manager_creation.py \
               tests/test_worker_protocol_hardening.py
-            python - <<'PY'
-          from pathlib import Path
-
-          workflow = Path('.github/workflows/format-latest-hardening.yml')
-          workflow.unlink(missing_ok=True)
-          path = Path('.github/workflows/ci.yml')
-          text = path.read_text(encoding='utf-8')
-          start = text.index('  materialize-latest-format:\n')
-          end = text.index('  portable:\n', start)
-          path.write_text(text[:start] + text[end:], encoding='utf-8')
-          PY
             git config user.name "aspenops-ci"
             git config user.email "aspenops-ci@users.noreply.github.com"
-            git add -A
+            git add \
+              src/aspenops_nexus/provenance.py \
+              tests/test_pool_manager_creation.py \
+              tests/test_worker_protocol_hardening.py
             git status --short
             git commit -m "style: format latest reliability hardening"
             git push origin HEAD:agent/aspenops-v2-reliability-performance
