@@ -10,47 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  materialize-provenance-scope-fix:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'agent/aspenops-v2-reliability-performance'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/aspenops-v2-reliability-performance
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Fix member-check scope and publish
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/aspenops_nexus/provenance.py')
-          text = path.read_text(encoding='utf-8')
-          old = '''                member_checks: dict[str, bool] = {}
-                      for name, declaration in declared_members.items():
-          '''
-          new = '''            member_checks: dict[str, bool] = {}
-                      for name, declaration in declared_members.items():
-          '''
-          if old not in text:
-              raise SystemExit('member-check scope anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-          uvx ruff@0.11.13 format src/aspenops_nexus/provenance.py
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add src/aspenops_nexus/provenance.py
-          git commit -m "fix: initialize ZIP member checks for unsigned bundles"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
-
   portable:
     strategy:
       matrix:
