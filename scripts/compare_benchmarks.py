@@ -64,10 +64,7 @@ def regression_assessment(
     reference_stability = measurement_stability(reference)
     candidate_stability = measurement_stability(candidate)
     if reference_stability != "stable" or candidate_stability != "stable":
-        return (
-            f"{regression}; not-gated "
-            f"({reference_stability}/{candidate_stability})"
-        )
+        return f"{regression}; not-gated ({reference_stability}/{candidate_stability})"
     return regression
 
 
@@ -78,12 +75,16 @@ def is_stable_regression(
     p95_change: float | None,
 ) -> bool:
     regression = regression_label(throughput_change, p95_change)
-    return regression != "none" and regression_assessment(
-        reference,
-        candidate,
-        throughput_change,
-        p95_change,
-    ) == regression
+    return (
+        regression != "none"
+        and regression_assessment(
+            reference,
+            candidate,
+            throughput_change,
+            p95_change,
+        )
+        == regression
+    )
 
 
 def main() -> None:
@@ -209,7 +210,9 @@ def main() -> None:
     Path(args.baseline_doc).write_text("\n".join(baseline_lines) + "\n", encoding="utf-8")
     Path(args.after_doc).write_text("\n".join(after_lines) + "\n", encoding="utf-8")
     if args.fail_on_stable_regression and stable_regressions:
-        raise SystemExit("Stable performance regressions detected: " + " | ".join(stable_regressions))
+        raise SystemExit(
+            "Stable performance regressions detected: " + " | ".join(stable_regressions)
+        )
 
 
 if __name__ == "__main__":
