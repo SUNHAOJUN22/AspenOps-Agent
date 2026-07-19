@@ -34,6 +34,16 @@ jobs:
             echo "No staged owner-fencing materializer." | tee var/ci/materialize-owner-fencing.log
             exit 0
           fi
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/materialize_owner_fencing.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace('"    def fail(\\n"', '"    def fail("')
+          text = text.replace('"    def cancellation_due(\\n"', '"    def cancellation_due("')
+          text = text.replace('"    def _watch_active_jobs(\\n"', '"    def _watch_active_jobs("')
+          path.write_text(text, encoding="utf-8")
+          PY
           set -o pipefail
           python scripts/materialize_owner_fencing.py \
             2>&1 | tee var/ci/materialize-owner-fencing.log
