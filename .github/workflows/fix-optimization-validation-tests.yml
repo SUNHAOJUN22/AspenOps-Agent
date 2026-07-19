@@ -1,0 +1,43 @@
+name: One-shot normalize optimization validation tests
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/fix-optimization-validation-tests.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-normalize-optimization-validation
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Sync locked development dependencies
+        run: uv sync --extra dev
+      - name: Apply lint fixes and formatter
+        run: |
+          uv run ruff check --fix tests/test_optimization_validation_complete.py
+          uv run ruff format tests/test_optimization_validation_complete.py
+      - name: Commit normalized test and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/fix-optimization-validation-tests.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add tests/test_optimization_validation_complete.py \
+            .github/workflows/fix-optimization-validation-tests.yml
+          git commit -m "style: normalize optimization validation tests"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
