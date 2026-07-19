@@ -2,30 +2,23 @@ name: Generate performance evidence
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - .github/workflows/generate-performance-evidence.yml
-      - scripts/run_benchmark_matrix.py
-      - scripts/compare_benchmarks.py
-      - src/aspenops_nexus/cache.py
-      - tests/test_cache.py
-      - tests/test_benchmark_scripts.py
-      - tests/test_benchmark_repeated_trials.py
-      - pyproject.toml
-      - src/aspenops_nexus/py.typed
   push:
     branches: [agent/aspenops-v2-reliability-performance]
     paths:
       - .github/workflows/generate-performance-evidence.yml
       - scripts/run_benchmark_matrix.py
       - scripts/compare_benchmarks.py
+      - src/aspenops_nexus/batch.py
       - src/aspenops_nexus/cache.py
+      - src/aspenops_nexus/pool.py
+      - src/aspenops_nexus/pool_manager.py
+      - src/aspenops_nexus/worker.py
       - tests/test_cache.py
+      - tests/test_pool_cache_efficiency.py
       - tests/test_benchmark_scripts.py
       - tests/test_benchmark_repeated_trials.py
       - pyproject.toml
-      - src/aspenops_nexus/py.typed
+      - uv.lock
 
 permissions:
   contents: read
