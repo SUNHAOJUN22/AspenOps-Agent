@@ -222,7 +222,9 @@ def _verify_v1(
     }
 
 
-def _validate_member_declarations(value: Any) -> tuple[dict[str, dict[str, Any]] | None, str | None]:
+def _validate_member_declarations(
+    value: Any,
+) -> tuple[dict[str, dict[str, Any]] | None, str | None]:
     if not isinstance(value, dict):
         return None, "manifest members must be an object"
     declarations: dict[str, dict[str, Any]] = {}

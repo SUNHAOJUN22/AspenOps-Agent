@@ -71,7 +71,9 @@ def acquire_once(
         errors.append(exc)
 
 
-def test_same_case_creation_is_singleflight(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_same_case_creation_is_singleflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     model, registry = files(tmp_path, "same")
     manager = PoolManager(
         cache_path=tmp_path / "cache.sqlite3",
