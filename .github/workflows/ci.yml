@@ -29,11 +29,14 @@ jobs:
       - name: Format, clean, and publish
         shell: bash
         run: |
-          uvx ruff@0.11.13 format \
-            src/aspenops_nexus/provenance.py \
-            tests/test_pool_manager_creation.py \
-            tests/test_worker_protocol_hardening.py
-          python - <<'PY'
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            uvx ruff@0.11.13 format \
+              src/aspenops_nexus/provenance.py \
+              tests/test_pool_manager_creation.py \
+              tests/test_worker_protocol_hardening.py
+            python - <<'PY'
           from pathlib import Path
 
           workflow = Path('.github/workflows/format-latest-hardening.yml')
@@ -44,11 +47,20 @@ jobs:
           end = text.index('  portable:\n', start)
           path.write_text(text[:start] + text[end:], encoding='utf-8')
           PY
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add -A
-          git commit -m "style: format latest reliability hardening"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add -A
+            git status --short
+            git commit -m "style: format latest reliability hardening"
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/materialize-latest-format.log
+      - name: Upload formatter diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-format-materializer-diagnostics
+          path: var/ci/materialize-latest-format.log
+          if-no-files-found: warn
 
   portable:
     strategy:
