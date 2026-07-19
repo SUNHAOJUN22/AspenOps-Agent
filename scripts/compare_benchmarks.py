@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+_STABLE_TRIALS = 3
+_MAX_STABLE_CV = 0.05
+_MIN_STEADY_STATE_POINTS = 10
+
 
 def key(item: dict[str, Any]) -> tuple[Any, ...]:
     return (
@@ -34,12 +38,61 @@ def regression_label(throughput_change: float | None, p95_change: float | None) 
     return "none"
 
 
+def measurement_stability(item: dict[str, Any]) -> str:
+    trials = int(item.get("trial_count", 1))
+    coefficient = float(item.get("throughput_cv", 0.0))
+    points = int(item.get("points", 0))
+    workers = max(1, int(item.get("workers", 1)))
+    if trials < _STABLE_TRIALS:
+        return "insufficient-trials"
+    if coefficient > _MAX_STABLE_CV:
+        return "unstable-cv"
+    if points < max(_MIN_STEADY_STATE_POINTS, workers * 2):
+        return "startup-sensitive"
+    return "stable"
+
+
+def regression_assessment(
+    reference: dict[str, Any],
+    candidate: dict[str, Any],
+    throughput_change: float | None,
+    p95_change: float | None,
+) -> str:
+    regression = regression_label(throughput_change, p95_change)
+    if regression == "none":
+        return regression
+    reference_stability = measurement_stability(reference)
+    candidate_stability = measurement_stability(candidate)
+    if reference_stability != "stable" or candidate_stability != "stable":
+        return (
+            f"{regression}; not-gated "
+            f"({reference_stability}/{candidate_stability})"
+        )
+    return regression
+
+
+def is_stable_regression(
+    reference: dict[str, Any],
+    candidate: dict[str, Any],
+    throughput_change: float | None,
+    p95_change: float | None,
+) -> bool:
+    regression = regression_label(throughput_change, p95_change)
+    return regression != "none" and regression_assessment(
+        reference,
+        candidate,
+        throughput_change,
+        p95_change,
+    ) == regression
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--after", required=True)
     parser.add_argument("--baseline-doc", required=True)
     parser.add_argument("--after-doc", required=True)
+    parser.add_argument("--fail-on-stable-regression", action="store_true")
     args = parser.parse_args()
 
     baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
@@ -54,14 +107,18 @@ def main() -> None:
         "",
         baseline["boundary"],
         "",
-        "| Scenario | Points | Workers | Duplicate ratio | Cache | "
-        "Throughput (points/s) | P95 (s) | RSS delta |",
-        "|---|---:|---:|---:|---|---:|---:|---:|",
+        "| Scenario | Points | Workers | Duplicate ratio | Cache | Trials | "
+        "Throughput (points/s) | Throughput CV | P95 (s) | RSS delta | Stability |",
+        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---|",
     ]
     for item in baseline["measurements"]:
         baseline_lines.append(
             "| {scenario} | {points} | {workers} | {duplicate_ratio:.0%} | {cache_mode} | "
-            "{throughput_points_s:.3f} | {p95_point_s:.6f} | {rss_delta} |".format(**item)
+            "{trial_count} | {throughput_points_s:.3f} | {throughput_cv:.2%} | "
+            "{p95_point_s:.6f} | {rss_delta} | {stability} |".format(
+                **item,
+                stability=measurement_stability(item),
+            )
         )
 
     after_lines = [
@@ -71,10 +128,12 @@ def main() -> None:
         "",
         after["boundary"],
         "",
-        "| Scenario | Points | Workers | Duplicate ratio | Cache | Throughput | "
-        "Throughput change | P95 change | Regression |",
-        "|---|---:|---:|---:|---|---:|---:|---:|---|",
+        "| Scenario | Points | Workers | Duplicate ratio | Cache | Trials | Throughput | "
+        "CV | Throughput change | P95 change | Stability | Assessment |",
+        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---|---|",
     ]
+    stable_regressions: list[str] = []
+    noise_sensitive: list[str] = []
     for identity in sorted(after_map):
         candidate = after_map[identity]
         reference = baseline_map.get(identity)
@@ -88,15 +147,50 @@ def main() -> None:
             float(reference["p95_point_s"]),
             float(candidate["p95_point_s"]),
         )
+        stability = measurement_stability(candidate)
+        assessment = regression_assessment(
+            reference,
+            candidate,
+            throughput_change,
+            p95_change,
+        )
+        label = (
+            f"{candidate['scenario']}:{candidate['points']}pts:"
+            f"{candidate['workers']}workers:{candidate['cache_mode']}"
+        )
+        if is_stable_regression(reference, candidate, throughput_change, p95_change):
+            stable_regressions.append(f"{label}: {assessment}")
+        elif regression_label(throughput_change, p95_change) != "none":
+            noise_sensitive.append(f"{label}: {assessment}")
         after_lines.append(
             f"| {candidate['scenario']} | {candidate['points']} | {candidate['workers']} | "
             f"{candidate['duplicate_ratio']:.0%} | {candidate['cache_mode']} | "
-            f"{candidate['throughput_points_s']:.3f} | {format_change(throughput_change)} | "
-            f"{format_change(p95_change)} | {regression_label(throughput_change, p95_change)} |"
+            f"{candidate.get('trial_count', 1)} | {candidate['throughput_points_s']:.3f} | "
+            f"{float(candidate.get('throughput_cv', 0.0)):.2%} | "
+            f"{format_change(throughput_change)} | {format_change(p95_change)} | "
+            f"{stability} | {assessment} |"
         )
 
     after_lines.extend(
         [
+            "",
+            "## Regression gate",
+            "",
+            f"Stable regressions above 5%: `{len(stable_regressions)}`.",
+            f"Noise-sensitive observations above 5%: `{len(noise_sensitive)}`.",
+            "",
+            "Stable regressions fail the performance workflow when "
+            "`--fail-on-stable-regression` is enabled. Startup-sensitive, high-CV, or "
+            "insufficient-trial observations remain visible but are not treated as "
+            "steady-state evidence.",
+            "",
+            "### Stable regressions",
+            "",
+            *(stable_regressions or ["None."]),
+            "",
+            "### Noise-sensitive observations",
+            "",
+            *(noise_sensitive or ["None."]),
             "",
             "## Persistent sequential-job execution",
             "",
@@ -114,6 +208,8 @@ def main() -> None:
 
     Path(args.baseline_doc).write_text("\n".join(baseline_lines) + "\n", encoding="utf-8")
     Path(args.after_doc).write_text("\n".join(after_lines) + "\n", encoding="utf-8")
+    if args.fail_on_stable_regression and stable_regressions:
+        raise SystemExit("Stable performance regressions detected: " + " | ".join(stable_regressions))
 
 
 if __name__ == "__main__":
