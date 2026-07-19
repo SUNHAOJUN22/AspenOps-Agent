@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -83,12 +84,15 @@ def _validate_parameters(
         raise ValueError("population_size must be at least 4")
     if generations < 0:
         raise ValueError("generations cannot be negative")
-    if mutation <= 0:
-        raise ValueError("mutation must be positive")
-    if not 0 <= crossover <= 1:
-        raise ValueError("crossover must be between zero and one")
-    if any(upper <= lower for lower, upper in bounds):
-        raise ValueError("every upper bound must exceed its lower bound")
+    if not math.isfinite(mutation) or mutation <= 0:
+        raise ValueError("mutation must be positive and finite")
+    if not math.isfinite(crossover) or not 0 <= crossover <= 1:
+        raise ValueError("crossover must be finite and between zero and one")
+    if any(
+        not math.isfinite(lower) or not math.isfinite(upper) or upper <= lower
+        for lower, upper in bounds
+    ):
+        raise ValueError("every bound must be finite and upper must exceed lower")
 
 
 def differential_evolution_batch(
@@ -105,7 +109,7 @@ def differential_evolution_batch(
 ) -> DifferentialEvolutionResult:
     """Run bounded DE/best/1/bin with one batch evaluation per generation."""
     _validate_parameters(bounds, population_size, generations, mutation, crossover)
-    budget = max_evaluations or population_size * (generations + 1)
+    budget = population_size * (generations + 1) if max_evaluations is None else max_evaluations
     if budget < population_size:
         raise ValueError("max_evaluations must cover the initial population")
     allowed_generations = min(generations, (budget - population_size) // population_size)
@@ -118,10 +122,14 @@ def differential_evolution_batch(
         scores = list(evaluate_many(vectors))
         if len(scores) != len(vectors):
             raise ValueError("evaluate_many returned a different number of scores")
-        return [
-            Candidate(vector, float(objective), max(0.0, float(violation)))
-            for vector, (objective, violation) in zip(vectors, scores, strict=True)
-        ]
+        candidates: list[Candidate] = []
+        for vector, (objective, violation) in zip(vectors, scores, strict=True):
+            objective_value = float(objective)
+            violation_value = float(violation)
+            if not math.isfinite(objective_value) or not math.isfinite(violation_value):
+                raise ValueError("evaluate_many returned a non-finite score")
+            candidates.append(Candidate(vector, objective_value, max(0.0, violation_value)))
+        return candidates
 
     vectors = [random_vector() for _ in range(population_size)]
     population = score_batch(vectors)
