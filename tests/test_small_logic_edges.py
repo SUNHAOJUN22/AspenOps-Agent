@@ -190,9 +190,7 @@ def test_certification_reports_result_count_mismatch(
     assert report["all_runs_successful"] is True
     assert report["deterministic"] is False
     assert report["passed"] is False
-    assert report["comparisons"] == [
-        {"passed": False, "reason": "result_count_mismatch"}
-    ]
+    assert report["comparisons"] == [{"passed": False, "reason": "result_count_mismatch"}]
 
 
 def test_certification_reports_value_ok_and_key_mismatches(
