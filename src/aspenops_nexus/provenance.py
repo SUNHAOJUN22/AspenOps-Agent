@@ -362,7 +362,7 @@ def verify_run_bundle(
                         manifest=manifest,
                     )
 
-                member_checks: dict[str, bool] = {}
+            member_checks: dict[str, bool] = {}
             for name, declaration in declared_members.items():
                 info = infos.get(name)
                 if info is None:
