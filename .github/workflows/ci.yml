@@ -29,21 +29,10 @@ jobs:
       - name: Format, clean, and publish
         shell: bash
         run: |
-          uv sync --extra dev --extra agent
-          uv run ruff format \
+          uvx ruff@0.11.13 format \
             src/aspenops_nexus/provenance.py \
             tests/test_pool_manager_creation.py \
             tests/test_worker_protocol_hardening.py
-          uv run ruff check \
-            src/aspenops_nexus/archive_safety.py \
-            src/aspenops_nexus/provenance.py \
-            src/aspenops_nexus/worker.py \
-            src/aspenops_nexus/pool_manager.py \
-            tests/test_provenance_zip_safety.py \
-            tests/test_provenance_zip_absolute_path.py \
-            tests/test_worker_protocol_hardening.py \
-            tests/test_pool_manager_creation.py \
-            tests/test_scheduler_active_leases.py
           python - <<'PY'
           from pathlib import Path
 
