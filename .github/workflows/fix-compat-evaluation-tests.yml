@@ -1,0 +1,43 @@
+name: One-shot fix compat and evaluation tests
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/fix-compat-evaluation-tests.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-fix-compat-evaluation
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Sync locked development dependencies
+        run: uv sync --extra dev
+      - name: Apply lint fixes and formatter
+        run: |
+          uv run ruff check --fix tests/test_compat_evaluation_edges.py
+          uv run ruff format tests/test_compat_evaluation_edges.py
+      - name: Commit fixed test and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/fix-compat-evaluation-tests.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add tests/test_compat_evaluation_edges.py \
+            .github/workflows/fix-compat-evaluation-tests.yml
+          git commit -m "style: normalize compatibility and evaluation tests"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
