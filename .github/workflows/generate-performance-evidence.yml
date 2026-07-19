@@ -11,6 +11,7 @@ on:
       - src/aspenops_nexus/cache.py
       - tests/test_cache.py
       - tests/test_benchmark_scripts.py
+      - tests/test_benchmark_repeated_trials.py
       - pyproject.toml
       - src/aspenops_nexus/py.typed
   push:
@@ -22,16 +23,21 @@ on:
       - src/aspenops_nexus/cache.py
       - tests/test_cache.py
       - tests/test_benchmark_scripts.py
+      - tests/test_benchmark_repeated_trials.py
       - pyproject.toml
       - src/aspenops_nexus/py.typed
 
 permissions:
   contents: read
 
+concurrency:
+  group: aspenops-performance-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +78,7 @@ jobs:
             --repo-root . \
             --output var/benchmarks/after.json \
             2>&1 | tee var/benchmarks/after.log
-      - name: Generate comparison documents
+      - name: Generate comparison documents and enforce stable regression gate
         shell: bash
         run: |
           set -o pipefail
@@ -81,6 +87,7 @@ jobs:
             --after var/benchmarks/after.json \
             --baseline-doc docs/performance-baseline.md \
             --after-doc docs/performance-after.md \
+            --fail-on-stable-regression \
             2>&1 | tee var/benchmarks/compare.log
       - name: Validate benchmark tools
         shell: bash
