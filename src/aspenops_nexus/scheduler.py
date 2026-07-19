@@ -139,11 +139,23 @@ class JobStore:
         connection.execute(
             """
             UPDATE jobs
-            SET status='retry_wait', error='service restarted while job held a lease',
+            SET status=CASE
+                    WHEN attempt < max_attempts THEN 'retry_wait'
+                    ELSE 'dead_letter'
+                END,
+                error=CASE
+                    WHEN attempt < max_attempts
+                        THEN 'service restarted while job held a lease'
+                    ELSE 'service restarted after final job attempt'
+                END,
+                error_class='service_restart',
+                finished_at=CASE
+                    WHEN attempt < max_attempts THEN NULL ELSE ?
+                END,
                 updated_at=?, lease_owner=NULL, lease_expires_at=NULL
             WHERE status IN ('claimed','running') AND cancel_requested=0
             """,
-            (now,),
+            (now, now),
         )
 
     def create(self, request: dict[str, Any], max_attempts: int = 3) -> str:
@@ -194,9 +206,9 @@ class JobStore:
         for row in cancelled:
             self._event(connection, str(row[0]), "cancelled_after_lease_expiry")
 
-        retryable = connection.execute(
+        expired = connection.execute(
             """
-            SELECT job_id FROM jobs
+            SELECT job_id,attempt,max_attempts FROM jobs
             WHERE status IN ('claimed','running')
               AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
               AND cancel_requested=0
@@ -206,16 +218,35 @@ class JobStore:
         connection.execute(
             """
             UPDATE jobs
-            SET status='retry_wait', error='job lease expired', updated_at=?,
-                lease_owner=NULL, lease_expires_at=NULL
+            SET status=CASE
+                    WHEN attempt < max_attempts THEN 'retry_wait'
+                    ELSE 'dead_letter'
+                END,
+                error=CASE
+                    WHEN attempt < max_attempts THEN 'job lease expired'
+                    ELSE 'job lease expired after final attempt'
+                END,
+                error_class='lease_expired',
+                finished_at=CASE
+                    WHEN attempt < max_attempts THEN NULL ELSE ?
+                END,
+                updated_at=?, lease_owner=NULL, lease_expires_at=NULL
             WHERE status IN ('claimed','running')
               AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
               AND cancel_requested=0
             """,
-            (now, now),
+            (now, now, now),
         )
-        for row in retryable:
-            self._event(connection, str(row[0]), "lease_expired")
+        for row in expired:
+            attempt = int(row[1])
+            max_attempts = int(row[2])
+            event = "lease_expired" if attempt < max_attempts else "dead_letter_after_lease_expiry"
+            self._event(
+                connection,
+                str(row[0]),
+                event,
+                {"attempt": attempt, "max_attempts": max_attempts},
+            )
 
     def claim_next(self, owner: str, lease_s: float = 30.0) -> tuple[str, dict[str, Any]] | None:
         with self._lock, closing(self._connect()) as connection, connection:
