@@ -69,6 +69,20 @@ class ResultCache:
         with closing(self._connect()) as connection, connection:
             self._flush_hits(connection)
 
+    def _discard(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        with closing(self._connect()) as connection, connection:
+            for batch in _chunks(keys):
+                placeholders = ",".join("?" for _ in batch)
+                connection.execute(
+                    f"DELETE FROM result_cache WHERE cache_key IN ({placeholders})",
+                    batch,
+                )
+        for key in keys:
+            self._memory.pop(key, None)
+            self._pending_hits.pop(key, None)
+
     def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
         if not keys:
             return {}
@@ -98,9 +112,24 @@ class ResultCache:
                             payload = str(row[1])
                             encoded[key] = payload
                             self._remember(key, payload)
-            self._pending_hits.update({key: counts[key] for key in encoded})
+
+            decoded: dict[str, dict[str, Any]] = {}
+            corrupt: list[str] = []
+            for key, payload in encoded.items():
+                try:
+                    value = json.loads(payload)
+                except json.JSONDecodeError:
+                    corrupt.append(key)
+                    continue
+                if not isinstance(value, dict):
+                    corrupt.append(key)
+                    continue
+                decoded[key] = {str(name): item for name, item in value.items()}
+
+            self._discard(corrupt)
+            self._pending_hits.update({key: counts[key] for key in decoded})
             self._flush_hits_if_needed()
-            return {key: json.loads(payload) for key, payload in encoded.items()}
+            return decoded
 
     def get(self, key: str) -> dict[str, Any] | None:
         return self.get_many([key]).get(key)
