@@ -10,6 +10,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-behavior-fixes:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Apply and validate focused behavior fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/aspenops_nexus/provenance.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''            unexpected = sorted(actual_names - expected_names)
+                      undeclared_missing = sorted(expected_names - actual_names)
+
+                      member_checks: dict[str, bool] = {}
+          '''
+          new = '''            unexpected = sorted(actual_names - expected_names)
+                      undeclared_missing = sorted(expected_names - actual_names)
+                      if signed:
+                          signing_missing = sorted(
+                              {"manifest.sig", "signing-key-id.txt"} - actual_names
+                          )
+                          if signing_missing:
+                              return _structure_invalid(
+                                  "signed archive members are missing",
+                                  missing=signing_missing,
+                                  manifest=manifest,
+                              )
+
+                      member_checks: dict[str, bool] = {}
+          '''
+          if old not in text:
+              raise SystemExit('provenance signing-member anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          path = Path('tests/test_worker_protocol_hardening.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    stage = tmp_path / "stage"
+                  parent = FakeConnection(
+          '''
+          new = '''    stage = tmp_path / "stage"
+                  stage.mkdir()
+                  parent = FakeConnection(
+          '''
+          if old not in text:
+              raise SystemExit('worker stage-directory anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          uv sync --extra dev --extra agent
+          uv run ruff format \
+            src/aspenops_nexus/provenance.py \
+            tests/test_worker_protocol_hardening.py \
+            tests/test_archive_safety_complete.py
+          uv run ruff check \
+            src/aspenops_nexus/archive_safety.py \
+            src/aspenops_nexus/provenance.py \
+            tests/test_worker_protocol_hardening.py \
+            tests/test_archive_safety_complete.py
+          uv run mypy src/aspenops_nexus/archive_safety.py src/aspenops_nexus/provenance.py
+          uv run pytest \
+            tests/test_provenance.py \
+            tests/test_provenance_zip_safety.py \
+            tests/test_archive_safety_complete.py \
+            tests/test_worker_protocol_hardening.py
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add \
+            src/aspenops_nexus/provenance.py \
+            tests/test_worker_protocol_hardening.py \
+            tests/test_archive_safety_complete.py
+          git commit -m "fix: classify signed ZIP structure and startup cleanup"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
+
   portable:
     strategy:
       matrix:
