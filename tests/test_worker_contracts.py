@@ -131,6 +131,7 @@ def handle(
 
 def result_response(command: dict[str, Any]) -> dict[str, Any]:
     return {
+        "protocol": 1,
         "kind": "result",
         "request_id": command["request_id"],
         "result": result().to_dict(),
