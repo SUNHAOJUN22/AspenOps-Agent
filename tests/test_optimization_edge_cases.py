@@ -98,7 +98,7 @@ def test_optimization_honors_cancellation_before_first_batch(tmp_path: Path) -> 
 
 def test_optimization_writes_atomic_checkpoint(tmp_path: Path) -> None:
     request = document()
-    checkpoint = tmp_path / "checkpoint.json"
+    checkpoint = tmp_path / "state" / "checkpoint.json"
     request["optimization"]["checkpoint_path"] = str(checkpoint)
     request["optimization"]["budget"] = {
         "population_size": 4,

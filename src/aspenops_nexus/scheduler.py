@@ -643,7 +643,8 @@ class BackgroundScheduler:
 
     def submit(self, request: dict[str, Any]) -> str:
         if "optimization" in request:
-            OptimizationProblem.from_document(request)
+            problem = OptimizationProblem.from_document(request)
+            problem.validate_limits(self.settings)
             dry_run_document(
                 {key: value for key, value in request.items() if key != "optimization"},
                 self.settings,

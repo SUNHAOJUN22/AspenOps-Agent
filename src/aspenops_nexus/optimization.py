@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from .batch import run_batch_document
 from .config import Settings
+from .policy import PolicyError
 from .optimizer import (
     Candidate,
     DifferentialEvolutionResult,
@@ -115,9 +116,10 @@ class VariableSpec:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> VariableSpec:
-        key = _text(_required(data, "key"), label="variable key")
-        kind_value = data.get("kind", "continuous")
-        kind_text = _text(kind_value, label="variable kind")
+        key = _text(_required(data, "key"), label="variable key").strip()
+        if not key:
+            raise ValueError("variable key must not be empty")
+        kind_text = _text(data.get("kind", "continuous"), label="variable kind").strip()
         if kind_text not in {"continuous", "integer", "categorical", "ordinal"}:
             raise ValueError(f"Unsupported optimization variable kind: {kind_text}")
         kind = cast(VariableKind, kind_text)
@@ -126,23 +128,34 @@ class VariableSpec:
         identifiers = {name: str(value) for name, value in identifiers_raw.items()}
         unit_value = data.get("unit")
         unit = None if unit_value is None else _text(unit_value, label="variable unit")
-        name_value = data.get("name", key)
-        name = _text(name_value, label="variable name")
+        name = _text(data.get("name", key), label="variable name").strip()
+        if not name:
+            raise ValueError("variable name must not be empty")
 
         lower_value = data.get("lower")
         upper_value = data.get("upper")
         lower = None if lower_value is None else _number(lower_value, label="lower bound")
         upper = None if upper_value is None else _number(upper_value, label="upper bound")
-        choices_value = data.get("choices", [])
         choices = tuple(
-            _choice(item) for item in _object_sequence(choices_value, label="variable choices")
+            _choice(item)
+            for item in _object_sequence(data.get("choices", []), label="variable choices")
         )
+        choice_identities = {(type(item).__name__, repr(item)) for item in choices}
+        if len(choice_identities) != len(choices):
+            raise ValueError("Optimization variable choices must be unique")
 
         if kind in {"categorical", "ordinal"}:
+            if lower is not None or upper is not None:
+                raise ValueError(f"{kind} variable cannot define numeric bounds")
             if len(choices) < 2:
                 raise ValueError(f"{kind} variable requires at least two choices")
-        elif lower is None or upper is None or upper <= lower:
-            raise ValueError(f"{kind} variable requires lower < upper")
+        else:
+            if choices:
+                raise ValueError(f"{kind} variable cannot define choices")
+            if lower is None or upper is None or upper <= lower:
+                raise ValueError(f"{kind} variable requires lower < upper")
+            if kind == "integer" and (not lower.is_integer() or not upper.is_integer()):
+                raise ValueError("integer bounds must be integral")
 
         return cls(
             name=name,
@@ -196,12 +209,14 @@ class ObjectiveSpec:
 
         output_value = data.get("output_key")
         if output_value is not None:
-            output_key = _text(output_value, label="objective output_key")
+            output_key = _text(output_value, label="objective output_key").strip()
         else:
-            key = _text(_required(data, "key"), label="objective key")
+            key = _text(_required(data, "key"), label="objective key").strip()
             identifiers_raw = _optional_object_map(data.get("identifiers", {}))
             identifiers = {name: str(value) for name, value in identifiers_raw.items()}
             output_key = _output_key(key, identifiers)
+        if not output_key:
+            raise ValueError("objective output_key must not be empty")
 
         weight_value = data.get("weight", 1.0)
         weight = _number(weight_value, label="objective weight")
@@ -270,6 +285,16 @@ class OptimizationProblem:
         )
         if not variables:
             raise ValueError("Optimization requires at least one variable")
+        variable_names: set[str] = set()
+        variable_targets: set[str] = set()
+        for variable in variables:
+            if variable.name in variable_names:
+                raise ValueError(f"Duplicate optimization variable name: {variable.name}")
+            variable_names.add(variable.name)
+            target = _output_key(variable.key, variable.identifiers)
+            if target in variable_targets:
+                raise ValueError(f"Duplicate optimization variable target: {target}")
+            variable_targets.add(target)
 
         objectives_value = optimization.get("objectives")
         if objectives_value is None and optimization.get("objective") is not None:
@@ -284,6 +309,11 @@ class OptimizationProblem:
         )
         if not objectives:
             raise ValueError("Optimization requires at least one objective")
+        objective_keys: set[str] = set()
+        for objective in objectives:
+            if objective.output_key in objective_keys:
+                raise ValueError(f"Duplicate optimization objective: {objective.output_key}")
+            objective_keys.add(objective.output_key)
 
         base_request = {
             key: value for key, value in document.items() if key not in {"optimization", "points"}
@@ -304,6 +334,41 @@ class OptimizationProblem:
             budget=budget,
             checkpoint_path=checkpoint_path,
         )
+
+    def validate_limits(self, settings: Settings) -> None:
+        if len(self.variables) > settings.max_optimization_variables:
+            raise ValueError(
+                f"Optimization defines {len(self.variables)} variables; limit is "
+                f"{settings.max_optimization_variables}"
+            )
+        if len(self.objectives) > settings.max_optimization_objectives:
+            raise ValueError(
+                f"Optimization defines {len(self.objectives)} objectives; limit is "
+                f"{settings.max_optimization_objectives}"
+            )
+        if self.budget.max_evaluations > settings.max_optimization_evaluations:
+            raise ValueError(
+                f"Optimization evaluation budget {self.budget.max_evaluations} exceeds "
+                f"limit {settings.max_optimization_evaluations}"
+            )
+
+    def checkpoint_for(self, settings: Settings) -> Path | None:
+        if self.checkpoint_path is None:
+            return None
+        candidate = self.checkpoint_path
+        resolved = (
+            (settings.state_dir / candidate).expanduser().resolve()
+            if not candidate.is_absolute()
+            else candidate.expanduser().resolve()
+        )
+        roots = (settings.state_dir.expanduser().resolve(), *settings.allowed_roots)
+        for root in roots:
+            try:
+                resolved.relative_to(root.expanduser().resolve())
+                return resolved
+            except ValueError:
+                continue
+        raise PolicyError(f"Optimization checkpoint path is outside allowed roots: {resolved}")
 
     def bounds(self) -> tuple[tuple[float, float], ...]:
         return tuple(variable.bound() for variable in self.variables)
@@ -415,7 +480,7 @@ class _Evaluator:
                 value = _finite_output(values.get(objective.output_key))
                 if value is None:
                     missing = True
-                    value = 1e12
+                    value = -1e12 if objective.direction == "maximize" else 1e12
                 objective_values.append(value)
                 minimized_values.append(objective.minimized_value(value))
             scalar = sum(
@@ -493,10 +558,10 @@ def run_optimization_document(
 ) -> dict[str, Any]:
     normalized_document: ObjectMap = {str(key): value for key, value in document.items()}
     problem = OptimizationProblem.from_document(normalized_document)
+    problem.validate_limits(settings)
     evaluator = _Evaluator(problem, settings, pool_manager, cancel_check, pool_observer)
-    checkpoint = (
-        None if problem.checkpoint_path is None else _checkpoint_callback(problem.checkpoint_path)
-    )
+    checkpoint_path = problem.checkpoint_for(settings)
+    checkpoint = None if checkpoint_path is None else _checkpoint_callback(checkpoint_path)
 
     run: DifferentialEvolutionResult | None
     try:

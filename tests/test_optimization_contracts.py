@@ -92,13 +92,9 @@ def test_variable_contract_rejects_ambiguous_domains() -> None:
             {"name": " ", "key": "x", "kind": "continuous", "lower": 0, "upper": 1}
         )
     with pytest.raises(ValueError, match="integer bounds must be integral"):
-        VariableSpec.from_mapping(
-            {"key": "x", "kind": "integer", "lower": 1.5, "upper": 4}
-        )
+        VariableSpec.from_mapping({"key": "x", "kind": "integer", "lower": 1.5, "upper": 4})
     with pytest.raises(ValueError, match="choices must be unique"):
-        VariableSpec.from_mapping(
-            {"key": "x", "kind": "categorical", "choices": ["a", "a"]}
-        )
+        VariableSpec.from_mapping({"key": "x", "kind": "categorical", "choices": ["a", "a"]})
     with pytest.raises(ValueError, match="cannot define numeric bounds"):
         VariableSpec.from_mapping(
             {
