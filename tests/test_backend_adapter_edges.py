@@ -302,9 +302,7 @@ def test_aspen_status_messages_running_and_runtime_identity(
     backend.document = document
     backend.progid = "Apwn.Document.40.0"
     backend.model_path = Path("case.bkp")
-    backend.configure_convergence_nodes(
-        [resolved_node("status", paths=("registry-path",))]
-    )
+    backend.configure_convergence_nodes([resolved_node("status", paths=("registry-path",))])
     monkeypatch.setenv("ASPENOPS_STATUS_PATHS", " extra-path ; ;")
 
     status = backend._status_values()
@@ -514,9 +512,7 @@ class FakeOperations:
 def fake_case(cells: dict[str, FakeCell] | None = None) -> Any:
     cells = cells or {"B2": FakeCell(1.0)}
     return SimpleNamespace(
-        Flowsheet=SimpleNamespace(
-            Operations=FakeOperations({"ASPENOPS_IO": FakeSheet(cells)})
-        ),
+        Flowsheet=SimpleNamespace(Operations=FakeOperations({"ASPENOPS_IO": FakeSheet(cells)})),
         Solver=SimpleNamespace(CanSolve=False, IsSolving=False),
     )
 
