@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: aspenops-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   portable:
     strategy:
@@ -42,7 +46,7 @@ jobs:
             --cov-report=term-missing \
             --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
             --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
-            --cov-fail-under=83 \
+            --cov-fail-under=94 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
       - name: Build distributions
         run: uv build
