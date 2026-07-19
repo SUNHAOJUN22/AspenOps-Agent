@@ -1,0 +1,467 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def replace_between(text: str, start: str, end: str, replacement: str) -> str:
+    begin = text.index(start)
+    finish = text.index(end, begin)
+    return text[:begin] + replacement + text[finish:]
+
+
+def main() -> None:
+    script_path = Path(__file__)
+    scheduler = Path("src/aspenops_nexus/scheduler.py")
+    text = scheduler.read_text(encoding="utf-8")
+    if "owner: str,\n    ) -> bool:\n        now = _now()" in text and "lease_lost_worker_recycle" in text:
+        script_path.unlink(missing_ok=True)
+        return
+
+    text = replace_between(
+        text,
+        "    def append_progress(\n",
+        "    def complete(\n",
+        '''    def append_progress(
+        self,
+        job_id: str,
+        results: list[dict[str, Any]],
+        last_completed_point: int,
+        *,
+        owner: str,
+    ) -> bool:
+        now = _now()
+        with self._lock, closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET result_json=?, last_completed_point=?, updated_at=?
+                WHERE job_id=? AND status IN ('running','cancelling')
+                  AND lease_owner=? AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at > ?
+                """,
+                (
+                    json.dumps(results, ensure_ascii=False, allow_nan=False),
+                    last_completed_point,
+                    now,
+                    job_id,
+                    owner,
+                    now,
+                ),
+            )
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "progress_committed",
+                    {"last_completed_point": last_completed_point, "owner": owner},
+                )
+            return cursor.rowcount == 1
+
+''',
+    )
+    text = replace_between(
+        text,
+        "    def complete(\n",
+        "    def finalize_cancelled(\n",
+        '''    def complete(
+        self,
+        job_id: str,
+        results: list[dict[str, Any]],
+        bundle_path: Path,
+        commit_token: str | None = None,
+        *,
+        owner: str,
+    ) -> bool:
+        token = commit_token or canonical_hash(results)
+        now = _now()
+        with self._lock, closing(self._connect()) as connection, connection:
+            existing = connection.execute(
+                "SELECT status,result_commit_token FROM jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+            if existing is None:
+                return False
+            if existing[0] == "completed":
+                return str(existing[1]) == token
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status='completed', result_json=?, bundle_path=?, result_commit_token=?,
+                    finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL,
+                    cancel_deadline=NULL
+                WHERE job_id=? AND status='running' AND lease_owner=?
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
+                """,
+                (
+                    json.dumps(results, ensure_ascii=False, allow_nan=False),
+                    str(bundle_path),
+                    token,
+                    now,
+                    now,
+                    job_id,
+                    owner,
+                    now,
+                ),
+            )
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "completed",
+                    {"commit_token": token, "owner": owner},
+                )
+            return cursor.rowcount == 1
+
+''',
+    )
+    text = replace_between(
+        text,
+        "    def finalize_cancelled(\n",
+        "    def fail(\n",
+        '''    def finalize_cancelled(
+        self,
+        job_id: str,
+        results: list[dict[str, Any]],
+        bundle_path: Path | None = None,
+        *,
+        owner: str,
+    ) -> bool:
+        now = _now()
+        with self._lock, closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status='cancelled', result_json=?, bundle_path=?, finished_at=?, updated_at=?,
+                    lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
+                WHERE job_id=? AND status IN ('claimed','running','cancelling')
+                  AND cancel_requested=1 AND lease_owner=?
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
+                """,
+                (
+                    json.dumps(results, ensure_ascii=False, allow_nan=False),
+                    None if bundle_path is None else str(bundle_path),
+                    now,
+                    now,
+                    job_id,
+                    owner,
+                    now,
+                ),
+            )
+            if cursor.rowcount == 1:
+                self._event(connection, job_id, "cancelled", {"owner": owner})
+            return cursor.rowcount == 1
+
+''',
+    )
+    text = replace_between(
+        text,
+        "    def fail(\n",
+        "    def retry_or_fail(\n",
+        '''    def fail(
+        self,
+        job_id: str,
+        error: str,
+        error_class: str = "execution_error",
+        *,
+        owner: str,
+    ) -> bool:
+        now = _now()
+        with self._lock, closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status='failed', error=?, error_class=?, finished_at=?, updated_at=?,
+                    lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
+                WHERE job_id=? AND status IN ('claimed','running','cancelling')
+                  AND lease_owner=? AND lease_expires_at IS NOT NULL
+                  AND lease_expires_at > ?
+                """,
+                (error, error_class, now, now, job_id, owner, now),
+            )
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "failed",
+                    {"error_class": error_class, "owner": owner},
+                )
+            return cursor.rowcount == 1
+
+''',
+    )
+    text = replace_between(
+        text,
+        "    def retry_or_fail(\n",
+        "    def get(\n",
+        '''    def retry_or_fail(
+        self,
+        job_id: str,
+        error: str,
+        error_class: str,
+        *,
+        retryable: bool,
+        owner: str,
+    ) -> str:
+        now = _now()
+        with self._lock, closing(self._connect()) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT attempt,max_attempts,cancel_requested,status,lease_owner,
+                       lease_expires_at
+                FROM jobs WHERE job_id=?
+                """,
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                connection.commit()
+                return "missing"
+            attempt = int(row[0])
+            max_attempts = int(row[1])
+            lease_valid = (
+                str(row[3]) in {"claimed", "running", "cancelling"}
+                and str(row[4]) == owner
+                and row[5] is not None
+                and str(row[5]) > now
+            )
+            if not lease_valid:
+                connection.commit()
+                return "lease_lost"
+            if bool(row[2]):
+                status = "cancelled"
+                finished_at: str | None = now
+            elif retryable and attempt < max_attempts:
+                status = "retry_wait"
+                finished_at = None
+            elif retryable:
+                status = "dead_letter"
+                finished_at = now
+            else:
+                status = "failed"
+                finished_at = now
+            cursor = connection.execute(
+                """
+                UPDATE jobs
+                SET status=?, error=?, error_class=?, finished_at=?, updated_at=?,
+                    lease_owner=NULL, lease_expires_at=NULL, cancel_deadline=NULL
+                WHERE job_id=? AND lease_owner=?
+                  AND status IN ('claimed','running','cancelling')
+                  AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
+                """,
+                (status, error, error_class, finished_at, now, job_id, owner, now),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return "lease_lost"
+            self._event(
+                connection,
+                job_id,
+                status,
+                {"error_class": error_class, "attempt": attempt, "owner": owner},
+            )
+            connection.commit()
+            return status
+
+''',
+    )
+    text = replace_between(
+        text,
+        "    def cancellation_due(\n",
+        "\n\nclass BackgroundScheduler:",
+        '''    def cancellation_due(self, owner: str | None = None) -> list[str]:
+        now = _now()
+        with self._lock, closing(self._connect()) as connection:
+            if owner is None:
+                rows = connection.execute(
+                    """
+                    SELECT job_id FROM jobs
+                    WHERE status='cancelling' AND cancel_deadline IS NOT NULL
+                      AND cancel_deadline <= ?
+                    """,
+                    (now,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT job_id FROM jobs
+                    WHERE status='cancelling' AND cancel_deadline IS NOT NULL
+                      AND cancel_deadline <= ? AND lease_owner=?
+                    """,
+                    (now, owner),
+                ).fetchall()
+        return [str(row[0]) for row in rows]
+
+    def mark_abort_dispatched(
+        self,
+        job_id: str,
+        events: list[dict[str, Any]],
+        *,
+        owner: str,
+    ) -> bool:
+        with self._lock, closing(self._connect()) as connection, connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs SET cancel_deadline=NULL,updated_at=?
+                WHERE job_id=? AND status='cancelling' AND lease_owner=?
+                  AND cancel_deadline IS NOT NULL
+                """,
+                (_now(), job_id, owner),
+            )
+            if cursor.rowcount == 1:
+                self._event(
+                    connection,
+                    job_id,
+                    "worker_recycle_dispatched",
+                    {"events": events, "owner": owner},
+                )
+            return cursor.rowcount == 1
+
+    def record_lease_lost(
+        self,
+        job_id: str,
+        owner: str,
+        events: list[dict[str, Any]],
+    ) -> None:
+        with self._lock, closing(self._connect()) as connection, connection:
+            self._event(
+                connection,
+                job_id,
+                "lease_lost_worker_recycle",
+                {"events": events, "owner": owner},
+            )
+''',
+    )
+    text = replace_between(
+        text,
+        "    def _watch_active_jobs(\n",
+        "    @staticmethod\n    def _last_completed_point",
+        '''    def _watch_active_jobs(self) -> None:
+        interval = max(0.05, min(self.settings.scheduler_poll_s, self.settings.job_lease_s / 3))
+        while not self._stop.wait(interval):
+            active = self._active_snapshot()
+            for job_id, pool in active.items():
+                if self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s):
+                    continue
+                events = pool.force_recycle_all("lease_lost")
+                self._observe_pool(job_id, None)
+                self.store.record_lease_lost(job_id, self.owner, events)
+            for job_id in self.store.cancellation_due(owner=self.owner):
+                pool = self._active_snapshot().get(job_id)
+                if pool is None:
+                    continue
+                events = pool.force_recycle_all("cancel_deadline")
+                self.store.mark_abort_dispatched(job_id, events, owner=self.owner)
+
+''',
+    )
+
+    loop_start = text.index("    def _loop(self) -> None:\n")
+    text = text[:loop_start] + '''    def _loop(self) -> None:
+        while not self._stop.is_set():
+            claimed = self.store.claim_next(self.owner, self.settings.job_lease_s)
+            if claimed is None:
+                self.pool_manager.evict_idle()
+                self._stop.wait(self.settings.scheduler_poll_s)
+                continue
+            job_id, request = claimed
+            if not self.store.mark_running(job_id, self.owner, self.settings.job_lease_s):
+                continue
+            try:
+                cancel_check = partial(self.store.is_cancel_requested, job_id)
+                pool_observer = partial(self._observe_pool, job_id)
+                if "optimization" in request:
+                    optimization_result = run_optimization_document(
+                        request,
+                        self.settings,
+                        pool_manager=self.pool_manager,
+                        cancel_check=cancel_check,
+                        pool_observer=pool_observer,
+                    )
+                    results = [optimization_result]
+                else:
+                    results = run_batch_document(
+                        request,
+                        self.settings,
+                        pool_manager=self.pool_manager,
+                        cancel_check=cancel_check,
+                        pool_observer=pool_observer,
+                    )
+                last_completed = self._last_completed_point(results)
+                if not self.store.append_progress(
+                    job_id,
+                    results,
+                    last_completed,
+                    owner=self.owner,
+                ):
+                    continue
+                record = self.store.get(job_id)
+                bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
+                bundle = write_run_bundle(
+                    request=request,
+                    results=results,
+                    output_path=bundle_path,
+                )
+                if record and record["cancel_requested"]:
+                    committed = self.store.finalize_cancelled(
+                        job_id, results, bundle, owner=self.owner
+                    )
+                else:
+                    committed = self.store.complete(
+                        job_id,
+                        results,
+                        bundle,
+                        commit_token=canonical_hash(results),
+                        owner=self.owner,
+                    )
+                if not committed:
+                    bundle.unlink(missing_ok=True)
+            except Exception as exc:
+                error_class, retryable = self._classify_error(exc)
+                self.store.retry_or_fail(
+                    job_id,
+                    f"{type(exc).__name__}: {exc}",
+                    error_class,
+                    retryable=retryable,
+                    owner=self.owner,
+                )
+            finally:
+                self._observe_pool(job_id, None)
+'''
+    scheduler.write_text(text, encoding="utf-8")
+
+    job_store = Path("tests/test_job_store.py")
+    tests = job_store.read_text(encoding="utf-8")
+    tests = tests.replace(
+        "        commit_token=token,\n    )",
+        "        commit_token=token,\n        owner=\"worker-a\",\n    )",
+    )
+    tests = tests.replace(
+        '    assert store.finalize_cancelled(job_id, [{"ok": False}])',
+        '    assert store.finalize_cancelled(\n'
+        '        job_id, [{"ok": False}], owner="worker-a"\n'
+        '    )',
+    )
+    job_store.write_text(tests, encoding="utf-8")
+
+    edge = Path("tests/test_scheduler_edge_cases.py")
+    tests = edge.read_text(encoding="utf-8")
+    tests = tests.replace(
+        "            retryable=True,\n        )",
+        "            retryable=True,\n            owner=\"worker-a\",\n        )",
+        1,
+    )
+    tests = tests.replace(
+        "            retryable=True,\n        )",
+        "            retryable=True,\n            owner=\"worker-b\",\n        )",
+        1,
+    )
+    tests = tests.replace(
+        "            retryable=False,\n        )",
+        "            retryable=False,\n            owner=\"worker-a\",\n        )",
+        1,
+    )
+    edge.write_text(tests, encoding="utf-8")
+    script_path.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()
