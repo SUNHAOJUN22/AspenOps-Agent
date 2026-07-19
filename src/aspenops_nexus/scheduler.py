@@ -715,6 +715,7 @@ class BackgroundScheduler:
         self._watcher_thread: threading.Thread | None = None
         self._active_lock = threading.RLock()
         self._active_pools: dict[str, CasePool] = {}
+        self._active_jobs: set[str] = set()
         self.owner = f"scheduler-{uuid.uuid4().hex[:12]}"
 
     def start(self) -> None:
@@ -733,6 +734,17 @@ class BackgroundScheduler:
     def _active_snapshot(self) -> dict[str, CasePool]:
         with self._active_lock:
             return dict(self._active_pools)
+
+    def _active_job_snapshot(self) -> set[str]:
+        with self._active_lock:
+            return set(self._active_jobs)
+
+    def _set_job_active(self, job_id: str, active: bool) -> None:
+        with self._active_lock:
+            if active:
+                self._active_jobs.add(job_id)
+            else:
+                self._active_jobs.discard(job_id)
 
     def stop(self) -> None:
         self._stop.set()
@@ -773,12 +785,15 @@ class BackgroundScheduler:
     def _watch_active_jobs(self) -> None:
         interval = max(0.05, min(self.settings.scheduler_poll_s, self.settings.job_lease_s / 3))
         while not self._stop.wait(interval):
-            active = self._active_snapshot()
-            for job_id, pool in active.items():
+            active_jobs = self._active_job_snapshot()
+            active_pools = self._active_snapshot()
+            for job_id in active_jobs:
                 if self.store.heartbeat(job_id, self.owner, self.settings.job_lease_s):
                     continue
-                events = pool.force_recycle_all("lease_lost")
+                pool = active_pools.get(job_id)
+                events = [] if pool is None else pool.force_recycle_all("lease_lost")
                 self._observe_pool(job_id, None)
+                self._set_job_active(job_id, False)
                 self.store.record_lease_lost(job_id, self.owner, events)
             for job_id in self.store.cancellation_due(owner=self.owner):
                 due_pool = self._active_snapshot().get(job_id)
@@ -826,6 +841,8 @@ class BackgroundScheduler:
             job_id, request = claimed
             if not self.store.mark_running(job_id, self.owner, self.settings.job_lease_s):
                 continue
+            self._set_job_active(job_id, True)
+            bundle: Path | None = None
             try:
                 cancel_check = partial(self.store.is_cancel_requested, job_id)
                 pool_observer = partial(self._observe_pool, job_id)
@@ -876,6 +893,8 @@ class BackgroundScheduler:
                 if not committed:
                     bundle.unlink(missing_ok=True)
             except Exception as exc:
+                if bundle is not None:
+                    bundle.unlink(missing_ok=True)
                 error_class, retryable = self._classify_error(exc)
                 self.store.retry_or_fail(
                     job_id,
@@ -886,3 +905,4 @@ class BackgroundScheduler:
                 )
             finally:
                 self._observe_pool(job_id, None)
+                self._set_job_active(job_id, False)
