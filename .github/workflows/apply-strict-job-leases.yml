@@ -1,0 +1,113 @@
+name: One-shot apply strict job lease transitions
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/apply-strict-job-leases.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-strict-job-leases
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Enforce unexpired leases and clear stale retry state
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/scheduler.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_claim = '''                SET status='claimed', worker_owner=?, lease_owner=?, lease_expires_at=?,
+                              heartbeat_at=?, started_at=COALESCE(started_at,?), updated_at=?,
+                              attempt=attempt+1
+                          WHERE job_id=? AND status IN ('pending','retry_wait')
+          '''
+          new_claim = '''                SET status='claimed', worker_owner=?, lease_owner=?, lease_expires_at=?,
+                              heartbeat_at=?, started_at=COALESCE(started_at,?), updated_at=?,
+                              attempt=attempt+1, error=NULL, error_class=NULL, finished_at=NULL,
+                              cancel_deadline=NULL
+                          WHERE job_id=? AND status IN ('pending','retry_wait')
+          '''
+          if old_claim not in text:
+              raise SystemExit("claim update block not found")
+          text = text.replace(old_claim, new_claim, 1)
+
+          old_running = '''                UPDATE jobs
+                          SET status='running', heartbeat_at=?, lease_expires_at=?, updated_at=?
+                          WHERE job_id=? AND status='claimed' AND lease_owner=?
+                          """,
+                          (now, _future(lease_s), now, job_id, owner),
+          '''
+          new_running = '''                UPDATE jobs
+                          SET status='running', heartbeat_at=?, lease_expires_at=?, updated_at=?
+                          WHERE job_id=? AND status='claimed' AND lease_owner=?
+                            AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
+                          """,
+                          (now, _future(lease_s), now, job_id, owner, now),
+          '''
+          if old_running not in text:
+              raise SystemExit("mark_running block not found")
+          text = text.replace(old_running, new_running, 1)
+
+          old_heartbeat = '''                UPDATE jobs
+                          SET heartbeat_at=?, lease_expires_at=?, updated_at=?
+                          WHERE job_id=? AND lease_owner=?
+                            AND status IN ('claimed','running','cancelling')
+                          """,
+                          (now, _future(lease_s), now, job_id, owner),
+          '''
+          new_heartbeat = '''                UPDATE jobs
+                          SET heartbeat_at=?, lease_expires_at=?, updated_at=?
+                          WHERE job_id=? AND lease_owner=?
+                            AND status IN ('claimed','running','cancelling')
+                            AND lease_expires_at IS NOT NULL AND lease_expires_at > ?
+                          """,
+                          (now, _future(lease_s), now, job_id, owner, now),
+          '''
+          if old_heartbeat not in text:
+              raise SystemExit("heartbeat block not found")
+          path.write_text(text.replace(old_heartbeat, new_heartbeat, 1), encoding="utf-8")
+          PY
+      - name: Normalize and validate strict lease behavior
+        run: |
+          uv sync --extra dev --extra agent
+          uv run ruff format \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_job_store_lease_strictness.py
+          uv run ruff check \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_job_store_lease_strictness.py
+          uv run mypy src/aspenops_nexus/scheduler.py
+          uv run pytest \
+            tests/test_job_store.py \
+            tests/test_job_store_lease_recovery.py \
+            tests/test_job_store_lease_strictness.py \
+            tests/test_scheduler_edge_cases.py
+      - name: Commit implementation and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-strict-job-leases.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add src/aspenops_nexus/scheduler.py \
+            tests/test_job_store_lease_strictness.py \
+            .github/workflows/apply-strict-job-leases.yml
+          git commit -m "fix: reject expired job lease transitions"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
