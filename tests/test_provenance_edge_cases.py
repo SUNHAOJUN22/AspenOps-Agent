@@ -20,13 +20,15 @@ def test_corrupt_zip_is_structure_invalid(tmp_path: Path) -> None:
 
 def test_duplicate_member_names_are_rejected(tmp_path: Path) -> None:
     path = tmp_path / "duplicates.zip"
-    with pytest.warns(UserWarning, match="Duplicate name"):
-        with zipfile.ZipFile(path, "w") as archive:
-            archive.writestr("manifest.json", b"{}")
-            archive.writestr("request.json", b"{}")
-            archive.writestr("request.json", b"{}")
-            archive.writestr("results.json", b"[]")
-            archive.writestr("environment.json", b"{}")
+    with (
+        pytest.warns(UserWarning, match="Duplicate name"),
+        zipfile.ZipFile(path, "w") as archive,
+    ):
+        archive.writestr("manifest.json", b"{}")
+        archive.writestr("request.json", b"{}")
+        archive.writestr("request.json", b"{}")
+        archive.writestr("results.json", b"[]")
+        archive.writestr("environment.json", b"{}")
     result = verify_run_bundle(path)
     assert result["ok"] is False
     assert result["verification_status"] == "structure-invalid"
