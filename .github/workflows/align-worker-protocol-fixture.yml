@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: aspenops-align-worker-protocol
+  cancel-in-progress: false
+
 jobs:
   align:
     runs-on: ubuntu-latest
