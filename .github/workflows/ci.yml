@@ -37,14 +37,11 @@ jobs:
 
           path = Path('src/aspenops_nexus/provenance.py')
           text = path.read_text(encoding='utf-8')
-          old = '''            unexpected = sorted(actual_names - expected_names)
-                      undeclared_missing = sorted(expected_names - actual_names)
-
-                      member_checks: dict[str, bool] = {}
-          '''
-          new = '''            unexpected = sorted(actual_names - expected_names)
-                      undeclared_missing = sorted(expected_names - actual_names)
-                      if signed:
+          marker = 'signed archive members are missing'
+          if marker not in text:
+              needle = '            member_checks: dict[str, bool] = {}\n'
+              index = text.index(needle)
+              insertion = '''            if signed:
                           signing_missing = sorted(
                               {"manifest.sig", "signing-key-id.txt"} - actual_names
                           )
@@ -55,24 +52,21 @@ jobs:
                                   manifest=manifest,
                               )
 
-                      member_checks: dict[str, bool] = {}
-          '''
-          if old not in text:
-              raise SystemExit('provenance signing-member anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              '''
+              text = text[:index] + insertion + text[index:]
+              path.write_text(text, encoding='utf-8')
 
           path = Path('tests/test_worker_protocol_hardening.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    stage = tmp_path / "stage"
-                  parent = FakeConnection(
-          '''
-          new = '''    stage = tmp_path / "stage"
-                  stage.mkdir()
-                  parent = FakeConnection(
-          '''
-          if old not in text:
-              raise SystemExit('worker stage-directory anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          function = text.index(
+              'def test_start_worker_rejects_invalid_ready_identity_and_cleans_every_resource('
+          )
+          needle = '    stage = tmp_path / "stage"\n'
+          index = text.index(needle, function)
+          insertion = '    stage.mkdir()\n'
+          if text[index + len(needle):].startswith(insertion) is False:
+              text = text[: index + len(needle)] + insertion + text[index + len(needle):]
+              path.write_text(text, encoding='utf-8')
           PY
             uvx ruff@0.11.13 format \
               src/aspenops_nexus/provenance.py \
