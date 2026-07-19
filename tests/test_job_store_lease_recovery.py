@@ -30,7 +30,9 @@ def test_expired_lease_retries_before_final_attempt(tmp_path: Path) -> None:
     assert record["status"] == "claimed"
     assert record["attempt"] == 2
     assert record["lease_owner"] == "worker-b"
-    event = next(item for item in store.events(job_id) if item["event"] == "lease_expired")
+    event = next(
+        item for item in store.events(job_id) if item["event"] == "lease_expired"
+    )
     assert event["payload"] == {"attempt": 1, "max_attempts": 2}
 
 
@@ -106,5 +108,6 @@ def test_cancelled_expired_lease_stays_cancelled(tmp_path: Path) -> None:
     assert record["cancel_requested"] is True
     assert record["finished_at"] is not None
     assert any(
-        item["event"] == "cancelled_after_lease_expiry" for item in store.events(job_id)
+        item["event"] == "cancelled_after_lease_expiry"
+        for item in store.events(job_id)
     )
