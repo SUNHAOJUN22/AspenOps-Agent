@@ -1,0 +1,69 @@
+name: One-shot fix Aspen document open order
+
+on:
+  push:
+    branches: [agent/aspenops-v2-reliability-performance]
+    paths:
+      - .github/workflows/fix-aspen-open-method-order.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-shot-fix-open-order
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Deduplicate Aspen document-open methods
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/backends/aspen_plus.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        suffix = path.suffix.lower()
+                  methods = (("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()) + (
+                      "InitFromFile2",
+                      "InitFromArchive2",
+                      "InitFromFile",
+                  )
+          '''
+          new = '''        suffix = path.suffix.lower()
+                  preferred = ("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()
+                  methods = tuple(
+                      dict.fromkeys(
+                          (*preferred, "InitFromFile2", "InitFromArchive2", "InitFromFile")
+                      )
+                  )
+          '''
+          if old not in text:
+              raise SystemExit("expected Aspen open-method block not found")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+      - name: Normalize and validate source
+        run: |
+          uv sync --extra dev
+          uv run ruff check src/aspenops_nexus/backends/aspen_plus.py
+          uv run ruff format src/aspenops_nexus/backends/aspen_plus.py
+      - name: Commit fix and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/fix-aspen-open-method-order.yml
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add src/aspenops_nexus/backends/aspen_plus.py \
+            .github/workflows/fix-aspen-open-method-order.yml
+          git commit -m "fix: deduplicate Aspen document open attempts"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
