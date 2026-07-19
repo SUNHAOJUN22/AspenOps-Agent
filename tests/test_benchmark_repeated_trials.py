@@ -67,9 +67,7 @@ def test_measure_pool_aggregates_independent_trials_by_median(
     assert result.trial_count == 3
     assert result.elapsed_samples_s == (3.0, 1.0, 2.0)
     assert result.throughput_samples_points_s == (10.0, 30.0, 20.0)
-    expected_cv = statistics.pstdev([10.0, 30.0, 20.0]) / statistics.fmean(
-        [10.0, 30.0, 20.0]
-    )
+    expected_cv = statistics.pstdev([10.0, 30.0, 20.0]) / statistics.fmean([10.0, 30.0, 20.0])
     assert result.throughput_cv == pytest.approx(expected_cv)
 
 
