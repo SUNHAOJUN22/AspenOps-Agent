@@ -153,8 +153,12 @@ class HysysBackend(SimulatorBackend):
         return False
 
     @classmethod
-    def _normalize_convergence_value(cls, value: Any, node: ResolvedNode) -> Any:
-        locator = node.locator
+    def _normalize_convergence_value(
+        cls,
+        value: Any,
+        node: ResolvedNode | None = None,
+    ) -> Any:
+        locator = {} if node is None else node.locator
         for expected in locator.get("converged_values", []):
             if cls._contract_value_matches(value, expected):
                 return "converged"
