@@ -33,12 +33,16 @@ def _positive_number(value: Any, label: str) -> float:
     if old_bounds not in text:
         raise RuntimeError("numeric bound helper anchor not found")
     text = text.replace(old_bounds, new_bounds, 1)
-    old_timeout = '''        timeout_s = _finite_number(mapping.get("timeout_s", 1200.0), "timeout_s")
-        if timeout_s <= 0:
-            raise ValueError("timeout_s must be a finite positive number")
-'''
-    new_timeout = '''        timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), "timeout_s")
-'''
+    old_timeout = (
+        '        timeout_s = _finite_number(mapping.get("timeout_s", 1200.0), '
+        '"timeout_s")\n'
+        "        if timeout_s <= 0:\n"
+        '            raise ValueError("timeout_s must be a finite positive number")\n'
+    )
+    new_timeout = (
+        '        timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), '
+        '"timeout_s")\n'
+    )
     if old_timeout not in text:
         raise RuntimeError("timeout validation anchor not found")
     text = text.replace(old_timeout, new_timeout, 1)
