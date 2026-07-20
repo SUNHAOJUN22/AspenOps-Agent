@@ -10,6 +10,73 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-final-contracts:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Apply, validate, and publish final contracts
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            uv sync --extra dev --extra agent
+            if [[ -f scripts/materialize_scheduler_multiprocess_races.py ]]; then
+              uv run python scripts/materialize_scheduler_multiprocess_races.py
+            fi
+            uv run ruff format \
+              src/aspenops_nexus/scheduler.py \
+              tests/test_scheduler_multiprocess_races.py \
+              tests/test_models_strict_contracts.py \
+              tests/test_result_protocol_contracts.py
+            uv run ruff check \
+              src/aspenops_nexus/scheduler.py \
+              tests/test_scheduler_multiprocess_races.py \
+              tests/test_models_strict_contracts.py \
+              tests/test_result_protocol_contracts.py \
+              tests/test_job_store_owner_fencing.py \
+              tests/test_job_store_lease_recovery.py \
+              tests/test_scheduler_active_leases.py
+            uv run mypy src
+            uv run pytest \
+              tests/test_scheduler_multiprocess_races.py \
+              tests/test_job_store.py \
+              tests/test_job_store_owner_fencing.py \
+              tests/test_job_store_lease_recovery.py \
+              tests/test_job_store_lease_strictness.py \
+              tests/test_scheduler.py \
+              tests/test_scheduler_active_leases.py \
+              tests/test_scheduler_edge_cases.py \
+              tests/test_models_strict_contracts.py \
+              tests/test_result_protocol_contracts.py
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add -A
+            git commit -m "fix: close scheduler bundle and strict protocol contracts"
+            git fetch origin agent/aspenops-v2-reliability-performance
+            git rebase origin/agent/aspenops-v2-reliability-performance
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/materialize-final-contracts.log
+      - name: Upload final-contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-contract-materializer-diagnostics
+          path: var/ci/materialize-final-contracts.log
+          if-no-files-found: warn
+
   portable:
     strategy:
       matrix:
