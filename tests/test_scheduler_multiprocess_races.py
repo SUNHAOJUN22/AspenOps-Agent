@@ -73,7 +73,7 @@ def test_second_store_recovers_only_expired_lease(tmp_path: Path) -> None:
     assert record is not None
     assert record["status"] == "retry_wait"
     assert record["lease_owner"] is None
-    assert record["error_class"] == "service_restart"
+    assert record["error_class"] == "lease_expired"
 
 
 def test_second_store_dead_letters_expired_final_attempt(tmp_path: Path) -> None:
@@ -88,7 +88,7 @@ def test_second_store_dead_letters_expired_final_attempt(tmp_path: Path) -> None
     assert record is not None
     assert record["status"] == "dead_letter"
     assert record["finished_at"] is not None
-    assert record["error_class"] == "service_restart"
+    assert record["error_class"] == "lease_expired"
 
 
 def test_second_store_finalizes_only_expired_cancellation(tmp_path: Path) -> None:
@@ -160,3 +160,33 @@ def test_stale_owner_uncommitted_bundle_is_deleted(tmp_path: Path) -> None:
     assert record is not None
     assert record["status"] == "running"
     assert record["lease_owner"] == "owner-b"
+
+
+def test_idempotent_duplicate_bundle_is_deleted_when_not_adopted(tmp_path: Path) -> None:
+    scheduler = BackgroundScheduler(Settings(state_dir=tmp_path, backend="mock"))
+    scheduler.owner = "owner-a"
+    job_id = running_job(scheduler.store, owner=scheduler.owner)
+    results = [{"ok": True}]
+    adopted = tmp_path / "bundles" / "adopted.zip"
+    duplicate = tmp_path / "bundles" / "duplicate.zip"
+    adopted.parent.mkdir(parents=True)
+    adopted.write_bytes(b"adopted")
+    duplicate.write_bytes(b"duplicate")
+    assert scheduler.store.complete(
+        job_id,
+        results,
+        adopted,
+        owner=scheduler.owner,
+    )
+
+    scheduler.owner = "stale-owner"
+    try:
+        assert scheduler._commit_bundle(job_id, results, duplicate)
+    finally:
+        scheduler.stop()
+
+    assert adopted.is_file()
+    assert not duplicate.exists()
+    record = JobStore(tmp_path / "jobs.sqlite3").get(job_id)
+    assert record is not None
+    assert record["bundle_path"] == str(adopted)
