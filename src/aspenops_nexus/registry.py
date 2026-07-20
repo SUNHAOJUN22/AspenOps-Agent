@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -15,6 +16,83 @@ class RegistryError(ValueError):
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_. -]{1,128}$")
+_CONVERGENCE_OPERATORS = {"<", "<=", ">", ">=", "=="}
+
+
+def _convergence_marker(value: Any, *, label: str) -> tuple[str, Any]:
+    if isinstance(value, bool):
+        return ("bool", value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if not normalized:
+            raise RegistryError(f"{label} values must not be empty strings")
+        return ("text", normalized)
+    if isinstance(value, int):
+        return ("number", float(value))
+    if isinstance(value, float) and math.isfinite(value):
+        return ("number", value)
+    raise RegistryError(f"{label} values must be finite scalar JSON values")
+
+
+def _validate_convergence_locator(key: str, locator: dict[str, Any]) -> None:
+    operator_present = "convergence_operator" in locator
+    threshold_present = "convergence_threshold" in locator
+    tolerance_present = "convergence_tolerance" in locator
+    if operator_present != threshold_present:
+        raise RegistryError(
+            f"Convergence node {key} must define convergence_operator and "
+            "convergence_threshold together"
+        )
+    if tolerance_present and not threshold_present:
+        raise RegistryError(
+            f"Convergence node {key} cannot define convergence_tolerance without a threshold"
+        )
+
+    if operator_present:
+        operator = locator["convergence_operator"]
+        if not isinstance(operator, str) or operator not in _CONVERGENCE_OPERATORS:
+            raise RegistryError(f"Invalid convergence operator for {key}: {operator}")
+        threshold = locator["convergence_threshold"]
+        if isinstance(threshold, bool) or not isinstance(threshold, int | float):
+            raise RegistryError(f"Convergence threshold for {key} must be finite numeric")
+        if not math.isfinite(float(threshold)):
+            raise RegistryError(f"Convergence threshold for {key} must be finite numeric")
+        tolerance = locator.get("convergence_tolerance", 0.0)
+        if isinstance(tolerance, bool) or not isinstance(tolerance, int | float):
+            raise RegistryError(
+                f"Convergence tolerance for {key} must be finite non-negative numeric"
+            )
+        if not math.isfinite(float(tolerance)) or float(tolerance) < 0:
+            raise RegistryError(
+                f"Convergence tolerance for {key} must be finite non-negative numeric"
+            )
+
+    marker_sets: dict[str, set[tuple[str, Any]]] = {}
+    for field in ("converged_values", "not_converged_values"):
+        if field not in locator:
+            continue
+        raw_values = locator[field]
+        if not isinstance(raw_values, list) or not raw_values:
+            raise RegistryError(f"Convergence node {key} {field} must be a non-empty array")
+        markers = {
+            _convergence_marker(item, label=f"Convergence node {key} {field}")
+            for item in raw_values
+        }
+        if len(markers) != len(raw_values):
+            raise RegistryError(f"Convergence node {key} {field} must contain unique values")
+        marker_sets[field] = markers
+
+    if operator_present and marker_sets:
+        raise RegistryError(
+            f"Convergence node {key} cannot mix threshold and enumerated convergence contracts"
+        )
+    overlap = marker_sets.get("converged_values", set()) & marker_sets.get(
+        "not_converged_values", set()
+    )
+    if overlap:
+        raise RegistryError(
+            f"Convergence node {key} has values declared as both converged and not converged"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +175,8 @@ class NodeRegistry:
             raise RegistryError(f"paths for {key} must be a list")
         if locator and not isinstance(locator, dict):
             raise RegistryError(f"locator for {key} must be an object")
+        if role == "convergence":
+            _validate_convergence_locator(key, dict(locator))
 
     def keys(self) -> list[str]:
         return sorted(self._nodes)
