@@ -15,7 +15,7 @@ concurrency:
 jobs:
   windows-contracts:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -40,7 +40,7 @@ jobs:
           uv run mypy src *>&1 |
             Tee-Object -FilePath var/ci/mypy.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Process and backend contracts
+      - name: Process, scheduler, archive, and backend contracts
         shell: pwsh
         run: |
           uv run pytest -W error::ResourceWarning `
@@ -51,7 +51,12 @@ jobs:
             tests/test_backends_convergence.py `
             tests/test_v2_reliability.py `
             tests/test_singleflight.py `
-            tests/test_worker_contracts.py *>&1 |
+            tests/test_worker_contracts.py `
+            tests/test_worker_protocol_hardening.py `
+            tests/test_pool_manager_creation.py `
+            tests/test_scheduler_active_leases.py `
+            tests/test_provenance_zip_safety.py `
+            tests/test_archive_safety_complete.py *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows diagnostics
