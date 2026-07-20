@@ -21,6 +21,7 @@ on:
       - tests/test_benchmark_repeated_trials.py
       - tests/test_benchmark_scripts.py
       - tests/test_cache.py
+      - tests/test_job_store_lease_recovery.py
       - tests/test_pool_cache_efficiency.py
       - tests/test_pool_manager_creation.py
       - tests/test_provenance_zip_safety.py
