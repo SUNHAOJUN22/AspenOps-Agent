@@ -277,9 +277,7 @@ class EvaluationRequest:
             ),
             constraints=tuple(
                 ConstraintSpec.from_dict(_object(item, f"constraints[{index}]"))
-                for index, item in enumerate(
-                    _array(mapping.get("constraints", []), "constraints")
-                )
+                for index, item in enumerate(_array(mapping.get("constraints", []), "constraints"))
             ),
             balances=tuple(
                 BalanceSpec.from_dict(_object(item, f"balances[{index}]"))
