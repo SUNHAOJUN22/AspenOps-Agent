@@ -147,7 +147,11 @@ def patch_scheduler() -> None:
                 if not committed:
                     bundle.unlink(missing_ok=True)
 '''
-    new = '''                bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
+    new = '''                bundle_path = (
+                    self.settings.state_dir
+                    / "bundles"
+                    / f"{job_id}.{self.owner}.zip"
+                )
                 bundle = write_run_bundle(
                     request=request,
                     results=results,
