@@ -7,6 +7,42 @@ def main() -> None:
     script = Path(__file__)
     path = Path("src/aspenops_nexus/models.py")
     text = path.read_text(encoding="utf-8")
+    old_bounds = '''def _nonnegative_number(value: Any, label: str) -> float:
+    number = _finite_number(value, label)
+    if number < 0:
+        raise ValueError(f"{label} must be a finite non-negative number")
+    return number
+'''
+    new_bounds = '''def _nonnegative_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be a finite non-negative number")
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{label} must be a finite non-negative number")
+    return number
+
+
+def _positive_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be a finite positive number")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{label} must be a finite positive number")
+    return number
+'''
+    if old_bounds not in text:
+        raise RuntimeError("numeric bound helper anchor not found")
+    text = text.replace(old_bounds, new_bounds, 1)
+    old_timeout = '''        timeout_s = _finite_number(mapping.get("timeout_s", 1200.0), "timeout_s")
+        if timeout_s <= 0:
+            raise ValueError("timeout_s must be a finite positive number")
+'''
+    new_timeout = '''        timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), "timeout_s")
+'''
+    if old_timeout not in text:
+        raise RuntimeError("timeout validation anchor not found")
+    text = text.replace(old_timeout, new_timeout, 1)
+
     marker = "@dataclass(slots=True)\nclass EvaluationResult:"
     start = text.index(marker)
     replacement = '''@dataclass(slots=True)
