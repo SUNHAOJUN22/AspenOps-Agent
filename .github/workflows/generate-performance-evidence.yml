@@ -6,7 +6,6 @@ on:
     branches: [main]
     paths:
       - .github/workflows/generate-performance-evidence.yml
-      - scripts/materialize_scheduler_races.py
       - scripts/run_benchmark_matrix.py
       - scripts/compare_benchmarks.py
       - src/aspenops_nexus/archive_safety.py
@@ -51,51 +50,6 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Materialize staged Scheduler race fixes
-        shell: bash
-        run: |
-          mkdir -p var/ci
-          set -o pipefail
-          {
-            if [[ ! -f scripts/materialize_scheduler_races.py ]]; then
-              exit 0
-            fi
-            python scripts/materialize_scheduler_races.py
-            uv sync --extra dev --extra agent
-            uv run ruff format \
-              src/aspenops_nexus/scheduler.py \
-              tests/test_scheduler_edge_cases.py \
-              tests/test_scheduler_restart_fencing.py \
-              tests/test_scheduler_claimed_lease_fencing.py
-            uv run ruff check \
-              src/aspenops_nexus/scheduler.py \
-              tests/test_scheduler_edge_cases.py \
-              tests/test_scheduler_restart_fencing.py \
-              tests/test_scheduler_claimed_lease_fencing.py \
-              tests/test_job_store_owner_fencing.py
-            uv run mypy src/aspenops_nexus/scheduler.py
-            uv run pytest \
-              tests/test_scheduler.py \
-              tests/test_scheduler_edge_cases.py \
-              tests/test_scheduler_restart_fencing.py \
-              tests/test_scheduler_claimed_lease_fencing.py \
-              tests/test_scheduler_active_leases.py \
-              tests/test_job_store_owner_fencing.py \
-              tests/test_job_store_lease_recovery.py \
-              tests/test_job_store_lease_strictness.py
-            git config user.name "aspenops-ci"
-            git config user.email "aspenops-ci@users.noreply.github.com"
-            git add -A
-            git commit -m "fix: preserve live leases and close cancellation commit race"
-            git push origin HEAD:agent/aspenops-v2-reliability-performance
-          } 2>&1 | tee var/ci/scheduler-materializer.log
-      - name: Upload Scheduler materializer diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-materializer-diagnostics
-          path: var/ci/scheduler-materializer.log
-          if-no-files-found: warn
       - name: Sync candidate dependencies
         shell: bash
         run: |
@@ -150,6 +104,22 @@ jobs:
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . --output var/benchmarks/smoke.json --smoke \
             2>&1 | tee var/benchmarks/smoke.log
+      - name: Commit verified performance evidence
+        shell: bash
+        run: |
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add \
+            var/benchmarks/baseline.json \
+            var/benchmarks/after.json \
+            docs/performance-baseline.md \
+            docs/performance-after.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "perf: publish verified portable benchmark evidence"
+          git pull --rebase origin agent/aspenops-v2-reliability-performance
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
       - name: Upload performance evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -159,4 +129,4 @@ jobs:
             var/benchmarks
             docs/performance-baseline.md
             docs/performance-after.md
-          if-no-files-found: warn
+          if-no-files-found: error
