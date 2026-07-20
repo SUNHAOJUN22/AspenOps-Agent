@@ -10,33 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format-final-contract-tests:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'agent/aspenops-v2-reliability-performance'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/aspenops-v2-reliability-performance
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Format and publish final protocol tests
-        run: |
-          uvx ruff@0.11.13 format \
-            tests/test_models_strict_contracts.py \
-            tests/test_result_protocol_contracts.py
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add tests/test_models_strict_contracts.py tests/test_result_protocol_contracts.py
-          git commit -m "style: format strict protocol tests"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
-
   portable:
     strategy:
       matrix:
