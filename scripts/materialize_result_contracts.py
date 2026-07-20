@@ -47,6 +47,31 @@ def _positive_number(value: Any, label: str) -> float:
         raise RuntimeError("timeout validation anchor not found")
     text = text.replace(old_timeout, new_timeout, 1)
 
+    old_to_dict = '''    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def physical_identity(self) -> dict[str, Any]:
+'''
+    new_to_dict = '''    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_path": self.model_path,
+            "registry_path": self.registry_path,
+            "backend": self.backend,
+            "writes": [asdict(item) for item in self.writes],
+            "reads": [asdict(item) for item in self.reads],
+            "constraints": [asdict(item) for item in self.constraints],
+            "balances": [asdict(item) for item in self.balances],
+            "reset_mode": self.reset_mode,
+            "timeout_s": self.timeout_s,
+            "metadata": dict(self.metadata),
+        }
+
+    def physical_identity(self) -> dict[str, Any]:
+'''
+    if old_to_dict not in text:
+        raise RuntimeError("request to_dict anchor not found")
+    text = text.replace(old_to_dict, new_to_dict, 1)
+
     marker = "@dataclass(slots=True)\nclass EvaluationResult:"
     start = text.index(marker)
     replacement = '''@dataclass(slots=True)
