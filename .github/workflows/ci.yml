@@ -29,27 +29,38 @@ jobs:
       - name: Apply and validate strict result protocol
         shell: bash
         run: |
-          python scripts/materialize_result_contracts.py
-          uv sync --extra dev --extra agent
-          uv run ruff format \
-            src/aspenops_nexus/models.py \
-            tests/test_result_protocol_contracts.py
-          uv run ruff check \
-            src/aspenops_nexus/models.py \
-            src/aspenops_nexus/worker.py \
-            tests/test_result_protocol_contracts.py \
-            tests/test_worker_protocol_hardening.py
-          uv run mypy src/aspenops_nexus/models.py src/aspenops_nexus/worker.py
-          uv run pytest \
-            tests/test_result_protocol_contracts.py \
-            tests/test_worker_protocol_hardening.py \
-            tests/test_worker_contracts.py \
-            tests/test_cache.py
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add src/aspenops_nexus/models.py tests/test_result_protocol_contracts.py scripts/materialize_result_contracts.py
-          git commit -m "fix: validate worker result payload schema"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            python scripts/materialize_result_contracts.py
+            uv sync --extra dev --extra agent
+            uv run ruff format \
+              src/aspenops_nexus/models.py \
+              tests/test_result_protocol_contracts.py
+            uv run ruff check \
+              src/aspenops_nexus/models.py \
+              src/aspenops_nexus/worker.py \
+              tests/test_result_protocol_contracts.py \
+              tests/test_worker_protocol_hardening.py
+            uv run mypy src/aspenops_nexus/models.py src/aspenops_nexus/worker.py
+            uv run pytest \
+              tests/test_result_protocol_contracts.py \
+              tests/test_worker_protocol_hardening.py \
+              tests/test_worker_contracts.py \
+              tests/test_cache.py
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add src/aspenops_nexus/models.py tests/test_result_protocol_contracts.py scripts/materialize_result_contracts.py
+            git commit -m "fix: validate worker result payload schema"
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/result-contract-materializer.log
+      - name: Upload result protocol diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-contract-materializer-diagnostics
+          path: var/ci/result-contract-materializer.log
+          if-no-files-found: warn
 
   portable:
     strategy:
