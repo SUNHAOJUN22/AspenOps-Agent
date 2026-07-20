@@ -56,39 +56,36 @@ def test_expired_lease_dead_letters_final_attempt(tmp_path: Path) -> None:
     assert event["payload"] == {"attempt": 1, "max_attempts": 1}
 
 
-def test_service_restart_retries_before_final_attempt(tmp_path: Path) -> None:
+def test_second_store_preserves_valid_lease_before_final_attempt(tmp_path: Path) -> None:
     path = tmp_path / "jobs.sqlite3"
     store = JobStore(path)
     job_id = store.create({"x": 1}, max_attempts=2)
-    assert store.claim_next("worker-a") is not None
-    assert store.mark_running(job_id, "worker-a")
+    assert store.claim_next("worker-a", lease_s=120.0) is not None
+    assert store.mark_running(job_id, "worker-a", lease_s=120.0)
 
-    restarted = JobStore(path)
-    record = restarted.get(job_id)
+    second = JobStore(path)
+    record = second.get(job_id)
     assert record is not None
-    assert record["status"] == "retry_wait"
-    assert record["error"] == "service restarted while job held a lease"
-    assert record["error_class"] == "service_restart"
-    assert record["finished_at"] is None
-    assert record["lease_owner"] is None
+    assert record["status"] == "running"
+    assert record["lease_owner"] == "worker-a"
+    assert record["error"] is None
+    assert record["error_class"] is None
 
 
-def test_service_restart_dead_letters_final_attempt(tmp_path: Path) -> None:
+def test_second_store_preserves_valid_final_attempt_lease(tmp_path: Path) -> None:
     path = tmp_path / "jobs.sqlite3"
     store = JobStore(path)
     job_id = store.create({"x": 1}, max_attempts=1)
-    assert store.claim_next("worker-a") is not None
-    assert store.mark_running(job_id, "worker-a")
+    assert store.claim_next("worker-a", lease_s=120.0) is not None
+    assert store.mark_running(job_id, "worker-a", lease_s=120.0)
 
-    restarted = JobStore(path)
-    record = restarted.get(job_id)
+    second = JobStore(path)
+    record = second.get(job_id)
     assert record is not None
-    assert record["status"] == "dead_letter"
-    assert record["error"] == "service restarted after final job attempt"
-    assert record["error_class"] == "service_restart"
-    assert record["finished_at"] is not None
-    assert record["lease_owner"] is None
-    assert restarted.claim_next("worker-b") is None
+    assert record["status"] == "running"
+    assert record["attempt"] == 1
+    assert record["lease_owner"] == "worker-a"
+    assert second.claim_next("worker-b") is None
 
 
 def test_cancelled_expired_lease_stays_cancelled(tmp_path: Path) -> None:
