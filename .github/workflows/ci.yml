@@ -10,55 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  materialize-scheduler-races:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'agent/aspenops-v2-reliability-performance'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/aspenops-v2-reliability-performance
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Apply and validate scheduler race fixes
-        shell: bash
-        run: |
-          uv sync --extra dev --extra agent
-          uv run python scripts/materialize_scheduler_multiprocess_races.py
-          uv run ruff format \
-            src/aspenops_nexus/scheduler.py \
-            tests/test_scheduler_multiprocess_races.py
-          uv run ruff check \
-            src/aspenops_nexus/scheduler.py \
-            tests/test_scheduler_multiprocess_races.py \
-            tests/test_job_store_owner_fencing.py \
-            tests/test_job_store_lease_recovery.py \
-            tests/test_scheduler_active_leases.py
-          uv run mypy src/aspenops_nexus/scheduler.py
-          uv run pytest \
-            tests/test_scheduler_multiprocess_races.py \
-            tests/test_job_store.py \
-            tests/test_job_store_owner_fencing.py \
-            tests/test_job_store_lease_recovery.py \
-            tests/test_job_store_lease_strictness.py \
-            tests/test_scheduler.py \
-            tests/test_scheduler_active_leases.py \
-            tests/test_scheduler_edge_cases.py
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add \
-            src/aspenops_nexus/scheduler.py \
-            tests/test_scheduler_multiprocess_races.py \
-            scripts/materialize_scheduler_multiprocess_races.py
-          git commit -m "fix: preserve valid leases and close scheduler commit races"
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
-
   portable:
     strategy:
       matrix:
