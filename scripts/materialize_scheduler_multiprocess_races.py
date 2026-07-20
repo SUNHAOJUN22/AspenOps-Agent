@@ -73,8 +73,12 @@ def main() -> None:
             bundle.unlink(missing_ok=True)
         return committed
 '''
+    adoption_guard = (
+        '        adopted = record is not None and record.get("bundle_path") '
+        '== str(bundle)\n'
+    )
     if old_helper not in text:
-        if "        adopted = record is not None and record.get(\"bundle_path\") == str(bundle)\n" not in text:
+        if adoption_guard not in text:
             raise RuntimeError("scheduler bundle helper anchor not found")
     else:
         text = text.replace(old_helper, new_helper, 1)
