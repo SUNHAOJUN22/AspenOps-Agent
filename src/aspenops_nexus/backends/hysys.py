@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import platform
 import time
@@ -135,7 +136,47 @@ class HysysBackend(SimulatorBackend):
         return None
 
     @staticmethod
-    def _normalize_convergence_value(value: Any) -> Any:
+    def _contract_value_matches(observed: Any, expected: Any) -> bool:
+        if isinstance(expected, bool):
+            return isinstance(observed, bool) and observed is expected
+        if isinstance(expected, str):
+            return isinstance(observed, str) and observed.strip().casefold() == expected.strip().casefold()
+        if isinstance(expected, int | float) and not isinstance(expected, bool):
+            if isinstance(observed, bool) or not isinstance(observed, int | float):
+                return False
+            observed_number = float(observed)
+            expected_number = float(expected)
+            return math.isfinite(observed_number) and observed_number == expected_number
+        return False
+
+    @classmethod
+    def _normalize_convergence_value(cls, value: Any, node: ResolvedNode) -> Any:
+        locator = node.locator
+        for expected in locator.get("converged_values", []):
+            if cls._contract_value_matches(value, expected):
+                return "converged"
+        for expected in locator.get("not_converged_values", []):
+            if cls._contract_value_matches(value, expected):
+                return "not converged"
+
+        operator = locator.get("convergence_operator")
+        if operator is not None:
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                return value
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                return value
+            threshold = float(locator["convergence_threshold"])
+            tolerance = float(locator.get("convergence_tolerance", 0.0))
+            comparisons = {
+                ">=": numeric >= threshold - tolerance,
+                ">": numeric > threshold + tolerance,
+                "<=": numeric <= threshold + tolerance,
+                "<": numeric < threshold - tolerance,
+                "==": abs(numeric - threshold) <= tolerance,
+            }
+            return "converged" if comparisons[str(operator)] else "not converged"
+
         if isinstance(value, bool):
             return "converged" if value else "not converged"
         if isinstance(value, (int, float)):
@@ -156,7 +197,7 @@ class HysysBackend(SimulatorBackend):
                         "key": node.key,
                         "source": "registry",
                         "raw_value": raw,
-                        "value": self._normalize_convergence_value(raw),
+                        "value": self._normalize_convergence_value(raw, node),
                     }
                 )
             except Exception as exc:
