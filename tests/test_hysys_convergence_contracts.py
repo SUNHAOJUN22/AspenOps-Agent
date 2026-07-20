@@ -72,7 +72,7 @@ def test_numeric_threshold_contract_uses_operator_and_tolerance(
 @pytest.mark.parametrize(
     ("operator", "value", "expected"),
     [
-        (">", 1.01, "converged"),
+        (">", 1.011, "converged"),
         (">", 1.0, "not_converged"),
         ("<=", 1.01, "converged"),
         ("<", 0.98, "converged"),
@@ -127,6 +127,35 @@ def test_unknown_custom_enum_value_still_fails_closed(monkeypatch: pytest.Monkey
     assert backend.run()["convergence_state"] == "unknown"
 
 
+def test_default_normalization_remains_backward_compatible() -> None:
+    assert HysysBackend._normalize_convergence_value(True) == "converged"
+    assert HysysBackend._normalize_convergence_value(False) == "not converged"
+    assert HysysBackend._normalize_convergence_value(1) == "converged"
+    assert HysysBackend._normalize_convergence_value(0.0) == "not converged"
+    assert HysysBackend._normalize_convergence_value(2.0) == 2.0
+
+
+def test_contract_marker_matching_is_type_safe_and_finite() -> None:
+    assert HysysBackend._contract_value_matches(True, True)
+    assert not HysysBackend._contract_value_matches(1, True)
+    assert HysysBackend._contract_value_matches(" OK ", "ok")
+    assert not HysysBackend._contract_value_matches(1, "1")
+    assert HysysBackend._contract_value_matches(1, 1.0)
+    assert not HysysBackend._contract_value_matches(float("nan"), 1.0)
+    assert not HysysBackend._contract_value_matches("1", 1.0)
+    assert not HysysBackend._contract_value_matches([], {"unsupported": True})
+
+
+def test_threshold_contract_leaves_non_numeric_or_nonfinite_signal_unclassified() -> None:
+    node = convergence_node(
+        convergence_operator=">=",
+        convergence_threshold=1.0,
+    )
+    assert HysysBackend._normalize_convergence_value("pending", node) == "pending"
+    value = HysysBackend._normalize_convergence_value(float("nan"), node)
+    assert value != value
+
+
 def write_registry(tmp_path: Path, locator: dict[str, Any]) -> Path:
     path = tmp_path / "registry.json"
     path.write_text(
@@ -157,12 +186,17 @@ def write_registry(tmp_path: Path, locator: dict[str, Any]) -> Path:
     [
         ({"convergence_operator": ">="}, "define convergence_operator and"),
         ({"convergence_threshold": 1.0}, "define convergence_operator and"),
+        ({"convergence_tolerance": 0.1}, "cannot define convergence_tolerance"),
         (
             {"convergence_operator": "!=", "convergence_threshold": 1.0},
             "Invalid convergence operator",
         ),
         (
             {"convergence_operator": ">=", "convergence_threshold": float("nan")},
+            "threshold.*finite numeric",
+        ),
+        (
+            {"convergence_operator": ">=", "convergence_threshold": True},
             "threshold.*finite numeric",
         ),
         (
@@ -173,7 +207,18 @@ def write_registry(tmp_path: Path, locator: dict[str, Any]) -> Path:
             },
             "tolerance.*finite non-negative",
         ),
+        (
+            {
+                "convergence_operator": ">=",
+                "convergence_threshold": 1.0,
+                "convergence_tolerance": True,
+            },
+            "tolerance.*finite non-negative",
+        ),
         ({"converged_values": []}, "converged_values must be a non-empty array"),
+        ({"converged_values": [" "]}, "values must not be empty strings"),
+        ({"converged_values": [["bad"]]}, "finite scalar JSON values"),
+        ({"converged_values": [1, 1.0]}, "must contain unique values"),
         ({"converged_values": ["OK", " ok "]}, "must contain unique values"),
         (
             {"converged_values": ["OK"], "not_converged_values": [" ok "]},
