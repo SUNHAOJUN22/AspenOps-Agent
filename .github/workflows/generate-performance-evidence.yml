@@ -2,10 +2,6 @@ name: Generate performance evidence
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/aspenops-v2-reliability-performance]
-    paths:
-      - .github/workflows/generate-performance-evidence.yml
 
 permissions:
   contents: write
