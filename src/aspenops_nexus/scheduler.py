@@ -872,29 +872,32 @@ class BackgroundScheduler:
         bundle: Path,
     ) -> bool:
         if self.store.is_cancel_requested(job_id):
-            return self.store.finalize_cancelled(
+            committed = self.store.finalize_cancelled(
                 job_id,
                 results,
                 bundle,
                 owner=self.owner,
             )
-        committed = self.store.complete(
-            job_id,
-            results,
-            bundle,
-            commit_token=canonical_hash(results),
-            owner=self.owner,
-        )
-        if committed:
-            return True
-        if self.store.is_cancel_requested(job_id):
-            return self.store.finalize_cancelled(
+        else:
+            committed = self.store.complete(
                 job_id,
                 results,
                 bundle,
+                commit_token=canonical_hash(results),
                 owner=self.owner,
             )
-        return False
+            if not committed and self.store.is_cancel_requested(job_id):
+                committed = self.store.finalize_cancelled(
+                    job_id,
+                    results,
+                    bundle,
+                    owner=self.owner,
+                )
+        record = self.store.get(job_id) if committed else None
+        adopted = record is not None and record.get("bundle_path") == str(bundle)
+        if not adopted:
+            bundle.unlink(missing_ok=True)
+        return committed
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -942,8 +945,7 @@ class BackgroundScheduler:
                     results=results,
                     output_path=bundle_path,
                 )
-                if not self._commit_bundle(job_id, results, bundle):
-                    bundle.unlink(missing_ok=True)
+                self._commit_bundle(job_id, results, bundle)
             except Exception as exc:
                 if bundle is not None:
                     bundle.unlink(missing_ok=True)
