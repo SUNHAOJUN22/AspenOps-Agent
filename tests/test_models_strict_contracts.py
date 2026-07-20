@@ -94,7 +94,7 @@ def test_write_requires_nonempty_key_object_identifiers_and_scalar_value() -> No
         VariableWrite.from_dict({"key": " ", "value": 1})
     with pytest.raises(ValueError, match="write identifiers must be an object"):
         VariableWrite.from_dict({"key": "x", "identifiers": [], "value": 1})
-    with pytest.raises(ValueError, match="identifier values must be finite scalar"):
+    with pytest.raises(ValueError, match="write identifiers values must be finite scalar"):
         VariableWrite.from_dict({"key": "x", "identifiers": {"stream": []}, "value": 1})
     with pytest.raises(ValueError, match="write value must be a finite scalar JSON value"):
         VariableWrite.from_dict({"key": "x", "value": {"bad": True}})
