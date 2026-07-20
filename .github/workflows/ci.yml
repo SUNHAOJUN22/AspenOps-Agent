@@ -10,6 +10,252 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-scheduler-races:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Patch and validate Scheduler races
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          scheduler_path = Path("src/aspenops_nexus/scheduler.py")
+          text = scheduler_path.read_text(encoding="utf-8")
+          start = text.index("    def _recover_after_restart(")
+          end = text.index("    def create(", start)
+          replacement = '''    def _recover_after_restart(self, connection: sqlite3.Connection) -> None:
+              now = _now()
+              self._recover_expired(connection, now)
+
+              cancelled = connection.execute(
+                  """
+                  SELECT job_id FROM jobs
+                  WHERE status IN ('claimed','running','cancelling')
+                    AND cancel_requested=1 AND lease_expires_at IS NULL
+                  """
+              ).fetchall()
+              connection.execute(
+                  """
+                  UPDATE jobs
+                  SET status='cancelled', error='service restarted during cancellation',
+                      error_class='service_restart', finished_at=?, updated_at=?,
+                      lease_owner=NULL, lease_expires_at=NULL
+                  WHERE status IN ('claimed','running','cancelling')
+                    AND cancel_requested=1 AND lease_expires_at IS NULL
+                  """,
+                  (now, now),
+              )
+              for row in cancelled:
+                  self._event(connection, str(row[0]), "cancelled_after_service_restart")
+
+              orphaned = connection.execute(
+                  """
+                  SELECT job_id,attempt,max_attempts FROM jobs
+                  WHERE status IN ('claimed','running') AND cancel_requested=0
+                    AND lease_expires_at IS NULL
+                  """
+              ).fetchall()
+              connection.execute(
+                  """
+                  UPDATE jobs
+                  SET status=CASE
+                          WHEN attempt < max_attempts THEN 'retry_wait'
+                          ELSE 'dead_letter'
+                      END,
+                      error=CASE
+                          WHEN attempt < max_attempts
+                              THEN 'service restarted while job had no lease'
+                          ELSE 'service restarted after final unleased attempt'
+                      END,
+                      error_class='service_restart',
+                      finished_at=CASE
+                          WHEN attempt < max_attempts THEN NULL ELSE ?
+                      END,
+                      updated_at=?, lease_owner=NULL, lease_expires_at=NULL
+                  WHERE status IN ('claimed','running') AND cancel_requested=0
+                    AND lease_expires_at IS NULL
+                  """,
+                  (now, now),
+              )
+              for row in orphaned:
+                  attempt = int(row[1])
+                  max_attempts = int(row[2])
+                  event = (
+                      "service_restart"
+                      if attempt < max_attempts
+                      else "dead_letter_after_service_restart"
+                  )
+                  self._event(
+                      connection,
+                      str(row[0]),
+                      event,
+                      {"attempt": attempt, "max_attempts": max_attempts},
+                  )
+
+'''
+          text = text[:start] + replacement + text[end:]
+
+          loop_marker = "    def _loop(self) -> None:\n"
+          if "    def _commit_bundle(" not in text:
+              index = text.index(loop_marker)
+              helper = '''    def _commit_bundle(
+              self,
+              job_id: str,
+              results: list[dict[str, Any]],
+              bundle: Path,
+          ) -> bool:
+              if self.store.is_cancel_requested(job_id):
+                  return self.store.finalize_cancelled(
+                      job_id,
+                      results,
+                      bundle,
+                      owner=self.owner,
+                  )
+              committed = self.store.complete(
+                  job_id,
+                  results,
+                  bundle,
+                  commit_token=canonical_hash(results),
+                  owner=self.owner,
+              )
+              if committed:
+                  return True
+              if self.store.is_cancel_requested(job_id):
+                  return self.store.finalize_cancelled(
+                      job_id,
+                      results,
+                      bundle,
+                      owner=self.owner,
+                  )
+              return False
+
+'''
+              text = text[:index] + helper + text[index:]
+
+          old = '''                record = self.store.get(job_id)
+                  bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
+                  bundle = write_run_bundle(
+                      request=request,
+                      results=results,
+                      output_path=bundle_path,
+                  )
+                  if record and record["cancel_requested"]:
+                      committed = self.store.finalize_cancelled(
+                          job_id, results, bundle, owner=self.owner
+                      )
+                  else:
+                      committed = self.store.complete(
+                          job_id,
+                          results,
+                          bundle,
+                          commit_token=canonical_hash(results),
+                          owner=self.owner,
+                      )
+                  if not committed:
+                      bundle.unlink(missing_ok=True)
+          '''
+          new = '''                bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
+                  bundle = write_run_bundle(
+                      request=request,
+                      results=results,
+                      output_path=bundle_path,
+                  )
+                  if not self._commit_bundle(job_id, results, bundle):
+                      bundle.unlink(missing_ok=True)
+          '''
+          if old not in text:
+              raise SystemExit("Scheduler bundle commit block not found")
+          scheduler_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          tests_path = Path("tests/test_scheduler_edge_cases.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          first = tests.index("def test_service_restart_recovers_running_lease")
+          second = tests.index("def test_service_restart_finalizes_cancelling_job", first)
+          third = tests.index("def test_schema_migrates_legacy_job_table", second)
+          replacement_tests = '''def test_service_restart_recovers_unleased_running_job(tmp_path: Path) -> None:
+              path = tmp_path / "jobs.sqlite3"
+              store = JobStore(path)
+              job_id = store.create({"x": 1})
+              assert store.claim_next("worker-a") is not None
+              assert store.mark_running(job_id, "worker-a")
+              with sqlite3.connect(path) as connection:
+                  connection.execute(
+                      "UPDATE jobs SET lease_expires_at=NULL WHERE job_id=?",
+                      (job_id,),
+                  )
+              restarted = JobStore(path)
+              record = restarted.get(job_id)
+              assert record is not None
+              assert record["status"] == "retry_wait"
+              assert record["lease_owner"] is None
+
+
+          def test_service_restart_finalizes_unleased_cancelling_job(tmp_path: Path) -> None:
+              path = tmp_path / "jobs.sqlite3"
+              store = JobStore(path)
+              job_id = store.create({"x": 1})
+              assert store.claim_next("worker-a") is not None
+              assert store.mark_running(job_id, "worker-a")
+              assert store.cancel(job_id, grace_s=100)
+              with sqlite3.connect(path) as connection:
+                  connection.execute(
+                      "UPDATE jobs SET lease_expires_at=NULL WHERE job_id=?",
+                      (job_id,),
+                  )
+              restarted = JobStore(path)
+              record = restarted.get(job_id)
+              assert record is not None
+              assert record["status"] == "cancelled"
+              assert "restart" in record["error"]
+
+
+          '''
+          tests_path.write_text(
+              tests[:first] + replacement_tests + tests[third:],
+              encoding="utf-8",
+          )
+          PY
+          uv sync --extra dev --extra agent
+          uv run ruff format \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py
+          uv run ruff check \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py \
+            tests/test_job_store_owner_fencing.py
+          uv run mypy src/aspenops_nexus/scheduler.py
+          uv run pytest \
+            tests/test_scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py \
+            tests/test_scheduler_active_leases.py \
+            tests/test_job_store_owner_fencing.py \
+            tests/test_job_store_lease_recovery.py \
+            tests/test_job_store_lease_strictness.py
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py
+          git commit -m "fix: preserve live leases and close cancellation commit race"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
+
   portable:
     strategy:
       matrix:
