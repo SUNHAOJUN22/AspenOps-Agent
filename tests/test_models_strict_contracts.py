@@ -95,9 +95,7 @@ def test_write_requires_nonempty_key_object_identifiers_and_scalar_value() -> No
     with pytest.raises(ValueError, match="write identifiers must be an object"):
         VariableWrite.from_dict({"key": "x", "identifiers": [], "value": 1})
     with pytest.raises(ValueError, match="identifier values must be finite scalar"):
-        VariableWrite.from_dict(
-            {"key": "x", "identifiers": {"stream": []}, "value": 1}
-        )
+        VariableWrite.from_dict({"key": "x", "identifiers": {"stream": []}, "value": 1})
     with pytest.raises(ValueError, match="write value must be a finite scalar JSON value"):
         VariableWrite.from_dict({"key": "x", "value": {"bad": True}})
     with pytest.raises(ValueError, match="write value must be a finite scalar JSON value"):
@@ -167,14 +165,10 @@ def test_balance_contract_rejects_malformed_and_nonfinite_fields() -> None:
     with pytest.raises(ValueError, match="balance coefficient must be a finite number"):
         BalanceTerm.from_dict({"key": "x", "coefficient": float("inf")})
     with pytest.raises(ValueError, match="balance expected must be a finite number"):
-        BalanceSpec.from_dict(
-            {"name": "mass", "terms": [{"key": "x"}], "expected": float("nan")}
-        )
+        BalanceSpec.from_dict({"name": "mass", "terms": [{"key": "x"}], "expected": float("nan")})
     for field in ("abs_tol", "rel_tol", "floor"):
         with pytest.raises(ValueError, match=f"balance {field} must be a finite non-negative"):
-            BalanceSpec.from_dict(
-                {"name": "mass", "terms": [{"key": "x"}], field: -1}
-            )
+            BalanceSpec.from_dict({"name": "mass", "terms": [{"key": "x"}], field: -1})
 
 
 def test_valid_request_remains_round_trippable_and_json_shaped() -> None:
