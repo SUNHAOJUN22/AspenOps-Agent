@@ -57,12 +57,17 @@ def test_non_retryable_error_fails_immediately(tmp_path: Path) -> None:
     assert store.get(job_id)["status"] == "failed"
 
 
-def test_service_restart_recovers_running_lease(tmp_path: Path) -> None:
+def test_service_restart_recovers_unleased_running_job(tmp_path: Path) -> None:
     path = tmp_path / "jobs.sqlite3"
     store = JobStore(path)
     job_id = store.create({"x": 1})
     assert store.claim_next("worker-a") is not None
     assert store.mark_running(job_id, "worker-a")
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE jobs SET lease_expires_at=NULL WHERE job_id=?",
+            (job_id,),
+        )
     restarted = JobStore(path)
     record = restarted.get(job_id)
     assert record is not None
@@ -70,13 +75,18 @@ def test_service_restart_recovers_running_lease(tmp_path: Path) -> None:
     assert record["lease_owner"] is None
 
 
-def test_service_restart_finalizes_cancelling_job(tmp_path: Path) -> None:
+def test_service_restart_finalizes_unleased_cancelling_job(tmp_path: Path) -> None:
     path = tmp_path / "jobs.sqlite3"
     store = JobStore(path)
     job_id = store.create({"x": 1})
     assert store.claim_next("worker-a") is not None
     assert store.mark_running(job_id, "worker-a")
     assert store.cancel(job_id, grace_s=100)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE jobs SET lease_expires_at=NULL WHERE job_id=?",
+            (job_id,),
+        )
     restarted = JobStore(path)
     record = restarted.get(job_id)
     assert record is not None

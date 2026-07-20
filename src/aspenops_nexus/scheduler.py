@@ -127,15 +127,36 @@ class JobStore:
 
     def _recover_after_restart(self, connection: sqlite3.Connection) -> None:
         now = _now()
+        self._recover_expired(connection, now)
+
+        cancelled = connection.execute(
+            """
+            SELECT job_id FROM jobs
+            WHERE status IN ('claimed','running','cancelling')
+              AND cancel_requested=1 AND lease_expires_at IS NULL
+            """
+        ).fetchall()
         connection.execute(
             """
             UPDATE jobs
             SET status='cancelled', error='service restarted during cancellation',
-                finished_at=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL
-            WHERE status IN ('claimed','running','cancelling') AND cancel_requested=1
+                error_class='service_restart', finished_at=?, updated_at=?,
+                lease_owner=NULL, lease_expires_at=NULL
+            WHERE status IN ('claimed','running','cancelling')
+              AND cancel_requested=1 AND lease_expires_at IS NULL
             """,
             (now, now),
         )
+        for row in cancelled:
+            self._event(connection, str(row[0]), "cancelled_after_service_restart")
+
+        orphaned = connection.execute(
+            """
+            SELECT job_id,attempt,max_attempts FROM jobs
+            WHERE status IN ('claimed','running') AND cancel_requested=0
+              AND lease_expires_at IS NULL
+            """
+        ).fetchall()
         connection.execute(
             """
             UPDATE jobs
@@ -145,8 +166,8 @@ class JobStore:
                 END,
                 error=CASE
                     WHEN attempt < max_attempts
-                        THEN 'service restarted while job held a lease'
-                    ELSE 'service restarted after final job attempt'
+                        THEN 'service restarted while job had no lease'
+                    ELSE 'service restarted after final unleased attempt'
                 END,
                 error_class='service_restart',
                 finished_at=CASE
@@ -154,9 +175,22 @@ class JobStore:
                 END,
                 updated_at=?, lease_owner=NULL, lease_expires_at=NULL
             WHERE status IN ('claimed','running') AND cancel_requested=0
+              AND lease_expires_at IS NULL
             """,
             (now, now),
         )
+        for row in orphaned:
+            attempt = int(row[1])
+            max_attempts = int(row[2])
+            event = (
+                "service_restart" if attempt < max_attempts else "dead_letter_after_service_restart"
+            )
+            self._event(
+                connection,
+                str(row[0]),
+                event,
+                {"attempt": attempt, "max_attempts": max_attempts},
+            )
 
     def create(self, request: dict[str, Any], max_attempts: int = 3) -> str:
         job_id = uuid.uuid4().hex
@@ -831,6 +865,37 @@ class BackgroundScheduler:
             return "invalid_request", False
         return "execution_error", False
 
+    def _commit_bundle(
+        self,
+        job_id: str,
+        results: list[dict[str, Any]],
+        bundle: Path,
+    ) -> bool:
+        if self.store.is_cancel_requested(job_id):
+            return self.store.finalize_cancelled(
+                job_id,
+                results,
+                bundle,
+                owner=self.owner,
+            )
+        committed = self.store.complete(
+            job_id,
+            results,
+            bundle,
+            commit_token=canonical_hash(results),
+            owner=self.owner,
+        )
+        if committed:
+            return True
+        if self.store.is_cancel_requested(job_id):
+            return self.store.finalize_cancelled(
+                job_id,
+                results,
+                bundle,
+                owner=self.owner,
+            )
+        return False
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             claimed = self.store.claim_next(self.owner, self.settings.job_lease_s)
@@ -871,26 +936,13 @@ class BackgroundScheduler:
                     owner=self.owner,
                 ):
                     continue
-                record = self.store.get(job_id)
                 bundle_path = self.settings.state_dir / "bundles" / f"{job_id}.{self.owner}.zip"
                 bundle = write_run_bundle(
                     request=request,
                     results=results,
                     output_path=bundle_path,
                 )
-                if record and record["cancel_requested"]:
-                    committed = self.store.finalize_cancelled(
-                        job_id, results, bundle, owner=self.owner
-                    )
-                else:
-                    committed = self.store.complete(
-                        job_id,
-                        results,
-                        bundle,
-                        commit_token=canonical_hash(results),
-                        owner=self.owner,
-                    )
-                if not committed:
+                if not self._commit_bundle(job_id, results, bundle):
                     bundle.unlink(missing_ok=True)
             except Exception as exc:
                 if bundle is not None:
