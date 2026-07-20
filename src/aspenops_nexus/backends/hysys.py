@@ -140,7 +140,10 @@ class HysysBackend(SimulatorBackend):
         if isinstance(expected, bool):
             return isinstance(observed, bool) and observed is expected
         if isinstance(expected, str):
-            return isinstance(observed, str) and observed.strip().casefold() == expected.strip().casefold()
+            return (
+                isinstance(observed, str)
+                and observed.strip().casefold() == expected.strip().casefold()
+            )
         if isinstance(expected, int | float) and not isinstance(expected, bool):
             if isinstance(observed, bool) or not isinstance(observed, int | float):
                 return False
