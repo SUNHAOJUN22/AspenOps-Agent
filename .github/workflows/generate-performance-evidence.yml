@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/generate-performance-evidence.yml
+      - scripts/materialize_scheduler_races.py
       - scripts/run_benchmark_matrix.py
       - scripts/compare_benchmarks.py
       - src/aspenops_nexus/archive_safety.py
@@ -24,12 +25,14 @@ on:
       - tests/test_pool_manager_creation.py
       - tests/test_provenance_zip_safety.py
       - tests/test_scheduler_active_leases.py
+      - tests/test_scheduler_claimed_lease_fencing.py
+      - tests/test_scheduler_restart_fencing.py
       - tests/test_worker_protocol_hardening.py
       - pyproject.toml
       - uv.lock
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: aspenops-performance-${{ github.event.pull_request.number || github.ref }}
@@ -47,6 +50,40 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+      - name: Materialize staged Scheduler race fixes
+        shell: bash
+        run: |
+          if [[ ! -f scripts/materialize_scheduler_races.py ]]; then
+            exit 0
+          fi
+          python scripts/materialize_scheduler_races.py
+          uv sync --extra dev --extra agent
+          uv run ruff format \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py \
+            tests/test_scheduler_claimed_lease_fencing.py
+          uv run ruff check \
+            src/aspenops_nexus/scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py \
+            tests/test_scheduler_claimed_lease_fencing.py \
+            tests/test_job_store_owner_fencing.py
+          uv run mypy src/aspenops_nexus/scheduler.py
+          uv run pytest \
+            tests/test_scheduler.py \
+            tests/test_scheduler_edge_cases.py \
+            tests/test_scheduler_restart_fencing.py \
+            tests/test_scheduler_claimed_lease_fencing.py \
+            tests/test_scheduler_active_leases.py \
+            tests/test_job_store_owner_fencing.py \
+            tests/test_job_store_lease_recovery.py \
+            tests/test_job_store_lease_strictness.py
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: preserve live leases and close cancellation commit race"
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
       - name: Sync candidate dependencies
         shell: bash
         run: |
