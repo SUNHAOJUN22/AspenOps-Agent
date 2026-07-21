@@ -11,6 +11,12 @@
       "tag": "archive/retired-branch/automation-final-main-evidence-trigger/20260721/f4968e3209d4"
     }
   ],
+  "authoritative_workflows_after_cleanup": [
+    "ci.yml",
+    "generate-performance-evidence.yml",
+    "licensed-aspen-certification.yml",
+    "windows-control-plane.yml"
+  ],
   "benchmark_stable_regression_gate": "PASS",
   "branch_refs_after": [
     {
@@ -57,6 +63,7 @@
       "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0"
     }
   ],
+  "final_branch_state": "MAIN_ONLY",
   "linux_ci_gate": "PASS",
   "mcp_surface": "PASS",
   "open_pull_requests_after": [],
@@ -66,11 +73,15 @@
   "schema": "aspenops.single-main-audit/v2",
   "source_main_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
   "status": "PASS",
+  "superseded_workflows_removed_after_audit": [
+    "windows-aspen-certification.yml"
+  ],
   "test_count_python_3_12": 563,
   "version": "2.0.0",
   "wheel_install": "PASS",
   "windows_control_plane_gate": "PASS",
   "windows_run_id": "29814739334",
+  "workflow_cleanup_commit": "6f07dbcf21fa149fc066b19a2bf7da36918aac07",
   "workflows_before_cleanup": [
     "ci.yml",
     "final-main-pr-transaction.yml",
