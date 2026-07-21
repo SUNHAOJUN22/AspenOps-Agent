@@ -1,0 +1,72 @@
+{
+  "schema": "aspenops.final-main-manifest/v1",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "status": "SINGLE_MAIN_CONSOLIDATION_BLOCKED",
+  "final_main_sha": "9522eaf7faaa68074eaa26bebd07f8070edd97db",
+  "final_main_sha_semantics": "Last code-bearing main SHA before evidence-only manifests and temporary-workflow cleanup commits.",
+  "validated_runtime_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
+  "validation_ci_run_id": 29814739487,
+  "validation_windows_run_id": 29814739334,
+  "default_branch": "main",
+  "remote_branch_count": 1,
+  "remaining_branches": [
+    "main"
+  ],
+  "remaining_branch_evidence": {
+    "source": "GitHub Actions issue #28",
+    "result": "Temporary branch cleanup PASS. Remote heads contain only main."
+  },
+  "package_version": "2.0.0",
+  "test_count": 563,
+  "coverage_floor": 94.5,
+  "combined_coverage": 94.9719800747198,
+  "statement_coverage": 96.23677786818551,
+  "branch_coverage": 90.84880636604774,
+  "python_matrix": {
+    "3.11": "PASS",
+    "3.12": "PASS",
+    "3.13": "PASS"
+  },
+  "ruff": "PASS",
+  "ruff_format": "PASS",
+  "strict_mypy": "PASS",
+  "build": "PASS",
+  "clean_wheel": "PASS",
+  "demo": "PASS",
+  "mcp_tool_count": 14,
+  "benchmark_smoke": "PASS",
+  "performance_result": "PASS_PORTABLE_MOCK_STABLE_REGRESSION_GATE",
+  "windows_result": "PASS_PUBLIC_CONTROL_PLANE",
+  "licensed_workflow": "IMPLEMENTED_NOT_EXECUTED",
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "authoritative_workflows_after_cleanup": [
+    "ci.yml",
+    "generate-performance-evidence.yml",
+    "licensed-aspen-certification.yml",
+    "windows-control-plane.yml"
+  ],
+  "required_unmerged_capabilities": [],
+  "archive_tag_gate": {
+    "status": "BLOCKED",
+    "required": "An exact annotated archive tag for every historical non-main head.",
+    "created_tag_objects_without_refs": true,
+    "rest_ref_creation": {
+      "run_id": 29817700557,
+      "http_status": 403,
+      "error": "Resource not accessible by integration"
+    },
+    "git_push_creation": {
+      "run_id": 29818039586,
+      "error": "refusing to allow a GitHub App to create or update workflow .github/workflows/ci.yml without workflows permission"
+    },
+    "required_external_action": "Grant the acting GitHub App or a scoped maintainer token Workflows: write permission, then create and verify the annotated tags listed in var/consolidation/branch-archive-manifest.json."
+  },
+  "completion_conditions": {
+    "single_main": "PASS",
+    "portable_quality": "PASS",
+    "public_windows_control_plane": "PASS",
+    "performance_regression_gate": "PASS",
+    "open_parallel_prs": "PASS_NONE",
+    "historical_annotated_tags": "BLOCKED_PERMISSION"
+  }
+}
