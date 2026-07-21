@@ -1,13 +1,12 @@
 name: Final audited branch archive transaction
 
 on:
-  pull_request_target:
-    types: [labeled]
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
   issues: write
-  pull-requests: write
 
 concurrency:
   group: final-audited-branch-archive-transaction
@@ -17,17 +16,23 @@ jobs:
   finalize:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.event.pull_request.number == 20 &&
-      github.event.label.name == 'documentation'
+      github.event.issue.title == 'AspenOps final branch archive transaction' &&
+      github.event.issue.body == 'RUN_FINAL_TAG_TRANSACTION_20260721'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+      - name: Mark transaction started
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            'Final branch archive transaction started from the audited main tree.'
       - name: Verify audited evidence and unchanged runtime tree
         shell: bash
         run: |
@@ -110,7 +115,7 @@ jobs:
                 -f type="commit" \
                 -f 'tagger[name]=AspenOps Archive' \
                 -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
-                -f 'tagger[date]=2026-07-21T09:30:00Z' \
+                -f 'tagger[date]=2026-07-21T09:45:00Z' \
                 --jq '.sha')"
               gh api --method POST "repos/$repo/git/refs" \
                 -f ref="refs/tags/$tag" \
@@ -201,7 +206,12 @@ jobs:
           git add -f var/consolidation/tag-transaction-result.json
           git commit -m 'chore: record completed branch tag transaction'
           git push origin HEAD:main
-          gh issue comment 20 --repo "$GITHUB_REPOSITORY" --body \
-            'Historical recovery tags were verified and all non-main refs were deleted. The standard manifests will now be published to main.'
-          gh api --method DELETE \
-            "repos/$GITHUB_REPOSITORY/issues/20/labels/documentation" >/dev/null || true
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            'Historical recovery tags were verified and all non-main refs were deleted. The standard manifests can now be published to main.'
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+      - name: Report failure
+        if: failure()
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            'Final branch archive transaction failed. Review the workflow run before retrying.' || true
