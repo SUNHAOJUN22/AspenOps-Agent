@@ -1,0 +1,39 @@
+name: Final main CI diagnostics
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  report:
+    if: github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Publish CI conclusion to consolidation PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          jobs="$(gh api --paginate "repos/$repo/actions/runs/$RUN_ID/jobs?per_page=100")"
+          summary="$(jq -r '.jobs[] | "- `" + .name + "`: **" + (.conclusion // .status) + "**"' <<<"$jobs")"
+          body="<!-- final-main-ci-diagnostics -->
+          ## Final main CI diagnostics
+
+          - Run: [$RUN_ID]($RUN_URL)
+          - Head: \`$RUN_SHA\`
+          - Conclusion: **$RUN_CONCLUSION**
+
+          $summary"
+          gh pr comment 18 --repo "$repo" --body "$body"
