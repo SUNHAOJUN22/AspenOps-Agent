@@ -1,9 +1,9 @@
 name: Branch consolidation inventory
 
 on:
-  push:
-    branches: [agent/aspenops-v2-reliability-performance]
+  pull_request:
     paths: [.github/workflows/branch-inventory.yml]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
               name, sha, committed_at = raw.split('|', 2)
               ref = f'origin/{name}'
               merge_base = run('git', 'merge-base', candidate, ref)
-              behind, ahead = [
+              candidate_only, branch_only = [
                   int(value)
                   for value in run(
                       'git',
@@ -57,7 +57,7 @@ jobs:
                       f'{candidate}...{ref}',
                   ).split()
               ]
-              main_behind, main_ahead = [
+              main_only, branch_only_from_main = [
                   int(value)
                   for value in run(
                       'git',
@@ -73,10 +73,10 @@ jobs:
                       'sha': sha,
                       'committed_at': committed_at,
                       'candidate_merge_base': merge_base,
-                      'candidate_ahead_of_branch': behind,
-                      'branch_ahead_of_candidate': ahead,
-                      'main_ahead_of_branch': main_behind,
-                      'branch_ahead_of_main': main_ahead,
+                      'candidate_only_commits': candidate_only,
+                      'branch_only_commits': branch_only,
+                      'main_only_commits': main_only,
+                      'branch_only_from_main': branch_only_from_main,
                   }
               )
           payload = {
