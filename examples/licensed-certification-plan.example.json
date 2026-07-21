@@ -28,12 +28,7 @@
       "abs_tol": 0.000001,
       "rel_tol": 0.000001
     },
-    "output_tolerances": {
-      "replace.with.semantic.output.key": {
-        "abs_tol": 0.000001,
-        "rel_tol": 0.000001
-      }
-    }
+    "output_tolerances": {}
   },
   "engineering_acceptance": {
     "status": "pending",
