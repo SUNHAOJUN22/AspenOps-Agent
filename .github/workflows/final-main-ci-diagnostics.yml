@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Publish CI conclusion to consolidation PR
+      - name: Publish CI conclusion to consolidation trigger PR
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,4 +36,4 @@ jobs:
           - Conclusion: **$RUN_CONCLUSION**
 
           $summary"
-          gh pr comment 18 --repo "$repo" --body "$body"
+          gh pr comment 19 --repo "$repo" --body "$body"
