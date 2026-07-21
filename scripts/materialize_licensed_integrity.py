@@ -147,22 +147,12 @@ def _planned_tolerance_keys(request: dict[str, Any]) -> set[str]:
     )
     replace_once(
         path,
-        '''    if actual_arch != plan.runner_architecture:
-        block(
-            "runner_architecture_mismatch",
-            "Runner architecture does not match the approved plan",
-            expected=plan.runner_architecture,
-            observed=actual_arch,
+        '''            observed=actual_arch,
         )
 
-    observed_commit = (
+    observed_commit = (env.get("ASPENOPS_GIT_COMMIT") or env.get("GITHUB_SHA") or "").lower()
 ''',
-        '''    if actual_arch != plan.runner_architecture:
-        block(
-            "runner_architecture_mismatch",
-            "Runner architecture does not match the approved plan",
-            expected=plan.runner_architecture,
-            observed=actual_arch,
+        '''            observed=actual_arch,
         )
     if actual_pointer_bits != 64:
         block(
@@ -171,7 +161,7 @@ def _planned_tolerance_keys(request: dict[str, Any]) -> set[str]:
             observed=actual_pointer_bits,
         )
 
-    observed_commit = (
+    observed_commit = (env.get("ASPENOPS_GIT_COMMIT") or env.get("GITHUB_SHA") or "").lower()
 ''',
     )
     replace_once(
