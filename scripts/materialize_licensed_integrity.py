@@ -23,6 +23,7 @@ def replace_between(path: Path, start: str, end: str, replacement: str) -> None:
 
 def main() -> None:
     path = Path("src/aspenops_nexus/licensed_certification.py")
+    test = Path("tests/test_licensed_certification.py")
     replace_once(path, "import re\n", "import re\nimport struct\n")
     replace_once(
         path,
@@ -412,6 +413,27 @@ def verify_licensed_certification_bundle(
         "def verify_licensed_certification_bundle(\n",
         "def _runtime_scope_evidence(\n",
         verifier,
+    )
+    replace_once(
+        test,
+        '''    report = {
+        "schema": "aspenops.licensed-certification-report/v1",
+        "certification_status": PENDING_REAL_ASPEN_CERTIFICATION,
+    }
+''',
+        '''    report = {
+        "schema": "aspenops.licensed-certification-report/v1",
+        "case_id": plan.case_id,
+        "approved_commit": plan.approved_commit,
+        "backend": plan.backend,
+        "certification_status": PENDING_REAL_ASPEN_CERTIFICATION,
+    }
+''',
+    )
+    replace_once(
+        test,
+        '@pytest.mark.parametrize("pattern", ["40\\..*", ".*", "[invalid"])\n',
+        '@pytest.mark.parametrize("pattern", [r"40\\..*", ".*", "[invalid"])\n',
     )
 
 
