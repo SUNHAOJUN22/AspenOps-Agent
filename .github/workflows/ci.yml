@@ -1,3 +1,4 @@
+# Portable qualification gate for the single-main AspenOps runtime.
 name: CI
 
 on:
