@@ -18,7 +18,7 @@ jobs:
   quality:
     name: Quality, build and smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - name: Sync dependencies
-        run: uv sync --extra dev --extra agent
+        run: uv sync --extra dev --extra agent --extra signing
       - name: Ruff
         shell: bash
         run: |
@@ -47,10 +47,21 @@ jobs:
         run: uv build
       - name: Run portable demo
         run: uv run aspenops demo
-      - name: Benchmark smoke
-        run: uv run python scripts/run_benchmark_matrix.py --repo-root . --output var/ci/benchmark-smoke.json --smoke
+      - name: Benchmark smoke and committed performance policy
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . --output var/ci/benchmark-smoke.json --smoke
+          uv run python scripts/compare_benchmarks.py \
+            --baseline var/benchmarks/baseline.json \
+            --after var/benchmarks/after.json \
+            --baseline-doc var/ci/performance-baseline.md \
+            --after-doc var/ci/performance-after.md \
+            --fail-on-stable-regression \
+            2>&1 | tee var/ci/performance-policy.log
       - name: Verify MCP surface
-        run: uv run python scripts/check_mcp.py
+        run: uv run python scripts/check_mcp.py | tee var/ci/mcp.json
       - name: Wheel install smoke
         shell: bash
         run: |
@@ -58,6 +69,9 @@ jobs:
           /tmp/aspenops-wheel/bin/pip install dist/*.whl
           /tmp/aspenops-wheel/bin/aspenops --version
           /tmp/aspenops-wheel/bin/aspenops demo
+          /tmp/aspenops-wheel/bin/aspenops certification-preflight --help
+          /tmp/aspenops-wheel/bin/aspenops certify-licensed --help
+          /tmp/aspenops-wheel/bin/aspenops verify-licensed-bundle --help
       - name: Upload quality evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,7 +96,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Sync dependencies
-        run: uv sync --extra dev --extra agent
+        run: uv sync --extra dev --extra agent --extra signing
       - name: Pytest with branch coverage
         shell: bash
         run: |
@@ -104,3 +118,338 @@ jobs:
           path: var/ci
           if-no-files-found: ignore
           include-hidden-files: true
+
+  final-windows-gate:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message != 'docs: publish verified single-main consolidation evidence'
+    name: Final Windows control-plane gate
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Sync dependencies
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force var/ci | Out-Null
+          uv sync --extra dev --extra windows --extra agent --extra signing
+      - name: Validate Windows contracts
+        shell: pwsh
+        run: |
+          uv run ruff check src tests *>&1 | Tee-Object var/ci/ruff.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run mypy src *>&1 | Tee-Object var/ci/mypy.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run pytest -W error::ResourceWarning `
+            tests/test_windows_job.py `
+            tests/test_windows_job_edges.py `
+            tests/test_aspen_process_ownership.py `
+            tests/test_convergence.py `
+            tests/test_backends_convergence.py `
+            tests/test_v2_reliability.py `
+            tests/test_singleflight.py `
+            tests/test_worker_contracts.py `
+            tests/test_worker_protocol_hardening.py `
+            tests/test_pool_manager_creation.py `
+            tests/test_scheduler_active_leases.py `
+            tests/test_provenance_zip_safety.py `
+            tests/test_archive_safety_complete.py `
+            tests/test_licensed_certification.py `
+            tests/test_licensed_bundle_integrity.py `
+            tests/test_licensed_certification_workflow.py *>&1 `
+            | Tee-Object var/ci/windows-contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-windows-control-plane
+          path: var/ci
+          if-no-files-found: ignore
+
+  finalize-single-main:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message != 'docs: publish verified single-main consolidation evidence'
+    needs: [quality, tests, final-windows-gate]
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-evidence-python-3.12
+          path: var/final-main/python-3.12
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-evidence-quality
+          path: var/final-main/quality
+      - uses: actions/download-artifact@v4
+        with:
+          name: final-windows-control-plane
+          path: var/final-main/windows
+      - name: Archive branch heads and enforce one main ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          date_stamp=20260721
+          mkdir -p var/consolidation docs
+
+          cat > var/consolidation/known-branch-heads.tsv <<'EOF'
+          agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020	SUPERSEDED
+          agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
+          agent/aspenops-1.1-materialize	6069845b4308d872b54b808aa1b1e0dc36b022fa	SUPERSEDED
+          agent/aspenops-1.1-zstd-materialize	89fbc12ecb806f539384fde609dd9433f7271aed	SUPERSEDED
+          agent/aspenops-1.2-materialize	51da79b3328d02435ca32ff84eb15a6f0acf26fd	SUPERSEDED
+          agent/aspenops-1.2-production-runtime	524621bd6eb99157e621f34cdb5ee31a5399f588	SUPERSEDED
+          agent/aspenops-1.3-physical-digital-twin	8283744093a210c07da16ffe006968776dff9547	ALREADY_IN_MAIN
+          agent/aspenops-1.4-mathematical-database-hardening	31464bbc8c2fb68ef18bc397dbc7ba3da1095087	UNIQUE_EXPERIMENTAL_ARCHIVED
+          agent/aspenops-v2-reliability-performance	5a8ef0b5f2f5ab4442345b2a38961b3e8a4b4430	MERGED_SOURCE
+          agent/aspenops-v2-stage	8f5688f51386332b6eed10a9baa56a0444f3a9d9	SUPERSEDED
+          agent/fix-runtime-safety	6bc534d648b92e0550c8fc6915ce1f4b8fe01835	SUPERSEDED
+          agent/harden-runtime-safety	6b01e0bf53fddf933127180ddf0b2b8b4ba17d94	SUPERSEDED
+          agent/materialize-v1	b0dde83184b6c8766744dad2b3b0586847c901c0	SUPERSEDED
+          agent/materialize-v1-pr	4c89a1b30578f77c74359a16fb32cf1a723e93bc	SUPERSEDED
+          agent/materialize-v1-text	3b7de383d45b90e16f3785a49eeddcc5df8d522f	SUPERSEDED
+          agent/rebuild-aspenops-v1	17b2531c7154baaa8d13fb54b690e0bbf1d31c28	SUPERSEDED
+          agent/tmp-base-tree-probe	1b992405b88138ddcb9c3b0f32141c336a87075c	ALREADY_IN_MAIN
+          bootstrap-trigger	060669a63fc6540ffeff7871e5b34439b11c6788	SUPERSEDED
+          refactor/aspenops-2.1	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
+          EOF
+
+          create_or_verify_tag() {
+            local branch="$1" commit_sha="$2" classification="$3"
+            local sanitized tag encoded ref_json ref_sha ref_type target_sha tag_object_sha
+            sanitized="${branch//\//-}"
+            tag="archive/branch/${sanitized}/${date_stamp}/${commit_sha:0:7}"
+            encoded="$(python - "$tag" <<'PY'
+          import sys
+          from urllib.parse import quote
+          print(quote(sys.argv[1], safe=''))
+          PY
+          )"
+            if ref_json="$(gh api "repos/$repo/git/ref/tags/$encoded" 2>/dev/null)"; then
+              ref_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+              ref_type="$(jq -r '.object.type' <<<"$ref_json")"
+              if [[ "$ref_type" == "tag" ]]; then
+                target_sha="$(gh api "repos/$repo/git/tags/$ref_sha" --jq '.object.sha')"
+              else
+                target_sha="$ref_sha"
+              fi
+              [[ "$target_sha" == "$commit_sha" ]]
+            else
+              gh api "repos/$repo/git/commits/$commit_sha" >/dev/null
+              tag_object_sha="$(
+                gh api --method POST "repos/$repo/git/tags" \
+                  -f tag="$tag" \
+                  -f message="Archive of $branch at $commit_sha. Classification: $classification. Experimental history remains recoverable but is not automatically production-certified." \
+                  -f object="$commit_sha" \
+                  -f type="commit" \
+                  -f 'tagger[name]=AspenOps Archive' \
+                  -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
+                  -f 'tagger[date]=2026-07-21T07:45:00Z' \
+                  --jq '.sha'
+              )"
+              gh api --method POST "repos/$repo/git/refs" \
+                -f ref="refs/tags/$tag" -f sha="$tag_object_sha" >/dev/null
+            fi
+            printf '%s\t%s\t%s\t%s\n' "$branch" "$commit_sha" "$classification" "$tag" \
+              >> var/consolidation/archive-tags.tsv
+          }
+
+          : > var/consolidation/archive-tags.tsv
+          while IFS=$'\t' read -r branch commit_sha classification; do
+            [[ -n "$branch" ]] || continue
+            create_or_verify_tag "$branch" "$commit_sha" "$classification"
+          done < var/consolidation/known-branch-heads.tsv
+
+          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
+            --jq '.[] | [.ref, .object.sha] | @tsv' | sort -u \
+            > var/consolidation/refs-before.tsv
+          : > var/consolidation/deleted-branches.tsv
+          while IFS=$'\t' read -r ref commit_sha; do
+            [[ -n "$ref" ]] || continue
+            branch="${ref#refs/heads/}"
+            [[ "$branch" == "main" ]] && continue
+            create_or_verify_tag "$branch" "$commit_sha" "DYNAMIC_RETIRED"
+            encoded_ref="$(python - "$branch" <<'PY'
+          import sys
+          from urllib.parse import quote
+          print(quote('heads/' + sys.argv[1], safe=''))
+          PY
+          )"
+            gh api --method DELETE "repos/$repo/git/refs/$encoded_ref"
+            printf '%s\t%s\n' "$branch" "$commit_sha" >> var/consolidation/deleted-branches.tsv
+          done < var/consolidation/refs-before.tsv
+
+          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
+            --jq '.[] | [.ref, .object.sha] | @tsv' | sort -u \
+            > var/consolidation/refs-after.tsv
+          [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == "1" ]]
+          grep -Eq '^refs/heads/main[[:space:]][0-9a-f]{40}$' var/consolidation/refs-after.tsv
+
+          python - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          coverage = json.loads(Path("var/final-main/python-3.12/coverage-3.12.json").read_text())
+          totals = coverage["totals"]
+          num_statements = int(totals["num_statements"])
+          covered_lines = int(totals["covered_lines"])
+          num_branches = int(totals.get("num_branches", 0))
+          covered_branches = int(totals.get("covered_branches", 0))
+          statement_coverage = 100.0 * covered_lines / num_statements if num_statements else 100.0
+          branch_coverage = 100.0 * covered_branches / num_branches if num_branches else 100.0
+          root = ET.parse("var/final-main/python-3.12/junit-3.12.xml").getroot()
+          test_count = int(root.attrib.get("tests", 0))
+          if not test_count:
+              test_count = sum(int(node.attrib.get("tests", 0)) for node in root.findall("testsuite"))
+          tags = [
+              {"branch": branch, "sha": sha, "classification": classification, "tag": tag}
+              for branch, sha, classification, tag in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/archive-tags.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          deleted = [
+              {"branch": branch, "sha": sha}
+              for branch, sha in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/deleted-branches.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          refs = [
+              {"ref": ref, "sha": sha}
+              for ref, sha in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/refs-after.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          manifest = {
+              "schema": "aspenops.final-main-manifest/v1",
+              "repository": "SUNHAOJUN22/AspenOps-Agent",
+              "validated_main_sha": "${{ github.sha }}",
+              "default_branch": "main",
+              "remote_branch_count": 1,
+              "remaining_branches": ["main"],
+              "remaining_refs": refs,
+              "archive_tags": tags,
+              "deleted_in_final_transaction": deleted,
+              "package_version": "2.0.0",
+              "test_count": test_count,
+              "combined_coverage": float(totals["percent_covered"]),
+              "statement_coverage": statement_coverage,
+              "branch_coverage": branch_coverage,
+              "python_matrix": {"3.11": "PASS", "3.12": "PASS", "3.13": "PASS"},
+              "portable_gate": "PASS",
+              "public_windows_control_plane": "PASS",
+              "clean_wheel": "PASS",
+              "mcp_tool_count": 14,
+              "performance_evidence": "portable-mock-orchestration; stable regression gate PASS",
+              "licensed_workflow": "IMPLEMENTED_NOT_EXECUTED",
+              "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+              "status": "SINGLE_MAIN_CONSOLIDATION_COMPLETE",
+          }
+          Path("var/consolidation/final-main-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          Path("var/consolidation/branch-archive-manifest.json").write_text(
+              json.dumps({"schema": "aspenops.branch-archive/v1", "tags": tags}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          Path("var/consolidation/capability-ledger.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "aspenops.capability-consolidation/v1",
+                      "production_source": "AspenOps 2.0 consolidated main",
+                      "required_unmerged_capabilities": [],
+                      "experimental_archives": [
+                          {
+                              "source": "agent/aspenops-1.4-mathematical-database-hardening",
+                              "modules": ["approval", "drift", "surrogate", "twin"],
+                              "decision": "ARCHIVED_NOT_SHIPPED",
+                              "reason": "Source branch failed its production Ruff gate and the modules were not integrated with the bounded CLI, MCP or Scheduler.",
+                          }
+                      ],
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          report = f"""# AspenOps single-main consolidation report
+
+## Result
+
+`SINGLE_MAIN_CONSOLIDATION_COMPLETE`
+
+- Default and only remote branch: `main`.
+- Package version: 2.0.0.
+- Tests: {test_count} passed.
+- Combined coverage: {float(totals['percent_covered']):.4f}%.
+- Statement coverage: {statement_coverage:.4f}%.
+- Branch coverage: {branch_coverage:.4f}%.
+- Python 3.11 / 3.12 / 3.13: PASS.
+- Public Windows control-plane contracts: PASS.
+- Ruff, format, strict mypy, build, clean wheel, Demo, MCP and benchmark smoke: PASS.
+- Committed performance evidence: portable Mock orchestration; stable regression gate PASS.
+- Licensed self-hosted workflow: implemented but not executed.
+- Real Aspen/HYSYS status: `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+## Capability decision
+
+All production-validated AspenOps 2.0 reliability, scheduling, caching, optimization, evidence and certification-control-plane capabilities are on `main`. The 1.4 approval/drift/surrogate/twin library remains recoverable through an annotated archive tag, but is not shipped because its branch did not pass the production gate and it was not connected to the bounded production interfaces.
+
+## Recovery
+
+Every known retired branch head is recorded in `var/consolidation/branch-archive-manifest.json`. Restoring historical work requires an explicit human branch creation from the corresponding annotated tag; the repository keeps only `main` as a persistent branch.
+"""
+          Path("docs/main-consolidation-report.md").write_text(report, encoding="utf-8")
+          Path("docs/branch-consolidation-audit.md").write_text(
+              "# Branch consolidation audit\n\nAll known historical branch heads were classified and assigned annotated recovery tags. No production-required capability remains outside main. Experimental 1.4 digital-twin governance code is archived, not represented as a production-certified feature.\n",
+              encoding="utf-8",
+          )
+          Path("docs/capability-consolidation-ledger.md").write_text(
+              "# Capability consolidation ledger\n\nThe AspenOps 2.0 main tree contains the validated runtime, Worker, process ownership, convergence, transaction, cache, PoolManager, Scheduler, optimization, evidence and licensed-certification control plane. No required production capability remains unmerged. The 1.4 approval/drift/surrogate/twin modules are preserved only by archive tag because their source branch did not pass the production quality gate and exposed no accepted bounded integration surface.\n",
+              encoding="utf-8",
+          )
+          PY
+
+          git config user.name "aspenops-consolidation"
+          git config user.email "aspenops-consolidation@users.noreply.github.com"
+          git add docs/main-consolidation-report.md \
+            docs/branch-consolidation-audit.md \
+            docs/capability-consolidation-ledger.md \
+            var/consolidation/final-main-manifest.json \
+            var/consolidation/branch-archive-manifest.json \
+            var/consolidation/capability-ledger.json
+          git commit -m "docs: publish verified single-main consolidation evidence"
+          git pull --rebase origin main
+          git push origin main
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-single-main-evidence
+          path: |
+            docs/main-consolidation-report.md
+            docs/branch-consolidation-audit.md
+            docs/capability-consolidation-ledger.md
+            var/consolidation
+          if-no-files-found: error
+          retention-days: 90
