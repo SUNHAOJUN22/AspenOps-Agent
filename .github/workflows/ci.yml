@@ -10,6 +10,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-licensed-certification:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Normalize, validate, and publish licensed certification
+        shell: bash
+        run: |
+          set -o pipefail
+          uv sync --extra dev --extra agent --extra signing
+          uv run ruff check --fix \
+            src/aspenops_nexus/licensed_certification.py \
+            tests/test_licensed_certification.py
+          uv run ruff format \
+            src/aspenops_nexus/licensed_certification.py \
+            tests/test_licensed_certification.py
+          uv run ruff check \
+            src/aspenops_nexus/certification.py \
+            src/aspenops_nexus/licensed_certification.py \
+            tests/test_certification.py \
+            tests/test_certification_v2.py \
+            tests/test_licensed_certification.py
+          uv run mypy src
+          uv run pytest \
+            tests/test_certification.py \
+            tests/test_certification_v2.py \
+            tests/test_licensed_certification.py
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add \
+            src/aspenops_nexus/licensed_certification.py \
+            tests/test_licensed_certification.py
+          git commit -m "style: normalize licensed certification control plane"
+          git pull --rebase origin agent/aspenops-v2-reliability-performance
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
+
   portable:
     strategy:
       matrix:
