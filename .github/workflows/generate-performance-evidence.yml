@@ -2,12 +2,23 @@ name: Generate performance evidence
 
 on:
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Exact baseline commit, tag, or ref
+        required: true
+        default: 8283744093a210c07da16ffe006968776dff9547
+        type: string
+      candidate_ref:
+        description: Candidate commit, tag, or ref; normally main
+        required: true
+        default: main
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: aspenops-performance-${{ github.ref }}
+  group: aspenops-performance-${{ inputs.candidate_ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,31 +28,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/aspenops-v2-reliability-performance
+          ref: ${{ inputs.candidate_ref }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+          enable-cache: true
       - name: Sync candidate dependencies
         shell: bash
         run: |
           mkdir -p var/benchmarks
           set -o pipefail
           uv sync --extra dev --extra agent 2>&1 | tee var/benchmarks/sync.log
-      - name: Prepare main worktree
+      - name: Prepare exact baseline worktree
         shell: bash
         run: |
-          set -o pipefail
-          git fetch origin main 2>&1 | tee var/benchmarks/prepare-main.log
-          git worktree add /tmp/aspenops-main origin/main 2>&1 | tee -a var/benchmarks/prepare-main.log
+          set -euo pipefail
+          git fetch --tags --prune origin 2>&1 | tee var/benchmarks/prepare-baseline.log
+          git rev-parse --verify "${{ inputs.baseline_ref }}^{commit}" \
+            | tee var/benchmarks/baseline-sha.txt
+          git worktree add /tmp/aspenops-baseline "${{ inputs.baseline_ref }}" \
+            2>&1 | tee -a var/benchmarks/prepare-baseline.log
+          git rev-parse HEAD | tee var/benchmarks/candidate-sha.txt
       - name: Run baseline matrix
         shell: bash
         env:
-          PYTHONPATH: /tmp/aspenops-main/src
+          PYTHONPATH: /tmp/aspenops-baseline/src
         run: |
           set -o pipefail
           .venv/bin/python scripts/run_benchmark_matrix.py \
-            --repo-root /tmp/aspenops-main \
+            --repo-root /tmp/aspenops-baseline \
             --output var/benchmarks/baseline.json \
             2>&1 | tee var/benchmarks/baseline.log
       - name: Run candidate matrix
@@ -54,18 +70,18 @@ jobs:
             --repo-root . \
             --output var/benchmarks/after.json \
             2>&1 | tee var/benchmarks/after.log
-      - name: Generate comparison documents and enforce stable regression gate
+      - name: Generate comparison and enforce stable regression policy
         shell: bash
         run: |
           set -o pipefail
           .venv/bin/python scripts/compare_benchmarks.py \
             --baseline var/benchmarks/baseline.json \
             --after var/benchmarks/after.json \
-            --baseline-doc docs/performance-baseline.md \
-            --after-doc docs/performance-after.md \
+            --baseline-doc var/benchmarks/performance-baseline.md \
+            --after-doc var/benchmarks/performance-after.md \
             --fail-on-stable-regression \
             2>&1 | tee var/benchmarks/compare.log
-      - name: Validate benchmark tools
+      - name: Validate benchmark tools and smoke path
         shell: bash
         run: |
           set -o pipefail
@@ -76,30 +92,11 @@ jobs:
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . --output var/benchmarks/smoke.json --smoke \
             2>&1 | tee var/benchmarks/smoke.log
-      - name: Commit verified performance evidence
-        shell: bash
-        run: |
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add -f \
-            var/benchmarks/baseline.json \
-            var/benchmarks/after.json
-          git add \
-            docs/performance-baseline.md \
-            docs/performance-after.md
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "perf: publish verified portable benchmark evidence"
-          git pull --rebase origin agent/aspenops-v2-reliability-performance
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
-      - name: Upload performance evidence
+      - name: Upload immutable comparison evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance-evidence
-          path: |
-            var/benchmarks
-            docs/performance-baseline.md
-            docs/performance-after.md
+          name: performance-evidence-${{ inputs.candidate_ref }}
+          path: var/benchmarks
           if-no-files-found: error
+          retention-days: 90
