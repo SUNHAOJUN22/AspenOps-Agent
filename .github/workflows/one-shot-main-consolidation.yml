@@ -1,0 +1,275 @@
+name: One-shot tag-backed single-main finalization
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/one-shot-main-consolidation.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: one-shot-tag-backed-single-main-finalization
+  cancel-in-progress: false
+
+jobs:
+  linux-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run complete portable release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/consolidation
+          uv sync --extra dev --extra agent --extra signing
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/consolidation/coverage.json \
+            --junitxml=var/consolidation/junit.xml \
+            --cov-fail-under=94.5
+          uv build
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/consolidation/benchmark-smoke.json \
+            --smoke
+          python -m venv /tmp/aspenops-final-wheel
+          /tmp/aspenops-final-wheel/bin/pip install dist/*.whl
+          /tmp/aspenops-final-wheel/bin/aspenops --version
+          /tmp/aspenops-final-wheel/bin/aspenops demo
+          /tmp/aspenops-final-wheel/bin/aspenops certification-preflight --help
+          /tmp/aspenops-final-wheel/bin/aspenops certify-licensed --help
+          /tmp/aspenops-final-wheel/bin/aspenops verify-licensed-bundle --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: single-main-linux-verification
+          path: var/consolidation
+          if-no-files-found: error
+          retention-days: 90
+
+  windows-verify:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Run Windows public control-plane contracts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force var/consolidation | Out-Null
+          uv sync --extra dev --extra windows --extra agent --extra signing
+          uv run ruff check src tests
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning `
+            tests/test_windows_job.py `
+            tests/test_windows_job_edges.py `
+            tests/test_aspen_process_ownership.py `
+            tests/test_convergence.py `
+            tests/test_backends_convergence.py `
+            tests/test_v2_reliability.py `
+            tests/test_singleflight.py `
+            tests/test_worker_contracts.py `
+            tests/test_worker_protocol_hardening.py `
+            tests/test_pool_manager_creation.py `
+            tests/test_scheduler_active_leases.py `
+            tests/test_provenance_zip_safety.py `
+            tests/test_archive_safety_complete.py `
+            tests/test_licensed_certification.py `
+            tests/test_licensed_bundle_integrity.py `
+            tests/test_licensed_certification_workflow.py | `
+              Tee-Object -FilePath var/consolidation/windows-contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: single-main-windows-verification
+          path: var/consolidation
+          if-no-files-found: error
+          retention-days: 90
+
+  consolidate:
+    needs: [linux-verify, windows-verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create recovery tags, retire non-main refs, and prove final state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          date_stamp="20260721"
+          mkdir -p var/consolidation
+
+          cat > var/consolidation/known-branch-heads.tsv <<'EOF'
+          agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020
+          agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa
+          agent/aspenops-1.1-materialize	6069845b4308d872b54b808aa1b1e0dc36b022fa
+          agent/aspenops-1.1-zstd-materialize	89fbc12ecb806f539384fde609dd9433f7271aed
+          agent/aspenops-1.2-materialize	51da79b3328d02435ca32ff84eb15a6f0acf26fd
+          agent/aspenops-1.2-production-runtime	524621bd6eb99157e621f34cdb5ee31a5399f588
+          agent/aspenops-1.3-physical-digital-twin	8283744093a210c07da16ffe006968776dff9547
+          agent/aspenops-1.4-mathematical-database-hardening	31464bbc8c2fb68ef18bc397dbc7ba3da1095087
+          agent/aspenops-v2-reliability-performance	5a8ef0b5f2f5ab4442345b2a38961b3e8a4b4430
+          agent/aspenops-v2-stage	8f5688f51386332b6eed10a9baa56a0444f3a9d9
+          agent/fix-runtime-safety	6bc534d648b92e0550c8fc6915ce1f4b8fe01835
+          agent/harden-runtime-safety	6b01e0bf53fddf933127180ddf0b2b8b4ba17d94
+          agent/materialize-v1	b0dde83184b6c8766744dad2b3b0586847c901c0
+          agent/materialize-v1-pr	4c89a1b30578f77c74359a16fb32cf1a723e93bc
+          agent/materialize-v1-text	3b7de383d45b90e16f3785a49eeddcc5df8d522f
+          agent/rebuild-aspenops-v1	17b2531c7154baaa8d13fb54b690e0bbf1d31c28
+          agent/tmp-base-tree-probe	1b992405b88138ddcb9c3b0f32141c336a87075c
+          bootstrap-trigger	060669a63fc6540ffeff7871e5b34439b11c6788
+          refactor/aspenops-2.1	c1453ac9830fa87fcbba1db1925b96da1de082fa
+          EOF
+
+          create_or_verify_tag() {
+            local branch="$1"
+            local commit_sha="$2"
+            local sanitized short tag encoded response tag_object_sha ref_object_sha target_sha
+            sanitized="${branch//\//-}"
+            short="${commit_sha:0:7}"
+            tag="archive/branch/${sanitized}/${date_stamp}/${short}"
+            encoded="$(python - "$tag" <<'PY'
+          import sys
+          from urllib.parse import quote
+          print(quote(sys.argv[1], safe=''))
+          PY
+          )"
+
+            if response="$(gh api "repos/$repo/git/ref/tags/$encoded" 2>/dev/null)"; then
+              ref_object_sha="$(jq -r '.object.sha' <<<"$response")"
+              target_sha="$(gh api "repos/$repo/git/tags/$ref_object_sha" --jq '.object.sha' 2>/dev/null || printf '%s' "$ref_object_sha")"
+              [[ "$target_sha" == "$commit_sha" ]] || {
+                echo "Archive tag $tag does not point to $commit_sha" >&2
+                exit 1
+              }
+            else
+              gh api "repos/$repo/git/commits/$commit_sha" >/dev/null
+              tag_object_sha="$(
+                gh api --method POST "repos/$repo/git/tags" \
+                  -f tag="$tag" \
+                  -f message="Archived branch $branch at $commit_sha before single-main retirement. Production inclusion status is recorded in the consolidation audit; experimental history remains recoverable but is not automatically certified." \
+                  -f object="$commit_sha" \
+                  -f type="commit" \
+                  -f 'tagger[name]=AspenOps Archive' \
+                  -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
+                  -f 'tagger[date]=2026-07-21T07:30:00Z' \
+                  --jq '.sha'
+              )"
+              gh api --method POST "repos/$repo/git/refs" \
+                -f ref="refs/tags/$tag" \
+                -f sha="$tag_object_sha" >/dev/null
+            fi
+            printf '%s\t%s\t%s\n' "$branch" "$commit_sha" "$tag" >> var/consolidation/archive-tags.tsv
+          }
+
+          : > var/consolidation/archive-tags.tsv
+          while IFS=$'\t' read -r branch commit_sha; do
+            [[ -n "$branch" && -n "$commit_sha" ]] || continue
+            create_or_verify_tag "$branch" "$commit_sha"
+          done < var/consolidation/known-branch-heads.tsv
+
+          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
+            --jq '.[] | [.ref, .object.sha] | @tsv' | sort -u \
+            > var/consolidation/refs-before.tsv
+          : > var/consolidation/deleted-branches.tsv
+
+          while IFS=$'\t' read -r ref commit_sha; do
+            [[ -n "$ref" ]] || continue
+            branch="${ref#refs/heads/}"
+            [[ "$branch" == "main" ]] && continue
+            create_or_verify_tag "$branch" "$commit_sha"
+            encoded_ref="$(python - "$branch" <<'PY'
+          import sys
+          from urllib.parse import quote
+          print(quote('heads/' + sys.argv[1], safe=''))
+          PY
+          )"
+            gh api --method DELETE "repos/$repo/git/refs/$encoded_ref"
+            printf '%s\t%s\n' "$branch" "$commit_sha" >> var/consolidation/deleted-branches.tsv
+          done < var/consolidation/refs-before.tsv
+
+          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
+            --jq '.[].ref' | sort -u > var/consolidation/refs-after.txt
+          [[ "$(cat var/consolidation/refs-after.txt)" == "refs/heads/main" ]]
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          tags = [
+              {"branch": branch, "sha": sha, "tag": tag}
+              for branch, sha, tag in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/archive-tags.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          deleted = [
+              {"branch": branch, "sha": sha}
+              for branch, sha in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/deleted-branches.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          after = Path("var/consolidation/refs-after.txt").read_text().splitlines()
+          result = {
+              "schema": "aspenops.single-main-finalization/v2",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "main_sha_at_finalization": os.environ["GITHUB_SHA"],
+              "archive_tags": tags,
+              "deleted": deleted,
+              "remaining_refs": after,
+              "branch_count": len(after),
+              "portable_gate": "PASS",
+              "public_windows_gate": "PASS",
+              "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+              "status": "PASS" if after == ["refs/heads/main"] else "FAIL",
+          }
+          Path("var/consolidation/final-result.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload final consolidation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-backed-single-main-finalization
+          path: var/consolidation
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove completed finalization workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          path=".github/workflows/one-shot-main-consolidation.yml"
+          sha="$(gh api "repos/$repo/contents/$path?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$repo/contents/$path" \
+            -f message='chore: remove completed tag-backed single-main workflow' \
+            -f sha="$sha" \
+            -f branch='main'
