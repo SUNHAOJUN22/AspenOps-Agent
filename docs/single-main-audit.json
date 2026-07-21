@@ -1,0 +1,83 @@
+{
+  "archive_tags": [
+    {
+      "branch": "audit/single-main-final-20260721",
+      "sha": "670e9523e915af309f16d959150cfadcd84219a6",
+      "tag": "archive/retired-branch/audit-single-main-final-20260721/20260721/670e9523e915"
+    },
+    {
+      "branch": "automation/final-main-evidence-trigger",
+      "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0",
+      "tag": "archive/retired-branch/automation-final-main-evidence-trigger/20260721/f4968e3209d4"
+    }
+  ],
+  "benchmark_stable_regression_gate": "PASS",
+  "branch_refs_after": [
+    {
+      "ref": "refs/heads/main",
+      "sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2"
+    }
+  ],
+  "branch_refs_before": [
+    {
+      "ref": "refs/heads/audit/single-main-final-20260721",
+      "sha": "670e9523e915af309f16d959150cfadcd84219a6"
+    },
+    {
+      "ref": "refs/heads/automation/final-main-evidence-trigger",
+      "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0"
+    },
+    {
+      "ref": "refs/heads/main",
+      "sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2"
+    }
+  ],
+  "build": "PASS",
+  "ci_run_id": "29814739487",
+  "closed_pull_requests": [
+    {
+      "branch": "audit/single-main-final-20260721",
+      "number": "21"
+    },
+    {
+      "branch": "automation/final-main-evidence-trigger",
+      "number": "20"
+    }
+  ],
+  "combined_branch_aware_coverage_percent": 94.9719800747198,
+  "coverage_floor_percent": 94.5,
+  "default_branch": "main",
+  "deleted_branches": [
+    {
+      "branch": "audit/single-main-final-20260721",
+      "sha": "670e9523e915af309f16d959150cfadcd84219a6"
+    },
+    {
+      "branch": "automation/final-main-evidence-trigger",
+      "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0"
+    }
+  ],
+  "linux_ci_gate": "PASS",
+  "mcp_surface": "PASS",
+  "open_pull_requests_after": [],
+  "package": "aspenops-nexus",
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "schema": "aspenops.single-main-audit/v2",
+  "source_main_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
+  "status": "PASS",
+  "test_count_python_3_12": 563,
+  "version": "2.0.0",
+  "wheel_install": "PASS",
+  "windows_control_plane_gate": "PASS",
+  "windows_run_id": "29814739334",
+  "workflows_before_cleanup": [
+    "ci.yml",
+    "final-main-pr-transaction.yml",
+    "generate-performance-evidence.yml",
+    "licensed-aspen-certification.yml",
+    "one-shot-main-governance-audit.yml",
+    "windows-aspen-certification.yml",
+    "windows-control-plane.yml"
+  ]
+}
