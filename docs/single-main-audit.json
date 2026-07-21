@@ -68,12 +68,17 @@
   "mcp_surface": "PASS",
   "open_pull_requests_after": [],
   "package": "aspenops-nexus",
+  "post_audit_cleanup_commits": [
+    "6f07dbcf21fa149fc066b19a2bf7da36918aac07",
+    "63e12d1ab1d1cd53c816a15d9159a2be926c87f5"
+  ],
   "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
   "repository": "SUNHAOJUN22/AspenOps-Agent",
   "schema": "aspenops.single-main-audit/v2",
   "source_main_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
   "status": "PASS",
   "superseded_workflows_removed_after_audit": [
+    "final-main-pr-transaction.yml",
     "windows-aspen-certification.yml"
   ],
   "test_count_python_3_12": 563,
@@ -81,7 +86,6 @@
   "wheel_install": "PASS",
   "windows_control_plane_gate": "PASS",
   "windows_run_id": "29814739334",
-  "workflow_cleanup_commit": "6f07dbcf21fa149fc066b19a2bf7da36918aac07",
   "workflows_before_cleanup": [
     "ci.yml",
     "final-main-pr-transaction.yml",
