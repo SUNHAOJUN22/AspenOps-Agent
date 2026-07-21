@@ -1,0 +1,80 @@
+name: One-shot single-main consolidation
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/one-shot-main-consolidation.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-single-main-consolidation
+  cancel-in-progress: false
+
+jobs:
+  consolidate:
+    if: github.repository == 'SUNHAOJUN22/AspenOps-Agent' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit and delete every remote branch except main
+        id: cleanup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          mkdir -p var/consolidation
+          gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[].name' \
+            | sort -u > var/consolidation/branches-before.txt
+          : > var/consolidation/deleted-branches.txt
+
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] || continue
+            [[ "$branch" == "main" ]] && continue
+            gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
+            printf '%s\n' "$branch" | tee -a var/consolidation/deleted-branches.txt
+          done < var/consolidation/branches-before.txt
+
+          gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[].name' \
+            | sort -u > var/consolidation/branches-after.txt
+          if [[ "$(cat var/consolidation/branches-after.txt)" != "main" ]]; then
+            echo "Unexpected branches remain:" >&2
+            cat var/consolidation/branches-after.txt >&2
+            exit 1
+          fi
+
+          cat > var/consolidation/result.json <<EOF
+          {
+            "schema": "aspenops.single-main-consolidation/v1",
+            "repository": "$repo",
+            "main_sha_at_cleanup": "$GITHUB_SHA",
+            "only_branch": "main",
+            "status": "PASS"
+          }
+          EOF
+
+      - name: Upload consolidation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: single-main-consolidation-evidence
+          path: var/consolidation
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove this one-shot workflow from main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          path=".github/workflows/one-shot-main-consolidation.yml"
+          sha="$(gh api "repos/$repo/contents/$path?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$repo/contents/$path" \
+            -f message='chore: remove completed single-main consolidation workflow' \
+            -f sha="$sha" \
+            -f branch='main'
