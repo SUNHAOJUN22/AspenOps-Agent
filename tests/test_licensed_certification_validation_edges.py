@@ -243,11 +243,7 @@ def test_preflight_records_invalid_key_state_dir_and_dry_run(
         },
         system_name="Windows",
         machine_architecture="X64",
-        compatibility={
-            "aspen_plus": [
-                {"progid": "Apwn.Document.40.0", "registry_view": "64-bit"}
-            ]
-        },
+        compatibility={"aspen_plus": [{"progid": "Apwn.Document.40.0", "registry_view": "64-bit"}]},
         current_time=datetime(2026, 7, 21, 1, tzinfo=UTC),
     )
     codes = {item["code"] for item in report["blockers"]}

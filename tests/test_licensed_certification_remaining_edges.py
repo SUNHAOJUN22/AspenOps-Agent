@@ -8,9 +8,6 @@ from typing import Any
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
-import aspenops_nexus.licensed_certification as licensed
-from aspenops_nexus.licensed_certification import LicensedCertificationPlan
 from test_licensed_certification import (
     compatibility,
     environment,
@@ -19,6 +16,9 @@ from test_licensed_certification import (
     settings,
     valid_preflight,
 )
+
+import aspenops_nexus.licensed_certification as licensed
+from aspenops_nexus.licensed_certification import LicensedCertificationPlan
 
 
 @pytest.mark.parametrize(
