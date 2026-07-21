@@ -1,4 +1,4 @@
-name: Final audited branch archive transaction
+name: Final audited Git tag transaction
 
 on:
   issues:
@@ -9,15 +9,15 @@ permissions:
   issues: write
 
 concurrency:
-  group: final-audited-branch-archive-transaction
+  group: final-audited-git-tag-transaction
   cancel-in-progress: false
 
 jobs:
   finalize:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.event.issue.title == 'AspenOps final branch archive transaction' &&
-      github.event.issue.body == 'RUN_FINAL_TAG_TRANSACTION_20260721'
+      github.event.issue.title == 'AspenOps final git tag transaction' &&
+      github.event.issue.body == 'RUN_FINAL_GIT_TAG_TRANSACTION_20260721'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -28,12 +28,13 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Mark transaction started
+          fetch-tags: true
+      - name: Report run identity
         shell: bash
         run: |
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            'Final branch archive transaction started from the audited main tree.'
-      - name: Verify audited evidence and unchanged runtime tree
+            "Final Git tag transaction started. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Verify audited evidence and fetch historical objects
         shell: bash
         run: |
           set -euo pipefail
@@ -59,13 +60,17 @@ jobs:
           source_sha="$(python -c "import json; print(json.load(open('docs/single-main-audit.json'))['source_main_sha'])")"
           git diff --quiet "$source_sha" HEAD -- \
             src tests pyproject.toml uv.lock scripts examples
-      - name: Create exact annotated recovery tags
+          git fetch --force --prune origin \
+            '+refs/pull/*/head:refs/remotes/origin/pr/*'
+          git fetch --force --tags origin
+      - name: Create and verify exact annotated recovery tags
         shell: bash
         run: |
           set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
           date_stamp=20260721
           mkdir -p var/consolidation
+          git config user.name 'AspenOps Archive'
+          git config user.email 'aspenops-archive@users.noreply.github.com'
           cat > var/consolidation/known-branch-heads.tsv <<'EOF'
           agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020	SUPERSEDED
           agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
@@ -91,36 +96,24 @@ jobs:
           EOF
           create_or_verify_tag() {
             local branch="$1" commit_sha="$2" classification="$3"
-            local sanitized tag encoded ref_json ref_sha ref_type target_sha tag_object_sha
+            local sanitized tag peeled
             sanitized="${branch//\//-}"
             tag="archive/branch/${sanitized}/${date_stamp}/${commit_sha:0:7}"
-            encoded="$(python - "$tag" <<'PY'
-          import sys
-          from urllib.parse import quote
-          print(quote(sys.argv[1], safe=''))
-          PY
-          )"
-            if ref_json="$(gh api "repos/$repo/git/ref/tags/$encoded" 2>/dev/null)"; then
-              ref_sha="$(jq -r '.object.sha' <<<"$ref_json")"
-              ref_type="$(jq -r '.object.type' <<<"$ref_json")"
-              [[ "$ref_type" == "tag" ]]
-              target_sha="$(gh api "repos/$repo/git/tags/$ref_sha" --jq '.object.sha')"
-              [[ "$target_sha" == "$commit_sha" ]]
-            else
-              gh api "repos/$repo/git/commits/$commit_sha" >/dev/null
-              tag_object_sha="$(gh api --method POST "repos/$repo/git/tags" \
-                -f tag="$tag" \
-                -f message="Archive of $branch at $commit_sha. Classification: $classification. Experimental history is recoverable but not production-certified." \
-                -f object="$commit_sha" \
-                -f type="commit" \
-                -f 'tagger[name]=AspenOps Archive' \
-                -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
-                -f 'tagger[date]=2026-07-21T09:45:00Z' \
-                --jq '.sha')"
-              gh api --method POST "repos/$repo/git/refs" \
-                -f ref="refs/tags/$tag" \
-                -f sha="$tag_object_sha" >/dev/null
+            if ! git cat-file -e "$commit_sha^{commit}" 2>/dev/null; then
+              git fetch --force origin "$commit_sha"
             fi
+            git cat-file -e "$commit_sha^{commit}"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              [[ "$(git rev-parse "$tag^{}")" == "$commit_sha" ]]
+            else
+              GIT_COMMITTER_DATE='2026-07-21T09:45:00Z' \
+                git tag -a "$tag" "$commit_sha" \
+                -m "Archive of $branch at $commit_sha. Classification: $classification. Experimental history is recoverable but not production-certified."
+              git push origin "refs/tags/$tag"
+            fi
+            git fetch --force --tags origin
+            peeled="$(git ls-remote origin "refs/tags/$tag^{}" | awk '{print $1}')"
+            [[ "$peeled" == "$commit_sha" ]]
             printf '%s\t%s\t%s\t%s\n' "$branch" "$commit_sha" "$classification" "$tag" \
               >> var/consolidation/archive-tags.tsv
           }
@@ -128,39 +121,28 @@ jobs:
           while IFS=$'\t' read -r branch commit_sha classification; do
             create_or_verify_tag "$branch" "$commit_sha" "$classification"
           done < var/consolidation/known-branch-heads.tsv
-          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
-            --jq '.[] | [.ref, .object.sha] | @tsv' | sort -u \
-            > var/consolidation/refs-before.tsv
+          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-before.tsv
           : > var/consolidation/deleted-branches.tsv
-          while IFS=$'\t' read -r ref commit_sha; do
+          while IFS=$'\t' read -r commit_sha ref; do
             branch="${ref#refs/heads/}"
             [[ "$branch" == "main" ]] && continue
-            create_or_verify_tag "$branch" "$commit_sha" "DYNAMIC_RETIRED"
+            create_or_verify_tag "$branch" "$commit_sha" 'DYNAMIC_RETIRED'
             printf '%s\t%s\t%s\n' "$branch" "$commit_sha" \
               "archive/branch/${branch//\//-}/${date_stamp}/${commit_sha:0:7}" \
               >> var/consolidation/deleted-branches.tsv
           done < var/consolidation/refs-before.tsv
-      - name: Delete non-main refs and record transaction
+      - name: Delete non-main branches and record transaction
         shell: bash
         run: |
           set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
-          while IFS=$'\t' read -r ref commit_sha; do
+          while IFS=$'\t' read -r commit_sha ref; do
             branch="${ref#refs/heads/}"
             [[ "$branch" == "main" ]] && continue
-            encoded_ref="$(python - "$branch" <<'PY'
-          import sys
-          from urllib.parse import quote
-          print(quote('heads/' + sys.argv[1], safe=''))
-          PY
-          )"
-            gh api --method DELETE "repos/$repo/git/refs/$encoded_ref"
+            git push origin --delete "$branch"
           done < var/consolidation/refs-before.tsv
-          gh api --paginate "repos/$repo/git/matching-refs/heads/" \
-            --jq '.[] | [.ref, .object.sha] | @tsv' | sort -u \
-            > var/consolidation/refs-after.tsv
-          [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == "1" ]]
-          grep -Eq '^refs/heads/main[[:space:]][0-9a-f]{40}$' var/consolidation/refs-after.tsv
+          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-after.tsv
+          [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == '1' ]]
+          grep -Eq '^[0-9a-f]{40}[[:space:]]+refs/heads/main$' var/consolidation/refs-after.tsv
           python - <<'PY'
           import json
           from pathlib import Path
@@ -182,8 +164,8 @@ jobs:
               )
           ]
           refs = [
-              {'ref': ref, 'sha': sha}
-              for ref, sha in (
+              {'sha': sha, 'ref': ref}
+              for sha, ref in (
                   line.split('\t')
                   for line in Path('var/consolidation/refs-after.tsv').read_text().splitlines()
                   if line
@@ -207,11 +189,11 @@ jobs:
           git commit -m 'chore: record completed branch tag transaction'
           git push origin HEAD:main
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            'Historical recovery tags were verified and all non-main refs were deleted. The standard manifests can now be published to main.'
+            'Final Git tag transaction PASS. Historical tags were verified and only main remains.'
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
       - name: Report failure
         if: failure()
         shell: bash
         run: |
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            'Final branch archive transaction failed. Review the workflow run before retrying.' || true
+            "Final Git tag transaction FAILED. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || true
