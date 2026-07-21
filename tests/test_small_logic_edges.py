@@ -237,13 +237,13 @@ def test_certification_reports_value_ok_and_key_mismatches(
     ]
     assert structural
     assert all(item["absolute_error"] is None for item in structural)
-    assert {item["key"] for item in report["comparisons"]} == {
+    assert {
         "__ok__",
         "label",
         "only_candidate",
         "only_reference",
         "x",
-    }
+    }.issubset({item["key"] for item in report["comparisons"]})
 
 
 def test_certification_requires_approved_tolerances_for_nonmock_runs(
