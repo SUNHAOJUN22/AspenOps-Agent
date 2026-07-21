@@ -1,9 +1,8 @@
 name: One-shot main governance audit
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths: [.github/workflows/one-shot-main-governance-audit.yml]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +12,7 @@ permissions:
 
 concurrency:
   group: one-shot-main-governance-audit
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   linux-gate:
