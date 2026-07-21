@@ -13,7 +13,6 @@ import aspenops_nexus.licensed_certification as licensed
 from aspenops_nexus.config import Settings
 from aspenops_nexus.hashing import sha256_file
 from aspenops_nexus.licensed_certification import (
-    BUNDLE_SCHEMA,
     PENDING_REAL_ASPEN_CERTIFICATION,
     LicensedCertificationPlan,
     certification_preflight,
@@ -80,9 +79,7 @@ def plan_document(tmp_path: Path, key_id: str) -> dict[str, Any]:
             "repeats": 3,
             "workers": [1, 2],
             "default_tolerance": {"abs_tol": 1e-6, "rel_tol": 1e-6},
-            "output_tolerances": {
-                "product.purity": {"abs_tol": 1e-5, "rel_tol": 1e-5}
-            },
+            "output_tolerances": {"product.purity": {"abs_tol": 1e-5, "rel_tol": 1e-5}},
         },
         "engineering_acceptance": {
             "status": "approved",
@@ -155,6 +152,8 @@ def valid_preflight(
     plan = LicensedCertificationPlan.from_document(plan_document(tmp_path, key_id))
     configured = settings(tmp_path)
     env = environment(tmp_path, private_path)
+    monkeypatch.setattr(licensed.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(licensed.platform, "machine", lambda: "X64")
     monkeypatch.setattr(licensed, "compatibility_report", lambda: compatibility())
     monkeypatch.setattr(
         licensed,
@@ -185,9 +184,7 @@ def test_plan_round_trip_is_canonical_and_strict(tmp_path: Path) -> None:
             "unique worker counts",
         ),
         (
-            lambda doc: doc["engineering_acceptance"].update(
-                approved_at="2026-07-21T00:00:00"
-            ),
+            lambda doc: doc["engineering_acceptance"].update(approved_at="2026-07-21T00:00:00"),
             "include a timezone",
         ),
         (
@@ -236,6 +233,19 @@ def test_preflight_is_ready_only_for_exact_approved_scope(
     serialized = json.dumps(report, allow_nan=False)
     assert env["ASPENOPS_CERT_SIGNING_KEY"] not in serialized
     assert "PRIVATE KEY" not in serialized
+
+
+def test_preflight_rejects_compatibility_fallback_as_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, configured, env, _ = valid_preflight(tmp_path, monkeypatch)
+    monkeypatch.setattr(licensed, "compatibility_report", lambda: compatibility(fallback=True))
+
+    report = certification_preflight(plan, configured, environment=env)
+
+    assert report["ready"] is False
+    assert "approved_progid_missing" in {item["code"] for item in report["blockers"]}
 
 
 @pytest.mark.parametrize(
@@ -292,9 +302,7 @@ def test_preflight_rejects_key_inside_workspace(
         machine_architecture="X64",
     )
 
-    assert "signing_key_inside_workspace" in {
-        item["code"] for item in report["blockers"]
-    }
+    assert "signing_key_inside_workspace" in {item["code"] for item in report["blockers"]}
 
 
 def test_preflight_rejects_digest_mismatch_and_never_hides_it(
@@ -312,9 +320,7 @@ def test_preflight_rejects_digest_mismatch_and_never_hides_it(
         machine_architecture="X64",
     )
 
-    blocker = next(
-        item for item in report["blockers"] if item["code"] == "model_digest_mismatch"
-    )
+    blocker = next(item for item in report["blockers"] if item["code"] == "model_digest_mismatch")
     assert blocker["expected"] == plan.model_sha256
     assert blocker["observed"] != plan.model_sha256
 
@@ -375,10 +381,13 @@ def test_successful_execution_stays_pending_and_writes_signed_bundle(
     assert report["certification_status"] == PENDING_REAL_ASPEN_CERTIFICATION
     assert report["bundle_verification"]["verification_status"] == "signed-valid"
     assert Path(report["bundle_path"]).is_file()
-    assert verify_licensed_certification_bundle(
-        report["bundle_path"], trusted_public_key=public_key
-    )["ok"] is True
-    assert REAL_CERTIFICATION_TEXT not in json.dumps(report)
+    assert (
+        verify_licensed_certification_bundle(report["bundle_path"], trusted_public_key=public_key)[
+            "ok"
+        ]
+        is True
+    )
+    assert report["certification_status"] != REAL_CERTIFICATION_TEXT
 
 
 REAL_CERTIFICATION_TEXT = "REAL_ASPEN" + "_CERTIFIED"
@@ -408,25 +417,36 @@ def test_signed_bundle_detects_tampering_and_wrong_key(
         output_path=tmp_path / "bundle.zip",
         signing_private_key=env["ASPENOPS_CERT_SIGNING_KEY"],
     )
-    assert verify_licensed_certification_bundle(
-        bundle, trusted_public_key=public_key
-    )["verification_status"] == "signed-valid"
+    assert (
+        verify_licensed_certification_bundle(bundle, trusted_public_key=public_key)[
+            "verification_status"
+        ]
+        == "signed-valid"
+    )
 
     wrong_private = Ed25519PrivateKey.generate()
     wrong_public = wrong_private.public_key().public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-    assert verify_licensed_certification_bundle(
-        bundle, trusted_public_key=wrong_public
-    )["verification_status"] == "signed-invalid"
+    assert (
+        verify_licensed_certification_bundle(bundle, trusted_public_key=wrong_public)[
+            "verification_status"
+        ]
+        == "signed-invalid"
+    )
 
-    with zipfile.ZipFile(bundle, "a", compression=zipfile.ZIP_DEFLATED) as archive:
-        with pytest.warns(UserWarning, match="Duplicate name"):
-            archive.writestr("report.json", b'{"tampered":true}')
-    assert verify_licensed_certification_bundle(
-        bundle, trusted_public_key=public_key
-    )["verification_status"] == "structure-invalid"
+    with (
+        zipfile.ZipFile(bundle, "a", compression=zipfile.ZIP_DEFLATED) as archive,
+        pytest.warns(UserWarning, match="Duplicate name"),
+    ):
+        archive.writestr("report.json", b'{"tampered":true}')
+    assert (
+        verify_licensed_certification_bundle(bundle, trusted_public_key=public_key)[
+            "verification_status"
+        ]
+        == "structure-invalid"
+    )
 
 
 def test_bundle_rejects_missing_member(
@@ -455,9 +475,7 @@ def test_bundle_rejects_missing_member(
             if info.filename != "environment.json":
                 target.writestr(info.filename, source.read(info.filename))
 
-    verification = verify_licensed_certification_bundle(
-        incomplete, trusted_public_key=public_key
-    )
+    verification = verify_licensed_certification_bundle(incomplete, trusted_public_key=public_key)
     assert verification["verification_status"] == "structure-invalid"
     assert verification["missing"] == ["environment.json"]
 

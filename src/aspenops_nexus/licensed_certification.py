@@ -9,10 +9,11 @@ import re
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from . import RUNTIME_SCHEMA, __version__
 from .archive_safety import (
@@ -277,7 +278,11 @@ class EngineeringAcceptance:
     @classmethod
     def from_document(cls, value: Any) -> EngineeringAcceptance:
         mapping = _object(value, "engineering_acceptance")
-        _reject_unknown(mapping, {"status", "reviewer", "approved_at", "scope"}, "engineering_acceptance")
+        _reject_unknown(
+            mapping,
+            {"status", "reviewer", "approved_at", "scope"},
+            "engineering_acceptance",
+        )
         status = _text(mapping.get("status"), "engineering_acceptance.status").lower()
         if status not in {"approved", "pending"}:
             raise ValueError("engineering_acceptance.status must be approved or pending")
@@ -344,14 +349,10 @@ class LicensedCertificationPlan:
         _text(request.get("registry_path"), "request.registry_path")
 
         artifacts = _object(mapping.get("approved_artifacts"), "approved_artifacts")
-        _reject_unknown(
-            artifacts, {"model_sha256", "registry_sha256"}, "approved_artifacts"
-        )
+        _reject_unknown(artifacts, {"model_sha256", "registry_sha256"}, "approved_artifacts")
         runtime = _object(mapping.get("runtime_expectation"), "runtime_expectation")
         _reject_unknown(runtime, {"progids", "version_patterns"}, "runtime_expectation")
-        license_expectation = _object(
-            mapping.get("license_expectation"), "license_expectation"
-        )
+        license_expectation = _object(mapping.get("license_expectation"), "license_expectation")
         _reject_unknown(
             license_expectation,
             {"slots", "server_identity", "feature_names"},
@@ -589,7 +590,7 @@ def certification_preflight(
     observed_progids = {
         str(item.get("progid", "")).casefold()
         for item in candidates
-        if isinstance(item, dict)
+        if isinstance(item, dict) and str(item.get("registry_view", "")).casefold() != "fallback"
     }
     approved_progids = {item.casefold() for item in plan.progids}
     evidence["registered_progids"] = sorted(observed_progids)
@@ -612,7 +613,10 @@ def certification_preflight(
         if not key_path.is_file():
             block("signing_key_unreadable", "Mounted signing key file is unavailable")
         elif workspace is not None and (key_path == workspace or workspace in key_path.parents):
-            block("signing_key_inside_workspace", "Signing key must be outside the repository workspace")
+            block(
+                "signing_key_inside_workspace",
+                "Signing key must be outside the repository workspace",
+            )
         else:
             try:
                 observed_key_id = _key_id(_load_private_key(key_path).public_key())
@@ -638,7 +642,10 @@ def certification_preflight(
         try:
             evidence["dry_run"] = dry_run_document(plan.request, settings)
         except Exception as exc:
-            block("dry_run_failed", f"Certification request dry-run failed: {type(exc).__name__}: {exc}")
+            block(
+                "dry_run_failed",
+                f"Certification request dry-run failed: {type(exc).__name__}: {exc}",
+            )
 
     ready = not blockers
     return {
@@ -718,7 +725,12 @@ def write_licensed_certification_bundle(
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        with zipfile.ZipFile(
+            temporary,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=9,
+        ) as archive:
             archive.writestr("manifest.json", _pretty_bytes(manifest))
             for name, payload in members.items():
                 archive.writestr(name, payload)
@@ -749,8 +761,12 @@ def verify_licensed_certification_bundle(
                     "missing": sorted(expected - actual),
                     "unexpected": sorted(actual - expected),
                 }
-            manifest_value = json.loads(read_member_bounded(archive, infos["manifest.json"], limits))
-            if not isinstance(manifest_value, dict) or manifest_value.get("schema") != BUNDLE_SCHEMA:
+            manifest_payload = read_member_bounded(archive, infos["manifest.json"], limits)
+            manifest_value = json.loads(manifest_payload)
+            if (
+                not isinstance(manifest_value, dict)
+                or manifest_value.get("schema") != BUNDLE_SCHEMA
+            ):
                 return {"ok": False, "verification_status": "structure-invalid"}
             manifest = cast(dict[str, Any], manifest_value)
             declarations = _object(manifest.get("members"), "manifest.members")
@@ -758,10 +774,9 @@ def verify_licensed_certification_bundle(
             for name in _ALLOWED_MEMBERS:
                 declaration = _object(declarations.get(name), f"manifest.members.{name}")
                 payload = read_member_bounded(archive, infos[name], limits)
-                member_checks[name] = (
-                    declaration.get("sha256") == _sha256_bytes(payload)
-                    and declaration.get("size") == len(payload)
-                )
+                member_checks[name] = declaration.get("sha256") == _sha256_bytes(
+                    payload
+                ) and declaration.get("size") == len(payload)
             signing = _object(manifest.get("signing"), "manifest.signing")
             key_id = _text(signing.get("key_id"), "manifest.signing.key_id")
             if signing.get("status") != "signed" or signing.get("algorithm") != "Ed25519":
@@ -805,7 +820,9 @@ def execute_licensed_certification(
     output = Path(output_dir).expanduser().resolve()
     approved_output_roots = (settings.state_dir.resolve(), *settings.allowed_roots)
     if not _within(output, approved_output_roots):
-        raise PermissionError("Licensed certification output must be inside state_dir or allowed roots")
+        raise PermissionError(
+            "Licensed certification output must be inside state_dir or allowed roots"
+        )
     output.mkdir(parents=True, exist_ok=True)
     preflight = certification_preflight(plan, settings, environment=env)
     preflight_path = output / "preflight.json"
@@ -882,9 +899,7 @@ def execute_licensed_certification(
         output_path=output / "licensed-certification-bundle.zip",
         signing_private_key=key_path,
     )
-    verification = verify_licensed_certification_bundle(
-        bundle_path, trusted_public_key=public_key
-    )
+    verification = verify_licensed_certification_bundle(bundle_path, trusted_public_key=public_key)
     return {
         **report,
         "report_path": str(report_path),
