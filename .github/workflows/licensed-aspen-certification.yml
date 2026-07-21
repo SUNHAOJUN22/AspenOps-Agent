@@ -47,6 +47,8 @@ jobs:
       ASPENOPS_LICENSE_FEATURES: ${{ vars.ASPENOPS_LICENSE_FEATURES }}
       ASPENOPS_CERT_SIGNING_KEY: ${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}
       ASPENOPS_CERT_PUBLIC_KEY: ${{ vars.ASPENOPS_CERT_PUBLIC_KEY_PATH }}
+      ASPENOPS_VISIBLE: "false"
+      ASPENOPS_CACHE_FAILURES: "false"
     steps:
       - name: Checkout exact approved commit
         uses: actions/checkout@v4
@@ -76,13 +78,6 @@ jobs:
         shell: pwsh
         run: uv sync --extra dev --extra windows --extra signing
 
-      - name: Validate explicit execution approval
-        shell: pwsh
-        run: |
-          if ("${{ inputs.approve_real_execution }}" -ne "true") {
-            throw "Licensed COM execution was not explicitly approved"
-          }
-
       - name: Run licensed certification preflight
         id: preflight
         shell: pwsh
@@ -91,6 +86,13 @@ jobs:
           uv run aspenops certification-preflight `
             "${{ inputs.plan_path }}" `
             --output "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json"
+
+      - name: Validate explicit execution approval
+        shell: pwsh
+        run: |
+          if ("${{ inputs.approve_real_execution }}" -ne "true") {
+            throw "Preflight completed, but licensed COM execution was not explicitly approved"
+          }
 
       - name: Execute scoped licensed certification plan
         id: execute
