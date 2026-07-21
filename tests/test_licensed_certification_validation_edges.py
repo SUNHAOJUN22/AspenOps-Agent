@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -89,7 +90,12 @@ def test_validation_helpers_reject_ambiguous_inputs(
         operation()
 
 
-def _plan(tmp_path: Path, *, files: bool, acceptance: str = "approved") -> licensed.LicensedCertificationPlan:
+def _plan(
+    tmp_path: Path,
+    *,
+    files: bool,
+    acceptance: str = "approved",
+) -> licensed.LicensedCertificationPlan:
     model = tmp_path / "case.bkp"
     registry = tmp_path / "registry.json"
     if files:
