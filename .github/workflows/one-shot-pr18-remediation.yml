@@ -1,4 +1,4 @@
-name: One-shot PR 18 final remediation
+name: One-shot PR 18 final validation
 
 on:
   push:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: one-shot-pr18-final-remediation
+  group: one-shot-pr18-final-validation
   cancel-in-progress: false
 
 jobs:
-  remediate:
+  validate-and-publish:
     if: github.repository == 'SUNHAOJUN22/AspenOps-Agent'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -26,52 +26,10 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Reconcile final certification test contracts
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("tests/test_small_logic_edges.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    assert {item["key"] for item in report["comparisons"]} == {
-              "__ok__",
-              "label",
-              "only_candidate",
-              "only_reference",
-              "x",
-          }
-          '''
-          new = '''    assert {
-              "__ok__",
-              "label",
-              "only_candidate",
-              "only_reference",
-              "x",
-          }.issubset({item["key"] for item in report["comparisons"]})
-          '''
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif new not in text:
-              raise RuntimeError("Neither stale nor corrected exact-key assertion was found")
-          path.write_text(text, encoding="utf-8")
-
-          remaining = Path("tests/test_licensed_certification_remaining_edges.py")
-          text = remaining.read_text(encoding="utf-8")
-          old = '    other_path, _, _ = key_material(tmp_path / "other")\n'
-          new = '''    other_root = tmp_path / "other"
-              other_root.mkdir()
-              other_path, _, _ = key_material(other_root)
-          '''
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif new not in text:
-              raise RuntimeError("Neither stale nor corrected key fixture was found")
-          remaining.write_text(text, encoding="utf-8")
-          PY
       - name: Format and run the complete portable gate
         shell: bash
         run: |
+          set -euo pipefail
           uv sync --extra dev --extra agent --extra signing
           uv run ruff format .
           uv run ruff check .
@@ -85,14 +43,19 @@ jobs:
           uv run aspenops demo
           uv run python scripts/run_benchmark_matrix.py --repo-root . --output var/ci/benchmark-smoke.json --smoke
           uv run python scripts/check_mcp.py
-      - name: Remove this workflow and publish the validated remediation
+      - name: Remove this workflow and publish validated formatting
         shell: bash
         run: |
+          set -euo pipefail
           rm .github/workflows/one-shot-pr18-remediation.yml
           git config user.name "aspenops-maintenance"
           git config user.email "aspenops-maintenance@users.noreply.github.com"
           git add -A
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No changes to publish; this should only occur if the workflow was already removed."
+            exit 1
+          fi
           git commit -m "test: complete portable certification validation"
           git pull --rebase origin agent/aspenops-v2-reliability-performance
           git push origin HEAD:agent/aspenops-v2-reliability-performance
