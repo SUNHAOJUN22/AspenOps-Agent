@@ -1,0 +1,2 @@
+This transient file exists only to trigger the final observable single-main governance audit.
+The audit closes the pull request, archives and deletes this branch, removes the one-shot workflow, and publishes docs/single-main-audit.* on main.
