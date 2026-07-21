@@ -10,62 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  materialize-licensed-cli:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'agent/aspenops-v2-reliability-performance'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/aspenops-v2-reliability-performance
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Apply, validate, and publish licensed CLI
-        shell: bash
-        run: |
-          mkdir -p var/ci
-          set -o pipefail
-          {
-            uv sync --extra dev --extra agent --extra signing
-            uv run python scripts/materialize_licensed_cli.py
-            rm scripts/materialize_licensed_cli.py
-            uv run ruff format \
-              src/aspenops_nexus/cli.py \
-              tests/test_licensed_certification_cli.py
-            uv run ruff check \
-              src/aspenops_nexus/cli.py \
-              src/aspenops_nexus/licensed_certification.py \
-              tests/test_cli.py \
-              tests/test_licensed_certification.py \
-              tests/test_licensed_certification_cli.py
-            uv run mypy src
-            uv run pytest \
-              tests/test_cli.py \
-              tests/test_certification.py \
-              tests/test_certification_v2.py \
-              tests/test_licensed_certification.py \
-              tests/test_licensed_certification_cli.py
-            git config user.name "aspenops-ci"
-            git config user.email "aspenops-ci@users.noreply.github.com"
-            git add -A
-            git commit -m "feat: expose licensed certification CLI"
-            git pull --rebase origin agent/aspenops-v2-reliability-performance
-            git push origin HEAD:agent/aspenops-v2-reliability-performance
-          } 2>&1 | tee var/ci/licensed-cli-materializer.log
-      - name: Upload licensed CLI diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: licensed-cli-materializer-diagnostics
-          path: var/ci/licensed-cli-materializer.log
-          if-no-files-found: warn
-
   portable:
     strategy:
       matrix:
