@@ -6,12 +6,13 @@ import json
 import os
 import platform
 import re
+import struct
 import tempfile
 import uuid
 import zipfile
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeAlias, cast
 
@@ -31,6 +32,7 @@ from .certification import (
 from .compat import compatibility_report
 from .config import Settings
 from .hashing import canonical_hash, sha256_file
+from .models import BalanceSpec, VariableRead
 
 PLAN_SCHEMA = "aspenops.licensed-certification-plan/v1"
 PREFLIGHT_SCHEMA = "aspenops.licensed-certification-preflight/v1"
@@ -237,6 +239,31 @@ def _within(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(resolved == root or root in resolved.parents for root in roots)
 
 
+def _spec_identity(key: str, identifiers: dict[str, str]) -> str:
+    suffix = ",".join(f"{name}={value}" for name, value in sorted(identifiers.items()))
+    return key if not suffix else f"{key}:{suffix}"
+
+
+def _planned_tolerance_keys(request: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for index, raw_read in enumerate(_array(request.get("reads", []), "request.reads")):
+        read = VariableRead.from_dict(_object(raw_read, f"request.reads[{index}]"))
+        keys.add(_spec_identity(read.key, read.identifiers))
+    balance_details = {
+        "residual",
+        "absolute",
+        "scale",
+        "relative",
+        "abs_tol",
+        "rel_tol",
+        "passed",
+    }
+    for index, raw_balance in enumerate(_array(request.get("balances", []), "request.balances")):
+        balance = BalanceSpec.from_dict(_object(raw_balance, f"request.balances[{index}]"))
+        keys.update(f"balance:{balance.name}:{detail}" for detail in balance_details)
+    return keys
+
+
 @dataclass(frozen=True, slots=True)
 class TolerancePolicy:
     abs_tol: float
@@ -407,6 +434,13 @@ class LicensedCertificationPlan:
             raise ValueError(
                 "repeatability.workers cannot exceed approved license_expectation.slots"
             )
+        allowed_tolerances = _planned_tolerance_keys(request)
+        unsupported_tolerances = sorted(set(repeatability.output_tolerances) - allowed_tolerances)
+        if unsupported_tolerances:
+            raise ValueError(
+                "repeatability.output_tolerances contains keys outside the request: "
+                + ", ".join(unsupported_tolerances)
+            )
 
         return cls(
             case_id=_text(mapping.get("case_id"), "case_id"),
@@ -499,6 +533,8 @@ def certification_preflight(
     system_name: str | None = None,
     machine_architecture: str | None = None,
     compatibility: dict[str, Any] | None = None,
+    pointer_bits: int | None = None,
+    current_time: datetime | None = None,
 ) -> dict[str, Any]:
     env = dict(os.environ if environment is None else environment)
     blockers: list[dict[str, Any]] = []
@@ -518,12 +554,14 @@ def certification_preflight(
 
     actual_system = system_name or platform.system()
     actual_arch = (machine_architecture or env.get("RUNNER_ARCH") or platform.machine()).upper()
+    actual_pointer_bits = pointer_bits or struct.calcsize("P") * 8
     runner_name = env.get("RUNNER_NAME", "")
     evidence["host"] = {
         "system": actual_system,
         "architecture": actual_arch,
         "runner_name": runner_name,
         "runner_environment": env.get("RUNNER_ENVIRONMENT"),
+        "python_pointer_bits": actual_pointer_bits,
     }
     if actual_system != "Windows":
         block("native_windows_required", "Licensed Aspen certification requires native Windows")
@@ -537,6 +575,12 @@ def certification_preflight(
             "Runner architecture does not match the approved plan",
             expected=plan.runner_architecture,
             observed=actual_arch,
+        )
+    if actual_pointer_bits != 64:
+        block(
+            "python_64bit_required",
+            "Licensed Aspen certification requires a 64-bit Python process",
+            observed=actual_pointer_bits,
         )
 
     observed_commit = (env.get("ASPENOPS_GIT_COMMIT") or env.get("GITHUB_SHA") or "").lower()
@@ -589,6 +633,17 @@ def certification_preflight(
         block(
             "engineering_acceptance_pending",
             "Engineering acceptance is not approved for this exact plan",
+        )
+    approved_at = datetime.fromisoformat(plan.engineering_acceptance.approved_at)
+    observed_time = current_time or datetime.now(UTC)
+    if observed_time.tzinfo is None or observed_time.utcoffset() is None:
+        raise ValueError("current_time must be timezone-aware")
+    if approved_at > observed_time + timedelta(minutes=5):
+        block(
+            "engineering_approval_in_future",
+            "Engineering approval timestamp is later than the certification run",
+            approved_at=approved_at.isoformat(),
+            observed_at=observed_time.isoformat(),
         )
     evidence["engineering_acceptance"] = asdict(plan.engineering_acceptance)
 
@@ -772,6 +827,50 @@ def write_licensed_certification_bundle(
     return output, _public_key_bytes(public_key)
 
 
+def _read_json_object_member(
+    archive: zipfile.ZipFile,
+    infos: dict[str, zipfile.ZipInfo],
+    name: str,
+    limits: ArchiveLimits,
+) -> tuple[dict[str, Any], bytes]:
+    payload = read_member_bounded(archive, infos[name], limits)
+    value = json.loads(payload)
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} root must be an object")
+    return {str(key): item for key, item in value.items()}, payload
+
+
+def _licensed_bundle_semantic_checks(
+    *,
+    manifest: dict[str, Any],
+    plan: LicensedCertificationPlan,
+    preflight: dict[str, Any],
+    report: dict[str, Any],
+    environment: dict[str, Any],
+) -> dict[str, bool]:
+    evidence = preflight.get("evidence", {})
+    return {
+        "manifest_status_pending": manifest.get("certification_status")
+        == PENDING_REAL_ASPEN_CERTIFICATION,
+        "manifest_case_id": manifest.get("case_id") == plan.case_id,
+        "manifest_commit": manifest.get("approved_commit") == plan.approved_commit,
+        "manifest_plan_hash": manifest.get("plan_sha256") == canonical_hash(plan.to_dict()),
+        "preflight_schema": preflight.get("schema") == PREFLIGHT_SCHEMA,
+        "preflight_status_pending": preflight.get("certification_status")
+        == PENDING_REAL_ASPEN_CERTIFICATION,
+        "preflight_plan_hash": isinstance(evidence, dict)
+        and evidence.get("plan_sha256") == canonical_hash(plan.to_dict()),
+        "report_schema": report.get("schema") == REPORT_SCHEMA,
+        "report_status_pending": report.get("certification_status")
+        == PENDING_REAL_ASPEN_CERTIFICATION,
+        "report_case_id": report.get("case_id") == plan.case_id,
+        "report_commit": report.get("approved_commit") == plan.approved_commit,
+        "report_backend": report.get("backend") == plan.backend,
+        "environment_commit": str(environment.get("git_commit") or "").lower()
+        == plan.approved_commit,
+    }
+
+
 def verify_licensed_certification_bundle(
     bundle_path: str | Path,
     *,
@@ -791,26 +890,71 @@ def verify_licensed_certification_bundle(
                     "missing": sorted(expected - actual),
                     "unexpected": sorted(actual - expected),
                 }
-            manifest_payload = read_member_bounded(archive, infos["manifest.json"], limits)
-            manifest_value = json.loads(manifest_payload)
-            if (
-                not isinstance(manifest_value, dict)
-                or manifest_value.get("schema") != BUNDLE_SCHEMA
-            ):
+            manifest, _ = _read_json_object_member(archive, infos, "manifest.json", limits)
+            _reject_unknown(
+                manifest,
+                {
+                    "schema",
+                    "created_at",
+                    "runtime_schema",
+                    "runtime_version",
+                    "certification_status",
+                    "case_id",
+                    "approved_commit",
+                    "plan_sha256",
+                    "members",
+                    "signing",
+                    "boundary",
+                },
+                "licensed certification manifest",
+            )
+            if manifest.get("schema") != BUNDLE_SCHEMA:
                 return {"ok": False, "verification_status": "structure-invalid"}
-            manifest = cast(dict[str, Any], manifest_value)
+            _timezone_aware(manifest.get("created_at"), "manifest.created_at")
             declarations = _object(manifest.get("members"), "manifest.members")
-            member_checks: dict[str, bool] = {}
-            for name in _ALLOWED_MEMBERS:
-                declaration = _object(declarations.get(name), f"manifest.members.{name}")
-                payload = read_member_bounded(archive, infos[name], limits)
-                member_checks[name] = declaration.get("sha256") == _sha256_bytes(
-                    payload
-                ) and declaration.get("size") == len(payload)
+            if set(declarations) != _ALLOWED_MEMBERS:
+                return {
+                    "ok": False,
+                    "verification_status": "structure-invalid",
+                    "manifest_member_missing": sorted(_ALLOWED_MEMBERS - set(declarations)),
+                    "manifest_member_unexpected": sorted(set(declarations) - _ALLOWED_MEMBERS),
+                }
             signing = _object(manifest.get("signing"), "manifest.signing")
+            _reject_unknown(
+                signing,
+                {"status", "algorithm", "key_id"},
+                "manifest.signing",
+            )
             key_id = _text(signing.get("key_id"), "manifest.signing.key_id")
+            if _KEY_ID_RE.fullmatch(key_id) is None:
+                return {"ok": False, "verification_status": "structure-invalid"}
             if signing.get("status") != "signed" or signing.get("algorithm") != "Ed25519":
                 return {"ok": False, "verification_status": "structure-invalid"}
+            key_id_payload = read_member_bounded(archive, infos["signing-key-id.txt"], limits)
+            try:
+                key_id_file = key_id_payload.decode("ascii").strip()
+            except UnicodeDecodeError:
+                return {"ok": False, "verification_status": "structure-invalid"}
+            if key_id_file != key_id:
+                return {"ok": False, "verification_status": "structure-invalid"}
+
+            member_payloads: dict[str, bytes] = {}
+            member_checks: dict[str, bool] = {}
+            for name in sorted(_ALLOWED_MEMBERS):
+                declaration = _object(declarations.get(name), f"manifest.members.{name}")
+                _reject_unknown(
+                    declaration,
+                    {"sha256", "size"},
+                    f"manifest.members.{name}",
+                )
+                digest = _digest(declaration.get("sha256"), f"manifest.members.{name}.sha256")
+                size = declaration.get("size")
+                if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+                    raise ValueError(f"manifest.members.{name}.size must be a non-negative integer")
+                payload = read_member_bounded(archive, infos[name], limits)
+                member_payloads[name] = payload
+                member_checks[name] = digest == _sha256_bytes(payload) and size == len(payload)
+
             public_key = _load_public_key(trusted_public_key)
             if _key_id(public_key) != key_id:
                 return {"ok": False, "verification_status": "signed-invalid"}
@@ -824,14 +968,41 @@ def verify_licensed_certification_bundle(
                     "verification_status": "signed-invalid",
                     "member_checks": member_checks,
                 }
-            content_valid = all(member_checks.values())
+
+            plan_value = json.loads(member_payloads["plan.json"])
+            plan = LicensedCertificationPlan.from_document(plan_value)
+            preflight_value = json.loads(member_payloads["preflight.json"])
+            report_value = json.loads(member_payloads["report.json"])
+            environment_value = json.loads(member_payloads["environment.json"])
+            if not isinstance(preflight_value, dict):
+                raise ValueError("preflight.json root must be an object")
+            if not isinstance(report_value, dict):
+                raise ValueError("report.json root must be an object")
+            if not isinstance(environment_value, dict):
+                raise ValueError("environment.json root must be an object")
+            semantic_checks = _licensed_bundle_semantic_checks(
+                manifest=manifest,
+                plan=plan,
+                preflight=preflight_value,
+                report=report_value,
+                environment=environment_value,
+            )
+            content_valid = all(member_checks.values()) and all(semantic_checks.values())
             return {
                 "ok": content_valid,
-                "verification_status": "signed-valid" if content_valid else "content-invalid",
+                "verification_status": ("signed-valid" if content_valid else "content-invalid"),
                 "member_checks": member_checks,
+                "semantic_checks": semantic_checks,
                 "manifest": manifest,
             }
-    except (OSError, ValueError, zipfile.BadZipFile, ArchiveSafetyError) as exc:
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        zipfile.BadZipFile,
+        ArchiveSafetyError,
+    ) as exc:
         return {
             "ok": False,
             "verification_status": "structure-invalid",

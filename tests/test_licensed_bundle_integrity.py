@@ -4,9 +4,10 @@ import base64
 import hashlib
 import json
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -183,9 +184,7 @@ def rewrite_signed_bundle(
     assert isinstance(key, Ed25519PrivateKey)
     manifest_payload = licensed._pretty_bytes(manifest)
     members["manifest.json"] = manifest_payload
-    members["manifest.sig"] = base64.b64encode(
-        key.sign(licensed._canonical_bytes(manifest))
-    )
+    members["manifest.sig"] = base64.b64encode(key.sign(licensed._canonical_bytes(manifest)))
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, payload in members.items():
             archive.writestr(name, payload)
@@ -206,9 +205,7 @@ def update_member(
 def test_valid_bundle_passes_cross_file_semantic_checks(tmp_path: Path) -> None:
     _, _, public, bundle = plan_and_bundle(tmp_path)
 
-    report = verify_licensed_certification_bundle(
-        bundle, trusted_public_key=public
-    )
+    report = verify_licensed_certification_bundle(bundle, trusted_public_key=public)
 
     assert report["verification_status"] == "signed-valid"
     assert all(report["member_checks"].values())
@@ -227,9 +224,7 @@ def test_resigned_manifest_with_extra_declaration_is_structure_invalid(
     rewritten = rewrite_signed_bundle(
         bundle, private_path, tmp_path / "extra-declaration.zip", mutate
     )
-    report = verify_licensed_certification_bundle(
-        rewritten, trusted_public_key=public
-    )
+    report = verify_licensed_certification_bundle(rewritten, trusted_public_key=public)
 
     assert report["verification_status"] == "structure-invalid"
     assert report["manifest_member_unexpected"] == ["extra.json"]
@@ -242,12 +237,8 @@ def test_key_id_file_must_match_signed_manifest(tmp_path: Path) -> None:
         del manifest
         members["signing-key-id.txt"] = b"0" * 32
 
-    rewritten = rewrite_signed_bundle(
-        bundle, private_path, tmp_path / "wrong-key-id.zip", mutate
-    )
-    report = verify_licensed_certification_bundle(
-        rewritten, trusted_public_key=public
-    )
+    rewritten = rewrite_signed_bundle(bundle, private_path, tmp_path / "wrong-key-id.zip", mutate)
+    report = verify_licensed_certification_bundle(rewritten, trusted_public_key=public)
 
     assert report["verification_status"] == "structure-invalid"
 
@@ -258,12 +249,8 @@ def test_signed_nonobject_member_is_still_structure_invalid(tmp_path: Path) -> N
     def mutate(members: dict[str, bytes], manifest: dict[str, Any]) -> None:
         update_member(members, manifest, "preflight.json", [])
 
-    rewritten = rewrite_signed_bundle(
-        bundle, private_path, tmp_path / "array-root.zip", mutate
-    )
-    report = verify_licensed_certification_bundle(
-        rewritten, trusted_public_key=public
-    )
+    rewritten = rewrite_signed_bundle(bundle, private_path, tmp_path / "array-root.zip", mutate)
+    report = verify_licensed_certification_bundle(rewritten, trusted_public_key=public)
 
     assert report["verification_status"] == "structure-invalid"
     assert "root must be an object" in report["error"]
@@ -277,12 +264,8 @@ def test_signed_cross_scope_commit_mismatch_is_content_invalid(tmp_path: Path) -
         environment["git_commit"] = "b" * 40
         update_member(members, manifest, "environment.json", environment)
 
-    rewritten = rewrite_signed_bundle(
-        bundle, private_path, tmp_path / "wrong-commit.zip", mutate
-    )
-    report = verify_licensed_certification_bundle(
-        rewritten, trusted_public_key=public
-    )
+    rewritten = rewrite_signed_bundle(bundle, private_path, tmp_path / "wrong-commit.zip", mutate)
+    report = verify_licensed_certification_bundle(rewritten, trusted_public_key=public)
 
     assert report["verification_status"] == "content-invalid"
     assert report["semantic_checks"]["environment_commit"] is False
@@ -309,9 +292,7 @@ def test_resigned_malformed_manifest_is_rejected(
     rewritten = rewrite_signed_bundle(
         bundle, private_path, tmp_path / f"malformed-{id(mutation)}.zip", mutate
     )
-    report = verify_licensed_certification_bundle(
-        rewritten, trusted_public_key=public
-    )
+    report = verify_licensed_certification_bundle(rewritten, trusted_public_key=public)
 
     assert report["verification_status"] == "structure-invalid"
 

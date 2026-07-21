@@ -419,6 +419,9 @@ def test_signed_bundle_detects_tampering_and_wrong_key(
     )
     report = {
         "schema": "aspenops.licensed-certification-report/v1",
+        "case_id": plan.case_id,
+        "approved_commit": plan.approved_commit,
+        "backend": plan.backend,
         "certification_status": PENDING_REAL_ASPEN_CERTIFICATION,
     }
     bundle, _ = write_licensed_certification_bundle(
@@ -525,7 +528,7 @@ def test_plan_rejects_wildcard_approval_scopes(
         LicensedCertificationPlan.from_document(document)
 
 
-@pytest.mark.parametrize("pattern", ["40\..*", ".*", "[invalid"])
+@pytest.mark.parametrize("pattern", [r"40\..*", ".*", "[invalid"])
 def test_plan_rejects_broad_or_invalid_version_patterns(
     tmp_path: Path,
     pattern: str,
