@@ -1,0 +1,80 @@
+name: Annotated tag API diagnostics v2
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
+      github.event.issue.title == 'AspenOps annotated tag API diagnostics' &&
+      github.event.issue.body == 'RUN_TAG_API_DIAGNOSTICS_V2_20260721'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COMMIT_SHA: 2d5ae6cb08df1bdaad26f596f1060c4d397bf020
+      TAG_NAME: archive/branch/agent-aspenops-1.0-production-runtime/20260721/2d5ae6c
+    steps:
+      - name: Report run
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Diagnostics v2 started. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Resolve commit object
+        shell: bash
+        run: |
+          set -euxo pipefail
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq .sha)"
+          [[ "$observed" == "$COMMIT_SHA" ]]
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Commit API PASS: $observed"
+      - name: Create annotated tag object
+        id: tag_object
+        shell: bash
+        run: |
+          set -euxo pipefail
+          jq -n \
+            --arg tag "$TAG_NAME" \
+            --arg object "$COMMIT_SHA" \
+            '{tag:$tag,message:"Archive test",object:$object,type:"commit",tagger:{name:"AspenOps Archive",email:"aspenops-archive@users.noreply.github.com",date:"2026-07-21T09:30:00Z"}}' \
+            > /tmp/tag.json
+          cat /tmp/tag.json
+          tag_object_sha="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" --input /tmp/tag.json --jq .sha)"
+          echo "tag_object_sha=$tag_object_sha" >> "$GITHUB_OUTPUT"
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Tag object API PASS: $tag_object_sha"
+      - name: Create and verify tag ref
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tag_object_sha='${{ steps.tag_object.outputs.tag_object_sha }}'
+          encoded="$(python - "$TAG_NAME" <<'PY'
+          import sys
+          from urllib.parse import quote
+          print(quote(sys.argv[1], safe=''))
+          PY
+          )"
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" >/tmp/ref-existing.json 2>/dev/null; then
+            jq -n --arg ref "refs/tags/$TAG_NAME" --arg sha "$tag_object_sha" '{ref:$ref,sha:$sha}' > /tmp/ref.json
+            cat /tmp/ref.json
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" --input /tmp/ref.json >/tmp/ref-created.json
+          fi
+          ref_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$encoded" --jq '.object.sha')"
+          target_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq '.object.sha')"
+          [[ "$target_sha" == "$COMMIT_SHA" ]]
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Tag ref API PASS: $TAG_NAME -> $target_sha"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+      - name: Report failure
+        if: failure()
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "Diagnostics v2 FAILED. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || true
