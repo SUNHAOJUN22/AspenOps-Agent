@@ -57,14 +57,70 @@ def main() -> None:
         '        raise PermissionError(\n            "Licensed certification output must be inside state_dir or allowed roots"\n        )\n',
     )
     replace_once(
-        test,
-        "    BUNDLE_SCHEMA,\n",
-        "",
+        module,
+        '''    observed_progids = {
+        str(item.get("progid", "")).casefold()
+        for item in candidates
+        if isinstance(item, dict)
+    }
+''',
+        '''    observed_progids = {
+        str(item.get("progid", "")).casefold()
+        for item in candidates
+        if isinstance(item, dict)
+        and str(item.get("registry_view", "")).casefold() != "fallback"
+    }
+''',
     )
+    replace_once(test, "    BUNDLE_SCHEMA,\n", "")
     replace_once(
         test,
         '    with zipfile.ZipFile(bundle, "a", compression=zipfile.ZIP_DEFLATED) as archive:\n        with pytest.warns(UserWarning, match="Duplicate name"):\n            archive.writestr("report.json", b\'{"tampered":true}\')\n',
         '    with (\n        zipfile.ZipFile(bundle, "a", compression=zipfile.ZIP_DEFLATED) as archive,\n        pytest.warns(UserWarning, match="Duplicate name"),\n    ):\n        archive.writestr("report.json", b\'{"tampered":true}\')\n',
+    )
+    replace_once(
+        test,
+        '''    env = environment(tmp_path, private_path)
+    monkeypatch.setattr(licensed, "compatibility_report", lambda: compatibility())
+''',
+        '''    env = environment(tmp_path, private_path)
+    monkeypatch.setattr(licensed.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(licensed.platform, "machine", lambda: "X64")
+    monkeypatch.setattr(licensed, "compatibility_report", lambda: compatibility())
+''',
+    )
+    replace_once(
+        test,
+        '    assert REAL_CERTIFICATION_TEXT not in json.dumps(report)\n',
+        '    assert report["certification_status"] != REAL_CERTIFICATION_TEXT\n',
+    )
+    replace_once(
+        test,
+        '''
+@pytest.mark.parametrize(
+    ("field", "value", "code"),
+''',
+        '''
+def test_preflight_rejects_compatibility_fallback_as_registration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, configured, env, _ = valid_preflight(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        licensed, "compatibility_report", lambda: compatibility(fallback=True)
+    )
+
+    report = certification_preflight(plan, configured, environment=env)
+
+    assert report["ready"] is False
+    assert "approved_progid_missing" in {
+        item["code"] for item in report["blockers"]
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "code"),
+''',
     )
 
 
