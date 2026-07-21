@@ -122,6 +122,31 @@ def _unique_texts(value: Any, label: str, *, allow_empty: bool = False) -> tuple
     return items
 
 
+def _scoped_texts(value: Any, label: str) -> tuple[str, ...]:
+    items = _unique_texts(value, label)
+    if any("*" in item or "?" in item for item in items):
+        raise ValueError(f"{label} cannot contain wildcard characters")
+    return items
+
+
+def _version_patterns(value: Any) -> tuple[str, ...]:
+    patterns = _unique_texts(
+        value,
+        "runtime_expectation.version_patterns",
+        allow_empty=True,
+    )
+    for pattern in patterns:
+        if not pattern.startswith("^") or ".*" in pattern:
+            raise ValueError(
+                "runtime_expectation.version_patterns must be anchored and cannot contain .*"
+            )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"Invalid runtime version pattern {pattern!r}: {exc}") from exc
+    return patterns
+
+
 def _timezone_aware(value: Any, label: str) -> str:
     text = _text(value, label)
     candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
@@ -372,6 +397,17 @@ class LicensedCertificationPlan:
         if _KEY_ID_RE.fullmatch(key_id) is None:
             raise ValueError("signing.key_id must be a 32-character lowercase key identifier")
 
+        repeatability = RepeatabilityPlan.from_document(mapping.get("repeatability"))
+        license_slots = _positive_integer(
+            license_expectation.get("slots"),
+            "license_expectation.slots",
+            maximum=64,
+        )
+        if max(repeatability.workers) > license_slots:
+            raise ValueError(
+                "repeatability.workers cannot exceed approved license_expectation.slots"
+            )
+
         return cls(
             case_id=_text(mapping.get("case_id"), "case_id"),
             approved_commit=_commit(mapping.get("approved_commit")),
@@ -379,28 +415,22 @@ class LicensedCertificationPlan:
             request=request,
             model_sha256=_digest(artifacts.get("model_sha256"), "model_sha256"),
             registry_sha256=_digest(artifacts.get("registry_sha256"), "registry_sha256"),
-            repeatability=RepeatabilityPlan.from_document(mapping.get("repeatability")),
+            repeatability=repeatability,
             engineering_acceptance=EngineeringAcceptance.from_document(
                 mapping.get("engineering_acceptance")
             ),
-            progids=_unique_texts(runtime.get("progids"), "runtime_expectation.progids"),
-            version_patterns=_unique_texts(
-                runtime.get("version_patterns", []),
-                "runtime_expectation.version_patterns",
-                allow_empty=True,
-            ),
-            license_slots=_positive_integer(
-                license_expectation.get("slots"), "license_expectation.slots", maximum=64
-            ),
+            progids=_scoped_texts(runtime.get("progids"), "runtime_expectation.progids"),
+            version_patterns=_version_patterns(runtime.get("version_patterns", [])),
+            license_slots=license_slots,
             license_server_identity=_text(
                 license_expectation.get("server_identity"),
                 "license_expectation.server_identity",
             ),
-            feature_names=_unique_texts(
+            feature_names=_scoped_texts(
                 license_expectation.get("feature_names"),
                 "license_expectation.feature_names",
             ),
-            runner_names=_unique_texts(runner.get("names"), "runner_expectation.names"),
+            runner_names=_scoped_texts(runner.get("names"), "runner_expectation.names"),
             runner_architecture=architecture,
             signing_required=True,
             signing_key_id=key_id,
@@ -809,6 +839,84 @@ def verify_licensed_certification_bundle(
         }
 
 
+def _runtime_scope_evidence(
+    plan: LicensedCertificationPlan,
+    reports: list[dict[str, Any]],
+) -> dict[str, Any]:
+    approved_progids = {item.casefold() for item in plan.progids}
+    compiled_patterns = [re.compile(pattern) for pattern in plan.version_patterns]
+    identities: list[dict[str, Any]] = []
+    violations: list[dict[str, Any]] = []
+    for report_index, report in enumerate(reports):
+        runs = report.get("runs", [])
+        if not isinstance(runs, list):
+            violations.append({"report": report_index, "code": "runtime_runs_missing"})
+            continue
+        for repeat_index, run in enumerate(runs):
+            if not isinstance(run, list):
+                violations.append(
+                    {
+                        "report": report_index,
+                        "repeat": repeat_index,
+                        "code": "runtime_run_malformed",
+                    }
+                )
+                continue
+            for point_index, result in enumerate(run):
+                if not isinstance(result, dict):
+                    violations.append(
+                        {
+                            "report": report_index,
+                            "repeat": repeat_index,
+                            "point": point_index,
+                            "code": "runtime_result_malformed",
+                        }
+                    )
+                    continue
+                diagnostics = result.get("diagnostics", {})
+                runtime = diagnostics.get("runtime") if isinstance(diagnostics, dict) else None
+                if not isinstance(runtime, dict):
+                    violations.append(
+                        {
+                            "report": report_index,
+                            "repeat": repeat_index,
+                            "point": point_index,
+                            "code": "runtime_identity_missing",
+                        }
+                    )
+                    continue
+                progid = str(runtime.get("progid") or "")
+                exposed = runtime.get("exposed", {})
+                exposed_values = (
+                    [str(value) for value in exposed.values()] if isinstance(exposed, dict) else []
+                )
+                identity = {
+                    "report": report_index,
+                    "repeat": repeat_index,
+                    "point": point_index,
+                    "progid": progid,
+                    "exposed": exposed_values,
+                }
+                identities.append(identity)
+                if progid.casefold() not in approved_progids:
+                    violations.append({**identity, "code": "runtime_progid_out_of_scope"})
+                if compiled_patterns and not any(
+                    pattern.search(value)
+                    for pattern in compiled_patterns
+                    for value in exposed_values
+                ):
+                    violations.append({**identity, "code": "runtime_version_out_of_scope"})
+    if not identities:
+        violations.append({"code": "no_runtime_identity_evidence"})
+    return {
+        "passed": not violations,
+        "identities": identities,
+        "violations": violations,
+        "approved_progids": list(plan.progids),
+        "approved_version_patterns": list(plan.version_patterns),
+    }
+
+
 def execute_licensed_certification(
     plan: LicensedCertificationPlan,
     settings: Settings,
@@ -863,7 +971,9 @@ def execute_licensed_certification(
             }
         reports.append(repeatability_report)
 
-    runtime_gate_passed = all(bool(item.get("repeatability_gate_passed")) for item in reports)
+    repeatability_gate_passed = all(bool(item.get("repeatability_gate_passed")) for item in reports)
+    runtime_scope = _runtime_scope_evidence(plan, reports)
+    runtime_gate_passed = repeatability_gate_passed and bool(runtime_scope["passed"])
     report = {
         "schema": REPORT_SCHEMA,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -871,6 +981,8 @@ def execute_licensed_certification(
         "approved_commit": plan.approved_commit,
         "backend": plan.backend,
         "executed": True,
+        "repeatability_gate_passed": repeatability_gate_passed,
+        "runtime_scope": runtime_scope,
         "runtime_gate_passed": runtime_gate_passed,
         "passed": runtime_gate_passed,
         "certification_status": PENDING_REAL_ASPEN_CERTIFICATION,

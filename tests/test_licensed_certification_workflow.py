@@ -4,9 +4,7 @@ from pathlib import Path
 
 
 def workflow_text() -> str:
-    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(
-        encoding="utf-8"
-    )
+    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(encoding="utf-8")
 
 
 def test_licensed_workflow_is_manual_protected_and_self_hosted() -> None:

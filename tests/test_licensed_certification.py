@@ -355,7 +355,19 @@ def execution_report(workers: int) -> dict[str, Any]:
         "repeatability_gate_passed": True,
         "workers": workers,
         "certification_status": PENDING_REAL_ASPEN_CERTIFICATION,
-        "runs": [[{"ok": True}]],
+        "runs": [
+            [
+                {
+                    "ok": True,
+                    "diagnostics": {
+                        "runtime": {
+                            "progid": "Apwn.Document.40.0",
+                            "exposed": {"Version": "40.1"},
+                        }
+                    },
+                }
+            ]
+        ],
     }
 
 
@@ -478,6 +490,84 @@ def test_bundle_rejects_missing_member(
     verification = verify_licensed_certification_bundle(incomplete, trusted_public_key=public_key)
     assert verification["verification_status"] == "structure-invalid"
     assert verification["missing"] == ["environment.json"]
+
+
+def test_plan_rejects_worker_counts_above_approved_license_slots(
+    tmp_path: Path,
+) -> None:
+    _, _, key_id = key_material(tmp_path)
+    document = plan_document(tmp_path, key_id)
+    document["repeatability"]["workers"] = [1, 3]
+    document["license_expectation"]["slots"] = 2
+
+    with pytest.raises(ValueError, match="cannot exceed approved license"):
+        LicensedCertificationPlan.from_document(document)
+
+
+@pytest.mark.parametrize(
+    ("section", "field"),
+    [
+        ("runtime_expectation", "progids"),
+        ("license_expectation", "feature_names"),
+        ("runner_expectation", "names"),
+    ],
+)
+def test_plan_rejects_wildcard_approval_scopes(
+    tmp_path: Path,
+    section: str,
+    field: str,
+) -> None:
+    _, _, key_id = key_material(tmp_path)
+    document = plan_document(tmp_path, key_id)
+    document[section][field] = ["*"]
+
+    with pytest.raises(ValueError, match="wildcard"):
+        LicensedCertificationPlan.from_document(document)
+
+
+@pytest.mark.parametrize("pattern", ["40\..*", ".*", "[invalid"])
+def test_plan_rejects_broad_or_invalid_version_patterns(
+    tmp_path: Path,
+    pattern: str,
+) -> None:
+    _, _, key_id = key_material(tmp_path)
+    document = plan_document(tmp_path, key_id)
+    document["runtime_expectation"]["version_patterns"] = [pattern]
+
+    with pytest.raises(ValueError, match="pattern|anchored"):
+        LicensedCertificationPlan.from_document(document)
+
+
+def test_out_of_scope_runtime_identity_fails_runtime_gate_but_stays_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, configured, env, _ = valid_preflight(tmp_path, monkeypatch)
+
+    def mismatched_runtime(
+        request: dict[str, Any],
+        active_settings: Settings,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        report = execution_report(kwargs["workers"])
+        runtime = report["runs"][0][0]["diagnostics"]["runtime"]
+        runtime["progid"] = "Apwn.Document.999.0"
+        return report
+
+    monkeypatch.setattr(licensed, "certify_batch_document", mismatched_runtime)
+    report = execute_licensed_certification(
+        plan,
+        configured,
+        output_dir=configured.state_dir / "out-of-scope",
+        environment=env,
+    )
+
+    assert report["repeatability_gate_passed"] is True
+    assert report["runtime_gate_passed"] is False
+    assert report["certification_status"] == PENDING_REAL_ASPEN_CERTIFICATION
+    assert "runtime_progid_out_of_scope" in {
+        item["code"] for item in report["runtime_scope"]["violations"]
+    }
 
 
 def test_output_directory_must_remain_in_approved_roots(
