@@ -1,14 +1,13 @@
 name: Final audited branch archive transaction
 
 on:
-  issues:
+  pull_request_target:
     types: [labeled]
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
-  actions: read
 
 concurrency:
   group: final-audited-branch-archive-transaction
@@ -18,9 +17,8 @@ jobs:
   finalize:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.event.issue.number == 20 &&
-      github.event.label.name == 'documentation' &&
-      github.event.issue.pull_request
+      github.event.pull_request.number == 20 &&
+      github.event.label.name == 'documentation'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -30,7 +28,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Verify audited quality evidence and immutable runtime tree
+      - name: Verify audited evidence and unchanged runtime tree
         shell: bash
         run: |
           set -euo pipefail
@@ -56,13 +54,13 @@ jobs:
           source_sha="$(python -c "import json; print(json.load(open('docs/single-main-audit.json'))['source_main_sha'])")"
           git diff --quiet "$source_sha" HEAD -- \
             src tests pyproject.toml uv.lock scripts examples
-      - name: Create and verify annotated recovery tags
+      - name: Create exact annotated recovery tags
         shell: bash
         run: |
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
           date_stamp=20260721
-          mkdir -p var/consolidation docs
+          mkdir -p var/consolidation
           cat > var/consolidation/known-branch-heads.tsv <<'EOF'
           agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020	SUPERSEDED
           agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
@@ -112,7 +110,7 @@ jobs:
                 -f type="commit" \
                 -f 'tagger[name]=AspenOps Archive' \
                 -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
-                -f 'tagger[date]=2026-07-21T09:15:00Z' \
+                -f 'tagger[date]=2026-07-21T09:30:00Z' \
                 --jq '.sha')"
               gh api --method POST "repos/$repo/git/refs" \
                 -f ref="refs/tags/$tag" \
@@ -137,7 +135,7 @@ jobs:
               "archive/branch/${branch//\//-}/${date_stamp}/${commit_sha:0:7}" \
               >> var/consolidation/deleted-branches.tsv
           done < var/consolidation/refs-before.tsv
-      - name: Delete every non-main ref and verify main-only state
+      - name: Delete non-main refs and record transaction
         shell: bash
         run: |
           set -euo pipefail
@@ -158,18 +156,10 @@ jobs:
             > var/consolidation/refs-after.tsv
           [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == "1" ]]
           grep -Eq '^refs/heads/main[[:space:]][0-9a-f]{40}$' var/consolidation/refs-after.tsv
-      - name: Generate requested manifests and reports
-        shell: bash
-        run: |
-          set -euo pipefail
-          final_main_sha="$(git rev-parse HEAD)"
-          python - "$final_main_sha" <<'PY'
+          python - <<'PY'
           import json
-          import sys
           from pathlib import Path
 
-          final_main_sha = sys.argv[1]
-          audit = json.loads(Path('docs/single-main-audit.json').read_text(encoding='utf-8'))
           tags = [
               {'branch': branch, 'sha': sha, 'classification': classification, 'tag': tag}
               for branch, sha, classification, tag in (
@@ -194,118 +184,24 @@ jobs:
                   if line
               )
           ]
-          manifest = {
-              'schema': 'aspenops.final-main-manifest/v1',
-              'repository': 'SUNHAOJUN22/AspenOps-Agent',
-              'final_main_sha': final_main_sha,
-              'final_main_sha_semantics': 'code-bearing main SHA before this evidence-only commit',
-              'validated_runtime_sha': audit['source_main_sha'],
-              'validation_ci_run_id': audit['ci_run_id'],
-              'validation_windows_run_id': audit['windows_run_id'],
-              'default_branch': 'main',
-              'remote_branch_count': 1,
-              'remaining_branches': ['main'],
-              'remaining_refs': refs,
+          result = {
+              'schema': 'aspenops.tag-transaction/v1',
+              'status': 'PASS',
               'archive_tags': tags,
               'deleted_branches': deleted,
-              'package_version': audit['version'],
-              'test_count': audit['test_count_python_3_12'],
-              'combined_coverage': audit['combined_branch_aware_coverage_percent'],
-              'statement_coverage': 96.23677786818551,
-              'branch_coverage': 90.84880636604774,
-              'python_matrix': {'3.11': 'PASS', '3.12': 'PASS', '3.13': 'PASS'},
-              'windows_result': 'PASS_PUBLIC_CONTROL_PLANE',
-              'wheel_result': audit['wheel_install'],
-              'mcp_tool_count': 14,
-              'performance_result': 'PASS_PORTABLE_MOCK_STABLE_REGRESSION_GATE',
-              'authoritative_workflows': audit['authoritative_workflows_after_cleanup'],
-              'licensed_workflow': 'IMPLEMENTED_NOT_EXECUTED',
-              'real_aspen_status': 'PENDING_REAL_ASPEN_CERTIFICATION',
-              'status': 'SINGLE_MAIN_CONSOLIDATION_COMPLETE',
+              'remaining_refs': refs,
+              'remote_branch_count': len(refs),
           }
-          Path('var/consolidation/final-main-manifest.json').write_text(
-              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
-          )
-          Path('var/consolidation/branch-archive-manifest.json').write_text(
-              json.dumps({'schema': 'aspenops.branch-archive/v1', 'tags': tags}, indent=2, sort_keys=True) + '\n',
-              encoding='utf-8',
-          )
-          Path('var/consolidation/capability-ledger.json').write_text(
-              json.dumps({
-                  'schema': 'aspenops.capability-consolidation/v1',
-                  'required_unmerged_capabilities': [],
-                  'experimental_archives': [{
-                      'source': 'agent/aspenops-1.4-mathematical-database-hardening',
-                      'modules': ['approval', 'drift', 'surrogate', 'twin'],
-                      'classification': 'UNIQUE_EXPERIMENTAL_ARCHIVED',
-                      'decision': 'ARCHIVED_NOT_SHIPPED',
-                      'reason': 'The source branch failed its production Ruff gate and had no accepted bounded CLI/MCP/Scheduler integration.',
-                  }],
-              }, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-          report = f"""# AspenOps single-main consolidation report
-
-## Result
-
-`SINGLE_MAIN_CONSOLIDATION_COMPLETE`
-
-- Default and only remote branch: `main`.
-- Final code-bearing main SHA: `{final_main_sha}`.
-- Validated runtime SHA: `{audit['source_main_sha']}`.
-- CI run: `{audit['ci_run_id']}`; Windows run: `{audit['windows_run_id']}`.
-- Package version: {audit['version']}.
-- Tests: {audit['test_count_python_3_12']} passed.
-- Combined coverage: {audit['combined_branch_aware_coverage_percent']:.4f}%.
-- Statement coverage: 96.2368%.
-- Branch coverage: 90.8488%.
-- Python 3.11 / 3.12 / 3.13: PASS.
-- Public Windows control-plane contracts: PASS.
-- Ruff, format, strict mypy, build, clean wheel, Demo, MCP and performance gate: PASS.
-- Real Aspen/HYSYS status: `PENDING_REAL_ASPEN_CERTIFICATION`.
-
-## Capability decision
-
-All production-validated AspenOps 2.0 capabilities are on `main`. The 1.4 approval/drift/surrogate/twin library is classified `UNIQUE_EXPERIMENTAL_ARCHIVED`; it is recoverable through an annotated tag but is not shipped or represented as a production feature.
-
-## Recovery
-
-Every historical inventory head and every dynamically discovered non-main ref has an exact annotated recovery tag listed in `var/consolidation/branch-archive-manifest.json`.
-"""
-          Path('docs/main-consolidation-report.md').write_text(report, encoding='utf-8')
-          Path('docs/branch-consolidation-audit.md').write_text(
-              '# Branch consolidation audit\n\nAll historical branch heads were classified, assigned exact annotated recovery tags and retired. No production-required capability remains outside main.\n',
-              encoding='utf-8',
-          )
-          Path('docs/capability-consolidation-ledger.md').write_text(
-              '# Capability consolidation ledger\n\nThe validated AspenOps 2.0 main tree contains the production runtime, Worker, process ownership, convergence, transactions, cache, PoolManager, Scheduler, optimization, evidence and licensed-certification control plane. No required production capability remains unmerged. The 1.4 approval/drift/surrogate/twin code is archived as experimental and is not a production claim.\n',
-              encoding='utf-8',
+          Path('var/consolidation/tag-transaction-result.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
           )
           PY
-      - name: Remove temporary machinery and publish evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          git rm -f .github/workflows/final-main-pr-transaction.yml
-          expected="ci.yml
-generate-performance-evidence.yml
-licensed-aspen-certification.yml
-windows-control-plane.yml"
-          actual="$(find .github/workflows -maxdepth 1 -type f -printf '%f\n' | sort)"
-          [[ "$actual" == "$expected" ]]
-          base_main_sha="$(git rev-parse HEAD)"
-          git fetch origin main
-          [[ "$(git rev-parse origin/main)" == "$base_main_sha" ]]
           git config user.name 'aspenops-consolidation'
           git config user.email 'aspenops-consolidation@users.noreply.github.com'
-          git add docs/main-consolidation-report.md \
-            docs/branch-consolidation-audit.md \
-            docs/capability-consolidation-ledger.md
-          git add -f var/consolidation/final-main-manifest.json \
-            var/consolidation/branch-archive-manifest.json \
-            var/consolidation/capability-ledger.json
-          git diff --cached --check
-          git commit -m 'docs: publish final tag-backed single-main evidence'
+          git add -f var/consolidation/tag-transaction-result.json
+          git commit -m 'chore: record completed branch tag transaction'
           git push origin HEAD:main
+          gh issue comment 20 --repo "$GITHUB_REPOSITORY" --body \
+            'Historical recovery tags were verified and all non-main refs were deleted. The standard manifests will now be published to main.'
           gh api --method DELETE \
             "repos/$GITHUB_REPOSITORY/issues/20/labels/documentation" >/dev/null || true
-          gh issue comment 20 --repo "$GITHUB_REPOSITORY" --body \
-            'Final historical tags, one-main proof and standard manifests were published to main. Real Aspen status remains PENDING_REAL_ASPEN_CERTIFICATION.'
