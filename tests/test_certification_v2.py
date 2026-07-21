@@ -20,9 +20,7 @@ def minimal_request(tmp_path: Path, *, backend: str = "mock") -> dict[str, Any]:
     model = tmp_path / "model.json"
     registry = tmp_path / "registry.json"
     model.write_text("{}", encoding="utf-8")
-    registry.write_text(
-        '{"nodes":{"x":{"access":"read","paths":["x"]}}}', encoding="utf-8"
-    )
+    registry.write_text('{"nodes":{"x":{"access":"read","paths":["x"]}}}', encoding="utf-8")
     return {
         "backend": backend,
         "model_path": str(model),
@@ -85,9 +83,7 @@ def test_real_backend_is_blocked_before_open_without_approved_tolerances(
     rel_tol: float | None,
     engineering_approved: bool,
 ) -> None:
-    def unexpected_run(
-        request: dict[str, Any], settings: Settings
-    ) -> list[dict[str, Any]]:
+    def unexpected_run(request: dict[str, Any], settings: Settings) -> list[dict[str, Any]]:
         raise AssertionError("real simulator must not be opened")
 
     monkeypatch.setattr(certification, "run_batch_document", unexpected_run)
@@ -116,9 +112,7 @@ def test_repeat_count_is_strictly_bounded(tmp_path: Path, repeats: object) -> No
 
 
 @pytest.mark.parametrize("value", [True, -1.0, float("nan"), float("inf")])
-def test_tolerances_reject_nonfinite_or_boolean_values(
-    tmp_path: Path, value: object
-) -> None:
+def test_tolerances_reject_nonfinite_or_boolean_values(tmp_path: Path, value: object) -> None:
     with pytest.raises(ValueError, match="abs_tol"):
         certify_batch_document(
             minimal_request(tmp_path),

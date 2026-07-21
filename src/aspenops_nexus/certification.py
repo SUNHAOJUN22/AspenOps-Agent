@@ -27,9 +27,7 @@ def _finite_nonnegative(value: Any, label: str) -> float:
     return number
 
 
-def _positive_integer(
-    value: Any, label: str, *, minimum: int = 1, maximum: int = 100
-) -> int:
+def _positive_integer(value: Any, label: str, *, minimum: int = 1, maximum: int = 100) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{label} must be an integer")
     if value < minimum or value > maximum:
@@ -184,9 +182,7 @@ def _compare_result(
     for balance_name in sorted(set(baseline_balances) | set(candidate_balances)):
         baseline_detail = baseline_balances.get(balance_name)
         candidate_detail = candidate_balances.get(balance_name)
-        if not isinstance(baseline_detail, dict) or not isinstance(
-            candidate_detail, dict
-        ):
+        if not isinstance(baseline_detail, dict) or not isinstance(candidate_detail, dict):
             deterministic = False
             comparisons.append(
                 {
@@ -243,12 +239,8 @@ def certify_batch_document(
         raise ValueError(f"Unsupported certification backend: {backend}")
 
     if backend == "mock":
-        effective_abs = (
-            1e-8 if abs_tol is None else _finite_nonnegative(abs_tol, "abs_tol")
-        )
-        effective_rel = (
-            1e-6 if rel_tol is None else _finite_nonnegative(rel_tol, "rel_tol")
-        )
+        effective_abs = 1e-8 if abs_tol is None else _finite_nonnegative(abs_tol, "abs_tol")
+        effective_rel = 1e-6 if rel_tol is None else _finite_nonnegative(rel_tol, "rel_tol")
     else:
         if abs_tol is None or rel_tol is None:
             return {
@@ -281,9 +273,7 @@ def certify_batch_document(
                 "passed": False,
                 "repeatability_gate_passed": False,
                 "certification_status": PENDING_ENGINEERING_ACCEPTANCE,
-                "blockers": [
-                    "Engineering acceptance has not been explicitly approved."
-                ],
+                "blockers": ["Engineering acceptance has not been explicitly approved."],
                 "runs": [],
                 "comparisons": [],
                 "boundary": (
@@ -336,9 +326,7 @@ def certify_batch_document(
         comparisons.append({"passed": False, "reason": "result_count_mismatch"})
     else:
         for repeat_index, run in enumerate(runs[1:], start=1):
-            for point_index, (baseline, candidate) in enumerate(
-                zip(reference, run, strict=True)
-            ):
+            for point_index, (baseline, candidate) in enumerate(zip(reference, run, strict=True)):
                 result_comparisons, result_ok, result_abs, result_rel = _compare_result(
                     baseline=baseline,
                     candidate=candidate,
