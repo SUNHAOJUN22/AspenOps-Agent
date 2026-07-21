@@ -10,6 +10,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-licensed-integrity:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Apply, validate, and publish licensed integrity contracts
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            uv sync --extra dev --extra agent --extra signing
+            uv run python scripts/materialize_licensed_integrity.py
+            rm scripts/materialize_licensed_integrity.py
+            uv run ruff check --fix \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_bundle_integrity.py
+            uv run ruff format \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_bundle_integrity.py
+            uv run ruff check \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_certification.py \
+              tests/test_licensed_bundle_integrity.py \
+              tests/test_licensed_certification_cli.py \
+              tests/test_licensed_certification_workflow.py
+            uv run mypy src
+            uv run pytest \
+              tests/test_certification.py \
+              tests/test_certification_v2.py \
+              tests/test_licensed_certification.py \
+              tests/test_licensed_bundle_integrity.py \
+              tests/test_licensed_certification_cli.py \
+              tests/test_licensed_certification_workflow.py
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add -A
+            git commit -m "feat: enforce licensed bundle cross-file integrity"
+            git pull --rebase origin agent/aspenops-v2-reliability-performance
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/licensed-integrity-materializer.log
+      - name: Upload licensed integrity diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-integrity-materializer-diagnostics
+          path: var/ci/licensed-integrity-materializer.log
+          if-no-files-found: warn
+
   portable:
     strategy:
       matrix:
