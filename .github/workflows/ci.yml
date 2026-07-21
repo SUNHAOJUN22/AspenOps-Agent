@@ -10,6 +10,59 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  materialize-runtime-identity-protocol:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'agent/aspenops-v2-reliability-performance'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Apply, validate, and publish runtime identity protocol
+        shell: bash
+        run: |
+          mkdir -p var/ci
+          set -o pipefail
+          {
+            uv sync --extra dev --extra agent --extra signing
+            uv run python scripts/materialize_runtime_identity_protocol.py
+            rm scripts/materialize_runtime_identity_protocol.py
+            uv run ruff format \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_certification.py
+            uv run ruff check \
+              src/aspenops_nexus/licensed_certification.py \
+              src/aspenops_nexus/worker.py \
+              tests/test_licensed_certification.py \
+              tests/test_worker_protocol_hardening.py
+            uv run mypy src
+            uv run pytest \
+              tests/test_licensed_certification.py \
+              tests/test_licensed_bundle_integrity.py \
+              tests/test_worker_protocol_hardening.py
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add -A
+            git commit -m "fix: bind licensed scope to Worker runtime protocol"
+            git pull --rebase origin agent/aspenops-v2-reliability-performance
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/runtime-identity-protocol-materializer.log
+      - name: Upload runtime identity diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-identity-protocol-materializer-diagnostics
+          path: var/ci/runtime-identity-protocol-materializer.log
+          if-no-files-found: warn
+
   portable:
     strategy:
       matrix:
