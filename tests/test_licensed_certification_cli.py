@@ -47,9 +47,7 @@ def test_certification_preflight_command_writes_machine_readable_report(
     monkeypatch.setattr(cli, "_json_print", printed.append)
     output = tmp_path / "reports" / "preflight.json"
 
-    result = cli.command_certification_preflight(
-        Namespace(plan="plan.json", output=str(output))
-    )
+    result = cli.command_certification_preflight(Namespace(plan="plan.json", output=str(output)))
 
     assert result == expected
     assert json.loads(output.read_text(encoding="utf-8"))["ready"] is ready
@@ -90,9 +88,7 @@ def test_certify_licensed_command_never_maps_pending_status_to_success_by_itself
     printed: list[dict[str, Any]] = []
     monkeypatch.setattr(cli, "_json_print", printed.append)
 
-    result = cli.command_certify_licensed(
-        Namespace(plan="plan.json", output_dir=None)
-    )
+    result = cli.command_certify_licensed(Namespace(plan="plan.json", output_dir=None))
 
     assert result == expected
     assert captured["plan"] is plan
@@ -142,9 +138,7 @@ def test_parser_exposes_licensed_commands_and_repeatability_boundary() -> None:
     preflight = parser.parse_args(
         ["certification-preflight", "plan.json", "--output", "preflight.json"]
     )
-    execute = parser.parse_args(
-        ["certify-licensed", "plan.json", "--output-dir", "certification"]
-    )
+    execute = parser.parse_args(["certify-licensed", "plan.json", "--output-dir", "certification"])
     verify = parser.parse_args(
         [
             "verify-licensed-bundle",
