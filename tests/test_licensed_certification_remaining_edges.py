@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -64,16 +65,7 @@ def test_preflight_rejects_pointer_width_future_approval_and_license_scope(
     now = datetime(2026, 7, 21, tzinfo=UTC)
     document["engineering_acceptance"]["approved_at"] = (now + timedelta(hours=1)).isoformat()
     plan = LicensedCertificationPlan.from_document(document)
-    configured = settings(tmp_path)
-    configured = configured.__class__(
-        **{
-            **{
-                field: getattr(configured, field)
-                for field in configured.__dataclass_fields__
-            },
-            "license_slots": 1,
-        }
-    )
+    configured = replace(settings(tmp_path), license_slots=1)
     env = environment(tmp_path, private_path)
     env["ASPENOPS_LICENSE_FEATURES"] = "OTHER_FEATURE"
 
@@ -142,7 +134,9 @@ def test_preflight_classifies_unreadable_invalid_and_mismatched_keys(
     )
     assert "signing_key_invalid" in {item["code"] for item in report["blockers"]}
 
-    other_path, _, _ = key_material(tmp_path / "other")
+    other_root = tmp_path / "other"
+    other_root.mkdir()
+    other_path, _, _ = key_material(other_root)
     mismatched = dict(env)
     mismatched["ASPENOPS_CERT_SIGNING_KEY"] = str(other_path)
     report = licensed.certification_preflight(
