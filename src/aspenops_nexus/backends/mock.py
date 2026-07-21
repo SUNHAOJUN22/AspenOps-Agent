@@ -70,6 +70,7 @@ class MockBackend(SimulatorBackend):
             "engine_returned": True,
             "engine_idle": True,
             "converged": converged,
+            "convergence_state": "converged" if converged else "not_converged",
             "convergence_evidence": "deterministic mock contract",
             "status": "converged" if converged else "mock convergence failure",
             "backend": self.name,

@@ -1,0 +1,105 @@
+name: Generate performance evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/aspenops-v2-reliability-performance
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Sync candidate dependencies
+        shell: bash
+        run: |
+          mkdir -p var/benchmarks
+          set -o pipefail
+          uv sync --extra dev --extra agent 2>&1 | tee var/benchmarks/sync.log
+      - name: Prepare main worktree
+        shell: bash
+        run: |
+          set -o pipefail
+          git fetch origin main 2>&1 | tee var/benchmarks/prepare-main.log
+          git worktree add /tmp/aspenops-main origin/main 2>&1 | tee -a var/benchmarks/prepare-main.log
+      - name: Run baseline matrix
+        shell: bash
+        env:
+          PYTHONPATH: /tmp/aspenops-main/src
+        run: |
+          set -o pipefail
+          .venv/bin/python scripts/run_benchmark_matrix.py \
+            --repo-root /tmp/aspenops-main \
+            --output var/benchmarks/baseline.json \
+            2>&1 | tee var/benchmarks/baseline.log
+      - name: Run candidate matrix
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -o pipefail
+          .venv/bin/python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/benchmarks/after.json \
+            2>&1 | tee var/benchmarks/after.log
+      - name: Generate comparison documents and enforce stable regression gate
+        shell: bash
+        run: |
+          set -o pipefail
+          .venv/bin/python scripts/compare_benchmarks.py \
+            --baseline var/benchmarks/baseline.json \
+            --after var/benchmarks/after.json \
+            --baseline-doc docs/performance-baseline.md \
+            --after-doc docs/performance-after.md \
+            --fail-on-stable-regression \
+            2>&1 | tee var/benchmarks/compare.log
+      - name: Validate benchmark tools
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run ruff check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
+            2>&1 | tee var/benchmarks/ruff.log
+          uv run mypy scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
+            2>&1 | tee var/benchmarks/mypy.log
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . --output var/benchmarks/smoke.json --smoke \
+            2>&1 | tee var/benchmarks/smoke.log
+      - name: Commit verified performance evidence
+        shell: bash
+        run: |
+          git config user.name "aspenops-ci"
+          git config user.email "aspenops-ci@users.noreply.github.com"
+          git add -f \
+            var/benchmarks/baseline.json \
+            var/benchmarks/after.json
+          git add \
+            docs/performance-baseline.md \
+            docs/performance-after.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "perf: publish verified portable benchmark evidence"
+          git pull --rebase origin agent/aspenops-v2-reliability-performance
+          git push origin HEAD:agent/aspenops-v2-reliability-performance
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-evidence
+          path: |
+            var/benchmarks
+            docs/performance-baseline.md
+            docs/performance-after.md
+          if-no-files-found: error

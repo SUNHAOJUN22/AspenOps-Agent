@@ -11,7 +11,14 @@ from typing import Any
 import psutil
 
 from ..compat import discover_aspen_plus_candidates
+from ..convergence import ConvergenceState, classify_convergence, poll_engine_idle
 from ..registry import ResolvedNode
+from ..windows_job import (
+    ProcessFingerprint,
+    fingerprint_matches,
+    is_descendant,
+    process_fingerprint,
+)
 from .base import BackendError, SimulatorBackend
 
 _DEFAULT_STATUS_PATHS = (
@@ -19,17 +26,19 @@ _DEFAULT_STATUS_PATHS = (
     r"\Data\Results Summary\Run-Status\Output\STATUS",
     r"\Data\Results Summary\Run-Status\Output\UOSSTAT2",
 )
-_POSITIVE = ("converged", "completed", "complete", "success", "successful", "ok")
-_NEGATIVE = ("error", "failed", "failure", "not converged", "incomplete", "aborted", "fatal")
 
 
-def _aspen_pids() -> set[int]:
-    result: set[int] = set()
+def _aspen_processes() -> dict[int, ProcessFingerprint]:
+    result: dict[int, ProcessFingerprint] = {}
     for process in psutil.process_iter(["pid", "name"]):
         try:
             name = str(process.info.get("name") or "").lower()
-            if name in {"aspenplus.exe", "apwn.exe"} or "aspenplus" in name:
-                result.add(int(process.info["pid"]))
+            if name not in {"aspenplus.exe", "apwn.exe"} and "aspenplus" not in name:
+                continue
+            pid = int(process.info["pid"])
+            fingerprint = process_fingerprint(pid)
+            if fingerprint is not None:
+                result[pid] = fingerprint
         except (psutil.Error, KeyError, TypeError, ValueError):
             continue
     return result
@@ -40,14 +49,21 @@ def _iter_collection(collection: Any, limit: int = 200) -> Iterable[Any]:
         count = int(collection.Count)
     except Exception:
         return ()
+    bounded_count = min(count, limit)
+    if bounded_count <= 0:
+        return ()
     values: list[Any] = []
-    for index in range(min(count, limit)):
-        for candidate_index in (index, index + 1):
-            try:
-                values.append(collection.Item(candidate_index))
-                break
-            except Exception:
-                continue
+    try:
+        values.append(collection.Item(0))
+        index_base = 0
+    except Exception:
+        index_base = 1
+    start = 1 if index_base == 0 else 0
+    for index in range(start, bounded_count):
+        try:
+            values.append(collection.Item(index + index_base))
+        except Exception:
+            continue
     return values
 
 
@@ -59,9 +75,15 @@ class AspenPlusBackend(SimulatorBackend):
         self.progid: str | None = None
         self.model_path: Path | None = None
         self.path_cache: dict[str, str] = {}
-        self.owned_pids: set[int] = set()
+        self.owned_processes: dict[int, ProcessFingerprint] = {}
+        self.job_managed = False
+        self.worker_pid = os.getpid()
         self.open_errors: list[str] = []
+        self.convergence_nodes: tuple[ResolvedNode, ...] = ()
         self._coinitialized = False
+
+    def set_process_supervision(self, job_managed: bool) -> None:
+        self.job_managed = job_managed
 
     def open(self, model_path: Path, *, visible: bool = False) -> None:
         if platform.system() != "Windows":
@@ -73,7 +95,7 @@ class AspenPlusBackend(SimulatorBackend):
             raise BackendError("Install the 'windows' extra to use Aspen Plus") from exc
         pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
         self._coinitialized = True
-        before = _aspen_pids()
+        before = _aspen_processes()
         path = model_path.expanduser().resolve()
         if not path.is_file():
             raise BackendError(f"Aspen model does not exist: {path}")
@@ -99,7 +121,15 @@ class AspenPlusBackend(SimulatorBackend):
                 + " | ".join(self.open_errors)
             )
         time.sleep(float(os.getenv("ASPENOPS_COM_SETTLE_S", "0.25")))
-        self.owned_pids = _aspen_pids() - before
+        after = _aspen_processes()
+        self.owned_processes = {
+            pid: fingerprint
+            for pid, fingerprint in after.items()
+            if pid not in before and is_descendant(pid, self.worker_pid)
+        }
+
+    def configure_convergence_nodes(self, nodes: list[ResolvedNode]) -> None:
+        self.convergence_nodes = tuple(nodes)
 
     @staticmethod
     def _set_if_available(obj: Any, name: str, value: Any) -> None:
@@ -109,10 +139,9 @@ class AspenPlusBackend(SimulatorBackend):
     @staticmethod
     def _open_document(document: Any, path: Path) -> None:
         suffix = path.suffix.lower()
-        methods = (("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()) + (
-            "InitFromFile2",
-            "InitFromArchive2",
-            "InitFromFile",
+        preferred = ("InitFromArchive2",) if suffix in {".bkp", ".apwz"} else ()
+        methods = tuple(
+            dict.fromkeys((*preferred, "InitFromFile2", "InitFromArchive2", "InitFromFile"))
         )
         errors: list[str] = []
         for method_name in methods:
@@ -141,15 +170,21 @@ class AspenPlusBackend(SimulatorBackend):
             self._coinitialized = False
 
     def cleanup_owned_pids(self) -> None:
-        # Only processes created after this worker opened its document are eligible for cleanup.
-        for pid in sorted(self.owned_pids):
+        if self.job_managed:
+            return
+        for fingerprint in sorted(self.owned_processes.values(), key=lambda item: item.pid):
+            if not fingerprint_matches(fingerprint):
+                continue
+            if not is_descendant(fingerprint.pid, self.worker_pid):
+                continue
             try:
-                process = psutil.Process(pid)
+                process = psutil.Process(fingerprint.pid)
                 process.terminate()
                 process.wait(timeout=5)
             except psutil.TimeoutExpired:
-                with suppress(psutil.Error):
-                    process.kill()
+                if fingerprint_matches(fingerprint):
+                    with suppress(psutil.Error):
+                        process.kill()
             except psutil.Error:
                 continue
 
@@ -194,7 +229,6 @@ class AspenPlusBackend(SimulatorBackend):
     def write(self, node: ResolvedNode, value: Any) -> None:
         target = self._find_node(node)
         target.Value = value
-        # Read-after-write catches paths that are syntactically valid but not writable in this mode.
         observed = target.Value
         if isinstance(value, (int, float)) and isinstance(observed, (int, float)):
             tolerance = 1e-10 + 1e-8 * max(abs(float(value)), 1.0)
@@ -210,17 +244,34 @@ class AspenPlusBackend(SimulatorBackend):
     def _status_values(self) -> list[dict[str, Any]]:
         if self.document is None:
             return []
+        output: list[dict[str, Any]] = []
+        for node in self.convergence_nodes:
+            try:
+                output.append(
+                    {
+                        "key": node.key,
+                        "source": "registry",
+                        "value": self.read(node),
+                    }
+                )
+            except Exception as exc:
+                output.append(
+                    {
+                        "key": node.key,
+                        "source": "registry",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
         extra = tuple(
             item.strip()
             for item in os.getenv("ASPENOPS_STATUS_PATHS", "").split(";")
             if item.strip()
         )
-        output: list[dict[str, Any]] = []
         for path in (*extra, *_DEFAULT_STATUS_PATHS):
             try:
                 node = self.document.Tree.FindNode(path)
                 if node is not None:
-                    output.append({"path": path, "value": node.Value})
+                    output.append({"path": path, "source": "default", "value": node.Value})
             except Exception:
                 continue
         return output
@@ -244,45 +295,54 @@ class AspenPlusBackend(SimulatorBackend):
                 messages.append(str(text if text is not None else item))
         return messages[:200]
 
+    @staticmethod
+    def _engine_running(engine: Any) -> bool | None:
+        for attribute in ("IsRunning", "Running"):
+            try:
+                value = getattr(engine, attribute)
+                if callable(value):
+                    value = value()
+                return bool(value)
+            except Exception:
+                continue
+        return None
+
     def run(self) -> dict[str, Any]:
         if self.document is None:
             raise BackendError("No Aspen document is open")
         started = time.perf_counter()
         engine = self.document.Engine
         engine.Run2()
+        idle = poll_engine_idle(
+            lambda: self._engine_running(engine),
+            timeout_s=float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", "2.0")),
+            poll_interval_s=float(os.getenv("ASPENOPS_STATUS_POLL_S", "0.1")),
+            stable_samples=int(os.getenv("ASPENOPS_STATUS_STABLE_SAMPLES", "2")),
+        )
         status_values = self._status_values()
         messages = self._engine_messages()
-        evidence_text = " | ".join(
-            [str(item.get("value", "")) for item in status_values] + messages
-        ).lower()
-        negative = sorted({marker for marker in _NEGATIVE if marker in evidence_text})
-        positive = sorted({marker for marker in _POSITIVE if marker in evidence_text})
-        engine_idle: bool | None = None
-        for attribute in ("IsRunning", "Running"):
-            try:
-                engine_idle = not bool(getattr(engine, attribute))
-                break
-            except Exception:
-                continue
-        # Run2 returning is necessary but not sufficient. Explicit negative evidence always fails.
-        # Explicit success is strongest. When a release exposes no status object, an idle
-        # engine with
-        # no error evidence is accepted as implicit convergence and marked accordingly.
-        explicit = bool(positive or status_values)
-        converged = not negative and (bool(positive) or engine_idle is not False)
+        evidence = classify_convergence(
+            engine_returned=True,
+            idle=idle,
+            status_nodes=status_values,
+            messages=messages,
+            source="aspen_plus",
+        )
         return {
             "engine_returned": True,
-            "engine_idle": engine_idle,
-            "converged": converged,
-            "convergence_evidence": "explicit" if explicit else "implicit",
+            "engine_idle": evidence.engine_idle,
+            "converged": evidence.state is ConvergenceState.CONVERGED,
+            "convergence_state": evidence.state.value,
+            "convergence_evidence": evidence.to_dict(),
             "status_nodes": status_values,
             "messages": messages,
-            "positive_markers": positive,
-            "negative_markers": negative,
+            "positive_markers": list(evidence.positive_markers),
+            "negative_markers": list(evidence.negative_markers),
             "backend": self.name,
             "progid": self.progid,
             "solve_elapsed_s": time.perf_counter() - started,
-            "owned_pids": sorted(self.owned_pids),
+            "owned_pids": sorted(self.owned_processes),
+            "job_managed": self.job_managed,
         }
 
     def runtime_identity(self) -> dict[str, Any]:

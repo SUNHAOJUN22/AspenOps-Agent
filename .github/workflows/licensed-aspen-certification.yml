@@ -1,0 +1,132 @@
+name: Licensed Aspen certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_path:
+        description: Repository-relative licensed certification plan JSON
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact 40-character commit approved for certification
+        required: true
+        type: string
+      backend:
+        description: Licensed simulator backend scoped by the plan
+        required: true
+        type: choice
+        options:
+          - aspen_plus
+          - hysys
+      approve_real_execution:
+        description: Explicitly authorize licensed COM execution after preflight
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: licensed-aspen-certification-${{ inputs.backend }}
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: licensed-${{ inputs.backend }}-certification
+    runs-on: [self-hosted, windows, x64, aspen-licensed]
+    environment: licensed-aspen-certification
+    timeout-minutes: 480
+    env:
+      ASPENOPS_BACKEND: ${{ inputs.backend }}
+      ASPENOPS_GIT_COMMIT: ${{ inputs.expected_head_sha }}
+      ASPENOPS_ALLOWED_ROOTS: ${{ vars.ASPENOPS_ALLOWED_ROOTS }}
+      ASPENOPS_STATE_DIR: ${{ vars.ASPENOPS_CERT_STATE_DIR }}
+      ASPENOPS_LICENSE_SLOTS: ${{ vars.ASPENOPS_LICENSE_SLOTS }}
+      ASPENOPS_LICENSE_SERVER_IDENTITY: ${{ vars.ASPENOPS_LICENSE_SERVER_IDENTITY }}
+      ASPENOPS_LICENSE_FEATURES: ${{ vars.ASPENOPS_LICENSE_FEATURES }}
+      ASPENOPS_CERT_SIGNING_KEY: ${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}
+      ASPENOPS_CERT_PUBLIC_KEY: ${{ vars.ASPENOPS_CERT_PUBLIC_KEY_PATH }}
+      ASPENOPS_VISIBLE: "false"
+      ASPENOPS_CACHE_FAILURES: "false"
+    steps:
+      - name: Checkout exact approved commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact repository revision
+        shell: pwsh
+        run: |
+          $observed = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $expected = "${{ inputs.expected_head_sha }}".Trim().ToLowerInvariant()
+          if ($expected -notmatch '^[0-9a-f]{40}$') {
+            throw "expected_head_sha must be a full lowercase 40-character Git SHA"
+          }
+          if ($observed -ne $expected) {
+            throw "Checked-out commit $observed does not match approved commit $expected"
+          }
+
+      - name: Sync locked certification dependencies
+        shell: pwsh
+        run: uv sync --extra dev --extra windows --extra signing
+
+      - name: Run licensed certification preflight
+        id: preflight
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:ASPENOPS_STATE_DIR\licensed-certification" | Out-Null
+          uv run aspenops certification-preflight `
+            "${{ inputs.plan_path }}" `
+            --output "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json"
+
+      - name: Validate explicit execution approval
+        shell: pwsh
+        run: |
+          if ("${{ inputs.approve_real_execution }}" -ne "true") {
+            throw "Preflight completed, but licensed COM execution was not explicitly approved"
+          }
+
+      - name: Execute scoped licensed certification plan
+        id: execute
+        shell: pwsh
+        run: |
+          uv run aspenops certify-licensed `
+            "${{ inputs.plan_path }}" `
+            --output-dir "$env:ASPENOPS_STATE_DIR\licensed-certification"
+
+      - name: Verify signed certification bundle
+        id: verify
+        shell: pwsh
+        run: |
+          uv run aspenops verify-licensed-bundle `
+            "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-bundle.zip" `
+            --public-key "$env:ASPENOPS_CERT_PUBLIC_KEY"
+
+      - name: Confirm status remains pending human certification review
+        shell: pwsh
+        run: |
+          $reportPath = "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-report.json"
+          $report = Get-Content -Raw $reportPath | ConvertFrom-Json
+          if ($report.certification_status -ne "PENDING_REAL_ASPEN_CERTIFICATION") {
+            throw "Runtime is not permitted to self-grant real Aspen certification"
+          }
+
+      - name: Upload signed licensed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}
+          path: |
+            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\preflight.json
+            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-report.json
+            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-bundle.zip
+          if-no-files-found: warn
+          retention-days: 90

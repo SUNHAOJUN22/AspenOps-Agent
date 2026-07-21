@@ -1,6 +1,6 @@
 <div align="center">
 
-# AspenOps 1.0
+# AspenOps 2.0
 
 ## A deterministic execution fabric for Aspen Plus, Aspen HYSYS and coding agents
 

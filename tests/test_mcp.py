@@ -5,7 +5,7 @@ from aspenops_nexus.mcp_server import build_server
 
 def test_mcp_surface_is_narrow_and_typed() -> None:
     async def list_names() -> list[str]:
-        server = build_server()
+        server = build_server(start_scheduler=False)
         tools = await server.list_tools()
         return [tool.name for tool in tools]
 
@@ -16,6 +16,10 @@ def test_mcp_surface_is_narrow_and_typed() -> None:
         "dry_run_request",
         "run_batch_sync",
         "submit_batch",
+        "submit_optimization",
+        "optimization_status",
+        "optimization_result",
+        "cancel_optimization",
         "job_status",
         "job_result",
         "list_recent_jobs",

@@ -1,6 +1,6 @@
 <div align="center">
 
-# AspenOps 1.0
+# AspenOps 2.0
 
 ## 为 Aspen 建立一层可验证、可并发、可审计的“执行操作系统”
 
@@ -13,7 +13,7 @@
 
 [![CI](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB)
-![Version](https://img.shields.io/badge/version-1.0.0-111827)
+![Version](https://img.shields.io/badge/version-2.0.0-111827)
 ![License](https://img.shields.io/badge/license-Apache--2.0-0F766E)
 ![Aspen](https://img.shields.io/badge/Aspen-Plus%20%7C%20HYSYS-005A9C)
 ![Agent](https://img.shields.io/badge/Agent-Codex%20%7C%20Claude%20Code-6B4EFF)
@@ -24,7 +24,7 @@
 
 ## 一句话定义
 
-> **AspenOps 1.0 把 Aspen Plus / Aspen HYSYS 从一个有状态、会阻塞、版本敏感、许可证受限的桌面模拟器，变成一个能够被 Codex、Claude Code、MCP 客户端和 Python 工作流安全调用的确定性计算引擎。**
+> **AspenOps 2.0 把 Aspen Plus / Aspen HYSYS 从一个有状态、会阻塞、版本敏感、许可证受限的桌面模拟器，变成一个能够被 Codex、Claude Code、MCP 客户端和 Python 工作流安全调用的确定性计算引擎。**
 
 它建立的不是“自然语言遥控器”，而是一套完整的执行语义：
 
@@ -60,7 +60,7 @@ app.Engine.Run2()
 - 模型、注册表、输入和输出没有内容哈希，结果无法追溯；
 - 公共 CI 没有 Aspen，代码经常处于“README 可运行、实际不可验证”的状态。
 
-AspenOps 1.0 的目标就是一次性解决这些问题。
+AspenOps 2.0 的目标就是一次性解决这些问题。
 
 ---
 
@@ -389,7 +389,7 @@ Agent 发送：
 
 ## HYSYS Spreadsheet Contract
 
-HYSYS 对象模型广泛、复杂且版本敏感。AspenOps 1.0 默认采用项目拥有的 Spreadsheet 桥：
+HYSYS 对象模型广泛、复杂且版本敏感。AspenOps 2.0 默认采用项目拥有的 Spreadsheet 桥：
 
 1. 工程师在 HYSYS case 内建立专用 Spreadsheet；
 2. 将允许读取、写入和判定收敛的变量绑定到单元格；
@@ -731,7 +731,7 @@ MCP surface verification
 
 # 诚实边界
 
-AspenOps 1.0 当前明确支持：
+AspenOps 2.0 当前明确支持：
 
 - Aspen Plus 稳态案例的 COM 自动化；
 - HYSYS 的安全 Spreadsheet Bridge；
@@ -764,7 +764,7 @@ src/aspenops_nexus/
   evaluation.py             五重状态、约束和守恒残差
   cache.py                  内容寻址结果缓存
   certification.py          独立重复认证
-  provenance.py             防篡改运行证据包
+  provenance.py             自校验运行完整性包
   optimizer.py              约束感知差分进化
   design.py                 DOE 与工况排序
   mcp_server.py             窄接口 MCP Server
@@ -799,6 +799,6 @@ Aspen Plus、Aspen HYSYS、模型文件、物性数据库、供应商文档和�
 
 ## Let agents design the experiment. Let Aspen solve the physics. Let AspenOps enforce the truth.
 
-**AspenOps 1.0 — deterministic process simulation for the agentic era.**
+**AspenOps 2.0 — deterministic process simulation for the agentic era.**
 
 </div>

@@ -3,9 +3,18 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections import Counter, OrderedDict
 from contextlib import closing
 from pathlib import Path
 from typing import Any
+
+_SQLITE_PARAMETER_BATCH = 900
+_MEMORY_MAX_ENTRIES = 4096
+_HIT_FLUSH_THRESHOLD = 1024
+
+
+def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> list[list[str]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 class ResultCache:
@@ -13,6 +22,8 @@ class ResultCache:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._memory: OrderedDict[str, str] = OrderedDict()
+        self._pending_hits: Counter[str] = Counter()
         with closing(self._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=NORMAL")
@@ -33,36 +44,123 @@ class ResultCache:
         connection.execute("PRAGMA busy_timeout=30000")
         return connection
 
-    def get(self, key: str) -> dict[str, Any] | None:
-        with self._lock, closing(self._connect()) as connection, connection:
-            row = connection.execute(
-                "SELECT payload FROM result_cache WHERE cache_key = ?", (key,)
-            ).fetchone()
-            if row is not None:
-                connection.execute(
-                    """
-                    UPDATE result_cache
-                    SET hit_count = hit_count + 1, last_hit_at = CURRENT_TIMESTAMP
-                    WHERE cache_key = ?
-                    """,
-                    (key,),
-                )
-        return None if row is None else json.loads(str(row[0]))
+    def _remember(self, key: str, encoded: str) -> None:
+        self._memory[key] = encoded
+        self._memory.move_to_end(key)
+        while len(self._memory) > _MEMORY_MAX_ENTRIES:
+            self._memory.popitem(last=False)
 
-    def put(self, key: str, payload: dict[str, Any]) -> None:
-        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    def _flush_hits(self, connection: sqlite3.Connection) -> None:
+        if not self._pending_hits:
+            return
+        connection.executemany(
+            """
+            UPDATE result_cache
+            SET hit_count = hit_count + ?, last_hit_at = CURRENT_TIMESTAMP
+            WHERE cache_key = ?
+            """,
+            [(count, key) for key, count in self._pending_hits.items()],
+        )
+        self._pending_hits.clear()
+
+    def _flush_hits_if_needed(self) -> None:
+        if sum(self._pending_hits.values()) < _HIT_FLUSH_THRESHOLD:
+            return
+        with closing(self._connect()) as connection, connection:
+            self._flush_hits(connection)
+
+    def _discard(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        with closing(self._connect()) as connection, connection:
+            for batch in _chunks(keys):
+                placeholders = ",".join("?" for _ in batch)
+                connection.execute(
+                    f"DELETE FROM result_cache WHERE cache_key IN ({placeholders})",
+                    batch,
+                )
+        for key in keys:
+            self._memory.pop(key, None)
+            self._pending_hits.pop(key, None)
+
+    def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        if not keys:
+            return {}
+        counts = Counter(keys)
+        unique_keys = list(counts)
+        encoded: dict[str, str] = {}
+        with self._lock:
+            missing: list[str] = []
+            for key in unique_keys:
+                memory_payload = self._memory.get(key)
+                if memory_payload is None:
+                    missing.append(key)
+                else:
+                    self._memory.move_to_end(key)
+                    encoded[key] = memory_payload
+            if missing:
+                with closing(self._connect()) as connection:
+                    for batch in _chunks(missing):
+                        placeholders = ",".join("?" for _ in batch)
+                        rows = connection.execute(
+                            "SELECT cache_key, payload FROM result_cache "
+                            f"WHERE cache_key IN ({placeholders})",
+                            batch,
+                        ).fetchall()
+                        for row in rows:
+                            key = str(row[0])
+                            payload = str(row[1])
+                            encoded[key] = payload
+                            self._remember(key, payload)
+
+            decoded: dict[str, dict[str, Any]] = {}
+            corrupt: list[str] = []
+            for key, payload in encoded.items():
+                try:
+                    value = json.loads(payload)
+                except json.JSONDecodeError:
+                    corrupt.append(key)
+                    continue
+                if not isinstance(value, dict):
+                    corrupt.append(key)
+                    continue
+                decoded[key] = {str(name): item for name, item in value.items()}
+
+            self._discard(corrupt)
+            self._pending_hits.update({key: counts[key] for key in decoded})
+            self._flush_hits_if_needed()
+            return decoded
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        return self.get_many([key]).get(key)
+
+    def put_many(self, payloads: dict[str, dict[str, Any]]) -> None:
+        if not payloads:
+            return
+        encoded_payloads = {
+            key: json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False)
+            for key, payload in payloads.items()
+        }
+        rows = list(encoded_payloads.items())
         with self._lock, closing(self._connect()) as connection, connection:
-            connection.execute(
+            self._flush_hits(connection)
+            connection.executemany(
                 """
                 INSERT INTO result_cache(cache_key, payload)
                 VALUES (?, ?)
                 ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload
                 """,
-                (key, encoded),
+                rows,
             )
+            for key, encoded in encoded_payloads.items():
+                self._remember(key, encoded)
+
+    def put(self, key: str, payload: dict[str, Any]) -> None:
+        self.put_many({key: payload})
 
     def stats(self) -> dict[str, int]:
-        with self._lock, closing(self._connect()) as connection:
+        with self._lock, closing(self._connect()) as connection, connection:
+            self._flush_hits(connection)
             row = connection.execute(
                 "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM result_cache"
             ).fetchone()
@@ -70,5 +168,7 @@ class ResultCache:
 
     def clear(self) -> int:
         with self._lock, closing(self._connect()) as connection, connection:
+            self._flush_hits(connection)
             cursor = connection.execute("DELETE FROM result_cache")
+            self._memory.clear()
             return int(cursor.rowcount)

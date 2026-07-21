@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aspenops-nexus"
-version = "1.0.0"
+version = "2.0.0"
 description = "A deterministic, process-isolated and license-aware Aspen execution fabric for AI coding agents."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,8 +25,10 @@ dependencies = ["psutil>=5.9"]
 [project.optional-dependencies]
 windows = ["pywin32>=306; platform_system == 'Windows'"]
 agent = ["mcp>=1.9"]
+signing = ["cryptography>=45"]
 dev = [
   "build>=1.2",
+  "cryptography>=45",
   "mypy>=1.15",
   "pytest>=8.3",
   "pytest-cov>=6.0",
@@ -45,6 +47,7 @@ packages = ["src/aspenops_nexus"]
 [tool.hatch.build]
 include = [
   "src/aspenops_nexus/**/*.py",
+  "src/aspenops_nexus/py.typed",
   "src/aspenops_nexus/data/*.json",
 ]
 

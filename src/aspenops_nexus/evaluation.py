@@ -4,19 +4,15 @@ import math
 import time
 from typing import Any
 
-from .backends.base import SimulatorBackend
+from .backends.base import SimulatorBackend, TransactionState, WriteTransactionError
+from .evaluation_plan import EvaluationPlan, EvaluationPlanCompiler, node_identity
 from .models import ConstraintSpec, EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry, ResolvedNode
 from .units import convert
 
 
-def _value_key(key: str, identifiers: dict[str, str]) -> str:
-    suffix = ",".join(f"{k}={v}" for k, v in sorted(identifiers.items()))
-    return key if not suffix else f"{key}:{suffix}"
-
-
 def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
-    if isinstance(raw, (bool, str)):
+    if isinstance(raw, bool | str):
         return raw
     target_unit = unit or node.native_unit
     return convert(float(raw), node.native_unit, target_unit)
@@ -50,17 +46,8 @@ def evaluate(
     request: EvaluationRequest,
     *,
     worker_id: int | None = None,
+    plan: EvaluationPlan | None = None,
 ) -> EvaluationResult:
-    """Execute one deterministic evaluation transaction.
-
-    State transition:
-        validate -> reset -> atomic writes -> solve -> required reads -> constraints -> balances
-
-    The result intentionally separates transport, engine return, numerical convergence and physical
-    feasibility. A Python function returning without exception is never treated as proof of a valid
-    process solution.
-    """
-
     started = time.perf_counter()
     violations: list[str] = []
     diagnostics: dict[str, Any] = {"state_trace": ["received"]}
@@ -72,66 +59,79 @@ def evaluate(
     values: dict[str, Any] = {}
     units: dict[str, str | None] = {}
     try:
-        write_items: list[tuple[ResolvedNode, Any]] = []
-        for write in request.writes:
-            node = registry.resolve(write.key, write.identifiers)
-            registry.validate_backend(node, request.backend)
-            validated = registry.validate_write(node, write.value, write.unit)
-            write_items.append((node, validated))
-        read_pairs: list[tuple[Any, ResolvedNode]] = []
-        for read in request.reads:
-            node = registry.resolve(read.key, read.identifiers)
-            registry.validate_backend(node, request.backend)
-            read_pairs.append((read, node))
-        diagnostics["state_trace"].append("validated")
+        active_plan = plan or EvaluationPlanCompiler.compile(registry, request)
+        diagnostics["state_trace"].append("plan_compiled")
+        diagnostics["io"] = {
+            "declared_writes": active_plan.estimated_io.declared_writes,
+            "unique_write_nodes": active_plan.estimated_io.unique_write_nodes,
+            "declared_reads": active_plan.estimated_io.declared_reads,
+            "unique_read_nodes": active_plan.estimated_io.unique_read_nodes,
+            "avoided_duplicate_reads": active_plan.estimated_io.avoided_duplicate_reads,
+            "com_reads": active_plan.estimated_io.unique_read_nodes,
+            "com_writes": active_plan.estimated_io.declared_writes,
+        }
 
         if request.reinitialize:
             backend.reinitialize()
             diagnostics["state_trace"].append("reinitialized")
         else:
             diagnostics["state_trace"].append("warm_start")
-        backend.bulk_write(write_items)
+        backend.bulk_write(
+            [(compiled.node, compiled.native_value) for compiled in active_plan.writes]
+        )
         diagnostics["state_trace"].append("writes_committed")
 
         run_info = backend.run()
         communication_ok = True
-        engine_ok = bool(run_info.get("engine_returned", True))
-        converged = bool(run_info.get("converged", False))
+        engine_ok = bool(run_info.get("engine_returned", False))
+        convergence_state = str(run_info.get("convergence_state", "unknown"))
+        converged = convergence_state == "converged" and bool(run_info.get("converged", False))
         diagnostics["run"] = run_info
         diagnostics["runtime"] = backend.runtime_identity()
         diagnostics["state_trace"].append("engine_returned")
 
-        raw_values = backend.bulk_read([node for _, node in read_pairs])
-        for (read, node), raw in zip(read_pairs, raw_values, strict=True):
-            output_key = _value_key(read.key, read.identifiers)
-            converted = _converted(raw, node, read.unit)
-            values[output_key] = converted
-            units[output_key] = read.unit or node.native_unit
-            if read.required and not _finite(converted):
-                violations.append(f"non_finite_required_output:{output_key}")
+        raw_by_identity = dict(
+            zip(
+                (node_identity(node) for node in active_plan.unique_reads),
+                backend.bulk_read(list(active_plan.unique_reads)),
+                strict=True,
+            )
+        )
+
+        for binding in active_plan.output_bindings:
+            converted = _converted(
+                raw_by_identity[binding.identity], binding.node, binding.spec.unit
+            )
+            values[binding.output_key] = converted
+            units[binding.output_key] = binding.spec.unit or binding.node.native_unit
+            if binding.spec.required and not _finite(converted):
+                violations.append(f"non_finite_required_output:{binding.output_key}")
                 feasible = False
         diagnostics["state_trace"].append("outputs_read")
 
         constraint_details: list[dict[str, Any]] = []
         total_constraint_violation = 0.0
-        for index, constraint in enumerate(request.constraints):
-            node = registry.resolve(constraint.key, constraint.identifiers)
-            registry.validate_backend(node, request.backend)
-            actual_raw = backend.read(node)
-            actual = float(_converted(actual_raw, node, constraint.unit))
-            violation = _constraint_violation(constraint, actual)
+        for index, compiled_constraint in enumerate(active_plan.constraints):
+            actual = float(
+                _converted(
+                    raw_by_identity[compiled_constraint.identity],
+                    compiled_constraint.node,
+                    compiled_constraint.spec.unit,
+                )
+            )
+            violation = _constraint_violation(compiled_constraint.spec, actual)
             passed = violation <= 0.0
-            name = constraint.name or f"constraint_{index}"
+            name = compiled_constraint.spec.name or f"constraint_{index}"
             total_constraint_violation += violation
             constraint_details.append(
                 {
                     "name": name,
                     "actual": actual,
-                    "operator": constraint.operator,
-                    "limit": constraint.value,
-                    "tolerance": constraint.tolerance,
+                    "operator": compiled_constraint.spec.operator,
+                    "limit": compiled_constraint.spec.value,
+                    "tolerance": compiled_constraint.spec.tolerance,
                     "violation": violation,
-                    "unit": constraint.unit or node.native_unit,
+                    "unit": (compiled_constraint.spec.unit or compiled_constraint.node.native_unit),
                     "passed": passed,
                 }
             )
@@ -142,41 +142,55 @@ def evaluate(
             diagnostics["constraints"] = constraint_details
             diagnostics["total_constraint_violation"] = total_constraint_violation
 
-        for balance in request.balances:
+        for compiled_balance in active_plan.balances:
             signed_terms: list[float] = []
             absolute_terms: list[float] = []
-            for term in balance.terms:
-                node = registry.resolve(term.key, term.identifiers)
-                registry.validate_backend(node, request.backend)
-                raw = backend.read(node)
-                converted = float(_converted(raw, node, term.unit))
-                signed = term.coefficient * converted
+            for compiled_term in compiled_balance.terms:
+                converted = float(
+                    _converted(
+                        raw_by_identity[compiled_term.identity],
+                        compiled_term.node,
+                        compiled_term.spec.unit,
+                    )
+                )
+                signed = compiled_term.spec.coefficient * converted
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
-            residual = math.fsum(signed_terms) - balance.expected
-            scale = max(math.fsum(absolute_terms), balance.floor)
+            residual = math.fsum(signed_terms) - compiled_balance.spec.expected
+            scale = max(math.fsum(absolute_terms), compiled_balance.spec.floor)
             relative = abs(residual) / scale
-            passed = abs(residual) <= balance.abs_tol or relative <= balance.rel_tol
-            balance_residuals[balance.name] = {
+            passed = (
+                abs(residual) <= compiled_balance.spec.abs_tol
+                or relative <= compiled_balance.spec.rel_tol
+            )
+            balance_residuals[compiled_balance.spec.name] = {
                 "residual": residual,
                 "absolute": abs(residual),
                 "scale": scale,
                 "relative": relative,
-                "abs_tol": balance.abs_tol,
-                "rel_tol": balance.rel_tol,
+                "abs_tol": compiled_balance.spec.abs_tol,
+                "rel_tol": compiled_balance.spec.rel_tol,
                 "passed": 1.0 if passed else 0.0,
             }
             if not passed:
-                violations.append(f"balance_failed:{balance.name}")
+                violations.append(f"balance_failed:{compiled_balance.spec.name}")
                 feasible = False
 
         if not engine_ok:
             violations.append("engine_did_not_return")
             feasible = False
         if not converged:
-            violations.append("simulator_not_converged")
+            violations.append(f"simulator_not_converged:{convergence_state}")
             feasible = False
         diagnostics["state_trace"].append("verified")
+    except WriteTransactionError as exc:
+        diagnostics["exception_type"] = type(exc).__name__
+        diagnostics["exception"] = str(exc)
+        diagnostics["transaction_state"] = exc.state.value
+        diagnostics["worker_tainted"] = exc.state is TransactionState.TAINTED
+        diagnostics["state_trace"].append("failed")
+        violations.append(f"write_transaction:{exc.state.value}")
+        feasible = False
     except Exception as exc:
         diagnostics["exception_type"] = type(exc).__name__
         diagnostics["exception"] = str(exc)
