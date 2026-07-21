@@ -1045,7 +1045,8 @@ def _runtime_scope_evidence(
                     )
                     continue
                 diagnostics = result.get("diagnostics", {})
-                runtime = diagnostics.get("runtime") if isinstance(diagnostics, dict) else None
+                worker = diagnostics.get("worker") if isinstance(diagnostics, dict) else None
+                runtime = worker.get("runtime") if isinstance(worker, dict) else None
                 if not isinstance(runtime, dict):
                     violations.append(
                         {

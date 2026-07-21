@@ -360,9 +360,11 @@ def execution_report(workers: int) -> dict[str, Any]:
                 {
                     "ok": True,
                     "diagnostics": {
-                        "runtime": {
-                            "progid": "Apwn.Document.40.0",
-                            "exposed": {"Version": "40.1"},
+                        "worker": {
+                            "runtime": {
+                                "progid": "Apwn.Document.40.0",
+                                "exposed": {"Version": "40.1"},
+                            }
                         }
                     },
                 }
@@ -553,7 +555,7 @@ def test_out_of_scope_runtime_identity_fails_runtime_gate_but_stays_pending(
         **kwargs: Any,
     ) -> dict[str, Any]:
         report = execution_report(kwargs["workers"])
-        runtime = report["runs"][0][0]["diagnostics"]["runtime"]
+        runtime = report["runs"][0][0]["diagnostics"]["worker"]["runtime"]
         runtime["progid"] = "Apwn.Document.999.0"
         return report
 
@@ -569,6 +571,36 @@ def test_out_of_scope_runtime_identity_fails_runtime_gate_but_stays_pending(
     assert report["runtime_gate_passed"] is False
     assert report["certification_status"] == PENDING_REAL_ASPEN_CERTIFICATION
     assert "runtime_progid_out_of_scope" in {
+        item["code"] for item in report["runtime_scope"]["violations"]
+    }
+
+
+def test_direct_runtime_field_cannot_forge_worker_protocol_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, configured, env, _ = valid_preflight(tmp_path, monkeypatch)
+
+    def forged_runtime(
+        request: dict[str, Any],
+        active_settings: Settings,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        report = execution_report(kwargs["workers"])
+        worker_runtime = report["runs"][0][0]["diagnostics"].pop("worker")
+        report["runs"][0][0]["diagnostics"]["runtime"] = worker_runtime["runtime"]
+        return report
+
+    monkeypatch.setattr(licensed, "certify_batch_document", forged_runtime)
+    report = execute_licensed_certification(
+        plan,
+        configured,
+        output_dir=configured.state_dir / "forged-runtime",
+        environment=env,
+    )
+
+    assert report["runtime_gate_passed"] is False
+    assert "runtime_identity_missing" in {
         item["code"] for item in report["runtime_scope"]["violations"]
     }
 
