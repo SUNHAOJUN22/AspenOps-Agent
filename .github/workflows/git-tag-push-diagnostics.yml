@@ -1,0 +1,56 @@
+name: Git tag push diagnostics
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
+      github.event.issue.title == 'AspenOps git tag push diagnostics' &&
+      github.event.issue.body == 'RUN_GIT_TAG_PUSH_DIAGNOSTICS_20260721'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COMMIT_SHA: 2d5ae6cb08df1bdaad26f596f1060c4d397bf020
+      TAG_NAME: archive/branch/agent-aspenops-1.0-production-runtime/20260721/2d5ae6c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Create local annotated tag and capture push response
+        shell: bash
+        run: |
+          set -uo pipefail
+          git config user.name 'AspenOps Archive'
+          git config user.email 'aspenops-archive@users.noreply.github.com'
+          if ! git cat-file -e "$COMMIT_SHA^{commit}" 2>/dev/null; then
+            git fetch --force origin "$COMMIT_SHA"
+          fi
+          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            GIT_COMMITTER_DATE='2026-07-21T09:45:00Z' \
+              git tag -a "$TAG_NAME" "$COMMIT_SHA" -m 'Archive push diagnostic'
+          fi
+          set +e
+          response="$(git push origin "refs/tags/$TAG_NAME" 2>&1)"
+          status=$?
+          set -e
+          safe="$(printf '%s' "$response" | head -c 5000)"
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
+            "git push tag exit=$status\n\n\`\`\`text\n$safe\n\`\`\`\n\nRun: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ $status -eq 0 ]]; then
+            peeled="$(git ls-remote origin "refs/tags/$TAG_NAME^{}" | awk '{print $1}')"
+            [[ "$peeled" == "$COMMIT_SHA" ]]
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+          else
+            exit "$status"
+          fi
