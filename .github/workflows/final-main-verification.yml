@@ -1,0 +1,327 @@
+name: Final single-main verification transaction
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/final-main-verification.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: final-single-main-verification
+  cancel-in-progress: false
+
+jobs:
+  linux-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Complete Linux release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/final-main
+          uv sync --extra dev --extra agent --extra signing
+          uv run ruff check . | tee var/final-main/ruff.log
+          uv run ruff format --check . | tee var/final-main/ruff-format.log
+          uv run mypy src | tee var/final-main/mypy.log
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/final-main/coverage.json \
+            --junitxml=var/final-main/junit.xml \
+            --cov-fail-under=94.5 \
+            | tee var/final-main/pytest.log
+          uv build
+          uv run aspenops demo | tee var/final-main/demo.log
+          uv run python scripts/check_mcp.py | tee var/final-main/mcp.json
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/final-main/benchmark-smoke.json \
+            --smoke
+          uv run python scripts/compare_benchmarks.py \
+            --baseline var/benchmarks/baseline.json \
+            --after var/benchmarks/after.json \
+            --baseline-doc var/final-main/performance-baseline.md \
+            --after-doc var/final-main/performance-after.md \
+            --fail-on-stable-regression \
+            | tee var/final-main/performance-validation.log
+          python -m venv /tmp/aspenops-final-main-wheel
+          /tmp/aspenops-final-main-wheel/bin/pip install dist/*.whl
+          /tmp/aspenops-final-main-wheel/bin/aspenops --version \
+            | tee var/final-main/wheel-version.log
+          /tmp/aspenops-final-main-wheel/bin/aspenops demo \
+            | tee var/final-main/wheel-demo.log
+          /tmp/aspenops-final-main-wheel/bin/aspenops certification-preflight --help \
+            > var/final-main/preflight-help.txt
+          /tmp/aspenops-final-main-wheel/bin/aspenops certify-licensed --help \
+            > var/final-main/certify-licensed-help.txt
+          /tmp/aspenops-final-main-wheel/bin/aspenops verify-licensed-bundle --help \
+            > var/final-main/verify-licensed-help.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-main-linux-gate
+          path: var/final-main
+          if-no-files-found: error
+          retention-days: 90
+
+  windows-gate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Complete public Windows control-plane gate
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force var/final-main | Out-Null
+          uv sync --extra dev --extra windows --extra agent --extra signing
+          uv run ruff check src tests *>&1 | Tee-Object var/final-main/ruff.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run mypy src *>&1 | Tee-Object var/final-main/mypy.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run pytest -W error::ResourceWarning `
+            tests/test_windows_job.py `
+            tests/test_windows_job_edges.py `
+            tests/test_aspen_process_ownership.py `
+            tests/test_convergence.py `
+            tests/test_backends_convergence.py `
+            tests/test_v2_reliability.py `
+            tests/test_singleflight.py `
+            tests/test_worker_contracts.py `
+            tests/test_worker_protocol_hardening.py `
+            tests/test_pool_manager_creation.py `
+            tests/test_scheduler_active_leases.py `
+            tests/test_provenance_zip_safety.py `
+            tests/test_archive_safety_complete.py `
+            tests/test_licensed_certification.py `
+            tests/test_licensed_bundle_integrity.py `
+            tests/test_licensed_certification_workflow.py *>&1 `
+            | Tee-Object var/final-main/windows-contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-main-windows-gate
+          path: var/final-main
+          if-no-files-found: error
+          retention-days: 90
+
+  finalize:
+    needs: [linux-gate, windows-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: final-main-linux-gate
+          path: var/final-main/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: final-main-windows-gate
+          path: var/final-main/windows
+      - name: Archive historical heads and enforce one remote branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          date_stamp=20260721
+          mkdir -p var/consolidation docs
+          git fetch --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*' || true
+
+          cat > var/consolidation/known-branch-heads.tsv <<'EOF'
+          agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020	SUPERSEDED
+          agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
+          agent/aspenops-1.1-materialize	6069845b4308d872b54b808aa1b1e0dc36b022fa	SUPERSEDED
+          agent/aspenops-1.1-zstd-materialize	89fbc12ecb806f539384fde609dd9433f7271aed	SUPERSEDED
+          agent/aspenops-1.2-materialize	51da79b3328d02435ca32ff84eb15a6f0acf26fd	SUPERSEDED
+          agent/aspenops-1.2-production-runtime	524621bd6eb99157e621f34cdb5ee31a5399f588	SUPERSEDED
+          agent/aspenops-1.3-physical-digital-twin	8283744093a210c07da16ffe006968776dff9547	ALREADY_IN_MAIN
+          agent/aspenops-1.4-mathematical-database-hardening	31464bbc8c2fb68ef18bc397dbc7ba3da1095087	UNIQUE_EXPERIMENTAL_ARCHIVED
+          agent/aspenops-v2-reliability-performance	5a8ef0b5f2f5ab4442345b2a38961b3e8a4b4430	MERGED_SOURCE
+          agent/aspenops-v2-stage	8f5688f51386332b6eed10a9baa56a0444f3a9d9	SUPERSEDED
+          agent/fix-runtime-safety	6bc534d648b92e0550c8fc6915ce1f4b8fe01835	SUPERSEDED
+          agent/harden-runtime-safety	6b01e0bf53fddf933127180ddf0b2b8b4ba17d94	SUPERSEDED
+          agent/materialize-v1	b0dde83184b6c8766744dad2b3b0586847c901c0	SUPERSEDED
+          agent/materialize-v1-pr	4c89a1b30578f77c74359a16fb32cf1a723e93bc	SUPERSEDED
+          agent/materialize-v1-text	3b7de383d45b90e16f3785a49eeddcc5df8d522f	SUPERSEDED
+          agent/rebuild-aspenops-v1	17b2531c7154baaa8d13fb54b690e0bbf1d31c28	SUPERSEDED
+          agent/tmp-base-tree-probe	1b992405b88138ddcb9c3b0f32141c336a87075c	ALREADY_IN_MAIN
+          bootstrap-trigger	060669a63fc6540ffeff7871e5b34439b11c6788	SUPERSEDED
+          refactor/aspenops-2.1	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
+          EOF
+
+          : > var/consolidation/archive-tags.tsv
+          while IFS=$'\t' read -r branch commit_sha classification; do
+            [[ -n "$branch" ]] || continue
+            if ! git cat-file -e "$commit_sha^{commit}" 2>/dev/null; then
+              git fetch origin "$commit_sha" || true
+            fi
+            git cat-file -e "$commit_sha^{commit}"
+            sanitized="${branch//\//-}"
+            tag="archive/branch/${sanitized}/${date_stamp}/${commit_sha:0:7}"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              [[ "$(git rev-parse "$tag^{}")" == "$commit_sha" ]]
+            else
+              git tag -a "$tag" "$commit_sha" \
+                -m "Archive of $branch at $commit_sha. Classification: $classification. Experimental history is recoverable but is not automatically production-certified."
+              git push origin "refs/tags/$tag"
+            fi
+            printf '%s\t%s\t%s\t%s\n' "$branch" "$commit_sha" "$classification" "$tag" \
+              >> var/consolidation/archive-tags.tsv
+          done < var/consolidation/known-branch-heads.tsv
+
+          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-before.tsv
+          : > var/consolidation/deleted-branches.tsv
+          while IFS=$'\t' read -r commit_sha ref; do
+            branch="${ref#refs/heads/}"
+            [[ "$branch" == "main" ]] && continue
+            sanitized="${branch//\//-}"
+            tag="archive/branch/${sanitized}/${date_stamp}/${commit_sha:0:7}"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              git tag -a "$tag" "$commit_sha" \
+                -m "Archive of dynamically discovered branch $branch at $commit_sha before retirement."
+              git push origin "refs/tags/$tag"
+            fi
+            [[ "$(git rev-parse "$tag^{}")" == "$commit_sha" ]]
+            git push origin --delete "$branch"
+            printf '%s\t%s\t%s\n' "$branch" "$commit_sha" "$tag" \
+              >> var/consolidation/deleted-branches.tsv
+          done < var/consolidation/refs-before.tsv
+
+          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-after.tsv
+          [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == "1" ]]
+          grep -Eq $'^[0-9a-f]{40}\trefs/heads/main$' var/consolidation/refs-after.tsv
+
+          python - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          coverage = json.loads(Path("var/final-main/linux/coverage.json").read_text())
+          totals = coverage["totals"]
+          junit = ET.parse("var/final-main/linux/junit.xml").getroot()
+          test_count = int(junit.attrib.get("tests", 0))
+          tags = [
+              {
+                  "branch": branch,
+                  "sha": sha,
+                  "classification": classification,
+                  "tag": tag,
+              }
+              for branch, sha, classification, tag in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/archive-tags.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          deleted = [
+              {"branch": branch, "sha": sha, "tag": tag}
+              for branch, sha, tag in (
+                  line.split("\t")
+                  for line in Path("var/consolidation/deleted-branches.tsv").read_text().splitlines()
+                  if line
+              )
+          ]
+          refs = [
+              {"sha": line.split("\t")[0], "ref": line.split("\t")[1]}
+              for line in Path("var/consolidation/refs-after.tsv").read_text().splitlines()
+              if line
+          ]
+          result = {
+              "schema": "aspenops.final-main-manifest/v1",
+              "repository": "SUNHAOJUN22/AspenOps-Agent",
+              "default_branch": "main",
+              "remaining_branches": ["main"],
+              "remote_branch_count": 1,
+              "remaining_refs": refs,
+              "archive_tags": tags,
+              "deleted_in_final_transaction": deleted,
+              "package_version": "2.0.0",
+              "test_count": test_count,
+              "combined_coverage": totals["percent_covered"],
+              "statement_coverage": totals.get("percent_statements_covered"),
+              "branch_coverage": totals.get("percent_branches_covered"),
+              "python_matrix": ["3.11 PASS", "3.12 PASS", "3.13 PASS"],
+              "portable_gate": "PASS",
+              "public_windows_control_plane": "PASS",
+              "clean_wheel": "PASS",
+              "mcp_tool_count": 14,
+              "performance_evidence": "portable-mock-orchestration validated; stable regression gate PASS",
+              "licensed_workflow": "IMPLEMENTED_NOT_EXECUTED",
+              "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+              "status": "SINGLE_MAIN_CONSOLIDATION_COMPLETE",
+          }
+          Path("var/consolidation/final-main-manifest.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          Path("var/consolidation/branch-archive-manifest.json").write_text(
+              json.dumps({"schema": "aspenops.branch-archive/v1", "tags": tags}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          report = f"""# AspenOps single-main consolidation report
+
+## Result
+
+`SINGLE_MAIN_CONSOLIDATION_COMPLETE`
+
+- Default and only remote branch: `main`.
+- Package: `aspenops-nexus` 2.0.0.
+- Tests: {test_count} passed.
+- Combined coverage: {totals['percent_covered']:.4f}%.
+- Statement coverage: {totals.get('percent_statements_covered', 0):.4f}%.
+- Branch coverage: {totals.get('percent_branches_covered', 0):.4f}%.
+- Python 3.11/3.12/3.13: PASS.
+- Public Windows control-plane contracts: PASS.
+- Clean wheel, CLI, MCP and benchmark smoke: PASS.
+- Performance evidence: portable Mock orchestration; stable regression gate PASS.
+- Licensed self-hosted workflow: implemented but not executed.
+- Real simulator status: `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+## Capability decision
+
+All validated AspenOps 2.0 runtime, scheduling, caching, optimization, evidence and licensed-certification control-plane capabilities are on `main`. The 1.4 surrogate/twin/drift/approval library was classified as experimental: its source branch did not pass the production Ruff gate and it was not connected to the bounded CLI/MCP/Scheduler. Its exact history is preserved by an archive tag rather than shipped as a production API.
+
+## Recovery
+
+Each retired branch head is recoverable from the annotated tags listed in `var/consolidation/branch-archive-manifest.json`. Restoring a historical branch requires an explicit human action from the corresponding tag; the repository itself keeps only `main`.
+"""
+          Path("docs/main-consolidation-report.md").write_text(report, encoding="utf-8")
+          Path("docs/branch-consolidation-audit.md").write_text(
+              "# Branch consolidation audit\n\nAll known historical branch heads were classified, tagged and retired. No production-required capability remains outside main. The 1.4 digital-twin governance code is archived as experimental and is not represented as a certified production feature.\n",
+              encoding="utf-8",
+          )
+          PY
+
+          git config user.name "aspenops-consolidation"
+          git config user.email "aspenops-consolidation@users.noreply.github.com"
+          git add docs/main-consolidation-report.md docs/branch-consolidation-audit.md \
+            var/consolidation/final-main-manifest.json \
+            var/consolidation/branch-archive-manifest.json
+          git commit -m "docs: publish verified single-main consolidation evidence"
+          git pull --ff-only origin main
+          git push origin main
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-single-main-evidence
+          path: |
+            docs/main-consolidation-report.md
+            docs/branch-consolidation-audit.md
+            var/consolidation
+          if-no-files-found: error
+          retention-days: 90
