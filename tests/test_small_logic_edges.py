@@ -137,8 +137,8 @@ def test_tolerance_helper_handles_discrete_nonfinite_and_numeric_values() -> Non
         0.0,
     )
     assert passed is False
-    assert math.isinf(absolute)
-    assert math.isinf(relative)
+    assert absolute is None
+    assert relative is None
     assert certification._within_tolerance(math.inf, 1.0, 1.0, 1.0)[0] is False
     assert certification._within_tolerance(1.0, 1.000001, 1e-5, 0.0)[0] is True
     assert certification._within_tolerance(100.0, 101.0, 0.0, 0.02)[0] is True
@@ -159,11 +159,11 @@ def certification_inputs(tmp_path: Path) -> tuple[dict[str, Any], Settings]:
 
 def test_certification_rejects_invalid_configuration(tmp_path: Path) -> None:
     data, settings = certification_inputs(tmp_path)
-    with pytest.raises(ValueError, match="at least two"):
+    with pytest.raises(ValueError, match="between 2 and 100"):
         certification.certify_batch_document(data, settings, repeats=1)
-    with pytest.raises(ValueError, match="cannot be negative"):
+    with pytest.raises(ValueError, match="finite non-negative"):
         certification.certify_batch_document(data, settings, abs_tol=-1.0)
-    with pytest.raises(ValueError, match="cannot be negative"):
+    with pytest.raises(ValueError, match="finite non-negative"):
         certification.certify_batch_document(data, settings, rel_tol=-1.0)
 
 
@@ -229,7 +229,14 @@ def test_certification_reports_value_ok_and_key_mismatches(
     assert report["all_runs_successful"] is False
     assert report["deterministic"] is False
     assert report["passed"] is False
-    assert math.isinf(report["max_absolute_error"])
+    assert report["max_absolute_error"] == pytest.approx(0.5)
+    structural = [
+        item
+        for item in report["comparisons"]
+        if item["key"] in {"only_candidate", "only_reference"}
+    ]
+    assert structural
+    assert all(item["absolute_error"] is None for item in structural)
     assert {item["key"] for item in report["comparisons"]} == {
         "__ok__",
         "label",
@@ -239,7 +246,7 @@ def test_certification_reports_value_ok_and_key_mismatches(
     }
 
 
-def test_certification_can_pass_for_identical_nonmock_runs(
+def test_certification_requires_approved_tolerances_for_nonmock_runs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -251,9 +258,32 @@ def test_certification_can_pass_for_identical_nonmock_runs(
         "run_batch_document",
         lambda request, isolated: response,
     )
-    report = certification.certify_batch_document(data, settings, repeats=2)
+
+    missing_tolerances = certification.certify_batch_document(data, settings, repeats=2)
+    assert missing_tolerances["passed"] is False
+    assert missing_tolerances["runs"] == []
+
+    pending_acceptance = certification.certify_batch_document(
+        data,
+        settings,
+        repeats=2,
+        abs_tol=1e-8,
+        rel_tol=1e-6,
+    )
+    assert pending_acceptance["passed"] is False
+    assert pending_acceptance["runs"] == []
+
+    report = certification.certify_batch_document(
+        data,
+        settings,
+        repeats=2,
+        abs_tol=1e-8,
+        rel_tol=1e-6,
+        engineering_approved=True,
+    )
     assert report["passed"] is True
-    assert report["qualification_level"] == "licensed-simulator-runtime"
+    assert report["qualification_level"] == "licensed-runtime-repeatability"
+    assert report["certification_status"] == certification.PENDING_REAL_ASPEN_CERTIFICATION
     assert report["comparisons"]
 
 
