@@ -1,4 +1,4 @@
-name: Final audited Git tag transaction
+name: Final temporary branch cleanup
 
 on:
   issues:
@@ -8,18 +8,14 @@ permissions:
   contents: write
   issues: write
 
-concurrency:
-  group: final-audited-git-tag-transaction
-  cancel-in-progress: false
-
 jobs:
-  finalize:
+  cleanup:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.event.issue.title == 'AspenOps final git tag transaction' &&
-      github.event.issue.body == 'RUN_FINAL_GIT_TAG_TRANSACTION_20260721'
+      github.event.issue.title == 'AspenOps final temporary branch cleanup' &&
+      github.event.issue.body == 'RUN_FINAL_BRANCH_CLEANUP_20260721'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -28,172 +24,25 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          fetch-tags: true
-      - name: Report run identity
-        shell: bash
-        run: |
-          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            "Final Git tag transaction started. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-      - name: Verify audited evidence and fetch historical objects
+      - name: Delete all non-main branches and verify final refs
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          audit = json.loads(Path('docs/single-main-audit.json').read_text(encoding='utf-8'))
-          assert audit['status'] == 'PASS'
-          assert audit['final_branch_state'] == 'MAIN_ONLY'
-          assert audit['linux_ci_gate'] == 'PASS'
-          assert audit['windows_control_plane_gate'] == 'PASS'
-          assert audit['build'] == 'PASS'
-          assert audit['wheel_install'] == 'PASS'
-          assert audit['mcp_surface'] == 'PASS'
-          assert audit['benchmark_stable_regression_gate'] == 'PASS'
-          assert audit['test_count_python_3_12'] == 563
-          assert audit['combined_branch_aware_coverage_percent'] >= 94.5
-          assert audit['real_aspen_status'] == 'PENDING_REAL_ASPEN_CERTIFICATION'
-          assert audit['ci_run_id'] == '29814739487'
-          assert audit['windows_run_id'] == '29814739334'
-          PY
-          source_sha="$(python -c "import json; print(json.load(open('docs/single-main-audit.json'))['source_main_sha'])")"
-          git diff --quiet "$source_sha" HEAD -- \
-            src tests pyproject.toml uv.lock scripts examples
-          git fetch --force --prune origin \
-            '+refs/pull/*/head:refs/remotes/origin/pr/*'
-          git fetch --force --tags origin
-      - name: Create and verify exact annotated recovery tags
-        shell: bash
-        run: |
-          set -euo pipefail
-          date_stamp=20260721
-          mkdir -p var/consolidation
-          git config user.name 'AspenOps Archive'
-          git config user.email 'aspenops-archive@users.noreply.github.com'
-          cat > var/consolidation/known-branch-heads.tsv <<'EOF'
-          agent/aspenops-1.0-production-runtime	2d5ae6cb08df1bdaad26f596f1060c4d397bf020	SUPERSEDED
-          agent/aspenops-1.0-staging	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
-          agent/aspenops-1.1-materialize	6069845b4308d872b54b808aa1b1e0dc36b022fa	SUPERSEDED
-          agent/aspenops-1.1-zstd-materialize	89fbc12ecb806f539384fde609dd9433f7271aed	SUPERSEDED
-          agent/aspenops-1.2-materialize	51da79b3328d02435ca32ff84eb15a6f0acf26fd	SUPERSEDED
-          agent/aspenops-1.2-production-runtime	524621bd6eb99157e621f34cdb5ee31a5399f588	SUPERSEDED
-          agent/aspenops-1.3-physical-digital-twin	8283744093a210c07da16ffe006968776dff9547	ALREADY_IN_MAIN
-          agent/aspenops-1.4-mathematical-database-hardening	31464bbc8c2fb68ef18bc397dbc7ba3da1095087	UNIQUE_EXPERIMENTAL_ARCHIVED
-          agent/aspenops-v2-reliability-performance	5a8ef0b5f2f5ab4442345b2a38961b3e8a4b4430	MERGED_SOURCE
-          agent/aspenops-v2-stage	8f5688f51386332b6eed10a9baa56a0444f3a9d9	SUPERSEDED
-          agent/fix-runtime-safety	6bc534d648b92e0550c8fc6915ce1f4b8fe01835	SUPERSEDED
-          agent/harden-runtime-safety	6b01e0bf53fddf933127180ddf0b2b8b4ba17d94	SUPERSEDED
-          agent/materialize-v1	b0dde83184b6c8766744dad2b3b0586847c901c0	SUPERSEDED
-          agent/materialize-v1-pr	4c89a1b30578f77c74359a16fb32cf1a723e93bc	SUPERSEDED
-          agent/materialize-v1-text	3b7de383d45b90e16f3785a49eeddcc5df8d522f	SUPERSEDED
-          agent/rebuild-aspenops-v1	17b2531c7154baaa8d13fb54b690e0bbf1d31c28	SUPERSEDED
-          agent/tmp-base-tree-probe	1b992405b88138ddcb9c3b0f32141c336a87075c	ALREADY_IN_MAIN
-          bootstrap-trigger	060669a63fc6540ffeff7871e5b34439b11c6788	SUPERSEDED
-          refactor/aspenops-2.1	c1453ac9830fa87fcbba1db1925b96da1de082fa	ALREADY_IN_MAIN
-          audit/single-main-final-20260721	670e9523e915af309f16d959150cfadcd84219a6	AUDIT_TRIGGER_ARCHIVED
-          automation/final-main-evidence-trigger	f4968e3209d4fd76294bb9173c76ad74e74564e0	ORIGINAL_TRIGGER_ARCHIVED
-          EOF
-          create_or_verify_tag() {
-            local branch="$1" commit_sha="$2" classification="$3"
-            local sanitized tag peeled
-            sanitized="${branch//\//-}"
-            tag="archive/branch/${sanitized}/${date_stamp}/${commit_sha:0:7}"
-            if ! git cat-file -e "$commit_sha^{commit}" 2>/dev/null; then
-              git fetch --force origin "$commit_sha"
-            fi
-            git cat-file -e "$commit_sha^{commit}"
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              [[ "$(git rev-parse "$tag^{}")" == "$commit_sha" ]]
-            else
-              GIT_COMMITTER_DATE='2026-07-21T09:45:00Z' \
-                git tag -a "$tag" "$commit_sha" \
-                -m "Archive of $branch at $commit_sha. Classification: $classification. Experimental history is recoverable but not production-certified."
-              git push origin "refs/tags/$tag"
-            fi
-            git fetch --force --tags origin
-            peeled="$(git ls-remote origin "refs/tags/$tag^{}" | awk '{print $1}')"
-            [[ "$peeled" == "$commit_sha" ]]
-            printf '%s\t%s\t%s\t%s\n' "$branch" "$commit_sha" "$classification" "$tag" \
-              >> var/consolidation/archive-tags.tsv
-          }
-          : > var/consolidation/archive-tags.tsv
-          while IFS=$'\t' read -r branch commit_sha classification; do
-            create_or_verify_tag "$branch" "$commit_sha" "$classification"
-          done < var/consolidation/known-branch-heads.tsv
-          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-before.tsv
-          : > var/consolidation/deleted-branches.tsv
+          git ls-remote --heads origin | sort -k2 > /tmp/refs-before.tsv
           while IFS=$'\t' read -r commit_sha ref; do
             branch="${ref#refs/heads/}"
-            [[ "$branch" == "main" ]] && continue
-            create_or_verify_tag "$branch" "$commit_sha" 'DYNAMIC_RETIRED'
-            printf '%s\t%s\t%s\n' "$branch" "$commit_sha" \
-              "archive/branch/${branch//\//-}/${date_stamp}/${commit_sha:0:7}" \
-              >> var/consolidation/deleted-branches.tsv
-          done < var/consolidation/refs-before.tsv
-      - name: Delete non-main branches and record transaction
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS=$'\t' read -r commit_sha ref; do
-            branch="${ref#refs/heads/}"
-            [[ "$branch" == "main" ]] && continue
+            [[ "$branch" == 'main' ]] && continue
             git push origin --delete "$branch"
-          done < var/consolidation/refs-before.tsv
-          git ls-remote --heads origin | sort -k2 > var/consolidation/refs-after.tsv
-          [[ "$(wc -l < var/consolidation/refs-after.tsv | tr -d ' ')" == '1' ]]
-          grep -Eq '^[0-9a-f]{40}[[:space:]]+refs/heads/main$' var/consolidation/refs-after.tsv
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          tags = [
-              {'branch': branch, 'sha': sha, 'classification': classification, 'tag': tag}
-              for branch, sha, classification, tag in (
-                  line.split('\t')
-                  for line in Path('var/consolidation/archive-tags.tsv').read_text().splitlines()
-                  if line
-              )
-          ]
-          deleted = [
-              {'branch': branch, 'sha': sha, 'tag': tag}
-              for branch, sha, tag in (
-                  line.split('\t')
-                  for line in Path('var/consolidation/deleted-branches.tsv').read_text().splitlines()
-                  if line
-              )
-          ]
-          refs = [
-              {'sha': sha, 'ref': ref}
-              for sha, ref in (
-                  line.split('\t')
-                  for line in Path('var/consolidation/refs-after.tsv').read_text().splitlines()
-                  if line
-              )
-          ]
-          result = {
-              'schema': 'aspenops.tag-transaction/v1',
-              'status': 'PASS',
-              'archive_tags': tags,
-              'deleted_branches': deleted,
-              'remaining_refs': refs,
-              'remote_branch_count': len(refs),
-          }
-          Path('var/consolidation/tag-transaction-result.json').write_text(
-              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
-          )
-          PY
-          git config user.name 'aspenops-consolidation'
-          git config user.email 'aspenops-consolidation@users.noreply.github.com'
-          git add -f var/consolidation/tag-transaction-result.json
-          git commit -m 'chore: record completed branch tag transaction'
-          git push origin HEAD:main
+          done < /tmp/refs-before.tsv
+          git ls-remote --heads origin | sort -k2 > /tmp/refs-after.tsv
+          [[ "$(wc -l < /tmp/refs-after.tsv | tr -d ' ')" == '1' ]]
+          grep -Eq '^[0-9a-f]{40}[[:space:]]+refs/heads/main$' /tmp/refs-after.tsv
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            'Final Git tag transaction PASS. Historical tags were verified and only main remains.'
+            'Temporary branch cleanup PASS. Remote heads contain only main.'
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
       - name: Report failure
         if: failure()
         shell: bash
         run: |
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
-            "Final Git tag transaction FAILED. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || true
+            "Temporary branch cleanup FAILED. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || true
