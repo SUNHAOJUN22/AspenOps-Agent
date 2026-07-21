@@ -1,12 +1,13 @@
 name: Final tag-backed single-main transaction
 
 on:
-  push:
-    branches: [automation/final-main-evidence-trigger]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   actions: read
 
 concurrency:
@@ -17,7 +18,9 @@ jobs:
   quality:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.ref == 'refs/heads/automation/final-main-evidence-trigger'
+      github.event.issue.number == 20 &&
+      github.event.comment.body == '/run-final-main-transaction' &&
+      github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -74,7 +77,9 @@ jobs:
   tests:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.ref == 'refs/heads/automation/final-main-evidence-trigger'
+      github.event.issue.number == 20 &&
+      github.event.comment.body == '/run-final-main-transaction' &&
+      github.event.issue.pull_request
     name: Python ${{ matrix.python-version }} final tests
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -115,7 +120,9 @@ jobs:
   windows:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.ref == 'refs/heads/automation/final-main-evidence-trigger'
+      github.event.issue.number == 20 &&
+      github.event.comment.body == '/run-final-main-transaction' &&
+      github.event.issue.pull_request
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -164,7 +171,9 @@ jobs:
   finalize:
     if: >-
       github.repository == 'SUNHAOJUN22/AspenOps-Agent' &&
-      github.ref == 'refs/heads/automation/final-main-evidence-trigger'
+      github.event.issue.number == 20 &&
+      github.event.comment.body == '/run-final-main-transaction' &&
+      github.event.issue.pull_request
     needs: [quality, tests, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -241,7 +250,7 @@ jobs:
                 -f type="commit" \
                 -f 'tagger[name]=AspenOps Archive' \
                 -f 'tagger[email]=aspenops-archive@users.noreply.github.com' \
-                -f 'tagger[date]=2026-07-21T08:45:00Z' \
+                -f 'tagger[date]=2026-07-21T09:00:00Z' \
                 --jq '.sha')"
               gh api --method POST "repos/$repo/git/refs" \
                 -f ref="refs/tags/$tag" \
