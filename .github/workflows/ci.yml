@@ -29,36 +29,46 @@ jobs:
       - name: Normalize, validate, and publish licensed certification
         shell: bash
         run: |
+          mkdir -p var/ci
           set -o pipefail
-          uv sync --extra dev --extra agent --extra signing
-          uv run ruff check --fix \
-            src/aspenops_nexus/licensed_certification.py \
-            tests/test_licensed_certification.py
-          uv run ruff format \
-            src/aspenops_nexus/licensed_certification.py \
-            tests/test_licensed_certification.py
-          uv run ruff check \
-            src/aspenops_nexus/certification.py \
-            src/aspenops_nexus/licensed_certification.py \
-            tests/test_certification.py \
-            tests/test_certification_v2.py \
-            tests/test_licensed_certification.py
-          uv run mypy src
-          uv run pytest \
-            tests/test_certification.py \
-            tests/test_certification_v2.py \
-            tests/test_licensed_certification.py
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name "aspenops-ci"
-          git config user.email "aspenops-ci@users.noreply.github.com"
-          git add \
-            src/aspenops_nexus/licensed_certification.py \
-            tests/test_licensed_certification.py
-          git commit -m "style: normalize licensed certification control plane"
-          git pull --rebase origin agent/aspenops-v2-reliability-performance
-          git push origin HEAD:agent/aspenops-v2-reliability-performance
+          {
+            uv sync --extra dev --extra agent --extra signing
+            uv run ruff check --fix \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_certification.py
+            uv run ruff format \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_certification.py
+            uv run ruff check \
+              src/aspenops_nexus/certification.py \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_certification.py \
+              tests/test_certification_v2.py \
+              tests/test_licensed_certification.py
+            uv run mypy src
+            uv run pytest \
+              tests/test_certification.py \
+              tests/test_certification_v2.py \
+              tests/test_licensed_certification.py
+            if git diff --quiet; then
+              exit 0
+            fi
+            git config user.name "aspenops-ci"
+            git config user.email "aspenops-ci@users.noreply.github.com"
+            git add \
+              src/aspenops_nexus/licensed_certification.py \
+              tests/test_licensed_certification.py
+            git commit -m "style: normalize licensed certification control plane"
+            git pull --rebase origin agent/aspenops-v2-reliability-performance
+            git push origin HEAD:agent/aspenops-v2-reliability-performance
+          } 2>&1 | tee var/ci/licensed-certification-materializer.log
+      - name: Upload licensed certification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-certification-materializer-diagnostics
+          path: var/ci/licensed-certification-materializer.log
+          if-no-files-found: warn
 
   portable:
     strategy:
