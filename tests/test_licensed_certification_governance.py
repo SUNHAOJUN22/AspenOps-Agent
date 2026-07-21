@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from aspenops_nexus.config import Settings
 from aspenops_nexus.licensed_certification import (
     LicensedCertificationPlan,
     certification_preflight,
 )
 from aspenops_nexus.mcp_server import build_server
-from aspenops_nexus.config import Settings
 
 
 def test_example_plan_parses_but_cannot_pass_preflight(
