@@ -14,7 +14,7 @@
 - Coverage floor: **94.5%**
 - Build / wheel / MCP / benchmark policy: **PASS**
 - Authoritative workflows: `ci.yml`, `generate-performance-evidence.yml`, `licensed-aspen-certification.yml`, `windows-control-plane.yml`
-- Removed redundant certification entry: `windows-aspen-certification.yml`
+- Removed superseded workflows: `final-main-pr-transaction.yml`, `windows-aspen-certification.yml`
 - Real Aspen status: `PENDING_REAL_ASPEN_CERTIFICATION`
 
 Public CI verifies the control plane and does not claim licensed physical Aspen certification. Historical branch tips remain recoverable through archive tags, but they are no longer active development branches.
