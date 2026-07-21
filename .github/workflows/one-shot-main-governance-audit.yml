@@ -15,111 +15,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux-gate:
-    name: Complete Linux production gate
+  wait-for-gates:
+    name: Require existing Linux and Windows gates
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
+    outputs:
+      ci_run_id: ${{ steps.wait.outputs.ci_run_id }}
+      windows_run_id: ${{ steps.wait.outputs.windows_run_id }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - name: Run full portable qualification
+      - name: Wait for the production gates attached to this PR head
+        id: wait
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          mkdir -p var/audit
-          uv sync --extra dev --extra agent --extra signing
-          uv run ruff check . | tee var/audit/ruff.log
-          uv run ruff format --check . | tee var/audit/ruff-format.log
-          uv run mypy src | tee var/audit/mypy.log
-          uv run pytest -W error::ResourceWarning \
-            --cov=aspenops_nexus \
-            --cov-branch \
-            --cov-report=term-missing \
-            --cov-report=json:var/audit/coverage.json \
-            --junitxml=var/audit/junit.xml \
-            --cov-fail-under=94.5 \
-            | tee var/audit/pytest.log
-          uv build
-          uv run aspenops demo | tee var/audit/demo.log
-          uv run python scripts/check_mcp.py | tee var/audit/mcp.json
-          uv run python scripts/run_benchmark_matrix.py \
-            --repo-root . \
-            --output var/audit/benchmark-smoke.json \
-            --smoke
-          uv run python scripts/compare_benchmarks.py \
-            --baseline var/benchmarks/baseline.json \
-            --after var/benchmarks/after.json \
-            --baseline-doc var/audit/performance-baseline.md \
-            --after-doc var/audit/performance-after.md \
-            --fail-on-stable-regression \
-            | tee var/audit/performance-policy.log
-          python -m venv /tmp/aspenops-governance-wheel
-          /tmp/aspenops-governance-wheel/bin/pip install dist/*.whl
-          /tmp/aspenops-governance-wheel/bin/aspenops --version \
-            | tee var/audit/wheel-version.log
-          /tmp/aspenops-governance-wheel/bin/aspenops demo \
-            | tee var/audit/wheel-demo.log
-          /tmp/aspenops-governance-wheel/bin/aspenops certification-preflight --help >/dev/null
-          /tmp/aspenops-governance-wheel/bin/aspenops certify-licensed --help >/dev/null
-          /tmp/aspenops-governance-wheel/bin/aspenops verify-licensed-bundle --help >/dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: main-governance-linux
-          path: var/audit
-          if-no-files-found: error
-          retention-days: 90
+          repo="$GITHUB_REPOSITORY"
+          for attempt in $(seq 1 120); do
+            runs="$(gh api --paginate "repos/$repo/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100")"
+            ci_id="$(jq -r '[.workflow_runs[] | select(.name == "CI")][0].id // empty' <<<"$runs")"
+            ci_status="$(jq -r '[.workflow_runs[] | select(.name == "CI")][0].status // "missing"' <<<"$runs")"
+            ci_conclusion="$(jq -r '[.workflow_runs[] | select(.name == "CI")][0].conclusion // "pending"' <<<"$runs")"
+            win_id="$(jq -r '[.workflow_runs[] | select(.name == "Windows control-plane contracts")][0].id // empty' <<<"$runs")"
+            win_status="$(jq -r '[.workflow_runs[] | select(.name == "Windows control-plane contracts")][0].status // "missing"' <<<"$runs")"
+            win_conclusion="$(jq -r '[.workflow_runs[] | select(.name == "Windows control-plane contracts")][0].conclusion // "pending"' <<<"$runs")"
 
-  windows-gate:
-    name: Complete Windows control-plane gate
-    runs-on: windows-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - name: Run public Windows contracts
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force var/audit | Out-Null
-          uv sync --extra dev --extra windows --extra agent --extra signing
-          uv run ruff check src tests *>&1 | Tee-Object var/audit/ruff.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run mypy src *>&1 | Tee-Object var/audit/mypy.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv run pytest -W error::ResourceWarning `
-            tests/test_windows_job.py `
-            tests/test_windows_job_edges.py `
-            tests/test_aspen_process_ownership.py `
-            tests/test_convergence.py `
-            tests/test_backends_convergence.py `
-            tests/test_v2_reliability.py `
-            tests/test_singleflight.py `
-            tests/test_worker_contracts.py `
-            tests/test_worker_protocol_hardening.py `
-            tests/test_pool_manager_creation.py `
-            tests/test_scheduler_active_leases.py `
-            tests/test_provenance_zip_safety.py `
-            tests/test_archive_safety_complete.py `
-            tests/test_licensed_certification.py `
-            tests/test_licensed_bundle_integrity.py `
-            tests/test_licensed_certification_workflow.py *>&1 `
-            | Tee-Object var/audit/windows-contracts.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: main-governance-windows
-          path: var/audit
-          if-no-files-found: error
-          retention-days: 90
+            echo "attempt=$attempt ci=$ci_status/$ci_conclusion windows=$win_status/$win_conclusion"
+            if [[ "$ci_status" == "completed" && "$ci_conclusion" != "success" ]]; then
+              echo "CI failed with conclusion $ci_conclusion" >&2
+              exit 1
+            fi
+            if [[ "$win_status" == "completed" && "$win_conclusion" != "success" ]]; then
+              echo "Windows gate failed with conclusion $win_conclusion" >&2
+              exit 1
+            fi
+            if [[ "$ci_conclusion" == "success" && "$win_conclusion" == "success" ]]; then
+              echo "ci_run_id=$ci_id" >> "$GITHUB_OUTPUT"
+              echo "windows_run_id=$win_id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for CI and Windows control-plane gates" >&2
+          exit 1
 
   consolidate:
     name: Retire branches and publish immutable audit
-    needs: [linux-gate, windows-gate]
+    needs: [wait-for-gates]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -129,12 +72,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          name: main-governance-linux
+          name: ci-evidence-python-3.12
           path: var/audit/linux
-      - uses: actions/download-artifact@v4
-        with:
-          name: main-governance-windows
-          path: var/audit/windows
+          run-id: ${{ needs.wait-for-gates.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
       - name: Archive and remove every non-main branch
         shell: bash
         env:
@@ -226,6 +167,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ needs.wait-for-gates.outputs.ci_run_id }}
+          WINDOWS_RUN_ID: ${{ needs.wait-for-gates.outputs.windows_run_id }}
         run: |
           set -euo pipefail
           git pull --rebase origin main
@@ -234,6 +177,7 @@ jobs:
 
           python - <<'PY'
           import json
+          import os
           import subprocess
           import tomllib
           import xml.etree.ElementTree as ET
@@ -248,15 +192,13 @@ jobs:
               if not path.exists():
                   return rows
               for line in path.read_text(encoding='utf-8').splitlines():
-                  if not line:
-                      continue
-                  parts = line.split('\t')
-                  rows.append(dict(zip(fields, parts, strict=False)))
+                  if line:
+                      rows.append(dict(zip(fields, line.split('\t'), strict=False)))
               return rows
 
-          coverage = json.loads((root / 'var/audit/linux/coverage.json').read_text())
+          coverage = json.loads((root / 'var/audit/linux/coverage-3.12.json').read_text())
           totals = coverage['totals']
-          junit_root = ET.parse(root / 'var/audit/linux/junit.xml').getroot()
+          junit_root = ET.parse(root / 'var/audit/linux/junit-3.12.xml').getroot()
           tests = int(junit_root.attrib.get('tests', 0))
           if not tests:
               tests = sum(int(node.attrib.get('tests', 0)) for node in junit_root.findall('testsuite'))
@@ -278,7 +220,9 @@ jobs:
               'closed_pull_requests': tsv('closed-prs.tsv', ('number', 'branch')),
               'open_pull_requests_after': tsv('open-prs-after.tsv', ('number', 'branch', 'repository')),
               'workflows_before_cleanup': workflows,
-              'linux_gate': 'PASS',
+              'ci_run_id': os.environ['CI_RUN_ID'],
+              'windows_run_id': os.environ['WINDOWS_RUN_ID'],
+              'linux_ci_gate': 'PASS',
               'windows_control_plane_gate': 'PASS',
               'test_count_python_3_12': tests,
               'combined_branch_aware_coverage_percent': totals['percent_covered'],
@@ -293,25 +237,27 @@ jobs:
           (root / 'docs/single-main-audit.json').write_text(
               json.dumps(audit, indent=2, sort_keys=True) + '\n', encoding='utf-8'
           )
-          md = f'''# AspenOps single-main audit
-
-- Status: **PASS**
-- Source main SHA: `{source_sha}`
-- Package: `{project['name']} {project['version']}`
-- Remaining branch refs: `{len(audit['branch_refs_after'])}` (`main` only)
-- Deleted in this run: `{len(audit['deleted_branches'])}`
-- Open pull requests after cleanup: `{len(audit['open_pull_requests_after'])}`
-- Linux production gate: **PASS**
-- Windows control-plane gate: **PASS**
-- Python 3.12 tests: **{tests} passed**
-- Branch-aware combined coverage: **{totals['percent_covered']:.2f}%**
-- Coverage floor: **94.5%**
-- Build / wheel / MCP / benchmark policy: **PASS**
-- Real Aspen status: `PENDING_REAL_ASPEN_CERTIFICATION`
-
-The licensed Aspen boundary remains explicit: public CI verifies the control plane and does not claim physical Aspen certification.
-'''
-          (root / 'docs/single-main-audit.md').write_text(md, encoding='utf-8')
+          lines = [
+              '# AspenOps single-main audit',
+              '',
+              '- Status: **PASS**',
+              f"- Source main SHA: `{source_sha}`",
+              f"- Package: `{project['name']} {project['version']}`",
+              f"- Remaining branch refs: `{len(audit['branch_refs_after'])}` (`main` only)",
+              f"- Deleted in this run: `{len(audit['deleted_branches'])}`",
+              f"- Open pull requests after cleanup: `{len(audit['open_pull_requests_after'])}`",
+              '- Linux production CI: **PASS**',
+              '- Windows control-plane gate: **PASS**',
+              f'- Python 3.12 tests: **{tests} passed**',
+              f"- Branch-aware combined coverage: **{totals['percent_covered']:.2f}%**",
+              '- Coverage floor: **94.5%**',
+              '- Build / wheel / MCP / benchmark policy: **PASS**',
+              '- Real Aspen status: `PENDING_REAL_ASPEN_CERTIFICATION`',
+              '',
+              'Public CI verifies the control plane and does not claim licensed physical Aspen certification.',
+              '',
+          ]
+          (root / 'docs/single-main-audit.md').write_text('\n'.join(lines), encoding='utf-8')
           PY
 
           stale_regex='(final-main|single-main|one-shot|consolidat|materializ|branch-clean|diagnostic|cleanup)'
