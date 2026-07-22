@@ -29,7 +29,6 @@ CURRENT_GUIDES = tuple(
     if document.name != "automated-test-audit-2026-07-22.md"
 )
 UNIVERSAL_STALE_TOKENS = {
-    "AspenOps 1.0",
     "ubuntu-latest",
     "windows-latest",
     "windows-aspen-certification.yml",
@@ -78,6 +77,9 @@ def test_documentation_has_no_stale_current_guidance() -> None:
     for document in CURRENT_GUIDES:
         text = document.read_text(encoding="utf-8")
         assert "0.11.14" not in text, f"Stale uv guidance in {document.relative_to(ROOT)}"
+        assert "AspenOps 1.0" not in text, (
+            f"Stale product title in {document.relative_to(ROOT)}"
+        )
 
     architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     assert architecture.startswith("# AspenOps 2.0 Architecture")
