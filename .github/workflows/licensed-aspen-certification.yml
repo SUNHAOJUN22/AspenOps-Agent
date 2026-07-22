@@ -63,6 +63,7 @@ jobs:
       - name: Set up Python
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
+          version: "0.11.14"
           python-version: "3.12"
           enable-cache: true
 
@@ -154,6 +155,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force var/ci | Out-Null
           uv run pytest -W error::ResourceWarning `
+            tests/test_config_registry_edge_cases.py `
             tests/test_licensed_bundle_integrity.py `
             tests/test_licensed_certification.py `
             tests/test_licensed_certification_cli.py `
@@ -164,6 +166,7 @@ jobs:
             tests/test_aspen_process_ownership.py `
             tests/test_backends_convergence.py `
             tests/test_workflow_governance.py `
+            tests/test_wheel_smoke_governance.py `
             --junitxml=var/ci/licensed-software-regression.xml `
             --durations=20
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
