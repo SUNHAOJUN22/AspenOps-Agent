@@ -35,6 +35,22 @@ jobs:
           uv sync --frozen --extra dev --extra windows --extra agent --extra signing *>&1 |
             Tee-Object -FilePath var/ci/uv-sync.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Parse PowerShell bootstrap
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath scripts/setup_windows.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List * | Out-String |
+              Tee-Object -FilePath var/ci/powershell-parse.log
+            throw "PowerShell parser found errors in scripts/setup_windows.ps1"
+          }
+          "PowerShell syntax OK" | Set-Content var/ci/powershell-parse.log
       - name: Ruff
         shell: pwsh
         run: |
