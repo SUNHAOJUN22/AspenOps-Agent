@@ -69,7 +69,7 @@ def test_regression_and_preflight_precede_approval_execution_and_verification() 
         "uv sync --frozen --extra dev --extra windows --extra agent --extra signing" in text
     )
     assert "ASPENOPS_BACKEND: mock" in text
-    assert "ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression" in text
+    assert r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression" in text
     assert "tests/test_licensed_certification.py" in text
     assert "tests/test_licensed_certification_governance.py" in text
     assert "tests/test_aspen_process_ownership.py" in text
