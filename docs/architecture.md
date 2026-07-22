@@ -1,4 +1,4 @@
-# AspenOps 1.0 Architecture
+# AspenOps 2.0 Architecture
 
 ## Design objective
 
