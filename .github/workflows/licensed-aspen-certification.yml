@@ -66,7 +66,7 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Verify exact repository revision and safe plan path
+      - name: Verify exact revision and canonical paths
         shell: pwsh
         run: |
           $observed = (git rev-parse HEAD).Trim().ToLowerInvariant()
@@ -77,6 +77,7 @@ jobs:
           if ($observed -ne $expected) {
             throw "Checked-out commit $observed does not match approved commit $expected"
           }
+
           if ([string]::IsNullOrWhiteSpace($env:PLAN_PATH) -or $env:PLAN_PATH -match "[`r`n]") {
             throw "plan_path must be one non-empty line"
           }
@@ -92,7 +93,39 @@ jobs:
           if (-not (Test-Path -LiteralPath $plan -PathType Leaf)) {
             throw "Certification plan does not exist: $plan"
           }
+
+          if ([string]::IsNullOrWhiteSpace($env:ASPENOPS_STATE_DIR) -or $env:ASPENOPS_STATE_DIR -match "[`r`n]") {
+            throw "ASPENOPS_CERT_STATE_DIR must be one non-empty absolute path"
+          }
+          if (-not [System.IO.Path]::IsPathRooted($env:ASPENOPS_STATE_DIR)) {
+            throw "ASPENOPS_CERT_STATE_DIR must be absolute"
+          }
+          $stateDir = [System.IO.Path]::GetFullPath($env:ASPENOPS_STATE_DIR)
+          $roots = @(
+            $env:ASPENOPS_ALLOWED_ROOTS.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) |
+              ForEach-Object { [System.IO.Path]::GetFullPath($_.Trim()) }
+          )
+          if ($roots.Count -eq 0) {
+            throw "ASPENOPS_ALLOWED_ROOTS must contain at least one absolute root"
+          }
+          $stateAllowed = $false
+          foreach ($root in $roots) {
+            if (-not [System.IO.Path]::IsPathRooted($root)) {
+              throw "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute"
+            }
+            $prefix = $root.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+            if ($stateDir.Equals($root, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $stateDir.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+              $stateAllowed = $true
+              break
+            }
+          }
+          if (-not $stateAllowed) {
+            throw "ASPENOPS_CERT_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS"
+          }
+
           "PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ASPENOPS_STATE_DIR=$stateDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Verify lockfile and sync frozen certification dependencies
         shell: pwsh
