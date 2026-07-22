@@ -69,13 +69,21 @@ def test_multiple_absolute_roots_are_supported(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("GITHUB_WORKSPACE", "relative-workspace", "GITHUB_WORKSPACE must be absolute"),
+        (
+            "GITHUB_WORKSPACE",
+            "relative-workspace",
+            "GITHUB_WORKSPACE must be absolute",
+        ),
         (
             "ASPENOPS_ALLOWED_ROOTS",
             "relative-root",
             "ALLOWED_ROOTS entry must be absolute",
         ),
-        ("ASPENOPS_STATE_DIR", "relative-state", "STATE_DIR must be absolute"),
+        (
+            "ASPENOPS_STATE_DIR",
+            "relative-state",
+            "STATE_DIR must be absolute",
+        ),
     ],
 )
 def test_control_paths_must_be_explicitly_absolute(
@@ -105,8 +113,13 @@ def test_allowed_root_must_be_an_existing_directory(tmp_path: Path) -> None:
     root_file = tmp_path / "not-a-directory"
     root_file.write_text("x", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="ALLOWED_ROOTS entry must be an existing directory"):
-        load_gate().validate_paths(environment(workspace, root_file, plan, tmp_path / "state"))
+    with pytest.raises(
+        ValueError,
+        match="ALLOWED_ROOTS entry must be an existing directory",
+    ):
+        load_gate().validate_paths(
+            environment(workspace, root_file, plan, tmp_path / "state")
+        )
 
 
 def test_existing_state_target_must_be_a_directory(tmp_path: Path) -> None:
@@ -120,7 +133,9 @@ def test_existing_state_target_must_be_a_directory(tmp_path: Path) -> None:
     state_file.write_text("not-a-directory", encoding="utf-8")
 
     with pytest.raises(ValueError, match="STATE_DIR must identify a directory"):
-        load_gate().validate_paths(environment(workspace, allowed, plan, state_file))
+        load_gate().validate_paths(
+            environment(workspace, allowed, plan, state_file)
+        )
 
 
 def test_plan_symlink_cannot_escape_the_workspace(tmp_path: Path) -> None:
@@ -137,7 +152,9 @@ def test_plan_symlink_cannot_escape_the_workspace(tmp_path: Path) -> None:
         pytest.skip(f"symlink unavailable: {exc}")
 
     with pytest.raises(ValueError, match="PLAN_PATH resolves outside"):
-        load_gate().validate_paths(environment(workspace, allowed, link, allowed / "state"))
+        load_gate().validate_paths(
+            environment(workspace, allowed, link, allowed / "state")
+        )
 
 
 def test_state_symlink_parent_cannot_escape_allowed_roots(tmp_path: Path) -> None:
@@ -156,4 +173,6 @@ def test_state_symlink_parent_cannot_escape_allowed_roots(tmp_path: Path) -> Non
         pytest.skip(f"symlink unavailable: {exc}")
 
     with pytest.raises(ValueError, match="STATE_DIR resolves outside"):
-        load_gate().validate_paths(environment(workspace, allowed, plan, link / "state"))
+        load_gate().validate_paths(
+            environment(workspace, allowed, plan, link / "state")
+        )
