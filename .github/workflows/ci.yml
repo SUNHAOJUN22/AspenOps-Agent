@@ -20,17 +20,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Sync dependencies
-        run: uv sync --extra dev --extra agent --extra signing
-      - name: Ruff
+      - name: Verify lockfile and sync frozen dependencies
         shell: bash
         run: |
           mkdir -p var/ci
+          set -o pipefail
+          uv lock --check 2>&1 | tee var/ci/uv-lock.log
+          uv sync --frozen --extra dev --extra agent --extra signing \
+            2>&1 | tee var/ci/uv-sync.log
+      - name: Ruff
+        shell: bash
+        run: |
           set -o pipefail
           uv run ruff check . 2>&1 | tee var/ci/ruff.log
       - name: Ruff format
@@ -44,9 +51,29 @@ jobs:
           set -o pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
       - name: Build distributions
-        run: uv build
+        shell: bash
+        run: |
+          set -o pipefail
+          uv build 2>&1 | tee var/ci/build.log
       - name: Run portable demo
-        run: uv run aspenops demo | tee var/ci/demo.log
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run aspenops demo 2>&1 | tee var/ci/demo.log
+      - name: Verify README command paths
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run aspenops --version 2>&1 | tee var/ci/cli-version.log
+          uv run aspenops --help > var/ci/cli-help.log
+          uv run aspenops dry-run examples/batch-request.example.json \
+            > var/ci/readme-dry-run.json
+          uv run aspenops benchmark --points 4 --workers 1,2 \
+            > var/ci/readme-benchmark.json
+          uv run aspenops certify examples/batch-request.example.json \
+            --output var/ci/readme-certification.json \
+            --repeats 2 \
+            > var/ci/readme-certification-cli.json
       - name: Benchmark smoke and committed performance policy
         shell: bash
         run: |
@@ -63,20 +90,30 @@ jobs:
             --fail-on-stable-regression \
             2>&1 | tee var/ci/performance-policy.log
       - name: Verify MCP surface
-        run: uv run python scripts/check_mcp.py | tee var/ci/mcp.json
-      - name: Wheel install smoke
         shell: bash
         run: |
+          set -o pipefail
+          uv run python scripts/check_mcp.py 2>&1 | tee var/ci/mcp.json
+      - name: Wheel install and CLI smoke
+        shell: bash
+        run: |
+          set -o pipefail
           python -m venv /tmp/aspenops-wheel
-          /tmp/aspenops-wheel/bin/pip install dist/*.whl
-          /tmp/aspenops-wheel/bin/aspenops --version | tee var/ci/wheel-version.log
-          /tmp/aspenops-wheel/bin/aspenops demo | tee var/ci/wheel-demo.log
+          /tmp/aspenops-wheel/bin/pip install dist/*.whl \
+            2>&1 | tee var/ci/wheel-install.log
+          /tmp/aspenops-wheel/bin/aspenops --version \
+            | tee var/ci/wheel-version.log
+          /tmp/aspenops-wheel/bin/aspenops --help > var/ci/wheel-help.log
+          /tmp/aspenops-wheel/bin/aspenops demo \
+            | tee var/ci/wheel-demo.log
+          /tmp/aspenops-wheel/bin/aspenops optimize --help >/dev/null
+          /tmp/aspenops-wheel/bin/aspenops mcp --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certify-licensed --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops verify-licensed-bundle --help >/dev/null
       - name: Upload quality evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-evidence-quality
           path: var/ci
@@ -92,17 +129,24 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - name: Sync dependencies
-        run: uv sync --extra dev --extra agent --extra signing
-      - name: Pytest with branch coverage
+      - name: Verify lockfile and sync frozen dependencies
         shell: bash
         run: |
           mkdir -p var/ci
+          set -o pipefail
+          uv lock --check 2>&1 | tee var/ci/uv-lock-${{ matrix.python-version }}.log
+          uv sync --frozen --extra dev --extra agent --extra signing \
+            2>&1 | tee var/ci/uv-sync-${{ matrix.python-version }}.log
+      - name: Pytest with branch coverage
+        shell: bash
+        run: |
           set -o pipefail
           uv run pytest -W error::ResourceWarning \
             --cov=aspenops_nexus \
@@ -110,11 +154,12 @@ jobs:
             --cov-report=term-missing \
             --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
             --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
+            --durations=20 \
             --cov-fail-under=94.5 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
       - name: Upload test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-evidence-python-${{ matrix.python-version }}
           path: var/ci
