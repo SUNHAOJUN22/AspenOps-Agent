@@ -51,16 +51,17 @@ jobs:
       ASPENOPS_CACHE_FAILURES: "false"
     steps:
       - name: Checkout exact approved commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.expected_head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: "3.12"
+          enable-cache: true
 
       - name: Verify exact repository revision
         shell: pwsh
@@ -74,15 +75,36 @@ jobs:
             throw "Checked-out commit $observed does not match approved commit $expected"
           }
 
-      - name: Sync locked certification dependencies
+      - name: Verify lockfile and sync frozen certification dependencies
         shell: pwsh
-        run: uv sync --extra dev --extra windows --extra signing
+        run: |
+          uv lock --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv sync --frozen --extra dev --extra windows --extra signing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run licensed control-plane regression gate
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:ASPENOPS_STATE_DIR\licensed-certification" | Out-Null
+          uv run pytest -W error::ResourceWarning `
+            tests/test_licensed_bundle_integrity.py `
+            tests/test_licensed_certification.py `
+            tests/test_licensed_certification_cli.py `
+            tests/test_licensed_certification_governance.py `
+            tests/test_licensed_certification_remaining_edges.py `
+            tests/test_licensed_certification_validation_edges.py `
+            tests/test_licensed_certification_workflow.py `
+            tests/test_aspen_process_ownership.py `
+            tests/test_backends_convergence.py `
+            --junitxml="$env:ASPENOPS_STATE_DIR\licensed-certification\software-regression.xml" `
+            --durations=20
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run licensed certification preflight
         id: preflight
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force "$env:ASPENOPS_STATE_DIR\licensed-certification" | Out-Null
           uv run aspenops certification-preflight `
             "${{ inputs.plan_path }}" `
             --output "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json"
@@ -121,10 +143,11 @@ jobs:
 
       - name: Upload signed licensed evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}
           path: |
+            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\software-regression.xml
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\preflight.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-report.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-bundle.zip
