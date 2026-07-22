@@ -87,6 +87,8 @@ def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
 def test_ci_audits_locked_linux_and_windows_dependencies() -> None:
     text = workflow_text("ci.yml")
     assert text.count("uv audit --frozen") == 2
+    assert "UV_PREVIEW_FEATURES: json-output" in text
+    assert tuple(map(int, UV_VERSION.split("."))) >= (0, 11, 15)
     assert "--python-platform linux --python-version 3.12" in text
     assert "--python-platform windows --python-version 3.12" in text
     assert "--output-format json > var/ci/dependency-audit-linux.json" in text
