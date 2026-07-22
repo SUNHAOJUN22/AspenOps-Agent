@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from aspenops_nexus.config import Settings, _env_float
@@ -53,3 +55,36 @@ def test_resource_budget_environment_values_must_be_positive(
     monkeypatch.setenv(name, "0")
     with pytest.raises(ValueError, match=f"{name} must be >= 1"):
         Settings.from_env()
+
+
+def test_direct_real_backend_settings_enforce_allowed_state_roots(tmp_path: Path) -> None:
+    allowed = (tmp_path / "allowed").resolve()
+    outside = (tmp_path / "outside").resolve()
+
+    with pytest.raises(ValueError, match="ALLOWED_ROOTS entry must be absolute"):
+        Settings(
+            backend="aspen_plus",
+            allowed_roots=(Path("relative-root"),),
+            state_dir=allowed / "state",
+        )
+
+    with pytest.raises(ValueError, match="STATE_DIR must be absolute"):
+        Settings(
+            backend="aspen_plus",
+            allowed_roots=(allowed,),
+            state_dir=Path("relative-state"),
+        )
+
+    with pytest.raises(ValueError, match="STATE_DIR must be inside"):
+        Settings(
+            backend="hysys",
+            allowed_roots=(allowed,),
+            state_dir=outside,
+        )
+
+    settings = Settings(
+        backend="aspen_plus",
+        allowed_roots=(allowed,),
+        state_dir=allowed / "state",
+    )
+    assert settings.state_dir == allowed / "state"
