@@ -73,6 +73,19 @@ def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
             assert expected in step, f"{name} does not pin uv {UV_VERSION}"
 
 
+def test_hosted_runner_os_versions_are_explicit() -> None:
+    portable = workflow_text("ci.yml")
+    performance = workflow_text("generate-performance-evidence.yml")
+    windows = workflow_text("windows-control-plane.yml")
+
+    assert portable.count("runs-on: ubuntu-24.04") == 2
+    assert "ubuntu-latest" not in portable
+    assert "runs-on: ubuntu-24.04" in performance
+    assert "ubuntu-latest" not in performance
+    assert "runs-on: windows-2025" in windows
+    assert "windows-latest" not in windows
+
+
 def test_workflows_are_read_only_and_do_not_retain_checkout_credentials() -> None:
     for name in WORKFLOWS:
         text = workflow_text(name)
@@ -109,21 +122,23 @@ def test_performance_refs_are_resolved_before_worktree_execution() -> None:
     assert "name: performance-evidence-${{ inputs." not in text
 
 
-def test_licensed_inputs_and_output_paths_are_canonicalized() -> None:
-    text = workflow_text("licensed-aspen-certification.yml")
-    assert "PLAN_PATH: ${{ inputs.plan_path }}" in text
-    assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in text
-    assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in text
-    assert "plan_path must be one non-empty line" in text
-    assert "plan_path escapes the repository workspace" in text
-    assert "ASPENOPS_CERT_STATE_DIR must be one non-empty absolute path" in text
-    assert "ASPENOPS_ALLOWED_ROOTS must be one non-empty line" in text
-    assert "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute" in text
-    assert "ASPENOPS_CERT_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS" in text
-    assert '"PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV' in text
-    assert '"ASPENOPS_STATE_DIR=$stateDir" | Out-File -FilePath $env:GITHUB_ENV' in text
-    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in text
-    assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in text
+def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None:
+    workflow = workflow_text("licensed-aspen-certification.yml")
+    gate = Path("scripts/validate_licensed_paths.py").read_text(encoding="utf-8")
+
+    assert "PLAN_PATH: ${{ inputs.plan_path }}" in workflow
+    assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in workflow
+    assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
+    assert "plan_path must be one non-empty line" in workflow
+    assert "plan_path escapes the repository workspace" in workflow
+    assert "git merge-base --is-ancestor $expected origin/main" in workflow
+    assert "python scripts/validate_licensed_paths.py" in workflow
+    assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
+    assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in workflow
+    assert "PLAN_PATH resolves outside GITHUB_WORKSPACE" in gate
+    assert "ASPENOPS_STATE_DIR resolves outside ASPENOPS_ALLOWED_ROOTS" in gate
+    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in workflow
+    assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in workflow
 
 
 def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
