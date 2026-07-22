@@ -51,7 +51,9 @@ def test_only_authoritative_long_lived_workflows_exist() -> None:
 def test_all_external_actions_are_pinned_to_full_commit_shas() -> None:
     for name in WORKFLOWS:
         uses_lines = [
-            line for line in workflow_text(name).splitlines() if line.strip().startswith("uses:")
+            line
+            for line in workflow_text(name).splitlines()
+            if line.strip().startswith("- uses:")
         ]
         assert uses_lines, f"{name} has no external action declarations"
         for line in uses_lines:
