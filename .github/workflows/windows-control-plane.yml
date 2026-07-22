@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   windows-contracts:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -77,8 +77,11 @@ jobs:
             tests/test_windows_job.py `
             tests/test_windows_job_edges.py `
             tests/test_aspen_process_ownership.py `
+            tests/test_batch_backend_default.py `
+            tests/test_cli_output_policy.py `
             tests/test_config_registry_edge_cases.py `
             tests/test_real_backend_state_policy.py `
+            tests/test_licensed_path_gate.py `
             tests/test_convergence.py `
             tests/test_backends_convergence.py `
             tests/test_v2_reliability.py `
