@@ -25,6 +25,9 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -43,14 +46,18 @@ jobs:
           uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
           uv sync --frozen --extra dev --extra agent \
             2>&1 | tee var/benchmarks/sync.log
-      - name: Prepare exact baseline worktree
+      - name: Validate refs and prepare exact baseline worktree
         shell: bash
         run: |
           set -euo pipefail
+          git check-ref-format --allow-onelevel "$BASELINE_REF" >/dev/null 2>&1 || \
+            git rev-parse --verify "${BASELINE_REF}^{commit}" >/dev/null
+          git check-ref-format --allow-onelevel "$CANDIDATE_REF" >/dev/null 2>&1 || \
+            git rev-parse --verify "${CANDIDATE_REF}^{commit}" >/dev/null
           git fetch --tags --prune origin 2>&1 | tee var/benchmarks/prepare-baseline.log
-          git rev-parse --verify "${{ inputs.baseline_ref }}^{commit}" \
+          git rev-parse --verify "${BASELINE_REF}^{commit}" \
             | tee var/benchmarks/baseline-sha.txt
-          git worktree add /tmp/aspenops-baseline "${{ inputs.baseline_ref }}" \
+          git worktree add --detach /tmp/aspenops-baseline "$BASELINE_REF" \
             2>&1 | tee -a var/benchmarks/prepare-baseline.log
           git rev-parse HEAD | tee var/benchmarks/candidate-sha.txt
       - name: Run baseline matrix
@@ -101,7 +108,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: performance-evidence-${{ inputs.candidate_ref }}
+          name: performance-evidence-${{ github.run_id }}
           path: var/benchmarks
           if-no-files-found: error
           retention-days: 90
