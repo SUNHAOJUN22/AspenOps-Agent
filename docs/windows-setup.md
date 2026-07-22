@@ -2,7 +2,7 @@
 
 ## Scope
 
-This guide covers deterministic Windows installation, the public Windows control-plane gate, first real Aspen execution and the protected licensed-certification workflow.
+This guide covers deterministic Windows installation, the public Windows control-plane gate, the first real Aspen Plus or Aspen HYSYS case, and the protected licensed-certification workflow.
 
 Mock and Fake-COM validation are not real Aspen physical certification.
 
@@ -14,9 +14,9 @@ Mock and Fake-COM validation are not real Aspen physical certification.
 - licensed Aspen Plus and/or Aspen HYSYS for real execution;
 - a known license-seat limit;
 - a non-confidential model already convergent in the GUI;
-- a case-specific semantic registry verified through Variable Explorer or an approved HYSYS Spreadsheet Contract;
-- non-empty absolute existing directories in `ASPENOPS_ALLOWED_ROOTS`;
-- an absolute state directory, models, registries, outputs and evidence inside those roots.
+- a verified case-specific semantic registry or HYSYS Spreadsheet Contract;
+- non-empty, absolute, existing directories in `ASPENOPS_ALLOWED_ROOTS`;
+- absolute state, model, registry, output and evidence paths inside those roots.
 
 Real-backend `Settings` construction fails immediately when allowed roots are absent, relative, or do not contain the state directory. Unsafe configuration does not reach preflight or create runtime state.
 
@@ -29,17 +29,17 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 The script is fail-closed and:
 
 1. enables strict PowerShell behavior;
-2. installs `uv` through `winget` only when missing;
-3. refreshes machine and user PATH while preserving the process PATH;
-4. verifies `uv >= 0.11.16`;
-5. runs `uv lock --check`;
-6. installs `windows`, `agent`, `dev` and `signing` with `uv sync --frozen`;
-7. creates `.env` from `.env.example` when absent;
-8. parses and imports `.env` into the current process;
-9. runs `aspenops doctor --probe` with the loaded backend;
-10. checks native-command exit codes.
+2. installs `uv` through winget when it is missing;
+3. automatically upgrades an older `uv` to at least `0.11.16`;
+4. refreshes machine and user PATH while preserving the process PATH;
+5. checks `uv.lock` and performs a frozen install of `windows + agent + dev + signing`;
+6. creates `.env` from `.env.example` when absent;
+7. validates and imports `.env` into the current process;
+8. rejects duplicate variable names and unbalanced quoted values;
+9. reports `.env` failures by line number without echoing raw values that may contain secrets;
+10. runs `aspenops doctor --probe` with the loaded backend and checks native exit codes.
 
-A newly copied `.env` uses `ASPENOPS_BACKEND=mock`. Edit it to `aspen_plus` or `hysys`, configure real paths, then rerun the script.
+A newly copied `.env` uses `ASPENOPS_BACKEND=mock`, an empty allowlist and a repository-local state directory. Edit it to `aspen_plus` or `hysys`, configure real absolute paths, and rerun the script before using a real model.
 
 ## Manual equivalent
 
@@ -72,7 +72,7 @@ ASPENOPS_CACHE_FAILURES=0
 ASPENOPS_VISIBLE=0
 ```
 
-The complete resource limits are documented in `.env.example`.
+The complete resource limits are documented in [`.env.example`](../.env.example).
 
 Use `ASPENOPS_PROGID` or `ASPENOPS_HYSYS_PROGID` only to pin a registration already verified on the host. Otherwise AspenOps performs newest-first discovery and retains an unversioned fallback.
 
@@ -86,9 +86,7 @@ Confirm native Windows and expected bitness, `pywin32`, allowed roots, state pla
 
 ## Public Windows control-plane gate
 
-```text
-.github/workflows/windows-control-plane.yml
-```
+Authoritative workflow: `windows-control-plane.yml`.
 
 It runs on pinned `windows-2025`, Python 3.12 and exact `uv 0.11.16`, without licensed Aspen. It enforces:
 
@@ -96,6 +94,7 @@ It runs on pinned `windows-2025`, Python 3.12 and exact `uv 0.11.16`, without li
 - checked frozen dependencies;
 - Ruff lint/format and strict mypy;
 - PowerShell AST and workflow-governance contracts;
+- documentation links, tool versions, runner names and first-run configuration contracts;
 - Windows Job Object and process-ownership boundaries;
 - Worker IPC, timeout, recovery and singleflight;
 - Scheduler active leases;
@@ -103,8 +102,7 @@ It runs on pinned `windows-2025`, Python 3.12 and exact `uv 0.11.16`, without li
 - archive and evidence-bundle safety;
 - direct `Settings`, backend-escalation, CLI-output and realpath policy tests;
 - licensed CLI, workflow and signed-bundle interfaces;
-- Windows CLI and Doctor smoke;
-- JUnit and diagnostic artifacts.
+- Windows CLI, Doctor smoke, JUnit and diagnostics.
 
 The archived pre-hardening Windows run recorded 104 passing tests. No new fixed selected-test count is claimed until a current JUnit artifact is readable.
 
@@ -135,11 +133,7 @@ The archived pre-hardening Windows run recorded 104 passing tests. No new fixed 
 
 ## Licensed certification
 
-The authoritative workflow is:
-
-```text
-.github/workflows/licensed-aspen-certification.yml
-```
+Authoritative workflow: `licensed-aspen-certification.yml`.
 
 Required runner labels:
 
@@ -155,6 +149,7 @@ Manual dispatch requires a repository-relative plan, exact lowercase 40-characte
 exact SHA checkout and trusted-main ancestry check
 → lockfile check and frozen sync
 → isolated Mock software regression without real secrets
+→ documentation, path and workflow governance contracts
 → realpath validation for plan, roots and state target
 → licensed preflight
 → explicit human execution approval
@@ -199,7 +194,11 @@ The runtime deliberately remains `PENDING_REAL_ASPEN_CERTIFICATION`; final engin
 
 ### `uv` is too old
 
-Install or upgrade to `uv >= 0.11.16`. This minimum is also used by CI because JSON dependency-audit output is required.
+Rerun `scripts/setup_windows.ps1`. It automatically requests a winget upgrade and verifies that the resulting version is at least `0.11.16`.
+
+### `.env` is rejected
+
+The script reports the failing line number without printing the raw value. Remove duplicate variable names, fix invalid names or balance surrounding quotes. Do not print the file in CI logs when it may contain secrets.
 
 ### Real backend is rejected before Doctor
 
