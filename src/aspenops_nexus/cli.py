@@ -138,19 +138,19 @@ def command_run_batch(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     request_path = Path(args.request).resolve()
     request = _load(request_path)
-    results = run_batch_file(request_path, settings)
     output = _controlled_path(
         args.output or settings.state_dir / "latest-results.json",
         settings,
     )
+    bundle_path = _controlled_path(
+        args.bundle or settings.state_dir / "latest-run-bundle.zip",
+        settings,
+    )
+    results = run_batch_file(request_path, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(results, indent=2, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",
-    )
-    bundle_path = _controlled_path(
-        args.bundle or settings.state_dir / "latest-run-bundle.zip",
-        settings,
     )
     write_run_bundle(request=request, results=results, output_path=bundle_path)
     _json_print(
@@ -194,6 +194,7 @@ def command_benchmark(args: argparse.Namespace) -> int:
 def command_optimize(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     document = _load(args.request)
+    output = _controlled_path(args.output, settings)
     with PoolManager(
         cache_path=settings.state_dir / "cache.sqlite3",
         license_slots=settings.license_slots,
@@ -209,7 +210,6 @@ def command_optimize(args: argparse.Namespace) -> int:
             settings,
             pool_manager=pool_manager,
         )
-    output = _controlled_path(args.output, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
@@ -222,6 +222,7 @@ def command_optimize(args: argparse.Namespace) -> int:
 def command_certify(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     document = _load(args.request)
+    output = _controlled_path(args.output, settings)
     kwargs: dict[str, Any] = {
         "repeats": args.repeats,
         "abs_tol": args.abs_tol,
@@ -232,7 +233,6 @@ def command_certify(args: argparse.Namespace) -> int:
     if hasattr(args, "engineering_approved"):
         kwargs["engineering_approved"] = args.engineering_approved
     report = certify_batch_document(document, settings, **kwargs)
-    output = _controlled_path(args.output, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False),
@@ -244,12 +244,12 @@ def command_certify(args: argparse.Namespace) -> int:
 
 def command_certification_preflight(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
-    plan = load_licensed_plan(args.plan)
-    report = certification_preflight(plan, settings)
     output = _controlled_path(
         args.output or settings.state_dir / "licensed-certification" / "preflight.json",
         settings,
     )
+    plan = load_licensed_plan(args.plan)
+    report = certification_preflight(plan, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False),
@@ -261,11 +261,11 @@ def command_certification_preflight(args: argparse.Namespace) -> int:
 
 def command_certify_licensed(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
-    plan = load_licensed_plan(args.plan)
     output_dir = _controlled_path(
         args.output_dir or settings.state_dir / "licensed-certification",
         settings,
     )
+    plan = load_licensed_plan(args.plan)
     report = execute_licensed_certification(
         plan,
         settings,
