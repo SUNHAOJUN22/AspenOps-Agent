@@ -14,6 +14,7 @@ UV_VERSION = "0.11.14"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
+RUN_HEADER = re.compile(r"^(\s*)(?:-\s+)?run:\s*(.*)$")
 BLOCK_SCALARS = {"|", "|-", "|+", ">", ">-", ">+"}
 
 
@@ -22,13 +23,13 @@ def workflow_text(name: str) -> str:
 
 
 def shell_commands(text: str) -> list[str]:
-    """Return literal, folded and inline GitHub Actions run commands."""
+    """Return literal, folded, inline and shorthand Actions run commands."""
 
     lines = text.splitlines()
     commands: list[str] = []
     index = 0
     while index < len(lines):
-        match = re.match(r"^(\s*)run:\s*(.*)$", lines[index])
+        match = RUN_HEADER.match(lines[index])
         if match is None:
             index += 1
             continue
