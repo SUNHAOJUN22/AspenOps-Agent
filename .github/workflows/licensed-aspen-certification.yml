@@ -240,6 +240,7 @@ jobs:
           }
 
           $staging = "var/ci/licensed-evidence"
+          Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $staging | Out-Null
           Copy-Item -LiteralPath $preflight -Destination (Join-Path $staging "preflight.json")
           Copy-Item -LiteralPath $report -Destination (Join-Path $staging "report.json")
