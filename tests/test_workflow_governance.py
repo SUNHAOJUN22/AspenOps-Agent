@@ -112,6 +112,15 @@ def test_licensed_inputs_and_output_paths_are_canonicalized() -> None:
     assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in text
 
 
+def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
+    text = workflow_text("windows-control-plane.yml")
+    assert "Parse PowerShell bootstrap" in text
+    assert "System.Management.Automation.Language.Parser" in text
+    assert "scripts/setup_windows.ps1" in text
+    assert "PowerShell parser found errors" in text
+    assert "powershell-parse.log" in text
+
+
 def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
     text = Path("scripts/setup_windows.ps1").read_text(encoding="utf-8")
     assert "Set-StrictMode -Version Latest" in text
