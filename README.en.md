@@ -4,9 +4,12 @@
 
 ## A deterministic, isolated and auditable control plane for Aspen Plus, Aspen HYSYS and AI coding agents
 
-**Codex / Claude Code / MCP → typed process intent → isolated workers → Aspen solve → engineering verification → reproducible evidence**
+### Codex / Claude Code / MCP → typed process intent → isolated execution → Aspen solve → engineering decision → reproducible evidence
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Security](SECURITY.md)
+**AspenOps is not a GUI macro and does not expose arbitrary COM to an LLM.**  
+**It enforces authorization, paths, units, convergence, constraints, balances, concurrency, audit and evidence.**
+
+[中文](README.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -25,34 +28,24 @@
 | Default and only long-lived branch | `main` |
 | Package | `aspenops-nexus 2.0.0` |
 | Public matrix | Python 3.11, 3.12 and 3.13 |
-| Archived portable baseline | Actions run `29814739487` |
-| Python 3.12 baseline | 72 modules, 563 passed, 0 failed, 0 skipped, 16.73 s |
+| Archived portable run | Actions run `29814739487` |
+| Archived Python 3.12 result | 72 test modules, 563 passed, 0 failed, 0 skipped, 16.73 s |
 | Combined branch-aware coverage | 94.9719800747198% |
 | Statement / branch coverage | 96.23677786818551% / 90.84880636604774% |
-| Coverage floor | 94.5% |
-| Archived public Windows baseline | Actions run `29814739334`, 104 passed, 2.06 s |
+| CI coverage floor | 94.5% |
+| Archived public Windows run | Actions run `29814739334`, 104 passed, 2.06 s |
 | MCP tools | 14 |
-| Licensed Aspen certification | Licensed Windows, approved case and engineering review still required |
+| Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-These values come from inspected JUnit, coverage JSON and logs. They are an archived validated baseline—not an automatic claim about every later commit. The badges are scoped to current `main` push runs.
+These numbers are an **archived validated baseline** extracted from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about every later commit. The badges show the platform status of current `main` pushes; historical evidence is never substituted for a fresh Actions result.
 
-Current `main` additionally enforces:
-
-- real-backend environment loading and direct `Settings(...)` construction fail when `ASPENOPS_ALLOWED_ROOTS` is absent;
-- state, model, registry, CLI-output and evidence paths remain inside resolved allowed roots;
-- licensed targets use realpath resolution to reject `..`, symlink and junction escapes;
-- the approved certification commit must belong to trusted `main` history;
-- real signing keys are absent from dependency setup and isolated Mock regression;
-- both Windows gates run direct-settings, backend-escalation, CLI-output and realpath tests;
-- CI audits the frozen Python 3.12 dependency graph for both Linux and Windows and stores JSON vulnerability evidence.
-
-Public CI validates the control plane. It does not certify a commercial Aspen installation or an engineering model.
+Public CI validates the control plane, path policy, process isolation, scheduling, archives and interfaces. It cannot certify a commercial Aspen installation, a license, a property method or an engineering model.
 
 ---
 
-## What AspenOps is
+## Definition
 
-AspenOps is not a thin `win32com` wrapper or a natural-language GUI macro. It is the deterministic execution layer between an AI coding agent and a stateful, version-sensitive, license-constrained simulator.
+> AspenOps turns a stateful, blocking, version-sensitive and license-constrained desktop simulator into a deterministic execution engine for agents, CLI users and Python workflows.
 
 ```text
 The agent decides what experiment to run.
@@ -61,12 +54,38 @@ AspenOps decides whether the action is authorized, dimensionally valid,
 converged, feasible, balanced, reproducible and auditable.
 ```
 
+---
+
+## Architecture
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ Codex / Claude Code / MCP Client / Python                          │
+│ typed variables, DOE, constraints, objectives and result requests  │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ typed MCP / CLI / JSON
+                               ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ AspenOps Control Plane                                             │
+│ policy · registry · units · scheduler · cache · evidence · audit   │
+│ certification · optimization                                      │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ one batched RPC per point
+                               ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ Persistent CasePool                                                │
+│ private process · COM STA · private model copy · one session       │
+└──────────────┬───────────────────┬──────────────────────┬───────────┘
+               ▼                   ▼                      ▼
+          Aspen Plus          Aspen HYSYS             Mock backend
+```
+
 Non-negotiable invariants:
 
 1. One COM object belongs to one spawned Windows process and one STA apartment.
-2. Agents use semantic variables and never invent raw Aspen tree paths.
-3. Every Worker opens a private staged model copy.
-4. Reset, bulk write, solve, bulk read and verification cross IPC once per point.
+2. Agents use semantic variables instead of inventing raw Aspen tree paths.
+3. Every Worker opens a private model copy and never overwrites the master model.
+4. Each point crosses IPC once for reset, bulk write, solve, bulk read and verification.
 5. Hard timeout terminates only ownership-verified AspenOps processes.
 6. Transport, engine return, convergence, feasibility and balance closure are separate states.
 7. Mock CI validates the control plane, never licensed Aspen physics.
@@ -84,33 +103,9 @@ AND balances_passed
 
 ---
 
-## Architecture
-
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│ Codex / Claude Code / MCP Client / Python                          │
-│ typed variables, DOE, constraints, objectives and result requests  │
-└──────────────────────────────┬─────────────────────────────────────┘
-                               │ MCP / CLI / JSON
-                               ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ AspenOps Control Plane                                             │
-│ policy · registry · units · scheduler · cache · evidence · audit   │
-│ certification · optimization                                      │
-└──────────────────────────────┬─────────────────────────────────────┘
-                               │ one batched RPC per point
-                               ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ Persistent CasePool                                                │
-│ private process · COM STA · private model copy · one session       │
-└──────────────┬───────────────────┬──────────────────────┬───────────┘
-               ▼                   ▼                      ▼
-          Aspen Plus          Aspen HYSYS             Mock backend
-```
-
----
-
 ## Quick start without Aspen
+
+Requirements: Python 3.11–3.13 and `uv >= 0.11.16`.
 
 ```bash
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
@@ -124,6 +119,10 @@ uv run aspenops benchmark --points 24 --workers 1,2,4
 uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```
 
+The first-run `.env.example` uses the Mock backend, an empty allowlist and a repository-local state directory, so copying it does not impose Windows paths on Linux or macOS.
+
+---
+
 ## Complete local quality gate
 
 ```bash
@@ -133,6 +132,7 @@ uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
+
 uv run pytest \
   --cov=aspenops_nexus \
   --cov-branch \
@@ -142,8 +142,11 @@ uv run pytest \
   --durations=20 \
   --cov-fail-under=94.5
 
-uv audit --frozen --python-platform linux --python-version 3.12
-uv audit --frozen --python-platform windows --python-version 3.12
+UV_PREVIEW_FEATURES=json-output uv audit --frozen \
+  --python-platform linux --python-version 3.11 --output-format json
+UV_PREVIEW_FEATURES=json-output uv audit --frozen \
+  --python-platform windows --python-version 3.11 --output-format json
+
 uv build
 uv run python scripts/check_mcp.py
 uv run aspenops --version
@@ -151,50 +154,54 @@ uv run aspenops --help
 uv run aspenops demo
 ```
 
-Repository pytest policy requires pytest 8.3+, strict markers/configuration/xfail and treats `ResourceWarning` as an error.
+CI expands dependency auditing across Linux and Windows for Python 3.11, 3.12 and 3.13: **six** supported platform/version combinations. Every audit artifact is parsed as JSON before the quality job continues.
+
+Repository pytest policy requires pytest 8.3+, strict markers, strict configuration and strict xfail, and treats `ResourceWarning` as an error.
 
 ---
 
-## Automated workflows
-
-Only four authoritative workflows remain:
+## Four authoritative workflows
 
 | Workflow | Trigger | Pinned environment | Responsibility |
 |---|---|---|---|
-| `ci.yml` | `main` push, PR, manual | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, branch coverage, Ruff, formatting, mypy, frozen-dependency vulnerability audit, build, Mock, MCP, locked-dependency Wheel and README commands |
-| `windows-control-plane.yml` | `main` push, PR, manual | `windows-2025`; Python 3.12 | Windows Jobs, ownership, IPC, scheduling, archives, Fake Aspen/HYSYS, PowerShell AST, path and workflow governance |
+| `ci.yml` | `main` push, PR, manual | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, formatting, mypy, six dependency audits, build, Mock, MCP, Wheel and README commands |
+| `windows-control-plane.yml` | `main` push, PR, manual | `windows-2025`; Python 3.12 | Windows Jobs, ownership, IPC, scheduling, archives, Fake Aspen/HYSYS, PowerShell AST, path, documentation and workflow governance |
 | `generate-performance-evidence.yml` | manual | `ubuntu-24.04`; Python 3.12 | immutable baseline, independent trials and stable-regression policy |
-| `licensed-aspen-certification.yml` | protected manual | `self-hosted, windows, x64, aspen-licensed` | trusted-main SHA, realpath gate, Mock regression, preflight, real COM, signed evidence and human review |
+| `licensed-aspen-certification.yml` | protected manual | `self-hosted, windows, x64, aspen-licensed` | trusted-main SHA, Mock regression, realpath gate, preflight, real COM, signed evidence and human review |
 
-Hosted runners, third-party Actions and `uv` are pinned. Workflows and Windows setup require **uv 0.11.16**, which provides the JSON audit output used by CI. Installation always checks `uv.lock` and uses `--frozen`.
+Hosted runner images, third-party Actions and `uv 0.11.16` are pinned. Every install first checks `uv.lock` and then uses `uv sync --frozen`.
 
-### Workflow governance
+### Automated governance
 
-Automated tests require:
+The repository rejects:
 
-- third-party Actions pinned to full 40-character commit SHAs;
-- exact `uv 0.11.16`, with a regression assertion that JSON dependency auditing cannot be paired with an older tool;
-- read-only repository permission and non-persistent checkout credentials;
-- no `pull_request_target`, `contents: write` or silent `continue-on-error`;
-- `set -euo pipefail` in every Bash step;
-- input-injection scanning for literal, folded, inline and shorthand `run` syntax;
-- no direct workflow-dispatch input interpolation inside shell commands;
-- a fixed performance concurrency group and immutable baseline SHA resolution;
-- artifact names based on `github.run_id`, not arbitrary input;
-- licensed commits restricted to trusted `main` ancestry;
-- state, model, registry, output and evidence targets restricted to resolved absolute roots;
-- realpath checks against traversal, symlink and junction escapes;
-- signing secrets excluded from dependency setup and Mock regression;
-- PowerShell AST parsing of `scripts/setup_windows.ps1`;
-- both Windows gates running direct-settings, backend-policy and realpath tests.
+- third-party Actions not pinned to full commit SHAs;
+- drifting runner labels such as generic latest images;
+- writable repository permission, retained checkout credentials or `pull_request_target`;
+- silent `continue-on-error`;
+- unfrozen dependency installation;
+- Bash steps without `set -euo pipefail`;
+- direct manual-input interpolation in literal, folded, inline or shorthand `run` syntax;
+- raw baseline refs used for worktree execution;
+- arbitrary user input in artifact names;
+- stale tool versions, runner names, workflow names or broken local documentation links;
+- removal of required path, backend and documentation tests from either Windows gate.
 
-### Locked-dependency Wheel smoke
+### Locked-dependency Wheel verification
 
-Portable CI exports hash-pinned runtime requirements from `uv.lock`, synchronizes a clean environment with `uv pip sync --require-hashes`, installs the built Wheel with `--offline --no-deps`, runs `uv pip check`, then exercises version, help, Demo and critical CLI surfaces. It does not re-resolve runtime dependencies during Wheel verification.
+Portable CI exports hash-pinned runtime dependencies from `uv.lock`, synchronizes a clean environment with `uv pip sync --require-hashes`, installs the built Wheel with `--offline --no-deps`, runs `uv pip check`, then exercises critical CLI surfaces. The Wheel gate does not re-resolve dependency versions from the network.
 
-### Coverage policy
+### Documentation contracts
 
-The archived aggregate has about 0.47 percentage points of margin over the 94.5% floor. Future tests should prioritize `scheduler.py`, `pool.py`, `worker.py`, `provenance.py`, `batch.py` and `convergence.py` before raising the global floor.
+`tests/test_documentation_contracts.py` checks that:
+
+- the Chinese and English READMEs, Windows guide, quality report, test audit and certification guide exist;
+- repository-local Markdown links resolve and cannot escape the repository;
+- `uv 0.11.16`, `ubuntu-24.04`, `windows-2025` and all four workflow names stay synchronized;
+- obsolete workflow names and drifting runner labels do not return;
+- both READMEs describe all six dependency-audit targets;
+- `.env.example` remains a portable Mock first-run configuration;
+- archived evidence and real-certification boundaries remain explicit.
 
 ---
 
@@ -205,14 +212,14 @@ Prerequisites:
 - native 64-bit Windows;
 - Python 3.11–3.13;
 - `uv >= 0.11.16`;
-- licensed Aspen Plus and/or Aspen HYSYS;
-- a known license-seat limit;
+- Aspen Plus and/or Aspen HYSYS;
+- a valid license and known seat limit;
 - a non-confidential case already convergent in the GUI;
 - a verified case-specific semantic registry;
-- non-empty absolute existing allowed roots;
+- non-empty, absolute, existing allowed roots;
 - absolute state, model, registry, result and evidence paths inside those roots.
 
-Real-backend configuration fails during `Settings` construction if allowed roots are absent or the state directory is outside them. It does not reach Aspen preflight or create state files.
+A real backend without `ASPENOPS_ALLOWED_ROOTS`, or with a state directory outside them, fails during `Settings` construction. It does not reach Aspen preflight and does not create state files.
 
 ```powershell
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
@@ -220,7 +227,18 @@ cd AspenOps-Agent
 powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-The script installs or validates `uv >= 0.11.16`, preserves the process PATH, checks the lock, performs a frozen `windows + agent + dev + signing` install, creates and loads `.env`, then runs `doctor --probe` with the loaded configuration.
+The bootstrap:
+
+1. enables strict PowerShell behavior;
+2. installs `uv` through winget when missing;
+3. automatically upgrades an older `uv` to at least 0.11.16;
+4. refreshes machine and user PATH while preserving the current process PATH;
+5. checks the lockfile and installs `windows + agent + dev + signing` frozen;
+6. creates, validates and imports `.env`;
+7. rejects duplicate variables and unbalanced quotes;
+8. reports `.env` errors by line number without echoing possible secret values;
+9. runs `doctor --probe` with the imported configuration;
+10. checks native-command exit codes.
 
 First real case:
 
@@ -236,9 +254,61 @@ Start with one Worker and one known convergent point. Increase concurrency only 
 
 ---
 
+## Real-backend path policy
+
+The same policy applies to environment loading, direct Python construction, batch requests, CLI outputs and licensed certification:
+
+- real backends require non-empty `ASPENOPS_ALLOWED_ROOTS`;
+- roots and state directory must be explicitly absolute;
+- state must resolve inside an allowed root;
+- request backend must match the configured real backend;
+- model, registry, result, normal bundle and licensed output paths remain inside roots;
+- realpath checks reject `..`, symlink and Windows junction escapes;
+- unsafe configuration fails before Aspen is opened.
+
+---
+
+## Licensed Aspen certification
+
+Authoritative workflow: `licensed-aspen-certification.yml`.
+
+```text
+checkout exact approved SHA
+→ verify SHA belongs to trusted main history
+→ check lockfile and install frozen dependencies
+→ run Mock software regression without real keys
+→ validate plan, allowed roots and state with realpath
+→ licensed preflight
+→ explicit human execution approval
+→ scoped real COM execution
+→ signed evidence verification
+→ final engineering review
+```
+
+Software can emit only `PENDING_REAL_ASPEN_CERTIFICATION`. A valid signature proves origin and integrity; it does not approve thermodynamics, reactions, equipment assumptions or intended engineering use.
+
+---
+
 ## CLI and MCP
 
-Primary CLI commands: `demo`, `doctor`, `dry-run`, `run-batch`, `submit`, `job`, `benchmark`, `optimize`, `certify`, `certification-preflight`, `certify-licensed`, `verify-licensed-bundle`, `verify-bundle` and `mcp`.
+Main CLI surfaces:
+
+| Command | Purpose |
+|---|---|
+| `aspenops demo` | portable Mock end-to-end demo |
+| `aspenops doctor --probe` | host, policy and Automation Server diagnostics |
+| `aspenops dry-run REQUEST` | validate paths, semantics, units and concurrency without Aspen |
+| `aspenops run-batch REQUEST` | execute a batch and create an integrity bundle |
+| `aspenops submit REQUEST` | submit a durable background job |
+| `aspenops job JOB_ID` | inspect job state and result |
+| `aspenops benchmark` | benchmark portable orchestration |
+| `aspenops optimize REQUEST` | run budgeted optimization |
+| `aspenops certify REQUEST` | repeatability gate; never grants real certification |
+| `aspenops certification-preflight PLAN` | validate a licensed plan without opening COM |
+| `aspenops certify-licensed PLAN` | execute an approved plan on a licensed host |
+| `aspenops verify-licensed-bundle BUNDLE` | verify signed certification evidence |
+| `aspenops verify-bundle BUNDLE` | verify a normal run bundle |
+| `aspenops mcp` | start the local STDIO MCP server |
 
 The MCP server exposes exactly 14 narrow tools:
 
@@ -263,46 +333,44 @@ There is no arbitrary shell, Python, VBA, `eval`, unrestricted COM method or raw
 
 ---
 
-## Performance and certification boundary
+## Coverage policy
+
+The archived aggregate is only about 0.47 percentage points above the 94.5% floor. Future tests should prioritize:
 
 ```text
-T_naive ≈ N × (T_start + T_open + T_solve + T_read)
-T_pool ≈ W × (T_start + T_open)
-       + N_unique / W × (T_solve + T_verify)
-       + T_IPC + T_schedule
-W_effective = min(W_configured, W_license, W_memory, W_stability)
+scheduler.py
+pool.py
+worker.py
+provenance.py
+batch.py
+convergence.py
 ```
 
-Portable Mock benchmarks must never be described as licensed Aspen solve performance.
-
-Three levels remain distinct:
-
-1. **Control-plane certification** through deterministic Mock infrastructure.
-2. **Licensed-simulator runtime certification** on native licensed Windows with an approved case.
-3. **Engineering-model validation** owned by the process engineer.
-
-Licensed sequence:
-
-```text
-exact approved SHA belonging to trusted main history
-→ frozen dependencies
-→ isolated Mock regression without real signing secrets
-→ realpath and symlink-escape validation
-→ preflight
-→ explicit human authorization
-→ scoped real COM execution
-→ signed-bundle verification
-→ human engineering review
-```
-
-The runtime can only emit `PENDING_REAL_ASPEN_CERTIFICATION`; it cannot self-grant engineering certification.
+The global threshold should not be raised for appearance before these complex boundaries receive stronger tests.
 
 ---
 
-## Security and data boundary
+## What automation does not prove
 
-Never commit customer Aspen cases, proprietary kinetics/property data, production DCS data, license material, credentials, internal host information, confidential evidence bundles or signing private keys. Use the narrowest allowed roots, license seats and Worker limits.
+Public automation does not prove that:
 
-## License
+- every commercial Aspen version starts on a given host;
+- every model converges;
+- property, reaction and equipment assumptions are correct;
+- Mock performance equals real Aspen solve performance;
+- software replaces a process engineer;
+- software can grant final engineering certification.
 
-Code is Apache-2.0. Aspen products, model files, databases, vendor documentation and licenses remain subject to their own terms. AspenOps does not include Aspen software, licenses or proprietary cases.
+---
+
+## Security and license
+
+Do not commit customer models, proprietary properties or kinetics, production DCS data, license files, private keys, tokens, internal hosts, private paths or evidence containing commercial process data.
+
+Code is licensed under Apache-2.0. Aspen products, model files, databases, vendor documentation and licenses remain subject to their own terms. AspenOps does not ship Aspen software, licenses or proprietary models.
+
+<div align="center">
+
+## Let agents design the experiment. Let Aspen solve the physics. Let AspenOps enforce the truth.
+
+</div>
