@@ -54,7 +54,9 @@ The floor remains unchanged because an unsupported increase would make the gate 
 - read-only repository permission and non-persistent checkout credentials;
 - `uv lock --check` and frozen dependency sync;
 - vulnerability auditing for Linux and Windows on Python 3.11, 3.12 and 3.13—six supported combinations;
-- explicit `json-output` preview enablement and JSON parsing of every audit artifact;
+- execution of all six combinations even when an earlier target fails;
+- separate JSON and stderr evidence for each target, JSON validation, and one final fail-closed verdict;
+- explicit `json-output` preview enablement;
 - Ruff lint and formatting;
 - strict mypy;
 - documentation-contract tests before build and smoke;
@@ -67,6 +69,8 @@ The floor remains unchanged because an unsupported increase would make the gate 
 - branch-aware coverage floor 94.5%;
 - JUnit, coverage JSON, durations, dependency reports and diagnostic artifacts.
 
+`tests/test_dependency_audit_workflow.py` independently locks the six-target loop, per-target error logs, JSON validation and final aggregated failure.
+
 ### Locked-dependency Wheel gate
 
 CI exports hash-pinned runtime requirements from `uv.lock`, synchronizes a clean environment with `uv pip sync --require-hashes`, installs the Wheel with `--offline --no-deps`, runs `uv pip check`, then exercises version, help, Demo and critical CLI surfaces. Runtime dependencies are not re-resolved during Wheel verification.
@@ -77,8 +81,11 @@ CI exports hash-pinned runtime requirements from `uv.lock`, synchronizes a clean
 
 - checked frozen Windows dependencies;
 - PowerShell AST parsing of `scripts/setup_windows.ps1`;
+- executable bootstrap-helper contracts through the non-installing `-LibraryMode`;
+- real tests for valid dotenv import, duplicate-variable rejection, unbalanced-quote rejection and secret-safe errors;
+- a mocked old-version sequence that verifies self-update → winget upgrade → winget install fallback order and version rechecks;
 - repository-wide lint, formatting and strict mypy;
-- documentation links, versions, runner names, workflow names and first-run configuration contracts;
+- documentation links, versions, titles, runner names, workflow names and first-run configuration contracts;
 - process ownership, Job Object, IPC, timeout and recovery contracts;
 - Scheduler active leases;
 - Fake Aspen Plus/HYSYS convergence;
@@ -122,18 +129,20 @@ The same real-backend policy applies to environment loading, direct Python const
 - canonical realpath handoff for licensed plan and state paths;
 - signing secrets absent from setup and Mock regression;
 - both Windows gates running direct-settings, realpath and documentation tests;
-- Windows bootstrap loading `.env`, preserving PATH, upgrading old uv and checking native exit codes;
-- `.env` errors reported without echoing raw values.
+- Windows bootstrap loading `.env`, preserving PATH, checking actual versions after self-update and winget fallbacks, and checking native exit codes;
+- `.env` errors reported without echoing raw values;
+- retention of the executable `LibraryMode` bootstrap-helper step in Windows CI.
 
 ## Documentation contracts
 
 `tests/test_documentation_contracts.py` verifies:
 
-- the Chinese/English READMEs, Windows guide, quality report, test audit and certification contract exist;
+- the Chinese/English READMEs, Security, Architecture, Performance, Windows guide, quality report, test audit and certification contract exist;
 - local Markdown links resolve and cannot escape the repository;
-- no stale `uv`, runner or deleted workflow names return;
+- no stale `uv`, runner, product title or deleted workflow names return;
 - both READMEs contain the four workflow names and all six audit combinations;
 - `.env.example` remains a portable Mock first-run configuration;
+- the Windows guide describes standalone self-update, winget fallback, duplicate/unbalanced dotenv rejection and secret-safe errors;
 - archived evidence and `PENDING_REAL_ASPEN_CERTIFICATION` boundaries remain explicit.
 
 The documentation contract runs in portable CI, the public Windows gate and the isolated licensed regression gate.
@@ -170,14 +179,16 @@ It requires absolute existing roots, an absolute state directory inside them, ca
 
 - uses strict PowerShell behavior;
 - installs missing uv through winget;
-- automatically upgrades uv older than 0.11.16;
+- tries `uv self update` for an old standalone installation with PATH modification disabled;
+- falls back to winget upgrade and install, checking the actual version after each attempt;
 - preserves process PATH while refreshing machine/user PATH;
 - checks the lock and performs frozen sync;
 - creates, validates and imports `.env`;
 - rejects duplicate variables and unbalanced quotes;
 - reports `.env` failures by line number without echoing raw values;
 - runs Doctor with the loaded backend;
-- checks native exit codes.
+- checks native exit codes;
+- exposes `-LibraryMode` only for non-installing CI helper tests.
 
 ## pytest failure policy
 
@@ -198,7 +209,7 @@ The audit modified only the existing `main`; no branch was created. The authorit
 
 The 563-test portable result and 104-test Windows result remain the inspected baseline. A fresh readable Actions artifact is required before replacing those counts, publishing new coverage values or describing the newest head as newly green.
 
-Targeted Settings/root/realpath checks and repository-file audits supplement, but do not replace, the complete Actions matrix.
+Targeted Settings/root/realpath tests, YAML parsing, workflow-governance tests and Bash syntax checks supplement, but do not replace, the complete Actions matrix.
 
 ## Remaining qualification
 
