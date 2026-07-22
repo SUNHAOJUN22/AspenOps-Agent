@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$RequiredUvVersion = [version]"0.11.14"
+$RequiredUvVersion = [version]"0.11.16"
 
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
