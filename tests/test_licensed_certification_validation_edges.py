@@ -196,7 +196,11 @@ def test_preflight_rejects_naive_runtime_time(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         licensed.certification_preflight(
             plan,
-            Settings(backend="aspen_plus", state_dir=tmp_path / "state"),
+            Settings(
+                backend="aspen_plus",
+                state_dir=tmp_path / "state",
+                allowed_roots=(tmp_path.resolve(),),
+            ),
             environment={},
             system_name="Windows",
             machine_architecture="X64",
