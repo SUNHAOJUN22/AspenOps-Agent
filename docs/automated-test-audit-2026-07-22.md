@@ -2,11 +2,11 @@
 
 Date: 2026-07-22  
 Repository: `SUNHAOJUN22/AspenOps-Agent`  
-Scope: automated tests, quality gates, Windows contracts, performance evidence, dependency vulnerability scanning, licensed-Aspen safeguards, runtime path policy and README accuracy.
+Scope: automated tests, quality gates, dependency vulnerability scanning, Windows contracts, performance evidence, licensed-Aspen safeguards, runtime path policy and README accuracy.
 
 ## Executive conclusion
 
-The validated AspenOps runtime already had a broad portable suite. The audit retained that runtime and corrected reproducibility, workflow-security, path-policy, dependency-audit, Windows-bootstrap and documentation gaps directly on `main`; no new branch was created.
+The validated AspenOps runtime already had a broad portable suite. This audit retained that runtime and corrected reproducibility, workflow-security, path-policy, dependency-audit, Windows-bootstrap and documentation gaps directly on `main`; no new branch was created.
 
 Final fail-closed layers:
 
@@ -15,13 +15,14 @@ Final fail-closed layers:
 3. batch/request backend policy;
 4. CLI output policy;
 5. licensed commit trust and realpath gates;
-6. preflight, signed evidence and human engineering review.
+6. documentation and workflow governance;
+7. preflight, signed evidence and human engineering review.
 
 ## Verified archived evidence
 
 ### Portable baseline
 
-Actions run `29814739487`, head SHA `670e9523e915af309f16d959150cfadcd84219a6`.
+Actions run `29814739487`, head SHA `670e9523e915af309f16d959150cfadcd84219a6`:
 
 ```text
 72 test modules
@@ -40,7 +41,7 @@ branch coverage: 90.84880636604774%
 configured floor: 94.5%
 ```
 
-Python 3.11, 3.12 and 3.13 jobs and quality/build/smoke all completed successfully in that archived run.
+Python 3.11, 3.12 and 3.13 jobs and quality/build/smoke completed successfully in that archived run.
 
 ### Public Windows baseline
 
@@ -66,35 +67,36 @@ The repository contains exactly four long-lived workflows.
 
 ### Portable CI
 
-`.github/workflows/ci.yml`:
+`ci.yml`:
 
 - uses pinned `ubuntu-24.04`;
 - pins third-party Actions to full SHAs;
 - pins `uv 0.11.16`;
 - checks `uv.lock` and performs frozen sync;
-- audits the frozen Python 3.12 dependency graph for Linux and Windows, saving JSON evidence;
-- runs Ruff, format, strict mypy, build and Mock Demo;
+- audits the frozen dependency graph for Linux and Windows on Python 3.11, 3.12 and 3.13—six combinations;
+- explicitly enables the `json-output` preview and parses every audit artifact as JSON;
+- runs Ruff, format, strict mypy and documentation contracts before build/smoke;
 - verifies README commands and the 14-tool MCP surface;
 - runs the full suite on Python 3.11, 3.12 and 3.13;
 - enforces branch-aware coverage floor 94.5%;
-- uploads JUnit, coverage JSON, durations and logs.
+- uploads JUnit, coverage, dependency-audit and diagnostic evidence.
 
 The Wheel gate exports hash-pinned runtime requirements from `uv.lock`, synchronizes a clean environment with `--require-hashes`, installs the Wheel offline with `--no-deps`, runs `uv pip check`, then exercises critical CLI surfaces.
 
 ### Public Windows control plane
 
-`.github/workflows/windows-control-plane.yml`:
+`windows-control-plane.yml`:
 
 - uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`;
 - parses `scripts/setup_windows.ps1` through the PowerShell AST;
 - runs lint, format and strict mypy;
 - tests Job Objects, ownership, Worker IPC/recovery, Scheduler leases, convergence, archive safety and Fake Aspen/HYSYS adapters;
-- runs backend-escalation, direct-settings, CLI-output, licensed realpath and workflow-governance tests;
+- runs backend-escalation, direct-settings, CLI-output, licensed realpath, documentation and workflow-governance tests;
 - uploads JUnit and diagnostics.
 
 ### Performance evidence
 
-`.github/workflows/generate-performance-evidence.yml`:
+`generate-performance-evidence.yml`:
 
 - uses pinned `ubuntu-24.04` and `uv 0.11.16`;
 - binds manual refs through environment variables;
@@ -110,13 +112,14 @@ Performance results remain portable orchestration evidence, not licensed Aspen s
 
 ### Licensed Aspen certification
 
-`.github/workflows/licensed-aspen-certification.yml`:
+`licensed-aspen-certification.yml`:
 
 ```text
 exact approved SHA checkout
 → verify SHA belongs to trusted main history
 → lockfile check and frozen sync
 → isolated Mock regression without real secrets
+→ documentation, backend, output and workflow contracts
 → realpath validation for plan, roots and state
 → licensed preflight
 → explicit human execution approval
@@ -144,7 +147,20 @@ Targeted execution of the latest Settings/root/realpath cases passed. This suppl
 
 ## Dependency-audit compatibility issue found
 
-During the audit, CI briefly combined `uv audit --output-format json` with `uv 0.11.14`. JSON audit output was introduced after that version, so the gate could have failed before tests ran. All four workflows, the Windows bootstrap and governance tests were aligned to `uv 0.11.16`, and regression tests now require a JSON-capable version whenever JSON audit output is configured.
+CI briefly combined `uv audit --output-format json` with `uv 0.11.14`. JSON audit output was introduced after that version, so the gate could have failed before tests ran. All four workflows, the Windows bootstrap and governance tests now use `uv 0.11.16`; the CI explicitly enables `UV_PREVIEW_FEATURES=json-output`.
+
+The audit was then expanded from Python 3.12-only checks to all supported combinations:
+
+```text
+linux  × Python 3.11
+linux  × Python 3.12
+linux  × Python 3.13
+windows × Python 3.11
+windows × Python 3.12
+windows × Python 3.13
+```
+
+Each result is saved separately and validated as JSON.
 
 ## Workflow-governance tests
 
@@ -152,7 +168,7 @@ During the audit, CI briefly combined `uv audit --output-format json` with `uv 0
 
 - extra long-lived workflows;
 - unpinned runners, Actions or uv version;
-- JSON audit paired with an incapable uv version;
+- incomplete or malformed dependency-audit targets;
 - writable contents permission or retained checkout credentials;
 - `pull_request_target` or silent `continue-on-error`;
 - unfrozen dependency installation;
@@ -163,23 +179,38 @@ During the audit, CI briefly combined `uv audit --output-format json` with `uv 0
 - untrusted licensed commit ancestry;
 - missing realpath/canonical-path handoff;
 - secrets exposed to setup or Mock regression;
-- missing direct-settings/realpath tests from either Windows gate;
-- Windows bootstrap that does not load `.env`, preserve PATH, enforce minimum uv or check exit codes.
+- missing direct-settings, realpath or documentation tests from either Windows gate;
+- Windows bootstrap that does not load `.env`, preserve PATH, upgrade old uv or check exits;
+- `.env` error handling that echoes raw entries or fails to reject duplicate/unbalanced values.
+
+## Documentation-contract tests
+
+`tests/test_documentation_contracts.py` verifies:
+
+- primary documentation files exist;
+- repository-local Markdown links resolve and cannot escape the repository;
+- stale `uv`, runner and deleted workflow names do not return;
+- both READMEs list all four workflows and all six audit combinations;
+- `.env.example` remains a portable Mock first-run configuration;
+- archived evidence and `PENDING_REAL_ASPEN_CERTIFICATION` boundaries remain explicit.
+
+This contract runs in portable CI, public Windows CI and the isolated licensed regression gate.
 
 ## Windows bootstrap audit
 
 `scripts/setup_windows.ps1`:
 
 - enables strict PowerShell behavior;
-- installs `uv` only when missing;
+- installs missing uv through winget;
+- automatically upgrades uv older than 0.11.16;
 - accepts winget agreements noninteractively;
 - preserves process PATH while refreshing machine/user PATH;
-- enforces `uv >= 0.11.16`;
 - checks the lock and performs frozen sync;
 - creates, validates and imports `.env`;
+- rejects duplicate variables and unbalanced quotes;
+- reports failures by line number without echoing raw `.env` values;
 - runs Doctor with the loaded backend;
-- checks native exit codes;
-- avoids printing secrets.
+- checks native exit codes.
 
 ## pytest failure policy
 
@@ -194,18 +225,18 @@ Unknown configuration, unregistered markers, unexpected XPASS and resource leaks
 
 ## Documentation audit
 
-The Chinese and English READMEs, Windows guide, certification guide and quality report now:
+The Chinese and English READMEs, Windows guide, certification guide and quality report:
 
 - scope badges to `main` push runs;
 - label 563/104 results as archived baselines;
 - document pinned runners, Actions and `uv 0.11.16`;
-- document Linux/Windows frozen-lock vulnerability auditing;
+- document all six frozen-lock vulnerability audits;
 - provide frozen local quality commands;
 - describe all four authoritative workflows;
 - document Settings, request, CLI-output and licensed realpath safeguards;
-- describe the actual Windows bootstrap behavior;
+- describe automatic uv upgrades and secret-safe `.env` validation;
 - separate control-plane, licensed-runtime and engineering-model validation;
-- avoid claiming current green status when the latest push artifact is not observable through the available connector.
+- avoid claiming current green status when the latest push artifact is not observable.
 
 ## Remaining external limits
 
