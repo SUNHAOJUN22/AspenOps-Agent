@@ -89,7 +89,7 @@ def test_regression_and_path_gates_precede_real_execution() -> None:
     approval = text.index("Preflight completed, but licensed COM execution")
     execute = text.index("aspenops certify-licensed")
     verify = text.index("aspenops verify-licensed-bundle")
-    completeness = text.index("Verify licensed evidence completeness")
+    staging = text.index("Stage and verify licensed evidence")
     upload = text.index("Upload signed licensed evidence")
 
     assert (
@@ -103,7 +103,7 @@ def test_regression_and_path_gates_precede_real_execution() -> None:
         < approval
         < execute
         < verify
-        < completeness
+        < staging
         < upload
     )
     assert "uv lock --check" in text
@@ -132,29 +132,32 @@ def test_workflow_cannot_self_grant_real_certification() -> None:
     assert "Runtime is not permitted to self-grant" in text
 
 
-def test_complete_signed_evidence_is_required_before_upload() -> None:
+def test_signed_evidence_is_validated_and_staged_before_upload() -> None:
     text = workflow_text()
-    completeness = text.index("Verify licensed evidence completeness")
+    staging = text.index("Stage and verify licensed evidence")
     upload = text.index("Upload signed licensed evidence")
-    block = text[completeness:upload]
+    block = text[staging:upload]
 
     assert "if: ${{ success() }}" in block
-    assert "Test-Path -LiteralPath $path -PathType Leaf" in block
-    assert "(Get-Item -LiteralPath $path).Length -le 0" in block
-    assert "Required licensed evidence file is missing" in block
-    assert "Required licensed evidence file is empty" in block
-    assert "if-no-files-found: error" in text[upload:]
+    assert "Test-Path -LiteralPath $source -PathType Leaf" in block
+    assert "(Get-Item -LiteralPath $source).Length -le 0" in block
+    assert "Required licensed evidence is missing" in block
+    assert "Required licensed evidence is empty" in block
+    assert 'var/ci/licensed-evidence' in block
+    assert "Copy-Item -LiteralPath $preflight" in block
+    assert "Copy-Item -LiteralPath $report" in block
+    assert "Copy-Item -LiteralPath $bundle" in block
+    assert "Staged licensed evidence is missing" in block
+    assert "Staged licensed evidence is empty" in block
 
 
-def test_uploaded_artifact_excludes_private_key_and_contains_signed_evidence() -> None:
+def test_uploaded_artifact_is_workspace_scoped_and_excludes_private_key() -> None:
     text = workflow_text()
     upload = text[text.index("Upload signed licensed evidence") :]
 
     assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in upload
     assert "expected_head_sha" not in upload
-    assert "licensed-software-regression.xml" in upload
-    assert "preflight.json" in upload
-    assert "licensed-certification-report.json" in upload
-    assert "licensed-certification-bundle.zip" in upload
+    assert "path: var/ci" in upload
+    assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload
     assert "ASPENOPS_CERT_SIGNING_KEY" not in upload
     assert "private" not in upload.casefold()
