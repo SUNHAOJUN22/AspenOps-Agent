@@ -84,15 +84,17 @@ def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
             assert expected in step, f"{name} does not pin uv {UV_VERSION}"
 
 
-def test_ci_audits_locked_linux_and_windows_dependencies() -> None:
+def test_ci_audits_every_supported_python_platform_combination() -> None:
     text = workflow_text("ci.yml")
-    assert text.count("uv audit --frozen") == 2
+    assert text.count("uv audit --frozen") == 1
     assert "UV_PREVIEW_FEATURES: json-output" in text
     assert tuple(map(int, UV_VERSION.split("."))) >= (0, 11, 15)
-    assert "--python-platform linux --python-version 3.12" in text
-    assert "--python-platform windows --python-version 3.12" in text
-    assert "--output-format json > var/ci/dependency-audit-linux.json" in text
-    assert "--output-format json > var/ci/dependency-audit-windows.json" in text
+    assert "for platform in linux windows; do" in text
+    assert "for version in 3.11 3.12 3.13; do" in text
+    assert 'dependency-audit-${platform}-py${version}.json' in text
+    assert '--python-platform "$platform"' in text
+    assert '--python-version "$version"' in text
+    assert "python -m json.tool \"$output\" >/dev/null" in text
 
 
 def test_hosted_runner_os_versions_are_explicit() -> None:
@@ -177,10 +179,11 @@ def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None
     assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in workflow
 
 
-def test_windows_gates_run_direct_settings_and_realpath_policy_tests() -> None:
+def test_windows_gates_run_policy_and_documentation_contracts() -> None:
     for name in ("windows-control-plane.yml", "licensed-aspen-certification.yml"):
         text = workflow_text(name)
         assert "tests/test_config_resource_budgets.py" in text
+        assert "tests/test_documentation_contracts.py" in text
         assert "tests/test_real_backend_state_policy.py" in text
         assert "tests/test_licensed_path_gate.py" in text
 
@@ -194,13 +197,15 @@ def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
     assert "powershell-parse.log" in text
 
 
-def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
+def test_windows_bootstrap_is_frozen_fail_closed_and_secret_safe() -> None:
     text = Path("scripts/setup_windows.ps1").read_text(encoding="utf-8")
     assert "Set-StrictMode -Version Latest" in text
     assert '$RequiredUvVersion = [version]"0.11.16"' in text
-    assert "uv --version" in text
-    assert "$ObservedUvVersion -lt $RequiredUvVersion" in text
-    assert "--accept-package-agreements --accept-source-agreements" in text
+    assert "Get-UvVersion" in text
+    assert "Install-Or-Upgrade-Uv -Upgrade" in text
+    assert '"upgrade"' in text
+    assert "--accept-package-agreements" in text
+    assert "--accept-source-agreements" in text
     assert "Refresh-ProcessPath" in text
     assert "$currentPath = $env:Path" in text
     assert "@($machinePath, $userPath, $currentPath)" in text
@@ -208,4 +213,8 @@ def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
     assert "uv sync --frozen --extra windows --extra agent --extra dev --extra signing" in text
     assert "Import-DotEnv -Path .env" in text
     assert text.index("Import-DotEnv -Path .env") < text.index("aspenops doctor --probe")
+    assert "Invalid .env entry: $entry" not in text
+    assert "Invalid .env entry at line $lineNumber" in text
+    assert "Duplicate environment variable at line $lineNumber" in text
+    assert "Unbalanced quoted value at line $lineNumber" in text
     assert "if ($LASTEXITCODE -ne 0)" in text
