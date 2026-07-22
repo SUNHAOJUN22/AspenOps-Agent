@@ -94,13 +94,29 @@ jobs:
         run: |
           set -o pipefail
           uv run python scripts/check_mcp.py 2>&1 | tee var/ci/mcp.json
-      - name: Wheel install and CLI smoke
+      - name: Wheel install and CLI smoke from locked runtime dependencies
         shell: bash
         run: |
           set -o pipefail
-          python -m venv /tmp/aspenops-wheel
-          /tmp/aspenops-wheel/bin/pip install dist/*.whl \
+          uv export --frozen \
+            --no-default-groups \
+            --no-emit-project \
+            --format requirements.txt \
+            --output-file var/ci/runtime-requirements.txt
+          uv venv --python 3.12 /tmp/aspenops-wheel
+          uv pip sync \
+            --python /tmp/aspenops-wheel/bin/python \
+            --require-hashes \
+            var/ci/runtime-requirements.txt \
+            2>&1 | tee var/ci/wheel-runtime-sync.log
+          uv pip install \
+            --python /tmp/aspenops-wheel/bin/python \
+            --offline \
+            --no-deps \
+            dist/*.whl \
             2>&1 | tee var/ci/wheel-install.log
+          uv pip check --python /tmp/aspenops-wheel/bin/python \
+            2>&1 | tee var/ci/wheel-dependency-check.log
           /tmp/aspenops-wheel/bin/aspenops --version \
             | tee var/ci/wheel-version.log
           /tmp/aspenops-wheel/bin/aspenops --help > var/ci/wheel-help.log
