@@ -101,18 +101,29 @@ jobs:
             throw "ASPENOPS_CERT_STATE_DIR must be absolute"
           }
           $stateDir = [System.IO.Path]::GetFullPath($env:ASPENOPS_STATE_DIR)
-          $roots = @(
+
+          if ([string]::IsNullOrWhiteSpace($env:ASPENOPS_ALLOWED_ROOTS) -or $env:ASPENOPS_ALLOWED_ROOTS -match "[`r`n]") {
+            throw "ASPENOPS_ALLOWED_ROOTS must be one non-empty line"
+          }
+          $rootEntries = @(
             $env:ASPENOPS_ALLOWED_ROOTS.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) |
-              ForEach-Object { [System.IO.Path]::GetFullPath($_.Trim()) }
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ }
           )
-          if ($roots.Count -eq 0) {
+          if ($rootEntries.Count -eq 0) {
             throw "ASPENOPS_ALLOWED_ROOTS must contain at least one absolute root"
           }
-          $stateAllowed = $false
-          foreach ($root in $roots) {
-            if (-not [System.IO.Path]::IsPathRooted($root)) {
+
+          $roots = @()
+          foreach ($entry in $rootEntries) {
+            if (-not [System.IO.Path]::IsPathRooted($entry)) {
               throw "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute"
             }
+            $roots += [System.IO.Path]::GetFullPath($entry)
+          }
+
+          $stateAllowed = $false
+          foreach ($root in $roots) {
             $prefix = $root.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
             if ($stateDir.Equals($root, [System.StringComparison]::OrdinalIgnoreCase) -or
                 $stateDir.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
