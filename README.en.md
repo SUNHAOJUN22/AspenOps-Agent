@@ -6,7 +6,7 @@
 
 **Codex / Claude Code / MCP → typed process intent → isolated workers → Aspen solve → engineering verification → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Security](SECURITY.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Security](SECURITY.md)
 
 [![CI](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml)
 [![Windows control plane](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml)
@@ -25,15 +25,25 @@
 | Default and only long-lived branch | `main` |
 | Package | `aspenops-nexus 2.0.0` |
 | Python | 3.11, 3.12 and 3.13 |
-| Latest recorded portable gate | PASS: 563 tests, 94.97198% combined branch-aware coverage |
+| Archived portable run | Actions run `29814739487`, SHA `670e9523e915af309f16d959150cfadcd84219a6` |
+| Python 3.12 evidence | 72 test modules, 563 passed, 0 failed, 0 skipped, 16.73 s |
+| Combined branch-aware coverage | 94.9719800747198% |
+| Statement / branch coverage | 96.23677786818551% / 90.84880636604774% |
 | CI coverage floor | 94.5% |
-| Public Windows control plane | PASS |
+| Archived public Windows gate | Actions run `29814739334`, 104 passed, 2.06 s |
 | MCP tools | 14 |
-| Licensed real-Aspen certification | Workflow implemented; approved model and licensed Windows host still required |
+| Licensed real-Aspen certification | Workflow implemented; approved case, licensed Windows host and engineering review still required |
 
-Evidence is retained in `docs/single-main-audit.json`, `docs/quality-report.md`, `var/consolidation/final-main-manifest.json` and `var/consolidation/branch-archive-manifest.json`.
+Those values were independently checked from archived JUnit, coverage JSON and log artifacts. They are not inferred from the README. Every push to current `main` triggers the hardened portable and public-Windows gates; the badges above are the latest status entry points.
 
-Portable tests validate the AspenOps control plane. They do not impersonate real Aspen thermodynamic or flowsheet certification.
+Evidence and audit records:
+
+- [`docs/automated-test-audit-2026-07-22.md`](docs/automated-test-audit-2026-07-22.md)
+- [`docs/quality-report.md`](docs/quality-report.md)
+- [`docs/single-main-audit.json`](docs/single-main-audit.json)
+- [`var/consolidation/final-main-manifest.json`](var/consolidation/final-main-manifest.json)
+
+Portable tests validate the AspenOps control plane. They do not impersonate licensed Aspen thermodynamic, flowsheet or engineering-model certification.
 
 ---
 
@@ -55,13 +65,25 @@ A typical COM snippet can open a case, write a tree node and call `Run2()`. It d
 ## Core invariants
 
 1. One COM object belongs to one spawned Windows process and one STA apartment.
-2. Agents use semantic variables and do not invent raw Aspen tree paths.
+2. Agents use semantic variables and never invent raw Aspen tree paths.
 3. Every worker opens a private staged copy of the source model.
 4. Reset, bulk write, solve, bulk read and verification cross IPC once per point.
-5. Hard timeout terminates only the worker created by AspenOps.
+5. A hard timeout terminates only the worker created by AspenOps.
 6. Transport, engine return, convergence, feasibility and balance closure are separate states.
 7. Portable Mock CI validates the control plane and never claims real Aspen physical certification.
 8. A licensed runtime result still requires process-engineering review of the model and qualification case.
+
+A result is valid only when:
+
+```text
+communication_ok
+AND engine_ok
+AND converged
+AND feasible
+AND balances_passed
+```
+
+AspenOps records actual constraint values, thresholds, tolerances, violation magnitudes and both absolute and normalized conservation residuals. `Run2()` returning is only one layer of evidence.
 
 ---
 
@@ -89,53 +111,55 @@ A typical COM snippet can open a case, write a tree node and call `Run2()`. It d
           Aspen Plus          Aspen HYSYS             Mock backend
 ```
 
-### Validity contract
-
-A result is valid only when:
-
-```text
-communication_ok
-AND engine_ok
-AND converged
-AND feasible
-AND balances_passed
-```
-
-AspenOps records the actual constraint value, threshold, tolerance and violation magnitude. Conservation checks retain both absolute and normalized residuals. `Run2()` returning is only one layer of evidence.
-
----
-
-## Version-adaptive compatibility
+### Version-adaptive compatibility
 
 AspenOps does not hardcode one `Apwn.Document.N.0` as “the latest release.” It:
 
-1. honors explicitly pinned `ASPENOPS_PROGID` or `ASPENOPS_HYSYS_PROGID` values;
+1. honors explicit `ASPENOPS_PROGID` or `ASPENOPS_HYSYS_PROGID` pins;
 2. scans both Windows registry views;
 3. discovers versioned `Apwn.Document.*` and `HYSYS.Application.*` servers;
 4. sorts numeric registrations newest-first;
 5. creates isolated instances with `DispatchEx`;
-6. retains unversioned ProgIDs as fallback;
-7. records the successfully instantiated ProgID and exposed application version in evidence.
+6. retains unversioned ProgIDs as fallbacks;
+7. records the successful ProgID and application-exposed version in evidence.
 
-Runtime discovery is not the same as verified support. Formal compatibility still requires the licensed Windows certification workflow with an approved case.
+Runtime discovery is not verified support. Formal compatibility still requires the licensed Windows certification workflow with an approved case.
 
 ---
 
 ## Quick start without Aspen
 
+### Install from the committed lockfile
+
 ```bash
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
 cd AspenOps-Agent
-uv sync --extra dev --extra agent --extra signing
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
+```
 
+`uv lock --check` requires project metadata and `uv.lock` to agree. `uv sync --frozen` prevents the test environment from rewriting the lockfile.
+
+### Run the portable end-to-end example
+
+```bash
 uv run aspenops demo
+```
+
+### Run the portable benchmark and repeatability gate
+
+```bash
 uv run aspenops benchmark --points 24 --workers 1,2,4
 uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```
 
-Complete portable quality gate:
+### Run the core local gate used by CI
 
 ```bash
+mkdir -p var/ci
+
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
@@ -143,10 +167,94 @@ uv run pytest -W error::ResourceWarning \
   --cov=aspenops_nexus \
   --cov-branch \
   --cov-report=term-missing \
+  --cov-report=json:var/ci/coverage-local.json \
+  --junitxml=var/ci/junit-local.xml \
+  --durations=20 \
   --cov-fail-under=94.5
 uv build
 uv run python scripts/check_mcp.py
+uv run aspenops dry-run examples/batch-request.example.json
+uv run aspenops benchmark --points 4 --workers 1,2
+uv run aspenops certify examples/batch-request.example.json \
+  --output var/ci/readme-certification.json \
+  --repeats 2
 ```
+
+The repository pytest configuration also enforces:
+
+```text
+minimum pytest 8.3
+strict markers
+strict configuration
+strict xfail
+ResourceWarning = error
+```
+
+---
+
+## Automated test and quality gates
+
+AspenOps retains four long-lived workflows with distinct responsibilities. None should be described alone as “complete Aspen certification.”
+
+| Workflow | Trigger | Environment | Scope | Evidence |
+|---|---|---|---|---|
+| `ci.yml` | main push, PR, manual | Ubuntu; Python 3.11/3.12/3.13 | full pytest, branch coverage, Ruff, formatting, mypy, build, Mock, MCP, wheel and README command smoke | JUnit, JSON coverage, logs and CLI outputs |
+| `windows-control-plane.yml` | main push, PR, manual | `windows-latest`; Python 3.12 | Windows Job/process ownership, IPC, scheduler, archives, fake Aspen/HYSYS and licensed-certification interfaces | JUnit and Windows diagnostics |
+| `generate-performance-evidence.yml` | manual | Ubuntu; Python 3.12 | exact baseline/candidate, independent trials and stable regression policy | raw samples and comparison reports |
+| `licensed-aspen-certification.yml` | protected manual dispatch | self-hosted licensed Windows | exact SHA, software regression, preflight, real COM, signed evidence and human-review boundary | JUnit, preflight, signed report and ZIP |
+
+### Portable CI requirements
+
+- GitHub Actions are pinned to immutable commit SHAs.
+- Checkout does not retain write credentials.
+- `uv.lock` must be current and dependency sync is frozen.
+- Python 3.11, 3.12 and 3.13 each run the complete test suite.
+- `ResourceWarning` fails the run.
+- Combined branch-aware coverage must remain at least 94.5%.
+- JUnit, JSON coverage, the 20 slowest tests and logs are retained.
+- The built wheel must pass version, help, Demo and key CLI smoke tests.
+- README dry-run, benchmark and certification commands are exercised automatically.
+- The MCP surface must remain exactly 14 controlled tools.
+- Stable performance regressions beyond policy thresholds fail the gate.
+
+### Public Windows control plane
+
+The hardened selected suite covers:
+
+- Windows Job Object and process-ownership boundaries;
+- Worker protocol, timeout, taint recycling and singleflight behavior;
+- active scheduler leases;
+- convergence and fake Aspen Plus/HYSYS adapters;
+- ZIP traversal, compression-bomb and evidence-bundle limits;
+- licensed-certification CLI, workflow and signed-bundle interfaces;
+- Windows CLI and Doctor smoke.
+
+Based on the archived JUnit inventory, the hardened selection contains 127 tests. That becomes fresh execution evidence only after the revised workflow completes successfully.
+
+### Coverage audit
+
+The aggregate coverage is strong but has only about 0.47 percentage points of headroom over the current gate. Future tests should prioritize:
+
+```text
+scheduler.py
+pool.py
+worker.py
+provenance.py
+batch.py
+convergence.py
+```
+
+The global floor should not be raised merely for appearance before the remaining branches in those high-complexity modules are covered. See the [automated test audit](docs/automated-test-audit-2026-07-22.md) for module-level data and the full 72-module inventory.
+
+### What public automation does not prove
+
+Public CI does not prove that:
+
+- a commercial Aspen release can be instantiated on a particular workstation;
+- a specific `.bkp`, `.apwz` or `.hsc` model converges;
+- property methods, reactions and equipment assumptions are engineering-correct;
+- Mock orchestration performance equals real Aspen solve performance;
+- software can self-grant final real-Aspen engineering certification.
 
 ---
 
@@ -173,7 +281,8 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 Manual equivalent:
 
 ```powershell
-uv sync --extra windows --extra dev --extra agent --extra signing
+uv lock --check
+uv sync --frozen --extra windows --extra dev --extra agent --extra signing
 Copy-Item .env.example .env
 uv run aspenops doctor --probe
 ```
@@ -292,15 +401,13 @@ T_pool ≈ W × (T_start + T_open)
        + T_IPC + T_schedule
 ```
 
-Throughput gains come from persistent sessions, one batched RPC per point, request deduplication, content-addressed caching, dynamic task claiming, private model parallelism and worker recycling.
-
 Effective concurrency is bounded by:
 
 ```text
 W_effective = min(W_configured, W_license, W_memory, W_stability)
 ```
 
-Portable Mock benchmarks must not be presented as licensed Aspen solve-performance claims.
+Throughput gains come from persistent sessions, one batched RPC per point, request deduplication, content-addressed caching, dynamic task claiming, private model parallelism and worker recycling. Portable Mock benchmarks must not be presented as licensed Aspen solve-performance claims.
 
 ---
 
@@ -318,7 +425,17 @@ The authoritative licensed workflow is:
 .github/workflows/licensed-aspen-certification.yml
 ```
 
-It requires an exact approved 40-character commit SHA, plan path, backend selection and explicit authorization before real COM execution. The runtime can generate a signed `PENDING_REAL_ASPEN_CERTIFICATION` evidence bundle; it cannot self-grant engineering certification.
+It requires:
+
+- an exact approved 40-character commit SHA;
+- a current lockfile and frozen dependency environment;
+- 104 targeted licensed-certification and backend software tests before COM is opened;
+- preflight validation;
+- explicit authorization before real execution;
+- signed evidence verification;
+- `PENDING_REAL_ASPEN_CERTIFICATION` until human engineering review is complete.
+
+Software cannot self-grant engineering certification.
 
 ---
 
@@ -340,33 +457,11 @@ Keep allowed roots narrow, concurrency license-aware, qualification cases non-co
 ## Repository layout
 
 ```text
-src/aspenops_nexus/
-  batch.py
-  compat.py
-  registry.py
-  units.py
-  worker.py
-  pool.py
-  pool_manager.py
-  scheduler.py
-  evaluation.py
-  cache.py
-  certification.py
-  licensed_certification.py
-  provenance.py
-  optimization.py
-  optimizer.py
-  design.py
-  mcp_server.py
-  backends/
-    aspen_plus.py
-    hysys.py
-    mock.py
-
-tests/
-examples/
-docs/
-scripts/
+src/aspenops_nexus/          runtime, adapters, scheduling, validation and evidence
+tests/                       72 archived test modules; unit, integration and fault edges
+examples/                    Mock, request, registry and certification-plan examples
+docs/                        architecture, performance, quality, test audit and certification
+scripts/                     setup, benchmark and interface verification utilities
 .github/workflows/
   ci.yml
   windows-control-plane.yml
@@ -376,12 +471,64 @@ scripts/
 
 ---
 
-## Honest boundary
+## Troubleshooting
 
-AspenOps 2.0 provides a steady-state Aspen Plus COM control plane, a controlled HYSYS Spreadsheet Bridge, CLI/Python/MCP interfaces, durable batches, caching, concurrency, timeout, verification, optimization and evidence workflows.
+### `uv lock --check` fails
 
-It does not claim that public Linux CI has executed proprietary Aspen software; that every Aspen version, module or model is compatible without qualification; that `Run2()` proves engineering correctness; that the full HYSYS object model is uniformly wrapped; or that an LLM replaces property-method selection, reaction engineering, equipment design and process review.
+`pyproject.toml` and `uv.lock` disagree. Update and review the lockfile explicitly; do not remove `--frozen` from CI to hide the problem.
+
+### Local tests pass but coverage fails in CI
+
+Confirm that `--cov-branch` is enabled and inspect both JSON coverage and `term-missing`. The current gate is 94.5% combined branch-aware coverage, not statement coverage alone.
+
+### `doctor --probe` cannot find Aspen
+
+Check native 64-bit Windows, pywin32, Automation Server registration, Python/Aspen bitness and optional explicit ProgID pins.
+
+### `Run2()` returns but `ok=false`
+
+Inspect convergence evidence, constraint violations, conservation residuals and Aspen error nodes. Engine return is only one of five validity gates.
+
+### More workers make the batch slower
+
+Reduce concurrency and inspect license waiting, memory, model-open time, solve-time distribution and worker-recycling thresholds. More concurrency is not automatically more throughput.
+
+### Public CI is green; is real Aspen certified?
+
+No. Public CI proves the control plane. Real Aspen qualification requires `licensed-aspen-certification.yml` on a licensed self-hosted Windows host and process-engineering review.
+
+---
+
+## Honest boundary and roadmap
+
+AspenOps 2.0 provides:
+
+- an Aspen Plus steady-state COM automation control plane;
+- a controlled HYSYS Spreadsheet Bridge;
+- CLI, Python and local STDIO MCP surfaces;
+- durable batch execution, caching, concurrency, timeout, validation, optimization and evidence;
+- a licensed-certification plan, signed evidence bundle and human-review gate.
+
+It does not claim that:
+
+- public Linux CI has executed real Aspen;
+- every Aspen version, module or model works without qualification;
+- `Run2()` returning proves thermodynamic or engineering correctness;
+- the entire HYSYS object model is uniformly wrapped;
+- steady-state adapters cover Aspen Dynamics, ACM, every PBE or every dynamic model;
+- an LLM replaces property-method selection, reaction modeling, equipment design or engineering review.
+
+Priorities:
+
+1. retain fresh green evidence for the hardened workflows;
+2. add targeted branch tests for scheduler, pool, worker and provenance;
+3. run licensed Aspen Plus and HYSYS qualification on approved non-confidential cases;
+4. establish versioned qualification cases and semantic-registry evidence;
+5. create reproducible real-license and real-hardware throughput baselines;
+6. preserve one authoritative `main` branch and the minimal long-lived workflow set.
+
+---
 
 ## License
 
-Apache-2.0. Aspen products, models, databases and vendor documentation remain governed by their respective licenses. AspenOps does not distribute Aspen software, licenses or proprietary cases.
+Apache-2.0. Aspen Plus, Aspen HYSYS, model files, databases, vendor documentation and licenses remain governed by their respective terms. AspenOps does not include Aspen software, licenses or proprietary models.
