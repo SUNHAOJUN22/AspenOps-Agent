@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$RequiredUvVersion = [version]"0.11.14"
+
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -53,6 +55,15 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     throw "uv is not available after installation. Open a new PowerShell session and rerun this script."
+}
+
+$uvVersionText = (uv --version).Trim()
+if ($LASTEXITCODE -ne 0 -or $uvVersionText -notmatch '^uv\s+(\d+\.\d+\.\d+)') {
+    throw "Unable to determine the installed uv version: $uvVersionText"
+}
+$ObservedUvVersion = [version]$Matches[1]
+if ($ObservedUvVersion -lt $RequiredUvVersion) {
+    throw "uv $ObservedUvVersion is too old; AspenOps requires uv $RequiredUvVersion or newer"
 }
 
 uv lock --check
