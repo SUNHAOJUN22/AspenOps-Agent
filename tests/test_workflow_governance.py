@@ -14,6 +14,7 @@ UV_VERSION = "0.11.16"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
+WRITE_PERMISSION = re.compile(r"^\s+[A-Za-z][A-Za-z0-9_-]*:\s*write\s*$", re.MULTILINE)
 RUN_HEADER = re.compile(r"^(\s*)(?:-\s+)?run:\s*(.*)$")
 BLOCK_SCALARS = {"|", "|-", "|+", ">", ">-", ">+"}
 
@@ -127,14 +128,15 @@ def test_all_bash_steps_explicitly_fail_closed() -> None:
             assert "set -o pipefail" not in command
 
 
-def test_workflows_are_read_only_and_do_not_retain_checkout_credentials() -> None:
+def test_workflows_are_strictly_read_only_and_drop_checkout_credentials() -> None:
     for name in WORKFLOWS:
         text = workflow_text(name)
         assert "permissions:\n  contents: read" in text
+        assert "permissions: write-all" not in text
+        assert WRITE_PERMISSION.search(text) is None, f"Write permission in {name}"
         assert "persist-credentials: false" in text
         assert "pull_request_target:" not in text
         assert "continue-on-error: true" not in text
-        assert "contents: write" not in text
 
 
 def test_all_workflows_use_checked_frozen_dependencies() -> None:
@@ -212,7 +214,7 @@ def test_licensed_evidence_is_staged_inside_workspace_before_upload() -> None:
     assert "licensed-certification-bundle.zip" in block
     assert "Test-Path -LiteralPath $source -PathType Leaf" in block
     assert "(Get-Item -LiteralPath $source).Length -le 0" in block
-    assert 'var/ci/licensed-evidence' in block
+    assert "var/ci/licensed-evidence" in block
     assert "Copy-Item -LiteralPath $preflight" in block
     assert "Copy-Item -LiteralPath $report" in block
     assert "Copy-Item -LiteralPath $bundle" in block
