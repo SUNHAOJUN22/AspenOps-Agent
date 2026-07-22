@@ -86,6 +86,8 @@ def test_dispatch_inputs_never_interpolate_directly_into_shell_blocks() -> None:
 
 def test_performance_refs_are_resolved_before_worktree_execution() -> None:
     text = workflow_text("generate-performance-evidence.yml")
+    assert "group: aspenops-performance-evidence" in text
+    assert "group: aspenops-performance-${{ inputs." not in text
     assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in text
     assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
