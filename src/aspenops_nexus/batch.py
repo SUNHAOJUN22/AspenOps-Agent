@@ -168,6 +168,10 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
     )
     backend_name = str(root.get("backend", settings.backend)).strip().lower()
     if backend_name != "mock":
+        if backend_name != settings.backend:
+            raise PolicyError(
+                "Real simulator request backend must match ASPENOPS_BACKEND"
+            )
         if not settings.allowed_roots:
             raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
         if not _state_is_allowed(settings):
