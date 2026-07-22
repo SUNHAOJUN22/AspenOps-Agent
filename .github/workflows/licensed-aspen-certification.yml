@@ -49,13 +49,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Python
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-        with:
-          version: "0.11.14"
-          python-version: "3.12"
-          enable-cache: true
-
       - name: Verify exact revision belongs to main
         shell: pwsh
         run: |
@@ -91,6 +84,13 @@ jobs:
             throw "Certification plan does not exist: $plan"
           }
           "PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.14"
+          python-version: "3.12"
+          enable-cache: true
 
       - name: Verify lockfile and sync frozen certification dependencies
         shell: pwsh
