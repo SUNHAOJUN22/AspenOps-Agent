@@ -57,9 +57,25 @@ def test_resource_budget_environment_values_must_be_positive(
         Settings.from_env()
 
 
+def test_real_backend_environment_requires_allowed_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ASPENOPS_BACKEND", "aspen_plus")
+    monkeypatch.delenv("ASPENOPS_ALLOWED_ROOTS", raising=False)
+    with pytest.raises(ValueError, match="require ASPENOPS_ALLOWED_ROOTS"):
+        Settings.from_env()
+
+
 def test_direct_real_backend_settings_enforce_allowed_state_roots(tmp_path: Path) -> None:
     allowed = (tmp_path / "allowed").resolve()
     outside = (tmp_path / "outside").resolve()
+
+    with pytest.raises(ValueError, match="require ASPENOPS_ALLOWED_ROOTS"):
+        Settings(
+            backend="aspen_plus",
+            allowed_roots=(),
+            state_dir=allowed / "state",
+        )
 
     with pytest.raises(ValueError, match="ALLOWED_ROOTS entry must be absolute"):
         Settings(
