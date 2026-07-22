@@ -66,16 +66,12 @@ class Settings:
     max_optimization_objectives: int = 16
 
     def __post_init__(self) -> None:
-        """Fail closed for direct real-backend construction.
+        """Fail closed for every direct real-backend construction."""
 
-        ``from_env`` validates the same boundary, but callers may instantiate
-        ``Settings`` directly.  Once real-backend allowed roots are supplied,
-        every root and the state directory must be absolute and the state
-        directory must remain inside one of those roots.
-        """
-
-        if self.backend == "mock" or not self.allowed_roots:
+        if self.backend == "mock":
             return
+        if not self.allowed_roots:
+            raise ValueError("Real backends require ASPENOPS_ALLOWED_ROOTS")
 
         roots = tuple(Path(root).expanduser() for root in self.allowed_roots)
         if any(not root.is_absolute() for root in roots):
@@ -101,6 +97,8 @@ class Settings:
             for value in os.getenv("ASPENOPS_ALLOWED_ROOTS", "").split(";")
             if value.strip()
         )
+        if backend != "mock" and not root_values:
+            raise ValueError("Real backends require ASPENOPS_ALLOWED_ROOTS")
         if backend != "mock":
             relative_roots = [
                 value
@@ -115,10 +113,10 @@ class Settings:
         if not state_value:
             raise ValueError("ASPENOPS_STATE_DIR must be non-empty")
         state_path = Path(state_value).expanduser()
-        if backend != "mock" and roots and not state_path.is_absolute():
+        if backend != "mock" and not state_path.is_absolute():
             raise ValueError("ASPENOPS_STATE_DIR must be absolute for a real backend")
         state_dir = state_path.resolve()
-        if backend != "mock" and roots and not _inside(state_dir, roots):
+        if backend != "mock" and not _inside(state_dir, roots):
             raise ValueError("ASPENOPS_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS")
 
         slots = _env_int("ASPENOPS_LICENSE_SLOTS", 1)
