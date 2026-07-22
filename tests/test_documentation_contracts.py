@@ -179,10 +179,10 @@ def test_environment_template_keeps_first_run_portable() -> None:
 
 def test_windows_guide_matches_hardened_bootstrap() -> None:
     text = (ROOT / "docs" / "windows-setup.md").read_text(encoding="utf-8")
-    assert "automatically upgrades" in text
-    assert "self-update" in text
+    assert "uv self update" in text
     assert "winget" in text
-    assert "duplicate variable" in text.casefold()
+    assert "rechecks the actual version" in text
+    assert "duplicate variables" in text.casefold()
     assert "unbalanced" in text.casefold()
     assert "without echoing raw" in text
     assert "test_documentation_contracts.py" in text
