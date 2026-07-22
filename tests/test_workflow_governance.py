@@ -135,10 +135,21 @@ def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None
     assert "python scripts/validate_licensed_paths.py" in workflow
     assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
     assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in workflow
+    assert "GITHUB_WORKSPACE must be absolute" in gate
+    assert "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute" in gate
+    assert "ASPENOPS_STATE_DIR must be absolute" in gate
     assert "PLAN_PATH resolves outside GITHUB_WORKSPACE" in gate
     assert "ASPENOPS_STATE_DIR resolves outside ASPENOPS_ALLOWED_ROOTS" in gate
     assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in workflow
     assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in workflow
+
+
+def test_windows_gates_run_direct_settings_and_realpath_policy_tests() -> None:
+    for name in ("windows-control-plane.yml", "licensed-aspen-certification.yml"):
+        text = workflow_text(name)
+        assert "tests/test_config_resource_budgets.py" in text
+        assert "tests/test_real_backend_state_policy.py" in text
+        assert "tests/test_licensed_path_gate.py" in text
 
 
 def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
