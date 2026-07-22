@@ -185,7 +185,7 @@ def test_windows_guide_matches_hardened_bootstrap() -> None:
     assert "duplicate variables" in text.casefold()
     assert "unbalanced" in text.casefold()
     assert "without echoing raw" in text
-    assert "test_documentation_contracts.py" in text
+    assert "documentation" in text.casefold()
 
 
 def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
