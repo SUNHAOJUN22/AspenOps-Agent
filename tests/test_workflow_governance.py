@@ -86,6 +86,15 @@ def test_hosted_runner_os_versions_are_explicit() -> None:
     assert "windows-latest" not in windows
 
 
+def test_all_bash_steps_explicitly_fail_closed() -> None:
+    for name in ("ci.yml", "generate-performance-evidence.yml"):
+        blocks = shell_blocks(workflow_text(name))
+        assert blocks
+        for block in blocks:
+            assert "set -euo pipefail" in block, f"Weak Bash mode in {name}"
+            assert "set -o pipefail" not in block
+
+
 def test_workflows_are_read_only_and_do_not_retain_checkout_credentials() -> None:
     for name in WORKFLOWS:
         text = workflow_text(name)
