@@ -23,6 +23,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
+          version: "0.11.14"
           python-version: "3.12"
           enable-cache: true
       - name: Verify lockfile and sync frozen dependencies
