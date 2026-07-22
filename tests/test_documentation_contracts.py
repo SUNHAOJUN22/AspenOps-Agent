@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+ROOT = Path(__file__).resolve().parents[1]
+CURRENT_UV_VERSION = "0.11.16"
+WORKFLOWS = {
+    "ci.yml",
+    "generate-performance-evidence.yml",
+    "licensed-aspen-certification.yml",
+    "windows-control-plane.yml",
+}
+PRIMARY_DOCUMENTS = (
+    ROOT / "README.md",
+    ROOT / "README.en.md",
+    ROOT / "docs" / "windows-setup.md",
+    ROOT / "docs" / "quality-report.md",
+    ROOT / "docs" / "automated-test-audit-2026-07-22.md",
+    ROOT / "docs" / "certification.md",
+)
+STALE_TOKENS = {
+    "0.11.14",
+    "ubuntu-latest",
+    "windows-latest",
+    "windows-aspen-certification.yml",
+}
+MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+
+
+def _local_link_target(document: Path, raw_target: str) -> Path | None:
+    target = raw_target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1]
+    else:
+        target = target.split(maxsplit=1)[0]
+
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc or target.startswith("#"):
+        return None
+    if not parsed.path:
+        return None
+
+    candidate = (document.parent / unquote(parsed.path)).resolve()
+    if candidate != ROOT and ROOT not in candidate.parents:
+        raise AssertionError(f"Documentation link escapes repository: {document}: {target}")
+    return candidate
+
+
+def test_primary_documentation_exists_and_local_links_resolve() -> None:
+    for document in PRIMARY_DOCUMENTS:
+        assert document.is_file(), f"Missing documentation file: {document.relative_to(ROOT)}"
+        text = document.read_text(encoding="utf-8")
+        for raw_target in MARKDOWN_LINK.findall(text):
+            candidate = _local_link_target(document, raw_target)
+            if candidate is not None:
+                assert candidate.exists(), (
+                    f"Broken local link in {document.relative_to(ROOT)}: "
+                    f"{candidate.relative_to(ROOT)}"
+                )
+
+
+def test_documentation_has_no_stale_toolchain_or_workflow_names() -> None:
+    for document in PRIMARY_DOCUMENTS:
+        text = document.read_text(encoding="utf-8")
+        for token in STALE_TOKENS:
+            assert token not in text, f"Stale token {token!r} in {document.relative_to(ROOT)}"
+
+    readmes = [
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "README.en.md").read_text(encoding="utf-8"),
+    ]
+    for text in readmes:
+        assert CURRENT_UV_VERSION in text
+        assert "ubuntu-24.04" in text
+        assert "windows-2025" in text
+        for workflow in WORKFLOWS:
+            assert workflow in text
+
+
+def test_documentation_describes_all_six_dependency_audit_targets() -> None:
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    assert "Python 3.11、3.12、3.13" in chinese
+    assert "Linux 与 Windows" in chinese
+    assert "六种" in chinese
+    assert "Python 3.11, 3.12 and 3.13" in english
+    assert "Linux and Windows" in english
+    assert "six" in english.casefold()
+
+
+def test_environment_template_keeps_first_run_portable() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "ASPENOPS_BACKEND=mock" in text
+    assert "ASPENOPS_ALLOWED_ROOTS=\n" in text
+    assert "ASPENOPS_STATE_DIR=var/aspenops-state" in text
+    assert "# ASPENOPS_BACKEND=aspen_plus" in text
+    assert "# ASPENOPS_ALLOWED_ROOTS=C:/AspenModels;C:/AspenResults" in text
+    assert "# ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state" in text
+
+
+def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    assert "已验证归档基线" in chinese
+    assert "不是对任意后续提交的自动声明" in chinese
+    assert "PENDING_REAL_ASPEN_CERTIFICATION" in chinese
+    assert "archived validated baseline" in english.casefold()
+    assert "not an automatic claim" in english.casefold()
+    assert "PENDING_REAL_ASPEN_CERTIFICATION" in english
