@@ -80,7 +80,7 @@ jobs:
         run: |
           uv lock --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          uv sync --frozen --extra dev --extra windows --extra signing
+          uv sync --frozen --extra dev --extra windows --extra agent --extra signing
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run licensed control-plane regression gate
