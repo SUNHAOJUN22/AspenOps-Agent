@@ -58,10 +58,14 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 $uvVersionText = (uv --version).Trim()
-if ($LASTEXITCODE -ne 0 -or $uvVersionText -notmatch '^uv\s+(\d+\.\d+\.\d+)') {
+if ($LASTEXITCODE -ne 0) {
+    throw "uv --version failed"
+}
+$uvVersionMatch = [regex]::Match($uvVersionText, '^uv\s+(\d+\.\d+\.\d+)')
+if (-not $uvVersionMatch.Success) {
     throw "Unable to determine the installed uv version: $uvVersionText"
 }
-$ObservedUvVersion = [version]$Matches[1]
+$ObservedUvVersion = [version]$uvVersionMatch.Groups[1].Value
 if ($ObservedUvVersion -lt $RequiredUvVersion) {
     throw "uv $ObservedUvVersion is too old; AspenOps requires uv $RequiredUvVersion or newer"
 }
