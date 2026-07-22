@@ -1,72 +1,93 @@
 {
-  "schema": "aspenops.final-main-manifest/v1",
+  "schema": "aspenops.final-main-manifest/v2",
   "repository": "SUNHAOJUN22/AspenOps-Agent",
-  "status": "SINGLE_MAIN_CONSOLIDATION_BLOCKED",
-  "final_main_sha": "9522eaf7faaa68074eaa26bebd07f8070edd97db",
-  "final_main_sha_semantics": "Last code-bearing main SHA before evidence-only manifests and temporary-workflow cleanup commits.",
-  "validated_runtime_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
-  "validation_ci_run_id": 29814739487,
-  "validation_windows_run_id": 29814739334,
+  "status": "SINGLE_MAIN_CONSOLIDATION_COMPLETE",
+  "generated_date": "2026-07-22",
   "default_branch": "main",
   "remote_branch_count": 1,
   "remaining_branches": [
     "main"
   ],
-  "remaining_branch_evidence": {
-    "source": "GitHub Actions issue #28",
-    "result": "Temporary branch cleanup PASS. Remote heads contain only main."
+  "single_main_evidence": {
+    "source": "docs/single-main-audit.json and completed GitHub issue #28",
+    "result": "Remote heads contain only main.",
+    "deleted_temporary_branches": [
+      "audit/single-main-final-20260721",
+      "automation/final-main-evidence-trigger"
+    ]
   },
+  "package": "aspenops-nexus",
   "package_version": "2.0.0",
-  "test_count": 563,
-  "coverage_floor": 94.5,
-  "combined_coverage": 94.9719800747198,
-  "statement_coverage": 96.23677786818551,
-  "branch_coverage": 90.84880636604774,
-  "python_matrix": {
-    "3.11": "PASS",
-    "3.12": "PASS",
-    "3.13": "PASS"
+  "validated_runtime_sha": "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2",
+  "validation_ci_run_id": 29814739487,
+  "validation_windows_run_id": 29814739334,
+  "portable_validation": {
+    "python_matrix": {
+      "3.11": "PASS",
+      "3.12": "PASS",
+      "3.13": "PASS"
+    },
+    "test_count_python_3_12": 563,
+    "coverage_floor_percent": 94.5,
+    "combined_branch_aware_coverage_percent": 94.9719800747198,
+    "statement_coverage_percent": 96.23677786818551,
+    "branch_coverage_percent": 90.84880636604774,
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "strict_mypy": "PASS",
+    "build": "PASS",
+    "clean_wheel": "PASS",
+    "demo": "PASS",
+    "mcp_tool_count": 14,
+    "benchmark_smoke": "PASS",
+    "performance_result": "PASS_PORTABLE_MOCK_STABLE_REGRESSION_GATE",
+    "windows_result": "PASS_PUBLIC_CONTROL_PLANE"
   },
-  "ruff": "PASS",
-  "ruff_format": "PASS",
-  "strict_mypy": "PASS",
-  "build": "PASS",
-  "clean_wheel": "PASS",
-  "demo": "PASS",
-  "mcp_tool_count": 14,
-  "benchmark_smoke": "PASS",
-  "performance_result": "PASS_PORTABLE_MOCK_STABLE_REGRESSION_GATE",
-  "windows_result": "PASS_PUBLIC_CONTROL_PLANE",
-  "licensed_workflow": "IMPLEMENTED_NOT_EXECUTED",
-  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
-  "authoritative_workflows_after_cleanup": [
+  "post_validation_alignment": {
+    "source_main_sha_before_manifest": "0add36c8b34617312807aaac03a7104c13e91565",
+    "scope": [
+      "authoritative Chinese README rewrite",
+      "English README alignment",
+      "licensed Windows workflow documentation correction",
+      "certification contract alignment",
+      "complete Windows bootstrap dependency extras",
+      "expanded safe environment template"
+    ],
+    "runtime_python_modules_changed": false,
+    "automatic_ci_revalidation": "TRIGGERED_BY_MAIN_PUSH"
+  },
+  "authoritative_workflows": [
     "ci.yml",
+    "windows-control-plane.yml",
     "generate-performance-evidence.yml",
-    "licensed-aspen-certification.yml",
-    "windows-control-plane.yml"
+    "licensed-aspen-certification.yml"
   ],
   "required_unmerged_capabilities": [],
-  "archive_tag_gate": {
-    "status": "BLOCKED",
-    "required": "An exact annotated archive tag for every historical non-main head.",
-    "created_tag_objects_without_refs": true,
-    "rest_ref_creation": {
-      "run_id": 29817700557,
-      "http_status": 403,
-      "error": "Resource not accessible by integration"
-    },
-    "git_push_creation": {
-      "run_id": 29818039586,
-      "error": "refusing to allow a GitHub App to create or update workflow .github/workflows/ci.yml without workflows permission"
-    },
-    "required_external_action": "Grant the acting GitHub App or a scoped maintainer token Workflows: write permission, then create and verify the annotated tags listed in var/consolidation/branch-archive-manifest.json."
+  "open_parallel_pull_requests_at_audit": [],
+  "real_aspen": {
+    "licensed_workflow": "IMPLEMENTED_NOT_YET_EXECUTED_WITH_APPROVED_CASE",
+    "status": "PENDING_REAL_ASPEN_CERTIFICATION",
+    "boundary": "Portable and public-Windows control-plane gates do not certify proprietary Aspen physics or an engineering model."
+  },
+  "historical_archive_tags": {
+    "status": "OPTIONAL_HISTORY_ENHANCEMENT_PARTIALLY_COMPLETE",
+    "verified_tags": 2,
+    "remaining_historical_branch_shas_recorded": true,
+    "manifest": "var/consolidation/branch-archive-manifest.json",
+    "permission_limitation": "The acting GitHub App could not create every annotated historical tag because workflow-bearing commits require Workflows: write.",
+    "effect_on_single_main": "NONE",
+    "effect_on_runtime_quality": "NONE"
   },
   "completion_conditions": {
     "single_main": "PASS",
-    "portable_quality": "PASS",
+    "default_branch_main": "PASS",
+    "required_capabilities_in_main": "PASS",
+    "portable_quality_at_validated_runtime": "PASS",
     "public_windows_control_plane": "PASS",
     "performance_regression_gate": "PASS",
     "open_parallel_prs": "PASS_NONE",
-    "historical_annotated_tags": "BLOCKED_PERMISSION"
+    "documentation_and_workflow_names_aligned": "PASS",
+    "real_aspen_engineering_certification": "PENDING_APPROVED_INFRASTRUCTURE",
+    "all_optional_historical_annotated_tags": "NOT_REQUIRED_PERMISSION_LIMITED"
   }
 }
