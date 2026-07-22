@@ -10,6 +10,7 @@ WORKFLOWS = {
     "licensed-aspen-certification.yml",
     "windows-control-plane.yml",
 }
+UV_VERSION = "0.11.14"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
@@ -59,6 +60,17 @@ def test_all_external_actions_are_pinned_to_full_commit_shas() -> None:
         for line in uses_lines:
             match = PINNED_ACTION.fullmatch(line)
             assert match is not None, f"Unpinned action in {name}: {line.strip()}"
+
+
+def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
+    expected = f'version: "{UV_VERSION}"'
+    for name in WORKFLOWS:
+        text = workflow_text(name)
+        chunks = text.split("astral-sh/setup-uv@")[1:]
+        assert chunks, f"{name} has no setup-uv step"
+        for chunk in chunks:
+            step = chunk.split("\n      - ", 1)[0]
+            assert expected in step, f"{name} does not pin uv {UV_VERSION}"
 
 
 def test_workflows_are_read_only_and_do_not_retain_checkout_credentials() -> None:
