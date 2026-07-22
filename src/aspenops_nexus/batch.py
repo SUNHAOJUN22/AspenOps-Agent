@@ -142,10 +142,28 @@ def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
     return requests
 
 
-def _state_is_allowed(settings: Settings) -> bool:
-    state_dir = settings.state_dir.expanduser().resolve()
-    roots = tuple(root.expanduser().resolve() for root in settings.allowed_roots)
-    return any(state_dir == root or root in state_dir.parents for root in roots)
+def _validate_real_backend_policy(backend_name: str, settings: Settings) -> None:
+    if backend_name == "mock":
+        return
+    if backend_name != settings.backend:
+        raise PolicyError("Real simulator request backend must match ASPENOPS_BACKEND")
+    if not settings.allowed_roots:
+        raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
+
+    root_paths = tuple(root.expanduser() for root in settings.allowed_roots)
+    if any(not root.is_absolute() for root in root_paths):
+        raise PolicyError("Real simulator allowed roots must be absolute")
+
+    state_path = settings.state_dir.expanduser()
+    if not state_path.is_absolute():
+        raise PolicyError("Real simulator state directory must be absolute")
+
+    state_dir = state_path.resolve()
+    roots = tuple(root.resolve() for root in root_paths)
+    if not any(state_dir == root or root in state_dir.parents for root in roots):
+        raise PolicyError(
+            "Real simulator state directory must be inside ASPENOPS_ALLOWED_ROOTS"
+        )
 
 
 def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _PreparedBatch:
@@ -167,17 +185,7 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
         "workers",
     )
     backend_name = str(root.get("backend", settings.backend)).strip().lower()
-    if backend_name != "mock":
-        if backend_name != settings.backend:
-            raise PolicyError(
-                "Real simulator request backend must match ASPENOPS_BACKEND"
-            )
-        if not settings.allowed_roots:
-            raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
-        if not _state_is_allowed(settings):
-            raise PolicyError(
-                "Real simulator state directory must be inside ASPENOPS_ALLOWED_ROOTS"
-            )
+    _validate_real_backend_policy(backend_name, settings)
 
     policy = Policy(settings.mode, settings.allowed_roots)
     model_path = policy.assert_path(root.get("model_path", ""))
