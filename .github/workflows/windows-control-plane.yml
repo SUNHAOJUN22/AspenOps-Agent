@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,24 +16,36 @@ concurrency:
 jobs:
   windows-contracts:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: "3.12"
-      - name: Sync dependencies
+          enable-cache: true
+      - name: Verify lockfile and sync frozen dependencies
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force var/ci | Out-Null
-          uv sync --extra dev --extra windows --extra agent *>&1 |
-            Tee-Object -FilePath var/ci/sync.log
+          uv lock --check *>&1 |
+            Tee-Object -FilePath var/ci/uv-lock.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv sync --frozen --extra dev --extra windows --extra agent --extra signing *>&1 |
+            Tee-Object -FilePath var/ci/uv-sync.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Ruff
         shell: pwsh
         run: |
-          uv run ruff check src tests *>&1 |
+          uv run ruff check . *>&1 |
             Tee-Object -FilePath var/ci/ruff.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Ruff format
+        shell: pwsh
+        run: |
+          uv run ruff format --check . *>&1 |
+            Tee-Object -FilePath var/ci/ruff-format.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Strict mypy
         shell: pwsh
@@ -40,7 +53,7 @@ jobs:
           uv run mypy src *>&1 |
             Tee-Object -FilePath var/ci/mypy.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Process, scheduler, archive, and backend contracts
+      - name: Process, scheduler, archive, backend, and certification contracts
         shell: pwsh
         run: |
           uv run pytest -W error::ResourceWarning `
@@ -56,13 +69,29 @@ jobs:
             tests/test_pool_manager_creation.py `
             tests/test_scheduler_active_leases.py `
             tests/test_provenance_zip_safety.py `
-            tests/test_archive_safety_complete.py *>&1 |
+            tests/test_archive_safety_complete.py `
+            tests/test_licensed_bundle_integrity.py `
+            tests/test_licensed_certification_cli.py `
+            tests/test_licensed_certification_workflow.py `
+            --junitxml=var/ci/windows-contracts.xml `
+            --durations=20 *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows CLI smoke
+        shell: pwsh
+        run: |
+          uv run aspenops --version *>&1 |
+            Tee-Object -FilePath var/ci/cli-version.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run aspenops --help *> var/ci/cli-help.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run aspenops doctor *> var/ci/doctor.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-control-plane-diagnostics
           path: var/ci
           if-no-files-found: ignore
+          include-hidden-files: true
