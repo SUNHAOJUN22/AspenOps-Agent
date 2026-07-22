@@ -11,7 +11,7 @@ WORKFLOWS = {
     "windows-control-plane.yml",
 }
 PINNED_ACTION = re.compile(
-    r"^\s*-\s+uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
+    r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
 
 
@@ -53,7 +53,7 @@ def test_all_external_actions_are_pinned_to_full_commit_shas() -> None:
         uses_lines = [
             line
             for line in workflow_text(name).splitlines()
-            if line.strip().startswith("- uses:")
+            if line.strip().startswith(("uses:", "- uses:"))
         ]
         assert uses_lines, f"{name} has no external action declarations"
         for line in uses_lines:
