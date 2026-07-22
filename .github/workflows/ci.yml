@@ -36,6 +36,14 @@ jobs:
           uv lock --check 2>&1 | tee var/ci/uv-lock.log
           uv sync --frozen --extra dev --extra agent --extra signing \
             2>&1 | tee var/ci/uv-sync.log
+      - name: Audit locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv audit --frozen --python-platform linux --python-version 3.12 \
+            --output-format json > var/ci/dependency-audit-linux.json
+          uv audit --frozen --python-platform windows --python-version 3.12 \
+            --output-format json > var/ci/dependency-audit-windows.json
       - name: Ruff
         shell: bash
         run: |
