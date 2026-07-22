@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -15,6 +16,10 @@ WORKFLOWS = {
 PRIMARY_DOCUMENTS = (
     ROOT / "README.md",
     ROOT / "README.en.md",
+    ROOT / "AGENTS.md",
+    ROOT / "CLAUDE.md",
+    ROOT / "CONTRIBUTING.md",
+    ROOT / "CHANGELOG.md",
     ROOT / "SECURITY.md",
     ROOT / "docs" / "architecture.md",
     ROOT / "docs" / "performance.md",
@@ -23,10 +28,12 @@ PRIMARY_DOCUMENTS = (
     ROOT / "docs" / "automated-test-audit-2026-07-22.md",
     ROOT / "docs" / "certification.md",
 )
+HISTORICAL_DOCUMENTS = {
+    ROOT / "CHANGELOG.md",
+    ROOT / "docs" / "automated-test-audit-2026-07-22.md",
+}
 CURRENT_GUIDES = tuple(
-    document
-    for document in PRIMARY_DOCUMENTS
-    if document.name != "automated-test-audit-2026-07-22.md"
+    document for document in PRIMARY_DOCUMENTS if document not in HISTORICAL_DOCUMENTS
 )
 UNIVERSAL_STALE_TOKENS = {
     "ubuntu-latest",
@@ -34,6 +41,11 @@ UNIVERSAL_STALE_TOKENS = {
     "windows-aspen-certification.yml",
 }
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+
+
+def _project_version() -> str:
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return str(data["project"]["version"])
 
 
 def _local_link_target(document: Path, raw_target: str) -> Path | None:
@@ -68,6 +80,36 @@ def test_primary_documentation_exists_and_local_links_resolve() -> None:
                 )
 
 
+def test_package_and_documentation_versions_match() -> None:
+    version = _project_version()
+    major_minor = ".".join(version.split(".")[:2])
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    package_init = (ROOT / "src" / "aspenops_nexus" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    for readme in (chinese, english):
+        assert f"# AspenOps {major_minor}" in readme
+        assert f"version-{version}-" in readme
+        assert f"aspenops-nexus {version}" in readme
+    assert f'__version__ = "{version}"' in package_init
+    assert f"## {version} -" in changelog
+    assert (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8").startswith(
+        f"# AspenOps {major_minor} Architecture"
+    )
+    assert (ROOT / "AGENTS.md").read_text(encoding="utf-8").startswith(
+        f"# AspenOps {major_minor} Agent Contract"
+    )
+    assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").startswith(
+        f"# Claude Code operating contract for AspenOps {major_minor}"
+    )
+    assert (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8").startswith(
+        f"# Contributing to AspenOps {major_minor}"
+    )
+
+
 def test_documentation_has_no_stale_current_guidance() -> None:
     for document in PRIMARY_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
@@ -81,9 +123,6 @@ def test_documentation_has_no_stale_current_guidance() -> None:
             f"Stale product title in {document.relative_to(ROOT)}"
         )
 
-    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-    assert architecture.startswith("# AspenOps 2.0 Architecture")
-
     readmes = [
         (ROOT / "README.md").read_text(encoding="utf-8"),
         (ROOT / "README.en.md").read_text(encoding="utf-8"),
@@ -94,6 +133,18 @@ def test_documentation_has_no_stale_current_guidance() -> None:
         assert "windows-2025" in text
         for workflow in WORKFLOWS:
             assert workflow in text
+
+
+def test_operational_guides_require_frozen_quality_gates() -> None:
+    for document in (ROOT / "AGENTS.md", ROOT / "CONTRIBUTING.md"):
+        text = document.read_text(encoding="utf-8")
+        assert "uv lock --check" in text
+        assert "uv sync --frozen" in text
+        assert "uv sync --extra" not in text
+        assert "uv run ruff check ." in text
+        assert "uv run ruff format --check ." in text
+        assert "uv run mypy src" in text
+        assert "--cov-fail-under=94.5" in text
 
 
 def test_documentation_describes_all_six_dependency_audit_targets() -> None:
