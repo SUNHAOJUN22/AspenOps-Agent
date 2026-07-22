@@ -4,7 +4,8 @@ Set-StrictMode -Version Latest
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $env:Path = @($machinePath, $userPath) -join ";"
+    $currentPath = $env:Path
+    $env:Path = @($machinePath, $userPath, $currentPath) -join ";"
 }
 
 function Import-DotEnv {
