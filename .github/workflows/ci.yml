@@ -38,6 +38,8 @@ jobs:
             2>&1 | tee var/ci/uv-sync.log
       - name: Audit locked dependencies
         shell: bash
+        env:
+          UV_PREVIEW_FEATURES: json-output
         run: |
           set -euo pipefail
           uv audit --frozen --python-platform linux --python-version 3.12 \
