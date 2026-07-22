@@ -85,8 +85,11 @@ jobs:
 
       - name: Run licensed control-plane regression gate
         shell: pwsh
+        env:
+          ASPENOPS_BACKEND: mock
+          ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression
         run: |
-          New-Item -ItemType Directory -Force "$env:ASPENOPS_STATE_DIR\licensed-certification" | Out-Null
+          New-Item -ItemType Directory -Force var/ci | Out-Null
           uv run pytest -W error::ResourceWarning `
             tests/test_licensed_bundle_integrity.py `
             tests/test_licensed_certification.py `
@@ -97,7 +100,7 @@ jobs:
             tests/test_licensed_certification_workflow.py `
             tests/test_aspen_process_ownership.py `
             tests/test_backends_convergence.py `
-            --junitxml="$env:ASPENOPS_STATE_DIR\licensed-certification\software-regression.xml" `
+            --junitxml=var/ci/licensed-software-regression.xml `
             --durations=20
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -105,6 +108,7 @@ jobs:
         id: preflight
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force "$env:ASPENOPS_STATE_DIR\licensed-certification" | Out-Null
           uv run aspenops certification-preflight `
             "${{ inputs.plan_path }}" `
             --output "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json"
@@ -147,7 +151,7 @@ jobs:
         with:
           name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}
           path: |
-            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\software-regression.xml
+            var/ci/licensed-software-regression.xml
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\preflight.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-report.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-bundle.zip
