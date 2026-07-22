@@ -84,19 +84,27 @@ def test_dispatch_inputs_never_interpolate_directly_into_shell_blocks() -> None:
             assert "${{ inputs." not in block, f"Direct input interpolation in {name} shell block"
 
 
-def test_manual_workflows_pass_inputs_through_environment_and_safe_artifact_names() -> None:
-    performance = workflow_text("generate-performance-evidence.yml")
-    assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in performance
-    assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in performance
-    assert "name: performance-evidence-${{ github.run_id }}" in performance
-    assert "name: performance-evidence-${{ inputs." not in performance
+def test_performance_refs_are_resolved_before_worktree_execution() -> None:
+    text = workflow_text("generate-performance-evidence.yml")
+    assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in text
+    assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
+    assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
+    assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
+    assert 'git worktree add --detach /tmp/aspenops-baseline "$BASELINE_REF"' not in text
+    assert "name: performance-evidence-${{ github.run_id }}" in text
+    assert "name: performance-evidence-${{ inputs." not in text
 
-    licensed = workflow_text("licensed-aspen-certification.yml")
-    assert "PLAN_PATH: ${{ inputs.plan_path }}" in licensed
-    assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in licensed
-    assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in licensed
-    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in licensed
-    assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in licensed
+
+def test_licensed_inputs_use_environment_and_canonical_plan_handoff() -> None:
+    text = workflow_text("licensed-aspen-certification.yml")
+    assert "PLAN_PATH: ${{ inputs.plan_path }}" in text
+    assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in text
+    assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in text
+    assert "plan_path must be one non-empty line" in text
+    assert "plan_path escapes the repository workspace" in text
+    assert '"PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV' in text
+    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in text
+    assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in text
 
 
 def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
