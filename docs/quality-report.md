@@ -2,25 +2,15 @@
 
 ## Scope
 
-This report records portable and public-Windows evidence for the AspenOps 2.0 control plane and the automated-test hardening applied on 2026-07-22. It does not certify licensed Aspen Plus or Aspen HYSYS physical results or approve an engineering model.
+This report records the verified portable and public-Windows baseline plus the automated-test, workflow-security and Windows-bootstrap hardening applied directly to `main` on 2026-07-22. It does not certify licensed Aspen physics or approve an engineering model.
 
-The detailed module inventory, artifact inspection and coverage review are retained in `docs/automated-test-audit-2026-07-22.md`.
+Detailed evidence is retained in `docs/automated-test-audit-2026-07-22.md`.
 
-## Authoritative verified portable baseline
+## Verified portable baseline
 
-GitHub Actions run `29814739487`, head SHA `670e9523e915af309f16d959150cfadcd84219a6`, validated Python 3.11, 3.12 and 3.13 with:
+GitHub Actions run `29814739487`, head SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13 tests plus quality/build/smoke.
 
-- Ruff linting;
-- Ruff formatting;
-- strict mypy over `src`;
-- pytest with branch coverage and `ResourceWarning` promoted to an error;
-- source and wheel builds;
-- portable Mock demo;
-- benchmark smoke and committed stable-regression policy;
-- MCP surface verification;
-- clean Python 3.12 wheel installation, version command, demo and licensed CLI help smoke.
-
-The Python 3.12 JUnit, coverage JSON and pytest log artifacts were downloaded and inspected. Observed result:
+The Python 3.12 JUnit, coverage JSON and pytest log were independently inspected:
 
 ```text
 72 test modules
@@ -39,13 +29,11 @@ branch coverage: 90.84880636604774%
 CI coverage floor: 94.5%
 ```
 
-The gate is measured with `--cov-branch`. No core runtime module is omitted to inflate the result, and the floor was not reduced during single-main consolidation.
+The gate uses branch coverage and does not omit core runtime modules to inflate the total.
 
-## Public Windows control-plane baseline
+## Verified public Windows baseline
 
-The authoritative public-Windows run is `29814739334`, also at head SHA `670e9523e915af309f16d959150cfadcd84219a6`.
-
-Its diagnostic artifact was downloaded and inspected:
+GitHub Actions run `29814739334`, at the same baseline SHA, produced:
 
 ```text
 104 passed
@@ -55,24 +43,13 @@ Its diagnostic artifact was downloaded and inspected:
 2.06 seconds
 ```
 
-It validated:
+It validated Windows process ownership, Job Objects, Worker IPC, Fake Aspen Plus/HYSYS convergence, Scheduler leases, archive safety and PoolManager accounting. The runner had no licensed Aspen installation.
 
-- strict type and lint compatibility on Windows Python 3.12;
-- Job Object setup and `KILL_ON_JOB_CLOSE` contracts;
-- process fingerprint and descendant ownership checks;
-- Fake Aspen Plus and HYSYS convergence adapters;
-- Worker IPC and staged-model cleanup;
-- durable Scheduler lease and owner-fencing contracts;
-- bounded ZIP archive verification;
-- PoolManager creation singleflight and license accounting.
+## Coverage position
 
-This runner has no licensed Aspen installation. Its success is evidence about the control plane, not simulator or engineering-model qualification.
+The archived combined result is about 0.47 percentage points above the 94.5% floor. Priority modules before any future threshold increase are:
 
-## Coverage review
-
-The aggregate result is strong but has approximately 0.47 percentage points of headroom above the 94.5% floor. The primary future targets are:
-
-| Module | Combined branch-aware coverage |
+| Module | Archived branch-aware coverage |
 |---|---:|
 | `scheduler.py` | 85.95% |
 | `pool.py` | 87.28% |
@@ -83,137 +60,149 @@ The aggregate result is strong but has approximately 0.47 percentage points of h
 | `convergence.py` | 91.20% |
 | `pool_manager.py` | 94.49% |
 
-The current floor should not be raised merely for appearance. New tests should first cover lease transitions, worker recovery, timeout/IPC failures, provenance I/O failures and remaining convergence contradictions.
+The floor remains unchanged because an unsupported increase would make the gate brittle without adding evidence.
 
-## Safety-critical regression suites
+## Current portable CI
 
-### Convergence
+`.github/workflows/ci.yml` enforces:
 
-Unknown, absent, contradictory or unstable evidence fails closed. Tests cover positive and negative states, status-access errors, timeouts and stable-idle requirements.
-
-### Transactions
-
-Tests cover original-value capture, current-node rollback, numeric tolerance, rollback-verification failure and automatic recycling of a tainted Worker.
-
-### Durable scheduling
-
-Tests cover lease acquisition, heartbeat, expiration, final-attempt dead letter, service restart, cancellation, owner fencing, idempotent commits, active-job heartbeat and stale-bundle cleanup.
-
-### Worker lifecycle
-
-Tests cover model-copy, Pipe and process startup failures; ready/result/close protocol validation; send, poll and receive failures; hard timeout; graceful close; and bounded fatal diagnostics.
-
-### Archive safety
-
-Tests cover archive and member-size limits, member count, compression ratio, path traversal, absolute and drive paths, duplicate and encrypted members, unsupported compression, malformed JSON roots, malformed signing declarations and bounded member reads.
-
-### Optimization
-
-Tests cover continuous, integer, categorical and ordinal variables; hard evaluation budgets; non-finite inputs and outputs; Deb feasibility ordering; Pareto behavior; checkpoint safety; cancellation; batch evaluation and interface limits.
-
-### Licensed-certification governance
-
-Tests cover plan validation, exact commit binding, approved host/license metadata, signing-key boundaries, CLI behavior, signed-bundle integrity, workflow ordering and the prohibition against software self-granting final engineering certification.
-
-## Automated gate hardening applied on 2026-07-22
-
-### Portable CI
-
-`.github/workflows/ci.yml` now enforces:
-
-- immutable commit-SHA pins for third-party GitHub Actions;
-- read-only contents permission and checkout without persistent credentials;
-- `uv lock --check` and `uv sync --frozen`;
-- Ruff lint and format, strict mypy, build and Mock demo;
-- README command-path smoke for version, help, dry-run, benchmark and certification;
-- benchmark smoke and committed stable-regression policy;
-- the exact 14-tool MCP surface;
-- clean-wheel version, help, Demo and critical CLI smoke;
-- complete pytest suites on Python 3.11, 3.12 and 3.13;
+- immutable Action commit SHAs;
+- read-only contents permission;
+- non-persistent checkout credentials;
+- checked, frozen dependencies;
+- Ruff lint and format;
+- strict mypy;
+- source and wheel builds;
+- Mock end-to-end execution;
+- README version/help/dry-run/benchmark/certification command smoke;
+- benchmark smoke and stable-regression policy;
+- exactly 14 MCP tools;
+- clean-wheel CLI smoke;
+- full Python 3.11, 3.12 and 3.13 tests;
 - branch-aware coverage floor 94.5%;
-- JUnit, JSON coverage, slowest-test and log artifacts.
+- JUnit, coverage JSON, durations and diagnostic artifacts.
 
-### Public Windows gate
+## Current public Windows gate
 
-`.github/workflows/windows-control-plane.yml` now additionally enforces:
+`.github/workflows/windows-control-plane.yml` adds:
 
-- manual dispatch as well as push and pull-request triggers;
-- lockfile freshness and frozen Windows dependency installation;
-- repository-wide Ruff format checking;
-- licensed-bundle, licensed CLI and licensed-workflow contract tests;
+- checked frozen Windows dependencies;
+- repository-wide lint and formatting;
+- strict mypy;
+- process ownership, Job Object, IPC, timeout and recovery contracts;
+- Scheduler active leases;
+- Fake Aspen Plus/HYSYS convergence;
+- archive and evidence-bundle safety;
+- licensed certification CLI, signed-bundle and workflow contracts;
+- repository-wide workflow-governance tests;
 - Windows CLI and Doctor smoke;
-- JUnit and slowest-test evidence.
+- run-specific JUnit and diagnostic artifacts.
 
-Based on the archived JUnit module inventory, the hardened selected Windows suite contains 127 tests. This is a selected-test count, not a fresh passing result, until the revised workflow completes.
+No new fixed selected-test count is claimed until a current JUnit artifact is readable.
 
-### Performance evidence
+## Workflow governance and supply-chain controls
 
-`.github/workflows/generate-performance-evidence.yml` now uses pinned Actions, non-persistent checkout credentials, lockfile validation, frozen candidate dependencies and format checking for benchmark tooling. The benchmark remains `portable-mock-orchestration` evidence and must not be presented as licensed Aspen solve performance.
+`tests/test_workflow_governance.py` locks the following repository rules:
 
-### Licensed Aspen certification
+- exactly four long-lived workflows;
+- all external Actions pinned to full SHAs;
+- no writable contents permission;
+- no retained checkout credentials;
+- no `pull_request_target` or silent `continue-on-error`;
+- `uv lock --check` and `uv sync --frozen` everywhere;
+- no manual `${{ inputs.* }}` interpolation inside Shell or PowerShell blocks;
+- performance baseline resolved to an immutable commit before worktree creation;
+- artifact names based on `github.run_id`, not arbitrary inputs;
+- canonical licensed plan and state-path handoff;
+- licensed state directory constrained to absolute allowed roots;
+- Windows bootstrap loading `.env`, preserving PATH and checking exit codes.
 
-`.github/workflows/licensed-aspen-certification.yml` now performs this sequence:
+## Performance evidence workflow
+
+`.github/workflows/generate-performance-evidence.yml` now:
+
+- binds manual refs through environment variables;
+- resolves the baseline to a full commit SHA;
+- records exact baseline and candidate SHAs;
+- creates the worktree from the resolved SHA;
+- uses a frozen candidate environment;
+- runs independent trials and stable-regression policy;
+- checks benchmark tooling with Ruff, format, mypy and smoke execution;
+- uploads run-ID-named evidence.
+
+Results remain `portable-mock-orchestration` evidence and cannot be presented as real Aspen solve performance.
+
+## Licensed Aspen workflow
+
+`.github/workflows/licensed-aspen-certification.yml` executes:
 
 ```text
 exact approved SHA checkout
+→ canonical plan/state-path validation
 → lockfile validation and frozen dependency sync
-→ isolated Mock software-regression gate
+→ isolated Mock software regression
 → licensed preflight
-→ explicit execution approval
+→ explicit human execution approval
 → scoped real COM execution
-→ signed bundle verification
+→ signed-bundle verification
 → pending human engineering review
 ```
 
-The isolated software-regression gate uses a workspace-local state directory and `ASPENOPS_BACKEND=mock`, so it cannot accidentally instantiate licensed COM before preflight. Its selected set contains 104 tests based on the archived JUnit inventory. The workflow still requires a protected self-hosted runner labeled `self-hosted, windows, x64, aspen-licensed`.
+It additionally enforces:
 
-### Pytest fail-closed behavior
+- manual inputs bound through environment variables instead of injected into PowerShell;
+- one-line repository-relative plan path inside the workspace;
+- one-line absolute certification state path;
+- one-line semicolon-separated absolute allowed roots;
+- state output located inside an allowed root;
+- canonical plan and state paths passed through `GITHUB_ENV`;
+- `dev + windows + agent + signing` dependencies;
+- Mock isolation before any real COM preflight;
+- run-ID-based artifact names;
+- final status `PENDING_REAL_ASPEN_CERTIFICATION`.
 
-`pyproject.toml` now requires:
+Software cannot self-grant engineering certification.
 
-```text
-pytest >= 8.3
-strict markers
-strict configuration
-strict xfail
-ResourceWarning = error
+## Windows bootstrap
+
+`scripts/setup_windows.ps1` now:
+
+- uses strict PowerShell behavior;
+- installs `uv` only when missing;
+- accepts winget agreements noninteractively;
+- refreshes machine/user PATH while preserving process PATH;
+- verifies `uv` is callable;
+- checks the lock and performs frozen sync;
+- creates and imports `.env`;
+- runs Doctor with the loaded backend;
+- checks native exit codes;
+- avoids printing secrets.
+
+`.env.example` now exposes the runtime’s request, batch, semantic-operation and optimization resource budgets as well as licensed-state placement rules.
+
+## pytest failure policy
+
+```toml
+minversion = "8.3"
+addopts = "-q --strict-markers --strict-config"
+xfail_strict = true
+filterwarnings = ["error::ResourceWarning"]
 ```
 
-This prevents misspelled configuration from being silently ignored, unexpected XPASS results from passing harmlessly and resource leaks from becoming warnings only.
+Unknown configuration, unregistered markers, unexpected XPASS and resource leaks fail closed.
 
-## Performance evidence methodology
+## Single-main status
 
-The full benchmark workflow compares an exact baseline ref with a candidate ref using three independent trials per scenario. It reports medians, raw samples and throughput coefficient of variation for:
-
-- 1, 10, 100 and 1000 points;
-- 1, 2, 4 and 8 Workers;
-- duplicate ratios of 0%, 25% and 75%;
-- cold and warm cache;
-- non-convergence;
-- ten sequential jobs with persistent-pool reuse.
-
-A stable regression is gated only when both revisions have at least three trials, throughput CV is at most 5%, and the scenario is not startup-sensitive. Stable throughput loss above 5% or stable P95 growth above 5% fails the workflow.
-
-P50/P95/P99 in the current matrix are evaluation/solve elapsed values recorded by `EvaluationResult`; end-to-end batch wall time is represented by throughput. They must not be described as queue-inclusive request latency.
-
-## Single-main repository evidence
-
-`docs/single-main-audit.json` and `var/consolidation/final-main-manifest.json` record that remote heads contain only `main`, all required capabilities are already in `main`, and no parallel pull request is required for consolidation.
-
-The authoritative long-lived workflows are:
+The repository remains governed directly on `main`; no new branch was created for this audit. The authoritative long-lived workflows are:
 
 - `ci.yml`;
 - `windows-control-plane.yml`;
 - `generate-performance-evidence.yml`;
 - `licensed-aspen-certification.yml`.
 
-Two retired temporary branches have verified archive tags. Additional annotated tags for older historical branch tips remain an optional history enhancement. Their source names and SHAs are preserved in `var/consolidation/branch-archive-manifest.json`; the permission limitation does not affect the runtime, single-main state or validated test baseline.
+## Evidence boundary
 
-## Evidence boundary after hardening
-
-The 563-test portable result and 104-test Windows result are the authoritative inspected runtime baseline. They predate the workflow-hardening commits.
-
-The hardening changes affect workflows, pytest configuration, workflow-governance tests, setup scripts and documentation; they do not modify AspenOps runtime modules. Pushes to `main` trigger the revised portable and Windows workflows, but a fresh green run must be observed before the revised head is described as newly validated.
+The 563-test portable result and 104-test Windows result remain the inspected, verified baseline. They predate the latest hardening commits. A fresh current Actions artifact is required before replacing those numbers or describing the newest head as newly green.
 
 ## Remaining qualification
 
@@ -221,6 +210,4 @@ The hardening changes affect workflows, pytest configuration, workflow-governanc
 PENDING_REAL_ASPEN_CERTIFICATION
 ```
 
-Licensed certification requires a self-hosted Windows runner with an approved Aspen Plus or HYSYS installation, real COM server, valid license, non-confidential qualification model, verified semantic registry, meaningful constraints and balances, independent repeats, signed evidence and human engineering review.
-
-The authoritative workflow is `.github/workflows/licensed-aspen-certification.yml`; operational setup is documented in `docs/windows-setup.md` and the certification boundaries are defined in `docs/certification.md`.
+Real certification requires a native self-hosted Windows runner, licensed Aspen Plus or HYSYS, an approved non-confidential model, verified semantic paths, meaningful constraints and balances, independent repeats, signing keys and human engineering review.
