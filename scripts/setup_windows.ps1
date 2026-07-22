@@ -4,7 +4,8 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     winget install --id astral-sh.uv -e
 }
 
-uv sync --extra windows --extra agent --extra dev --extra signing
+uv lock --check
+uv sync --frozen --extra windows --extra agent --extra dev --extra signing
 
 if (-not (Test-Path .env)) {
     Copy-Item .env.example .env
