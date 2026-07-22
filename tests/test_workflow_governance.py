@@ -10,7 +10,7 @@ WORKFLOWS = {
     "licensed-aspen-certification.yml",
     "windows-control-plane.yml",
 }
-UV_VERSION = "0.11.14"
+UV_VERSION = "0.11.16"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
@@ -82,6 +82,15 @@ def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
         for chunk in chunks:
             step = chunk.split("\n      - ", 1)[0]
             assert expected in step, f"{name} does not pin uv {UV_VERSION}"
+
+
+def test_ci_audits_locked_linux_and_windows_dependencies() -> None:
+    text = workflow_text("ci.yml")
+    assert text.count("uv audit --frozen") == 2
+    assert "--python-platform linux --python-version 3.12" in text
+    assert "--python-platform windows --python-version 3.12" in text
+    assert "--output-format json > var/ci/dependency-audit-linux.json" in text
+    assert "--output-format json > var/ci/dependency-audit-windows.json" in text
 
 
 def test_hosted_runner_os_versions_are_explicit() -> None:
@@ -186,7 +195,7 @@ def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
 def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
     text = Path("scripts/setup_windows.ps1").read_text(encoding="utf-8")
     assert "Set-StrictMode -Version Latest" in text
-    assert '$RequiredUvVersion = [version]"0.11.14"' in text
+    assert '$RequiredUvVersion = [version]"0.11.16"' in text
     assert "uv --version" in text
     assert "$ObservedUvVersion -lt $RequiredUvVersion" in text
     assert "--accept-package-agreements --accept-source-agreements" in text
