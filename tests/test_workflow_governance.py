@@ -197,6 +197,25 @@ def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None
     assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in workflow
 
 
+def test_licensed_evidence_is_complete_before_upload() -> None:
+    text = workflow_text("licensed-aspen-certification.yml")
+    completeness = text.index("Verify licensed evidence completeness")
+    upload = text.index("Upload signed licensed evidence")
+    block = text[completeness:upload]
+
+    assert completeness < upload
+    assert "if: ${{ success() }}" in block
+    assert "licensed-software-regression.xml" in block
+    assert "preflight.json" in block
+    assert "licensed-certification-report.json" in block
+    assert "licensed-certification-bundle.zip" in block
+    assert "Test-Path -LiteralPath $path -PathType Leaf" in block
+    assert "(Get-Item -LiteralPath $path).Length -le 0" in block
+    assert "Required licensed evidence file is missing" in block
+    assert "Required licensed evidence file is empty" in block
+    assert "if-no-files-found: error" in text[upload:]
+
+
 def test_windows_gates_run_policy_and_documentation_contracts() -> None:
     for name in ("windows-control-plane.yml", "licensed-aspen-certification.yml"):
         text = workflow_text(name)
