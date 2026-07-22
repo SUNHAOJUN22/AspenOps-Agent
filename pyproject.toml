@@ -64,6 +64,9 @@ strict = true
 packages = ["aspenops_nexus"]
 
 [tool.pytest.ini_options]
-addopts = "-q --strict-markers"
+minversion = "8.3"
+addopts = "-q --strict-markers --strict-config"
 testpaths = ["tests"]
+xfail_strict = true
+filterwarnings = ["error::ResourceWarning"]
 markers = ["aspen_real: requires licensed Windows Aspen installation"]
