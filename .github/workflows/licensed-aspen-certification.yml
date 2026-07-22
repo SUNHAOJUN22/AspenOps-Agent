@@ -215,22 +215,42 @@ jobs:
             throw "Runtime is not permitted to self-grant real Aspen certification"
           }
 
-      - name: Verify licensed evidence completeness
+      - name: Stage and verify licensed evidence
         if: ${{ success() }}
         shell: pwsh
         run: |
+          $regression = "var/ci/licensed-software-regression.xml"
+          $preflight = "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json"
+          $report = "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-report.json"
+          $bundle = "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-bundle.zip"
           $required = @(
-            "var/ci/licensed-software-regression.xml",
-            "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json",
-            "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-report.json",
-            "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-bundle.zip"
+            @{ Label = "software regression JUnit"; Source = $regression },
+            @{ Label = "preflight report"; Source = $preflight },
+            @{ Label = "certification report"; Source = $report },
+            @{ Label = "signed certification bundle"; Source = $bundle }
           )
-          foreach ($path in $required) {
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Required licensed evidence file is missing: $path"
+          foreach ($item in $required) {
+            $source = [string]$item.Source
+            if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+              throw "Required licensed evidence is missing: $($item.Label)"
             }
-            if ((Get-Item -LiteralPath $path).Length -le 0) {
-              throw "Required licensed evidence file is empty: $path"
+            if ((Get-Item -LiteralPath $source).Length -le 0) {
+              throw "Required licensed evidence is empty: $($item.Label)"
+            }
+          }
+
+          $staging = "var/ci/licensed-evidence"
+          New-Item -ItemType Directory -Force $staging | Out-Null
+          Copy-Item -LiteralPath $preflight -Destination (Join-Path $staging "preflight.json")
+          Copy-Item -LiteralPath $report -Destination (Join-Path $staging "report.json")
+          Copy-Item -LiteralPath $bundle -Destination (Join-Path $staging "bundle.zip")
+          foreach ($name in @("preflight.json", "report.json", "bundle.zip")) {
+            $staged = Join-Path $staging $name
+            if (-not (Test-Path -LiteralPath $staged -PathType Leaf)) {
+              throw "Staged licensed evidence is missing: $name"
+            }
+            if ((Get-Item -LiteralPath $staged).Length -le 0) {
+              throw "Staged licensed evidence is empty: $name"
             }
           }
 
@@ -239,10 +259,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: licensed-${{ inputs.backend }}-${{ github.run_id }}
-          path: |
-            var/ci/licensed-software-regression.xml
-            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\preflight.json
-            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-report.json
-            ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-bundle.zip
-          if-no-files-found: error
+          path: var/ci
+          if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 90
