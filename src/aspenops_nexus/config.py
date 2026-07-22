@@ -77,7 +77,11 @@ class Settings:
             if value.strip()
         )
         if backend != "mock":
-            relative_roots = [value for value in root_values if not Path(value).expanduser().is_absolute()]
+            relative_roots = [
+                value
+                for value in root_values
+                if not Path(value).expanduser().is_absolute()
+            ]
             if relative_roots:
                 raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")
         roots = tuple(Path(value).expanduser().resolve() for value in root_values)
