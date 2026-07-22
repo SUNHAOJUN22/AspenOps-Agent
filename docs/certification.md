@@ -8,7 +8,7 @@ AspenOps keeps software-control evidence, licensed simulator evidence and engine
 
 Runs on the deterministic Mock backend and validates:
 
-- request and path policy;
+- request, backend and path policy;
 - semantic registry and unit logic;
 - worker isolation, IPC and timeout behavior;
 - scheduler leases, retries, cancellation and recovery;
@@ -16,19 +16,20 @@ Runs on the deterministic Mock backend and validates:
 - constraints and conservation residuals;
 - provenance and bundle verification;
 - independent repeated-state determinism;
-- MCP and CLI contracts.
+- MCP, CLI and workflow-governance contracts.
 
 This level can run on public Linux or Windows CI. It proves AspenOps control-plane behavior, not proprietary Aspen physics.
 
 ## Level 2: licensed-simulator runtime certification
 
-Runs on a native Windows host with:
+Runs on native Windows with:
 
 - Aspen Plus and/or Aspen HYSYS installed;
-- a valid and available license;
+- a valid available license;
 - an approved non-confidential qualification model;
 - a case-specific semantic registry or HYSYS Spreadsheet Contract;
-- an exact approved AspenOps commit;
+- an exact approved AspenOps commit belonging to trusted `main` history;
+- non-empty absolute allowed roots and an absolute state directory inside them;
 - configured constraints, balances and repeatability tolerances;
 - signing material stored outside the repository.
 
@@ -43,11 +44,11 @@ It validates:
 - independent repeats from fresh model copies and COM instances;
 - signed evidence-bundle integrity.
 
-The runtime can produce `PENDING_REAL_ASPEN_CERTIFICATION` evidence. It is not allowed to self-grant final engineering certification.
+The runtime can produce `PENDING_REAL_ASPEN_CERTIFICATION` evidence. It cannot self-grant final engineering certification.
 
 ## Level 3: engineering model validation
 
-Owned by the process engineer and the responsible technical authority. It covers:
+Owned by the process engineer and responsible technical authority. It covers:
 
 - property methods and component definitions;
 - reactions, kinetics and thermodynamic assumptions;
@@ -86,7 +87,7 @@ Every point in every repeat must also have `ok=true`, meaning transport, engine 
 
 ## Portable repeatability command
 
-This command is useful for control-plane and model-repeatability checks, but never grants real Aspen certification by itself:
+This is useful for control-plane and model-repeatability checks, but never grants real Aspen certification by itself:
 
 ```powershell
 uv run aspenops certify D:/AspenModels/qualification-request.json `
@@ -103,14 +104,14 @@ uv run aspenops certification-preflight D:/AspenModels/licensed-plan.json `
   --output D:/AspenResults/preflight.json
 ```
 
-Execute an approved plan on a licensed host:
+Execute an approved plan:
 
 ```powershell
 uv run aspenops certify-licensed D:/AspenModels/licensed-plan.json `
   --output-dir D:/AspenResults/licensed-certification
 ```
 
-Verify the signed evidence bundle:
+Verify the signed bundle:
 
 ```powershell
 uv run aspenops verify-licensed-bundle `
@@ -118,20 +119,37 @@ uv run aspenops verify-licensed-bundle `
   --public-key D:/AspenKeys/aspenops-certification-public.pem
 ```
 
+Direct CLI use is subject to the same Settings, backend and allowed-root policy as the GitHub workflow. A real backend without allowed roots is rejected before preflight or state creation.
+
 ## Authoritative GitHub Actions workflow
 
 ```text
 .github/workflows/licensed-aspen-certification.yml
 ```
 
-It runs on a self-hosted runner labeled:
+Runner labels:
 
 ```text
 self-hosted, windows, x64, aspen-licensed
 ```
 
-Manual dispatch requires the plan path, exact approved 40-character commit SHA, backend and explicit authorization for real COM execution. The workflow checks out the exact commit, runs preflight, executes only after approval, verifies the signed bundle and uploads the evidence artifact.
+Manual dispatch requires a repository-relative plan path, exact lowercase 40-character commit SHA, backend and explicit authorization.
+
+```text
+exact SHA checkout
+→ verify SHA belongs to trusted main history
+→ check lockfile and freeze dependencies
+→ run isolated Mock regression without real secrets
+→ resolve plan, roots and state target through the Python realpath gate
+→ run licensed preflight
+→ require explicit human execution approval
+→ execute scoped real COM plan
+→ verify signed bundle
+→ retain pending human engineering review
+```
+
+The realpath gate rejects traversal, symlink and junction escapes. Signing secrets are not exposed to setup or Mock regression. Canonical paths are passed through `GITHUB_ENV`; artifacts use `github.run_id` rather than arbitrary input.
 
 ## Release rule
 
-A portable release may state that the control plane passed its public quality gates. A release may state licensed Aspen compatibility only for the exact Aspen version, backend, model class and evidence scope actually executed and reviewed. No broad “all Aspen versions/models supported” claim is permitted.
+A portable release may state that the control plane passed its public quality gates. Licensed compatibility may be stated only for the exact Aspen version, backend, model class and evidence scope actually executed and reviewed. No broad “all Aspen versions/models supported” claim is permitted.
