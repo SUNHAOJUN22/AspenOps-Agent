@@ -20,8 +20,12 @@ PRIMARY_DOCUMENTS = (
     ROOT / "docs" / "automated-test-audit-2026-07-22.md",
     ROOT / "docs" / "certification.md",
 )
-STALE_TOKENS = {
-    "0.11.14",
+CURRENT_GUIDES = tuple(
+    document
+    for document in PRIMARY_DOCUMENTS
+    if document.name != "automated-test-audit-2026-07-22.md"
+)
+UNIVERSAL_STALE_TOKENS = {
     "ubuntu-latest",
     "windows-latest",
     "windows-aspen-certification.yml",
@@ -61,11 +65,15 @@ def test_primary_documentation_exists_and_local_links_resolve() -> None:
                 )
 
 
-def test_documentation_has_no_stale_toolchain_or_workflow_names() -> None:
+def test_documentation_has_no_stale_current_guidance() -> None:
     for document in PRIMARY_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
-        for token in STALE_TOKENS:
+        for token in UNIVERSAL_STALE_TOKENS:
             assert token not in text, f"Stale token {token!r} in {document.relative_to(ROOT)}"
+
+    for document in CURRENT_GUIDES:
+        text = document.read_text(encoding="utf-8")
+        assert "0.11.14" not in text, f"Stale uv guidance in {document.relative_to(ROOT)}"
 
     readmes = [
         (ROOT / "README.md").read_text(encoding="utf-8"),
