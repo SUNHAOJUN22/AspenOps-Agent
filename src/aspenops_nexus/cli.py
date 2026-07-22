@@ -20,6 +20,7 @@ from .licensed_certification import (
     verify_licensed_certification_bundle,
 )
 from .optimization import run_optimization_document
+from .policy import Policy
 from .pool_manager import PoolManager
 from .provenance import verify_run_bundle, write_run_bundle
 from .scheduler import BackgroundScheduler
@@ -40,6 +41,12 @@ def _load(path: str | Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("Request root must be a JSON object")
     return value
+
+
+def _controlled_path(path: str | Path, settings: Any) -> Path:
+    mode = str(getattr(settings, "mode", "default"))
+    roots = tuple(Path(root) for root in getattr(settings, "allowed_roots", ()))
+    return Policy(mode, roots).assert_path(path)
 
 
 def _demo_request() -> dict[str, Any]:
@@ -132,14 +139,27 @@ def command_run_batch(args: argparse.Namespace) -> int:
     request_path = Path(args.request).resolve()
     request = _load(request_path)
     results = run_batch_file(request_path, settings)
-    output = Path(args.output) if args.output else settings.state_dir / "latest-results.json"
+    output = _controlled_path(
+        args.output or settings.state_dir / "latest-results.json",
+        settings,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(results, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+        json.dumps(results, indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
     )
-    bundle_path = Path(args.bundle) if args.bundle else settings.state_dir / "latest-run-bundle.zip"
+    bundle_path = _controlled_path(
+        args.bundle or settings.state_dir / "latest-run-bundle.zip",
+        settings,
+    )
     write_run_bundle(request=request, results=results, output_path=bundle_path)
-    _json_print({"results_path": str(output), "bundle_path": str(bundle_path), "results": results})
+    _json_print(
+        {
+            "results_path": str(output),
+            "bundle_path": str(bundle_path),
+            "results": results,
+        }
+    )
     return 0 if all(result["ok"] for result in results) else 2
 
 
@@ -189,7 +209,7 @@ def command_optimize(args: argparse.Namespace) -> int:
             settings,
             pool_manager=pool_manager,
         )
-    output = Path(args.output).resolve()
+    output = _controlled_path(args.output, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
@@ -200,6 +220,8 @@ def command_optimize(args: argparse.Namespace) -> int:
 
 
 def command_certify(args: argparse.Namespace) -> int:
+    settings = Settings.from_env()
+    document = _load(args.request)
     kwargs: dict[str, Any] = {
         "repeats": args.repeats,
         "abs_tol": args.abs_tol,
@@ -209,15 +231,12 @@ def command_certify(args: argparse.Namespace) -> int:
         kwargs["workers"] = args.workers
     if hasattr(args, "engineering_approved"):
         kwargs["engineering_approved"] = args.engineering_approved
-    report = certify_batch_document(
-        _load(args.request),
-        Settings.from_env(),
-        **kwargs,
-    )
-    output = Path(args.output).resolve()
+    report = certify_batch_document(document, settings, **kwargs)
+    output = _controlled_path(args.output, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+        json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
     )
     _json_print({"report_path": str(output), "passed": report["passed"]})
     return 0 if report["passed"] else 2
@@ -227,9 +246,10 @@ def command_certification_preflight(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     plan = load_licensed_plan(args.plan)
     report = certification_preflight(plan, settings)
-    output = Path(
-        args.output or settings.state_dir / "licensed-certification" / "preflight.json"
-    ).resolve()
+    output = _controlled_path(
+        args.output or settings.state_dir / "licensed-certification" / "preflight.json",
+        settings,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False),
@@ -242,7 +262,10 @@ def command_certification_preflight(args: argparse.Namespace) -> int:
 def command_certify_licensed(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     plan = load_licensed_plan(args.plan)
-    output_dir = Path(args.output_dir or settings.state_dir / "licensed-certification")
+    output_dir = _controlled_path(
+        args.output_dir or settings.state_dir / "licensed-certification",
+        settings,
+    )
     report = execute_licensed_certification(
         plan,
         settings,
