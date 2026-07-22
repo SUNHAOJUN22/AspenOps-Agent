@@ -34,6 +34,10 @@ def _env_float(name: str, default: float, minimum: float = 0.0) -> float:
     return value
 
 
+def _inside(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(path == root or root in path.parents for root in roots)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     backend: str = "mock"
@@ -63,16 +67,33 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        roots = tuple(
-            Path(x).expanduser().resolve()
-            for x in os.getenv("ASPENOPS_ALLOWED_ROOTS", "").split(";")
-            if x.strip()
-        )
-        slots = _env_int("ASPENOPS_LICENSE_SLOTS", 1)
-        max_workers = _env_int("ASPENOPS_MAX_WORKERS", slots)
         backend = os.getenv("ASPENOPS_BACKEND", "mock").strip().lower()
         if backend not in {"mock", "aspen_plus", "hysys"}:
             raise ValueError(f"Unsupported ASPENOPS_BACKEND={backend!r}")
+
+        root_values = tuple(
+            value.strip()
+            for value in os.getenv("ASPENOPS_ALLOWED_ROOTS", "").split(";")
+            if value.strip()
+        )
+        if backend != "mock":
+            relative_roots = [value for value in root_values if not Path(value).expanduser().is_absolute()]
+            if relative_roots:
+                raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")
+        roots = tuple(Path(value).expanduser().resolve() for value in root_values)
+
+        state_value = os.getenv("ASPENOPS_STATE_DIR", "var").strip()
+        if not state_value:
+            raise ValueError("ASPENOPS_STATE_DIR must be non-empty")
+        state_path = Path(state_value).expanduser()
+        if backend != "mock" and roots and not state_path.is_absolute():
+            raise ValueError("ASPENOPS_STATE_DIR must be absolute for a real backend")
+        state_dir = state_path.resolve()
+        if backend != "mock" and roots and not _inside(state_dir, roots):
+            raise ValueError("ASPENOPS_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS")
+
+        slots = _env_int("ASPENOPS_LICENSE_SLOTS", 1)
+        max_workers = _env_int("ASPENOPS_MAX_WORKERS", slots)
         mode = os.getenv("ASPENOPS_MODE", "default").strip().lower()
         if mode not in {"readonly", "default", "enhanced"}:
             raise ValueError(f"Unsupported ASPENOPS_MODE={mode!r}")
@@ -87,7 +108,7 @@ class Settings:
             worker_max_points=_env_int("ASPENOPS_WORKER_MAX_POINTS", 200),
             worker_max_age_s=_env_float("ASPENOPS_WORKER_MAX_AGE_S", 14_400.0, 1.0),
             visible=_env_bool("ASPENOPS_VISIBLE", False),
-            state_dir=Path(os.getenv("ASPENOPS_STATE_DIR", "var")).expanduser().resolve(),
+            state_dir=state_dir,
             cache_failures=_env_bool("ASPENOPS_CACHE_FAILURES", False),
             scheduler_poll_s=_env_float("ASPENOPS_SCHEDULER_POLL_S", 0.25, 0.01),
             max_resident_cases=_env_int("ASPENOPS_MAX_RESIDENT_CASES", 2),
