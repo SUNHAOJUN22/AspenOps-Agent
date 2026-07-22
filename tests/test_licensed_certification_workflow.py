@@ -144,6 +144,10 @@ def test_signed_evidence_is_validated_and_staged_before_upload() -> None:
     assert "Required licensed evidence is missing" in block
     assert "Required licensed evidence is empty" in block
     assert 'var/ci/licensed-evidence' in block
+    assert "Remove-Item -LiteralPath $staging -Recurse -Force" in block
+    assert block.index("Remove-Item -LiteralPath $staging") < block.index(
+        "New-Item -ItemType Directory -Force $staging"
+    )
     assert "Copy-Item -LiteralPath $preflight" in block
     assert "Copy-Item -LiteralPath $report" in block
     assert "Copy-Item -LiteralPath $bundle" in block
