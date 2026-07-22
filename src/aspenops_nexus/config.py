@@ -65,6 +65,31 @@ class Settings:
     max_optimization_variables: int = 64
     max_optimization_objectives: int = 16
 
+    def __post_init__(self) -> None:
+        """Fail closed for direct real-backend construction.
+
+        ``from_env`` validates the same boundary, but callers may instantiate
+        ``Settings`` directly.  Once real-backend allowed roots are supplied,
+        every root and the state directory must be absolute and the state
+        directory must remain inside one of those roots.
+        """
+
+        if self.backend == "mock" or not self.allowed_roots:
+            return
+
+        roots = tuple(Path(root).expanduser() for root in self.allowed_roots)
+        if any(not root.is_absolute() for root in roots):
+            raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")
+
+        state_path = Path(self.state_dir).expanduser()
+        if not state_path.is_absolute():
+            raise ValueError("ASPENOPS_STATE_DIR must be absolute for a real backend")
+
+        resolved_roots = tuple(root.resolve() for root in roots)
+        state_dir = state_path.resolve()
+        if not _inside(state_dir, resolved_roots):
+            raise ValueError("ASPENOPS_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS")
+
     @classmethod
     def from_env(cls) -> Settings:
         backend = os.getenv("ASPENOPS_BACKEND", "mock").strip().lower()
