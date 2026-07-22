@@ -16,7 +16,7 @@ Runs on the deterministic Mock backend and validates:
 - constraints and conservation residuals;
 - provenance and bundle verification;
 - independent repeated-state determinism;
-- MCP, CLI and workflow-governance contracts.
+- MCP, CLI, documentation and workflow-governance contracts.
 
 This level can run on public Linux or Windows CI. It proves AspenOps control-plane behavior, not proprietary Aspen physics.
 
@@ -42,7 +42,8 @@ It validates:
 - solver execution and explicit convergence evidence;
 - output reads, constraints and balances;
 - independent repeats from fresh model copies and COM instances;
-- signed evidence-bundle integrity.
+- signed evidence-bundle integrity;
+- presence and non-empty size of every required evidence file before upload.
 
 The runtime can produce `PENDING_REAL_ASPEN_CERTIFICATION` evidence. It cannot self-grant final engineering certification.
 
@@ -145,10 +146,15 @@ exact SHA checkout
 → require explicit human execution approval
 → execute scoped real COM plan
 → verify signed bundle
+→ verify all required evidence files exist and are non-empty
+→ copy external evidence into var/ci/licensed-evidence
+→ upload only workspace-local var/ci evidence
 → retain pending human engineering review
 ```
 
 The realpath gate rejects traversal, symlink and junction escapes. Signing secrets are not exposed to setup or Mock regression. Canonical paths are passed through `GITHUB_ENV`; artifacts use `github.run_id` rather than arbitrary input.
+
+The upload action never reads an undefined or partially resolved external state path. On a successful certification run, the preflight report, certification report and signed bundle are copied into a workspace-local staging directory before upload. On an earlier failure, only workspace-local diagnostics are eligible for collection.
 
 ## Release rule
 
