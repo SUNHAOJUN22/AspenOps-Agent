@@ -52,6 +52,111 @@ jobs:
             throw "PowerShell parser found errors in scripts/setup_windows.ps1"
           }
           "PowerShell syntax OK" | Set-Content var/ci/powershell-parse.log
+      - name: Exercise PowerShell bootstrap helpers
+        shell: pwsh
+        run: |
+          . ./scripts/setup_windows.ps1 -LibraryMode
+
+          $contractRoot = Join-Path $env:RUNNER_TEMP "aspenops-bootstrap-contracts"
+          Remove-Item -LiteralPath $contractRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $contractRoot | Out-Null
+
+          $valid = Join-Path $contractRoot "valid.env"
+          @(
+            "ASPENOPS_BACKEND=mock"
+            'QUOTED_VALUE="hello world"'
+            "EMPTY_VALUE="
+          ) | Set-Content -LiteralPath $valid
+          Import-DotEnv -Path $valid
+          if ($env:ASPENOPS_BACKEND -ne "mock") {
+            throw "Valid dotenv backend value was not imported"
+          }
+          if ($env:QUOTED_VALUE -ne "hello world") {
+            throw "Quoted dotenv value was not normalized"
+          }
+          if ($env:EMPTY_VALUE -ne "") {
+            throw "Empty dotenv value was not preserved"
+          }
+
+          $secret = "DO_NOT_ECHO_SECRET"
+          $duplicate = Join-Path $contractRoot "duplicate.env"
+          @(
+            "SECRET_VALUE=$secret"
+            "secret_value=second"
+          ) | Set-Content -LiteralPath $duplicate
+          $duplicateRejected = $false
+          try {
+            Import-DotEnv -Path $duplicate
+          } catch {
+            $message = $_.Exception.Message
+            if ($message -match [regex]::Escape($secret)) {
+              throw "Duplicate dotenv failure leaked a raw secret"
+            }
+            if ($message -notmatch "Duplicate environment variable at line 2") {
+              throw
+            }
+            $duplicateRejected = $true
+          }
+          if (-not $duplicateRejected) {
+            throw "Duplicate dotenv variable was accepted"
+          }
+
+          $unbalanced = Join-Path $contractRoot "unbalanced.env"
+          ('SECRET_VALUE="' + $secret) | Set-Content -LiteralPath $unbalanced
+          $unbalancedRejected = $false
+          try {
+            Import-DotEnv -Path $unbalanced
+          } catch {
+            $message = $_.Exception.Message
+            if ($message -match [regex]::Escape($secret)) {
+              throw "Unbalanced dotenv failure leaked a raw secret"
+            }
+            if ($message -notmatch "Unbalanced quoted value at line 1") {
+              throw
+            }
+            $unbalancedRejected = $true
+          }
+          if (-not $unbalancedRejected) {
+            throw "Unbalanced dotenv value was accepted"
+          }
+
+          $script:versions = @(
+            [version]"0.11.14"
+            [version]"0.11.14"
+            [version]"0.11.14"
+            [version]"0.11.16"
+          )
+          $script:versionIndex = 0
+          $script:selfUpdateCalled = $false
+          $script:wingetVerbs = @()
+          function Get-UvVersion {
+            $value = $script:versions[$script:versionIndex]
+            $script:versionIndex += 1
+            return $value
+          }
+          function Try-UvSelfUpdate {
+            $script:selfUpdateCalled = $true
+            return $false
+          }
+          function Invoke-WingetUv {
+            param([string]$Verb)
+            $script:wingetVerbs += $Verb
+            return $true
+          }
+
+          $resolvedVersion = Ensure-UvVersion
+          if ($resolvedVersion -ne [version]"0.11.16") {
+            throw "Upgrade fallback did not reach the required uv version"
+          }
+          if (-not $script:selfUpdateCalled) {
+            throw "Standalone uv self-update path was not attempted"
+          }
+          if (($script:wingetVerbs -join ",") -ne "upgrade,install") {
+            throw "winget upgrade/install fallback order was not preserved"
+          }
+
+          "PowerShell bootstrap contracts passed" |
+            Set-Content var/ci/powershell-contracts.log
       - name: Ruff
         shell: pwsh
         run: |
