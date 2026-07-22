@@ -30,14 +30,16 @@ The script is fail-closed and:
 
 1. enables strict PowerShell behavior;
 2. installs `uv` through winget when it is missing;
-3. automatically upgrades an older `uv` to at least `0.11.16`;
-4. refreshes machine and user PATH while preserving the process PATH;
-5. checks `uv.lock` and performs a frozen install of `windows + agent + dev + signing`;
-6. creates `.env` from `.env.example` when absent;
-7. validates and imports `.env` into the current process;
-8. rejects duplicate variable names and unbalanced quoted values;
-9. reports `.env` failures by line number without echoing raw values that may contain secrets;
-10. runs `aspenops doctor --probe` with the loaded backend and checks native exit codes.
+3. automatically upgrades an older standalone installation with `uv self update`, while disabling PATH modification during that update;
+4. falls back to winget `upgrade` and then winget `install` when self-update is unavailable or disabled;
+5. verifies the resulting `uv` is at least `0.11.16`;
+6. refreshes machine and user PATH while preserving the process PATH;
+7. checks `uv.lock` and performs a frozen install of `windows + agent + dev + signing`;
+8. creates `.env` from `.env.example` when absent;
+9. validates and imports `.env` into the current process;
+10. rejects duplicate variable names and unbalanced quoted values;
+11. reports `.env` failures by line number without echoing raw values that may contain secrets;
+12. runs `aspenops doctor --probe` with the loaded backend and checks native exit codes.
 
 A newly copied `.env` uses `ASPENOPS_BACKEND=mock`, an empty allowlist and a repository-local state directory. Edit it to `aspen_plus` or `hysys`, configure real absolute paths, and rerun the script before using a real model.
 
@@ -94,7 +96,7 @@ It runs on pinned `windows-2025`, Python 3.12 and exact `uv 0.11.16`, without li
 - checked frozen dependencies;
 - Ruff lint/format and strict mypy;
 - PowerShell AST and workflow-governance contracts;
-- documentation links, tool versions, runner names and first-run configuration contracts;
+- `tests/test_documentation_contracts.py` for links, tool versions, runner names, workflow names and first-run configuration;
 - Windows Job Object and process-ownership boundaries;
 - Worker IPC, timeout, recovery and singleflight;
 - Scheduler active leases;
@@ -194,7 +196,7 @@ The runtime deliberately remains `PENDING_REAL_ASPEN_CERTIFICATION`; final engin
 
 ### `uv` is too old
 
-Rerun `scripts/setup_windows.ps1`. It automatically requests a winget upgrade and verifies that the resulting version is at least `0.11.16`.
+Rerun `scripts/setup_windows.ps1`. Standalone installations first use `uv self update`; package-manager installations fall back to winget upgrade/install. The script then verifies `uv >= 0.11.16`.
 
 ### `.env` is rejected
 
