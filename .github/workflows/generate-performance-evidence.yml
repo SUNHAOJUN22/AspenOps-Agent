@@ -42,8 +42,8 @@ jobs:
       - name: Verify lockfile and sync frozen candidate dependencies
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p var/benchmarks
-          set -o pipefail
           uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
           uv sync --frozen --extra dev --extra agent \
             2>&1 | tee var/benchmarks/sync.log
@@ -71,7 +71,7 @@ jobs:
         env:
           PYTHONPATH: /tmp/aspenops-baseline/src
         run: |
-          set -o pipefail
+          set -euo pipefail
           .venv/bin/python scripts/run_benchmark_matrix.py \
             --repo-root /tmp/aspenops-baseline \
             --output var/benchmarks/baseline.json \
@@ -81,7 +81,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
-          set -o pipefail
+          set -euo pipefail
           .venv/bin/python scripts/run_benchmark_matrix.py \
             --repo-root . \
             --output var/benchmarks/after.json \
@@ -89,7 +89,7 @@ jobs:
       - name: Generate comparison and enforce stable regression policy
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           .venv/bin/python scripts/compare_benchmarks.py \
             --baseline var/benchmarks/baseline.json \
             --after var/benchmarks/after.json \
@@ -100,7 +100,7 @@ jobs:
       - name: Validate benchmark tools and smoke path
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run ruff check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
             2>&1 | tee var/benchmarks/ruff.log
           uv run ruff format --check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
