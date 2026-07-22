@@ -9,7 +9,7 @@
 **不是 GUI 宏，不是几行 `Tree.FindNode()`，也不是让大模型直接操作 COM。**  
 **AspenOps 是 AI Agent 与工业流程模拟器之间的确定性执行层。**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Security](SECURITY.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Security](SECURITY.md)
 
 [![CI](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml)
 [![Windows control plane](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml)
@@ -29,20 +29,25 @@
 | 默认及唯一长期分支 | `main` |
 | 软件包 | `aspenops-nexus 2.0.0` |
 | Python | 3.11、3.12、3.13 |
-| 最新记录的便携式质量门 | 通过：563 tests，综合分支感知覆盖率 94.97198% |
+| 已归档便携式运行 | Actions run `29814739487`，SHA `670e9523e915af309f16d959150cfadcd84219a6` |
+| Python 3.12 实测 | 72 个测试模块，563 passed，0 failed，0 skipped，16.73 s |
+| 综合分支感知覆盖率 | 94.9719800747198% |
+| 语句 / 分支覆盖率 | 96.23677786818551% / 90.84880636604774% |
 | CI 覆盖率下限 | 94.5% |
-| Windows 公共控制平面 | 通过 |
+| 已归档 Windows 公共门 | Actions run `29814739334`，104 passed，2.06 s |
 | MCP 工具数 | 14 |
-| 真实 Aspen 许可证环境认证 | 已实现工作流，尚待获批模型与持证 Windows 主机执行 |
+| 真实 Aspen 许可证环境认证 | 工作流已实现；等待获批模型、持证 Windows 主机和工程师审核 |
 
-审计证据位于：
+上述数字来自归档的 JUnit、coverage JSON 和日志证据，不是根据 README 自行推算。当前 `main` 的每次 push 会重新执行强化后的自动测试门，页面顶部徽章是最新状态入口。
 
-- `docs/single-main-audit.json`
-- `docs/quality-report.md`
-- `var/consolidation/final-main-manifest.json`
-- `var/consolidation/branch-archive-manifest.json`
+完整证据与审计记录：
 
-上述便携式结果验证的是 AspenOps 控制平面，不冒充 Aspen Plus 或 HYSYS 的真实物理模型认证。
+- [`docs/automated-test-audit-2026-07-22.md`](docs/automated-test-audit-2026-07-22.md)
+- [`docs/quality-report.md`](docs/quality-report.md)
+- [`docs/single-main-audit.json`](docs/single-main-audit.json)
+- [`var/consolidation/final-main-manifest.json`](var/consolidation/final-main-manifest.json)
+
+公共 CI 验证 AspenOps 控制平面，不冒充 Aspen Plus 或 HYSYS 的真实物理模型认证。
 
 ---
 
@@ -69,7 +74,7 @@ app.Tree.FindNode(path).Value = x
 app.Engine.Run2()
 ```
 
-这可以演示 COM，但没有解决工程自动化中的关键风险：
+它可以演示 COM，却没有解决工程自动化中的关键风险：
 
 - Aspen 升级后 ProgID 变化；
 - COM 对象不能安全跨线程或跨进程传递；
@@ -204,13 +209,16 @@ AspenOps 不把某个 `Apwn.Document.N.0` 写死为“最新版本”。启动�
 
 ## 快速开始：无需 Aspen
 
-### 1. 安装
+### 1. 安装冻结依赖
 
 ```bash
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
 cd AspenOps-Agent
-uv sync --extra dev --extra agent --extra signing
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
 ```
+
+`uv lock --check` 要求 `uv.lock` 与项目元数据一致；`uv sync --frozen` 禁止测试期间现场改写锁文件。
 
 ### 2. 运行 Mock 端到端示例
 
@@ -225,9 +233,13 @@ uv run aspenops benchmark --points 24 --workers 1,2,4
 uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```
 
-### 4. 完整质量门
+### 4. 本地执行与 CI 等价的核心质量门
 
 ```bash
+mkdir -p var/ci
+
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
@@ -235,10 +247,96 @@ uv run pytest -W error::ResourceWarning \
   --cov=aspenops_nexus \
   --cov-branch \
   --cov-report=term-missing \
+  --cov-report=json:var/ci/coverage-local.json \
+  --junitxml=var/ci/junit-local.xml \
+  --durations=20 \
   --cov-fail-under=94.5
 uv build
 uv run python scripts/check_mcp.py
+uv run aspenops dry-run examples/batch-request.example.json
+uv run aspenops benchmark --points 4 --workers 1,2
+uv run aspenops certify examples/batch-request.example.json \
+  --output var/ci/readme-certification.json \
+  --repeats 2
 ```
+
+pytest 配置同时启用：
+
+```text
+minimum pytest 8.3
+strict markers
+strict configuration
+strict xfail
+ResourceWarning = error
+```
+
+---
+
+## 自动测试与质量门
+
+AspenOps 使用四个职责不同的长期工作流。不能把其中任意一个单独写成“全部认证完成”。
+
+| 工作流 | 触发方式 | 环境 | 核心范围 | 证据 |
+|---|---|---|---|---|
+| `ci.yml` | main push、PR、手动 | Ubuntu；Python 3.11/3.12/3.13 | 全量 pytest、分支覆盖率、Ruff、格式、mypy、构建、Mock、MCP、Wheel、README 命令 | JUnit、coverage JSON、日志、CLI 输出 |
+| `windows-control-plane.yml` | main push、PR、手动 | `windows-latest`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、持证认证接口 | JUnit 与 Windows 诊断日志 |
+| `generate-performance-evidence.yml` | 手动 | Ubuntu；Python 3.12 | 精确 baseline/candidate、独立重复、稳定回归策略 | baseline、candidate、比较报告与原始样本 |
+| `licensed-aspen-certification.yml` | 受保护手动执行 | 自托管持证 Windows | 精确 SHA、软件回归、preflight、真实 COM、签名证据、人工审核边界 | JUnit、preflight、签名报告和 ZIP |
+
+### 便携式 CI 强制内容
+
+- GitHub Actions 使用不可变 commit SHA；
+- checkout 不保留写凭据；
+- `uv.lock` 必须最新；
+- 所有依赖从锁文件冻结安装；
+- Python 3.11、3.12、3.13 分别运行完整测试集；
+- `ResourceWarning` 直接导致失败；
+- 分支覆盖率门槛为 94.5%；
+- 保存 JUnit、JSON coverage、最慢测试和完整日志；
+- 从构建后的干净 Wheel 运行版本、帮助、Demo 和关键 CLI；
+- README 中的 dry-run、benchmark 和 certify 命令被自动抽查；
+- MCP 工具面必须保持 14 个受控工具；
+- 稳定性能回归超过策略阈值会失败。
+
+### Windows 公共控制平面
+
+强化后的 Windows 选定套件覆盖：
+
+- Windows Job Object；
+- AspenOps 创建进程的所有权与终止边界；
+- Worker 协议、超时、污染回收和 singleflight；
+- 调度器活动租约；
+- 收敛判定和 Fake Aspen Plus/HYSYS 后端；
+- ZIP 路径穿越、压缩炸弹和证据包边界；
+- 持证认证 CLI、工作流和签名包接口；
+- Windows CLI 与 Doctor smoke。
+
+根据已归档 JUnit 清单，强化后的选定集合包含 127 项测试；只有对应新工作流完成后，该数字才成为新的运行证据。
+
+### 覆盖率审计结论
+
+当前总体覆盖率已超过门槛，但余量约为 0.47 个百分点。后续新增测试应优先覆盖：
+
+```text
+scheduler.py
+pool.py
+worker.py
+provenance.py
+batch.py
+convergence.py
+```
+
+在这些高复杂度模块补齐边界前，不应为了漂亮数字盲目提高全局覆盖率下限。详细模块数据见 [自动测试审计](docs/automated-test-audit-2026-07-22.md)。
+
+### 自动测试明确不证明什么
+
+公共 CI 不证明：
+
+- 本机能成功启动某一 Aspen 商业版本；
+- 某个 `.bkp`、`.apwz` 或 `.hsc` 模型一定收敛；
+- 物性方法、反应模型和设备假设工程上正确；
+- Mock 性能等于真实 Aspen 求解性能；
+- 软件可以自行授予“真实 Aspen 工程认证”。
 
 ---
 
@@ -265,7 +363,8 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 或手动执行：
 
 ```powershell
-uv sync --extra windows --extra dev --extra agent --extra signing
+uv lock --check
+uv sync --frozen --extra windows --extra dev --extra agent --extra signing
 Copy-Item .env.example .env
 uv run aspenops doctor --probe
 ```
@@ -519,7 +618,17 @@ README.txt
 .github/workflows/licensed-aspen-certification.yml
 ```
 
-它必须手工输入完整 40 位获批提交 SHA、认证计划路径、后端类型，并显式批准真实 COM 执行。运行时只能生成 `PENDING_REAL_ASPEN_CERTIFICATION` 证据，不能自行授予工程认证结论。
+该工作流必须：
+
+- 手工输入完整 40 位获批提交 SHA；
+- 验证并冻结依赖；
+- 在打开 COM 前运行 104 项持证认证相关软件回归测试；
+- 运行 preflight；
+- 由授权人员显式批准真实执行；
+- 生成并验证签名证据包；
+- 保持 `PENDING_REAL_ASPEN_CERTIFICATION`，等待工程师最终审核。
+
+软件不能自行授予工程认证结论。
 
 ---
 
@@ -571,9 +680,9 @@ src/aspenops_nexus/
     hysys.py                HYSYS Spreadsheet adapter
     mock.py                 跨平台确定性测试后端
 
-tests/                      单元、集成、故障边界和调度测试
+tests/                      72 个已归档测试模块；单元、集成、故障和并发边界
 examples/                   Mock、请求、注册表和认证计划示例
-docs/                       架构、性能、质量、认证、安全和部署
+docs/                       架构、性能、质量、测试审计、认证、安全和部署
 scripts/                    安装、基准与接口核验脚本
 .github/workflows/
   ci.yml
@@ -585,6 +694,14 @@ scripts/                    安装、基准与接口核验脚本
 ---
 
 ## 常见问题
+
+### `uv lock --check` 失败
+
+`pyproject.toml` 与 `uv.lock` 不一致。应明确更新并审查锁文件，不要在 CI 中删除 `--frozen` 绕过问题。
+
+### 本地通过但 CI 覆盖率失败
+
+确认使用了 `--cov-branch`，并查看 JSON coverage 与 `term-missing`。当前门槛是综合分支感知覆盖率 94.5%，不是只看语句覆盖率。
 
 ### `doctor --probe` 找不到 Aspen
 
@@ -635,11 +752,12 @@ AspenOps 2.0 当前提供：
 
 后续优先级：
 
-1. 在获批非保密模型上执行 Aspen Plus 与 HYSYS 持证认证；
-2. 建立版本化资格案例与注册表证据；
-3. 扩展模型级守恒、约束和不确定度模板；
-4. 在真实许可证与硬件边界内形成可复现吞吐量基线；
-5. 继续保持单一 `main` 主干和最小长期工作流集合。
+1. 完成强化工作流的新鲜绿灯证据归档；
+2. 优先补齐 scheduler、pool、worker、provenance 的剩余分支；
+3. 在获批非保密模型上执行 Aspen Plus 与 HYSYS 持证认证；
+4. 建立版本化资格案例与注册表证据；
+5. 在真实许可证与硬件边界内形成可复现吞吐量基线；
+6. 继续保持单一 `main` 主干和最小长期工作流集合。
 
 ---
 
