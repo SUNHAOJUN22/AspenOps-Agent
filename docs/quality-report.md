@@ -8,7 +8,8 @@ results.
 
 ## Latest verified portable gate
 
-The latest complete portable matrix validated Python 3.11, 3.12 and 3.13 with:
+The authoritative complete portable matrix is GitHub Actions run
+`29814739487`. It validated Python 3.11, 3.12 and 3.13 with:
 
 - Ruff linting;
 - Ruff formatting;
@@ -16,26 +17,28 @@ The latest complete portable matrix validated Python 3.11, 3.12 and 3.13 with:
 - pytest with branch coverage and `ResourceWarning` promoted to an error;
 - source and wheel builds;
 - portable Mock demo;
-- benchmark smoke test;
+- benchmark smoke and committed stable-regression policy;
 - MCP surface verification;
-- clean Python 3.12 wheel installation, version command and demo.
+- clean Python 3.12 wheel installation, version command, demo and licensed CLI
+  help smoke.
 
-Observed result:
+Observed Python 3.12 result:
 
 ```text
-424 tests passed
-combined coverage: 94.57494407158836%
-statement coverage: 96.03289791969037%
-branch coverage: 89.67479674796748%
-CI coverage floor: 94%
+563 tests passed
+combined branch-aware coverage: 94.9719800747198%
+statement coverage: 96.23677786818551%
+branch coverage: 90.84880636604774%
+CI coverage floor: 94.5%
 ```
 
-The coverage gate is measured with `--cov-branch`. It is not increased beyond the
-observed result, and no core module is omitted to inflate the number.
+The coverage gate is measured with `--cov-branch`. No core module is omitted to
+inflate the result, and the floor was not reduced during single-main
+consolidation.
 
 ## Public Windows control-plane gate
 
-The Windows public runner validates:
+The authoritative public-Windows run is `29814739334`. It validates:
 
 - strict type and lint compatibility on Windows Python 3.12;
 - Job Object setup and `KILL_ON_JOB_CLOSE` contracts;
@@ -89,7 +92,7 @@ checkpoint safety; cancellation; batch evaluation and interface limits.
 
 ## Performance evidence methodology
 
-The full benchmark workflow compares `main` and the candidate using three
+The full benchmark workflow compares an exact baseline ref with `main` using three
 independent trials per scenario. It reports medians, raw samples and throughput CV
 for:
 
@@ -110,6 +113,21 @@ report must not describe those percentiles as queue-inclusive request latency.
 
 All benchmark results are labeled `portable-mock-orchestration` and must not be
 used as licensed Aspen solve-performance claims.
+
+## Single-main repository evidence
+
+`docs/single-main-audit.json` and `var/consolidation/final-main-manifest.json`
+record that remote heads contain only `main`. The four authoritative long-lived
+workflows are:
+
+- `ci.yml`;
+- `windows-control-plane.yml`;
+- `generate-performance-evidence.yml`;
+- `licensed-aspen-certification.yml`.
+
+The full historical annotated-tag recovery gate remains blocked because the
+acting GitHub App lacks `Workflows: write`. The blocker is documented separately
+and does not invalidate the runtime, CI, Windows or performance results.
 
 ## Remaining qualification
 
