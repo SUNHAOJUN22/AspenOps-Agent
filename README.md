@@ -38,25 +38,26 @@
 | MCP 工具数 | 14 |
 | 真实 Aspen 认证 | 等待持证 Windows、获批模型和工程师审核 |
 
-上述数字来自已下载并检查的 JUnit、coverage JSON 和日志，不是从 README 反推。它们是**已验证归档基线**，不是对任意后续提交的自动声明。顶部徽章只显示 `main` 的 `push` 状态。
+这些数字来自已下载并检查的 JUnit、coverage JSON 和日志，是**已验证归档基线**，不是对任意后续提交的自动声明。顶部徽章只显示 `main` 的最新 `push` 状态。
 
-本轮对当前工作流表面进行了额外隔离验证：
+本轮新增的运行时与工作流安全门包括：
 
-```text
-15/15 工作流治理与持证工作流测试通过
-4/4 GitHub Actions YAML 文件可解析
-全部 Bash run 块通过 bash -n 语法检查
-PowerShell AST 解析已加入 Windows 自动工作流
-```
+- 真实后端无 `ASPENOPS_ALLOWED_ROOTS` 时，环境加载和直接 `Settings(...)` 构造均立即失败；
+- 真实后端状态目录必须为绝对路径，并位于解析后的允许根目录内；
+- 模型、注册表、CLI 输出和持证证据目录均受允许根目录约束；
+- 持证计划与状态目录使用真实路径解析，阻止 `..`、符号链接或联接点逃逸；
+- 持证提交必须是受信 `main` 的祖先；
+- 真实密钥只暴露给 preflight 和真实执行步骤，不进入依赖安装或 Mock 回归；
+- Windows 公共门和持证回归门均运行直接构造、后端升级、CLI 输出与 realpath 策略测试。
 
-完整记录：
+完整证据与审计：
 
 - [`docs/automated-test-audit-2026-07-22.md`](docs/automated-test-audit-2026-07-22.md)
 - [`docs/quality-report.md`](docs/quality-report.md)
 - [`docs/single-main-audit.json`](docs/single-main-audit.json)
 - [`var/consolidation/final-main-manifest.json`](var/consolidation/final-main-manifest.json)
 
-公共 CI 验证控制平面，不冒充 Aspen Plus/HYSYS 的真实物理模型认证。
+公共 CI 验证控制平面，不冒充 Aspen Plus 或 HYSYS 的真实物理模型认证。
 
 ---
 
@@ -246,31 +247,41 @@ ResourceWarning = error
 
 仓库只保留四个权威工作流：
 
-| 工作流 | 触发方式 | 环境 | 职责 |
+| 工作流 | 触发方式 | 固定环境 | 职责 |
 |---|---|---|---|
-| `ci.yml` | `main` push、PR、手动 | Ubuntu；Python 3.11/3.12/3.13 | 全量测试、分支覆盖率、Ruff、格式、mypy、构建、Mock、MCP、Wheel、README 命令 |
-| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-latest`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、PowerShell AST、工作流治理 |
-| `generate-performance-evidence.yml` | 手动 | Ubuntu；Python 3.12 | 不可变 baseline、独立重复、稳定性能回归策略 |
-| `licensed-aspen-certification.yml` | 受保护手动执行 | 自托管持证 Windows | 精确 SHA、路径门、软件回归、preflight、真实 COM、签名证据、人工审核 |
+| `ci.yml` | `main` push、PR、手动 | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、分支覆盖率、Ruff、格式、mypy、构建、Mock、MCP、锁定依赖 Wheel、README 命令 |
+| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、PowerShell AST、路径与工作流治理 |
+| `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 不可变 baseline、独立重复、稳定性能回归策略 |
+| `licensed-aspen-certification.yml` | 受保护手动执行 | `self-hosted, windows, x64, aspen-licensed` | `main` 祖先 SHA、realpath 门、Mock 回归、preflight、真实 COM、签名证据、人工审核 |
+
+所有托管 runner、第三方 Actions 和 `uv` 工具版本均固定；依赖安装使用 `uv.lock` 与 `--frozen`。
 
 ### 工作流治理规则
 
 `tests/test_workflow_governance.py` 和持证工作流专项测试强制：
 
 - 第三方 Actions 固定到完整 40 位 commit SHA；
+- `uv` 固定为 `0.11.14`；
 - `contents: read`，checkout 不保留写凭据；
 - 禁止 `pull_request_target`、`contents: write` 和静默 `continue-on-error`；
 - 所有环境执行 `uv lock --check` 与 `uv sync --frozen`；
 - 同时审计命名步骤的 `uses:` 与简写 `- uses:`；
-- 手动输入只能通过环境变量进入 Shell，不得直接插值到脚本；
+- 手动输入只能通过环境变量进入 Shell，不直接插值到脚本；
 - 性能工作流使用固定可信并发组；
 - baseline ref 先解析成完整提交 SHA，再创建 worktree；
 - 制品名称使用 `github.run_id`，不使用任意输入；
-- 持证计划必须是单行、仓库相对路径，并限制在 workspace 内；
-- 持证状态目录必须是单行绝对路径，并位于绝对允许根目录内；
-- 规范化计划/状态路径通过 `GITHUB_ENV` 传给后续步骤；
+- 持证提交必须是受信 `main` 的祖先；
+- 持证计划限制在仓库 workspace，状态目录限制在绝对允许根目录；
+- Python realpath 门阻止符号链接、联接点和 `..` 逃逸；
+- 真实后端配置、请求后端、CLI 输出和证据目录使用同一根目录策略；
+- 真实密钥不进入依赖安装或 Mock 回归；
 - Windows CI 使用 PowerShell AST 解析 `setup_windows.ps1`；
-- Windows 初始化脚本必须加载 `.env`、保留原进程 PATH、冻结依赖并检查退出码。
+- Windows 初始化脚本加载 `.env`、保留原进程 PATH、校验最低 `uv` 版本并检查退出码；
+- Windows 公共门与持证回归门必须运行 `test_config_resource_budgets.py`、`test_real_backend_state_policy.py` 和 `test_licensed_path_gate.py`。
+
+### 锁定依赖 Wheel 验证
+
+便携式 CI 不从网络临时解析 Wheel 依赖。它先从 `uv.lock` 导出带哈希的运行时依赖，使用 `uv pip sync --require-hashes` 建立干净环境，再以 `--offline --no-deps` 安装构建出的 Wheel，最后执行 `uv pip check` 和关键 CLI smoke。
 
 ### 覆盖率策略
 
@@ -299,7 +310,10 @@ convergence.py
 - 有效许可证及明确席位上限；
 - 非保密、在 GUI 中稳定收敛的资格模型；
 - 经 Variable Explorer 或 HYSYS Spreadsheet 核验的案例注册表；
-- 位于绝对允许根目录内的模型和结果目录。
+- 非空、绝对、已存在的允许根目录；
+- 位于允许根目录内的绝对状态目录、模型、注册表、结果和证据目录。
+
+真实后端配置如果缺少 `ASPENOPS_ALLOWED_ROOTS`，或者状态目录位于根目录之外，会在 `Settings` 构造阶段直接失败；不会进入 Aspen preflight 或创建状态文件。
 
 ### 推荐安装
 
@@ -314,7 +328,7 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 1. 开启严格 PowerShell 行为；
 2. 缺少时通过 `winget` 安装 `uv`；
 3. 刷新机器/用户 PATH，同时保留当前进程 PATH；
-4. 再次确认 `uv` 可调用；
+4. 校验 `uv >= 0.11.14`；
 5. 校验 `uv.lock`；
 6. 冻结安装 `windows + agent + dev + signing`；
 7. 创建并解析 `.env`；
@@ -445,10 +459,10 @@ W_effective = min(W_configured, W_license, W_memory, W_stability)
 安全顺序：
 
 ```text
-精确获批 SHA
-→ 规范化计划和状态目录
+精确获批 SHA 且必须属于受信 main 历史
 → 冻结依赖
-→ 隔离 Mock 软件回归
+→ 隔离 Mock 软件回归（无真实密钥）
+→ 真实路径与符号链接逃逸检查
 → preflight
 → 明确人工批准
 → 真实 COM 执行
@@ -482,7 +496,7 @@ src/aspenops_nexus/        运行时、控制平面、适配器和优化
 tests/                     单元、集成、故障边界和工作流治理
 examples/                  Mock、请求、注册表和认证计划示例
 docs/                      架构、性能、质量、认证、安全和部署
-scripts/                   Windows 安装、基准和接口核验
+scripts/                   Windows 安装、基准、路径门和接口核验
 .github/workflows/         四个权威长期工作流
 ```
 
