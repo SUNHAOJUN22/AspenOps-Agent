@@ -188,17 +188,26 @@ def test_windows_gates_run_policy_and_documentation_contracts() -> None:
         assert "tests/test_licensed_path_gate.py" in text
 
 
-def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
+def test_windows_ci_parses_and_executes_bootstrap_contracts() -> None:
     text = workflow_text("windows-control-plane.yml")
     assert "Parse PowerShell bootstrap" in text
     assert "System.Management.Automation.Language.Parser" in text
     assert "scripts/setup_windows.ps1" in text
     assert "PowerShell parser found errors" in text
     assert "powershell-parse.log" in text
+    assert "Exercise PowerShell bootstrap helpers" in text
+    assert ". ./scripts/setup_windows.ps1 -LibraryMode" in text
+    assert "Duplicate dotenv failure leaked a raw secret" in text
+    assert "Unbalanced dotenv failure leaked a raw secret" in text
+    assert "winget upgrade/install fallback order was not preserved" in text
+    assert "PowerShell bootstrap contracts passed" in text
+    assert "powershell-contracts.log" in text
 
 
 def test_windows_bootstrap_is_frozen_fail_closed_and_secret_safe() -> None:
     text = Path("scripts/setup_windows.ps1").read_text(encoding="utf-8")
+    assert "[switch]$LibraryMode" in text
+    assert "if (-not $LibraryMode)" in text
     assert "Set-StrictMode -Version Latest" in text
     assert '$RequiredUvVersion = [version]"0.11.16"' in text
     assert "Get-UvVersion" in text
