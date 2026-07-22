@@ -42,16 +42,28 @@ jobs:
           UV_PREVIEW_FEATURES: json-output
         run: |
           set -euo pipefail
+          audit_failed=0
           for platform in linux windows; do
             for version in 3.11 3.12 3.13; do
-              output="var/ci/dependency-audit-${platform}-py${version}.json"
-              uv audit --frozen \
+              stem="var/ci/dependency-audit-${platform}-py${version}"
+              output="${stem}.json"
+              error_log="${stem}.log"
+              if ! uv audit --frozen \
                 --python-platform "$platform" \
                 --python-version "$version" \
-                --output-format json > "$output"
-              python -m json.tool "$output" >/dev/null
+                --output-format json > "$output" 2> "$error_log"; then
+                audit_failed=1
+              fi
+              if ! python -m json.tool "$output" >/dev/null; then
+                echo "Invalid JSON audit evidence: $output" >&2
+                audit_failed=1
+              fi
             done
           done
+          if [[ "$audit_failed" -ne 0 ]]; then
+            echo "One or more locked dependency audits failed" >&2
+            exit 1
+          fi
       - name: Ruff
         shell: bash
         run: |
