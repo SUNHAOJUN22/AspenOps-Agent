@@ -15,6 +15,9 @@ WORKFLOWS = {
 PRIMARY_DOCUMENTS = (
     ROOT / "README.md",
     ROOT / "README.en.md",
+    ROOT / "SECURITY.md",
+    ROOT / "docs" / "architecture.md",
+    ROOT / "docs" / "performance.md",
     ROOT / "docs" / "windows-setup.md",
     ROOT / "docs" / "quality-report.md",
     ROOT / "docs" / "automated-test-audit-2026-07-22.md",
@@ -26,6 +29,7 @@ CURRENT_GUIDES = tuple(
     if document.name != "automated-test-audit-2026-07-22.md"
 )
 UNIVERSAL_STALE_TOKENS = {
+    "AspenOps 1.0",
     "ubuntu-latest",
     "windows-latest",
     "windows-aspen-certification.yml",
@@ -74,6 +78,9 @@ def test_documentation_has_no_stale_current_guidance() -> None:
     for document in CURRENT_GUIDES:
         text = document.read_text(encoding="utf-8")
         assert "0.11.14" not in text, f"Stale uv guidance in {document.relative_to(ROOT)}"
+
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    assert architecture.startswith("# AspenOps 2.0 Architecture")
 
     readmes = [
         (ROOT / "README.md").read_text(encoding="utf-8"),
