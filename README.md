@@ -4,12 +4,12 @@
 
 ## Aspen Plus、Aspen HYSYS 与 AI Agent 之间的确定性执行控制平面
 
-### Codex / Claude Code / MCP → 语义工艺意图 → 隔离执行 → Aspen 求解 → 工程判定 → 可复现实验证据
+### Agent / CLI / Python → 语义工艺意图 → 隔离执行 → Aspen 求解 → 工程判定 → 可复现实验证据
 
-**AspenOps 不是 GUI 宏，也不是让大模型直接调用任意 COM。**  
+**AspenOps 不是 GUI 宏，也不允许大模型任意调用 COM。**  
 **它负责授权、路径、单位、收敛、约束、守恒、并发、审计和证据。**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -37,46 +37,27 @@
 | MCP 工具数 | 14 |
 | 真实 Aspen 认证 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章显示当前 `main` push 的平台状态；README 不用历史结果替代最新 Actions 证据。
+以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章显示当前 `main` push 的平台状态；历史结果不会替代最新 Actions 证据。
 
-公共 CI 可以证明控制平面、路径策略、进程隔离、调度、归档和接口契约，不能证明某台主机上的商业 Aspen、许可证、物性方法或工程模型已经获得认证。
-
----
-
-## 一句话定义
-
-> AspenOps 把有状态、会阻塞、版本敏感、许可证受限的 Aspen 桌面模拟器，封装成 Agent、CLI 和 Python 工作流可安全调用的确定性执行引擎。
-
-```text
-Agent 决定研究什么
-Aspen 求解热力学和流程方程
-AspenOps 判断操作是否允许、单位是否正确、求解是否收敛、结果是否可行、守恒是否闭合、证据是否可复现
-```
+公共 CI 可以证明控制平面、路径策略、进程隔离、调度、归档和接口契约，不能证明商业 Aspen、许可证、物性方法或工程模型已获得认证。
 
 ---
 
-## 核心架构
+## 核心架构与有效性契约
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│ Codex / Claude Code / MCP Client / Python                          │
-│ 变量、DOE、约束、目标和结果需求；不接触原始 COM                    │
-└──────────────────────────────┬─────────────────────────────────────┘
-                               │ typed MCP / CLI / JSON
-                               ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ AspenOps Control Plane                                             │
-│ Policy · Registry · Units · Scheduler · Cache · Evidence · Audit   │
-│ Certification · Optimization                                      │
-└──────────────────────────────┬─────────────────────────────────────┘
-                               │ one batched RPC per point
-                               ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ Persistent CasePool                                                │
-│ private process · COM STA · private model copy · one session       │
-└──────────────┬───────────────────┬──────────────────────┬───────────┘
-               ▼                   ▼                      ▼
-          Aspen Plus          Aspen HYSYS             Mock backend
+Agent / CLI / Python
+        │ typed MCP / JSON
+        ▼
+AspenOps Control Plane
+Policy · Registry · Units · Scheduler · Cache · Evidence · Audit
+        │ one batched RPC per point
+        ▼
+Private Worker Process · COM STA · Private Model Copy
+        │
+        ├─ Aspen Plus
+        ├─ Aspen HYSYS
+        └─ Mock backend
 ```
 
 不可破坏的不变量：
@@ -84,13 +65,11 @@ AspenOps 判断操作是否允许、单位是否正确、求解是否收敛、�
 1. 一个 COM 对象只属于一个 Windows 子进程和一个 STA apartment。
 2. Agent 只调用语义变量，不构造任意 Aspen Tree Path。
 3. 每个 Worker 使用私有模型副本，不覆盖主模型。
-4. 每个工况只进行一次批量 IPC 事务。
-5. 硬超时只终止 AspenOps 创建并验证归属的进程。
-6. 通信、引擎返回、收敛、可行性和守恒闭合是独立状态。
-7. Mock CI 只证明控制平面，不证明真实 Aspen 物理结果。
-8. 持证结果仍须流程工程师审核。
+4. 硬超时只终止 AspenOps 创建并验证归属的进程。
+5. 通信、引擎返回、收敛、可行性和守恒闭合是独立状态。
+6. Mock CI 只证明控制平面，不证明真实 Aspen 物理结果。
 
-只有以下状态全部成立，结果才令 `ok=true`：
+只有以下条件全部成立，结果才令 `ok=true`：
 
 ```text
 communication_ok
@@ -118,7 +97,7 @@ uv run aspenops benchmark --points 24 --workers 1,2,4
 uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```
 
-`.env.example` 的首次运行默认值为 Mock 后端、空允许根目录和仓库内状态目录，因此复制后不会把 Windows 专用绝对路径强加给 Linux 或 macOS 用户。
+`.env.example` 默认使用 Mock、空允许根目录和仓库内状态目录，不会把 Windows 绝对路径强加给 Linux 或 macOS 首次运行。
 
 ---
 
@@ -127,35 +106,23 @@ uv run aspenops certify examples/batch-request.example.json --repeats 3
 ```bash
 uv lock --check
 uv sync --frozen --extra dev --extra agent --extra signing
-
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-
-uv run pytest \
+uv run pytest -W error::ResourceWarning \
   --cov=aspenops_nexus \
   --cov-branch \
   --cov-report=term-missing \
-  --cov-report=json:var/coverage.json \
-  --junitxml=var/junit.xml \
-  --durations=20 \
   --cov-fail-under=94.5
-
-UV_PREVIEW_FEATURES=json-output uv audit --frozen \
-  --python-platform linux --python-version 3.11 --output-format json
-UV_PREVIEW_FEATURES=json-output uv audit --frozen \
-  --python-platform windows --python-version 3.11 --output-format json
-
 uv build
 uv run python scripts/check_mcp.py
 uv run aspenops --version
-uv run aspenops --help
 uv run aspenops demo
 ```
 
-CI 会自动扩展漏洞审计：Linux 与 Windows 两个平台分别检查 Python 3.11、3.12、3.13，共**六种**受支持组合。六种组合全部执行，每种分别保存 JSON 和错误日志并校验 JSON；任一组合失败时，在完整证据收集后统一令质量任务失败。
+Windows 本地环境增加 `--extra windows`。
 
-pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfail，并把 `ResourceWarning` 作为错误。
+pytest 使用 strict markers、strict configuration、strict xfail，并把 `ResourceWarning` 作为错误。
 
 ---
 
@@ -164,65 +131,60 @@ pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfa
 | 工作流 | 触发方式 | 固定环境 | 职责 |
 |---|---|---|---|
 | `ci.yml` | `main` push、PR、手动 | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、格式、mypy、六组合依赖审计、构建、Mock、MCP、Wheel、README 命令 |
-| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、PowerShell AST 与 helper 行为测试、路径、文档和工作流治理 |
-| `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 不可变 baseline、独立重复、稳定性能回归策略 |
-| `licensed-aspen-certification.yml` | 受保护手动执行 | `self-hosted, windows, x64, aspen-licensed` | 受信 `main` SHA、Mock 回归、realpath 门、preflight、真实 COM、签名证据和人工审核 |
+| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和工作流治理 |
+| `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 受信 `main` baseline/candidate、独立重复、稳定性能回归证据 |
+| `licensed-aspen-certification.yml` | 受保护手动执行 | `self-hosted, windows, x64, aspen-licensed` | 受信 `main` SHA、Mock 回归、realpath、真实 COM、签名证据和人工审核 |
 
-所有托管 runner、第三方 Actions 和 `uv 0.11.16` 都固定版本。依赖安装先执行 `uv lock --check`，随后使用 `uv sync --frozen`。
+所有托管 runner、第三方 Actions 和 `uv 0.11.16` 均固定版本。所有工作流只授予 `contents: read`，自动测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
-### 自动治理规则
+### 六组合冻结依赖审计
 
-自动测试会拒绝：
+CI 对 Linux 与 Windows 分别审计 Python 3.11、3.12、3.13，共**六种**组合：
 
-- 未固定完整 commit SHA 的第三方 Action；
-- `ubuntu-latest` 或 `windows-latest` 等漂移 runner 标签；
-- `contents: write`、持久 checkout 凭据、`pull_request_target`；
-- 静默 `continue-on-error`；
-- 非冻结依赖安装；
-- 缺少 `set -euo pipefail` 的 Bash 步骤；
-- 在 `run: |`、`run: >`、单行 `run:` 或简写 `- run:` 中直接插入手动输入；
-- 原始 baseline ref 直接进入 worktree；
-- 用户输入进入制品名称；
-- 六种漏洞审计未完整执行、未保存错误日志、未验证 JSON 或未在末尾统一失败；
-- 文档中的旧工具版本、旧 runner、旧工作流名称、旧 AspenOps 标题或失效本地链接；
-- Windows 或持证门删除关键路径、后端和文档契约测试；
-- Windows CI 删除 `LibraryMode` helper 行为门，只留下静态字符串检查。
+```text
+linux  × 3.11 / 3.12 / 3.13
+windows × 3.11 / 3.12 / 3.13
+```
+
+每种组合分别保存 JSON 和错误日志并校验 JSON。即使某一项失败，其余组合仍继续取证；完成全部证据收集后统一令质量任务失败。
 
 ### 锁定依赖 Wheel 验证
 
-便携式 CI 从 `uv.lock` 导出带哈希的运行时依赖，使用 `uv pip sync --require-hashes` 创建干净环境，再用 `--offline --no-deps` 安装构建的 Wheel，执行 `uv pip check` 和关键 CLI smoke。Wheel 验证不会现场重新解析依赖版本。
+CI 从 `uv.lock` 导出带哈希的运行时依赖，用 `uv pip sync --require-hashes` 创建干净环境，再以 `--offline --no-deps` 安装构建的 Wheel，执行 `uv pip check` 和关键 CLI smoke；不会现场重新解析依赖版本。
 
-### 文档契约
+### 文档与操作契约
 
-`tests/test_documentation_contracts.py` 自动检查：
+`tests/test_documentation_contracts.py` 从 `pyproject.toml` 动态读取版本，并检查：
 
-- 中英文 README、Security、Architecture、Performance、Windows 指南、质量报告、测试审计和认证文档均存在；
+- README 徽章、包版本、`__version__`、CHANGELOG 和 AspenOps 标题一致；
+- README、AGENTS、CLAUDE、CONTRIBUTING、Security、Architecture、Performance、Windows、质量、测试审计和认证文档存在；
 - 本地 Markdown 链接可解析且不得逃出仓库；
-- `uv 0.11.16`、`ubuntu-24.04`、`windows-2025`、AspenOps 2.0 标题和四个工作流名称保持一致；
-- 不得重新出现旧工作流或漂移 runner；
-- README 必须明确六种依赖审计组合；
-- `.env.example` 必须保持可移植 Mock 首次运行；
+- AGENTS/CONTRIBUTING 必须使用冻结质量门；
+- `.env.example` 保持可移植 Mock 首次运行；
 - 归档证据与真实认证边界不得被删除。
 
 ---
 
+## 受信性能证据
+
+`generate-performance-evidence.yml` 在安装工具或运行 Python 前完成：
+
+```text
+checkout candidate
+→ 获取受信 main 历史
+→ 解析 candidate 与 baseline 完整 SHA
+→ 两者都必须属于 main
+→ baseline 必须是 candidate 的祖先
+→ 创建 baseline detached worktree
+→ 冻结安装 candidate 依赖
+→ 运行独立重复与稳定回归策略
+```
+
+未合并、无关或反向时间顺序的提交不能生成看似权威的性能证据。Mock 结果仅表示编排性能，不代表真实 Aspen 求解速度。
+
+---
+
 ## Windows + Aspen Plus / HYSYS
-
-### 前置条件
-
-- 原生 64 位 Windows；
-- Python 3.11–3.13；
-- `uv >= 0.11.16`；
-- Aspen Plus 和/或 Aspen HYSYS；
-- 有效许可证和明确席位上限；
-- 非保密、在 GUI 中稳定收敛的资格模型；
-- 经核验的案例语义注册表；
-- 非空、绝对、已存在的允许根目录；
-- 位于允许根目录内的绝对状态、模型、注册表、结果和证据目录。
-
-真实后端缺少 `ASPENOPS_ALLOWED_ROOTS`，或状态目录位于根目录之外时，会在 `Settings` 构造阶段直接失败，不进入 Aspen preflight，也不创建状态文件。
-
-### 推荐安装
 
 ```powershell
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
@@ -230,68 +192,30 @@ cd AspenOps-Agent
 powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-脚本会：
+脚本会安全安装或升级 `uv >= 0.11.16`，保留当前 PATH，冻结安装 `windows + agent + dev + signing`，严格加载 `.env`，拒绝重复变量和未闭合引号，错误只报告行号且不回显潜在密钥，并使用真实加载配置运行 `doctor --probe`。
 
-1. 开启严格 PowerShell 行为；
-2. 在缺少 `uv` 时通过 winget 安装；
-3. 对旧的独立安装版先尝试 `uv self update`，并禁止修改 PATH；
-4. self-update 不可用或版本仍旧时，依次回退到 winget upgrade 与 winget install；
-5. 每次升级后重新读取实际版本，并要求最终 `uv >= 0.11.16`；
-6. 刷新机器和用户 PATH，同时保留当前进程 PATH；
-7. 校验锁文件并冻结安装 `windows + agent + dev + signing`；
-8. 创建、验证并加载 `.env`；
-9. 拒绝重复变量和未闭合引号；
-10. `.env` 错误只报告行号，不回显潜在密钥内容；
-11. 使用加载后的配置运行 `doctor --probe`；
-12. 检查所有外部命令退出码。
-
-`-LibraryMode` 只供 Windows CI 加载并执行 helper 契约，不安装依赖、不运行 Doctor，不应替代正常安装命令。Windows CI 会真实验证合法 `.env`、大小写不敏感的重复变量、未闭合引号、秘密不回显和 self-update → winget fallback 顺序。
-
-首次真实模型：
-
-```powershell
-uv run aspenops dry-run D:/AspenModels/request.json
-uv run aspenops run-batch D:/AspenModels/request.json `
-  --output D:/AspenResults/results.json `
-  --bundle D:/AspenResults/run-bundle.zip
-uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
-```
-
-从一个 Worker 和一个已知收敛点开始。约束、守恒、重复性、内存和许可证行为稳定后再增加并发。
-
----
-
-## 真实后端路径策略
-
-同一套规则覆盖环境加载、直接 Python 构造、批处理请求、CLI 输出和持证认证：
-
-- 真实后端必须配置非空 `ASPENOPS_ALLOWED_ROOTS`；
-- 根目录和状态目录必须显式为绝对路径；
-- 状态目录必须解析到某个允许根目录内；
-- 请求后端必须与配置的真实后端一致；
-- 模型、注册表、结果、普通证据包和持证输出必须位于根目录内；
-- realpath 检查拒绝 `..`、符号链接和 Windows 联接点逃逸；
-- 不安全配置在打开 Aspen 前失败。
+真实后端必须配置非空绝对 `ASPENOPS_ALLOWED_ROOTS`；状态、模型、注册表、结果和证据目录必须解析到允许根目录内。realpath 检查拒绝 `..`、符号链接和 Windows 联接点逃逸。
 
 ---
 
 ## 持证 Aspen 认证
 
-权威工作流：`licensed-aspen-certification.yml`。
-
 ```text
 精确获批 SHA checkout
-→ 验证 SHA 属于受信 main 历史
-→ 锁文件检查与冻结依赖
-→ 不接触真实密钥的 Mock 软件回归
-→ 文档、后端、输出和工作流治理契约
-→ 计划、允许根目录和状态目录 realpath 验证
-→ 持证 preflight
-→ 明确人工执行批准
+→ 验证 SHA 属于受信 main
+→ 冻结依赖与隔离 Mock 回归
+→ 计划、根目录和状态目录 realpath 验证
+→ preflight
+→ 明确人工批准
 → 范围受限的真实 COM 执行
-→ 签名证据包验证
+→ 签名包验证
+→ 验证全部证据存在且非空
+→ 复制到 var/ci/licensed-evidence
+→ 仅上传工作区 var/ci
 → 工程师最终审核
 ```
+
+早期失败时，上传动作不会解析未定义的外部状态目录；只有工作区内诊断可进入制品。成功时，preflight、认证报告和签名包先复制到工作区暂存目录后再上传。
 
 软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`。签名证明来源与完整性，不等于物性、反应、设备假设或工程适用范围已被批准。
 
@@ -299,62 +223,9 @@ uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
 
 ## CLI 与 MCP
 
-主要 CLI：
+主要 CLI：`demo`、`doctor`、`dry-run`、`run-batch`、`submit`、`job`、`benchmark`、`optimize`、`certify`、`certification-preflight`、`certify-licensed`、`verify-licensed-bundle`、`verify-bundle`、`mcp`。
 
-| 命令 | 用途 |
-|---|---|
-| `aspenops demo` | Mock 端到端演示 |
-| `aspenops doctor --probe` | 主机、策略和 Automation Server 诊断 |
-| `aspenops dry-run REQUEST` | 不打开 Aspen，验证路径、语义、单位和并发 |
-| `aspenops run-batch REQUEST` | 执行批处理并生成完整性包 |
-| `aspenops submit REQUEST` | 提交耐久后台任务 |
-| `aspenops job JOB_ID` | 查看任务状态和结果 |
-| `aspenops benchmark` | 便携式调度基准 |
-| `aspenops optimize REQUEST` | 有预算约束的优化 |
-| `aspenops certify REQUEST` | 重复性门，不授予真实认证 |
-| `aspenops certification-preflight PLAN` | 不打开 COM，检查持证计划 |
-| `aspenops certify-licensed PLAN` | 在获批持证主机执行计划 |
-| `aspenops verify-licensed-bundle BUNDLE` | 验证签名认证包 |
-| `aspenops verify-bundle BUNDLE` | 验证普通运行包 |
-| `aspenops mcp` | 启动本地 STDIO MCP Server |
-
-MCP 精确暴露 14 个窄接口工具：
-
-```text
-system_info
-list_semantic_variables
-dry_run_request
-run_batch_sync
-submit_batch
-submit_optimization
-optimization_status
-optimization_result
-cancel_optimization
-job_status
-job_result
-list_recent_jobs
-cancel_job
-verify_evidence_bundle
-```
-
-不存在任意 Shell、Python、VBA、`eval`、无限制 COM 方法或原始 Tree Path 写入工具。
-
----
-
-## 覆盖率策略
-
-归档综合覆盖率只比 94.5% 门槛高约 0.47 个百分点。后续优先补测：
-
-```text
-scheduler.py
-pool.py
-worker.py
-provenance.py
-batch.py
-convergence.py
-```
-
-在复杂边界补齐前，不为漂亮数字盲目提高全局门槛。
+MCP 精确暴露 14 个窄接口工具，不提供任意 Shell、Python、VBA、`eval`、无限制 COM 方法或原始 Tree Path 写入。
 
 ---
 
@@ -362,23 +233,9 @@ convergence.py
 
 公共自动化不证明：
 
-- 任意商业 Aspen 版本都能在本机启动；
-- 任意模型一定收敛；
+- 任意商业 Aspen 版本都能启动或任意模型都能收敛；
 - 物性、反应和设备假设工程上正确；
 - Mock 性能等于真实 Aspen 性能；
-- 软件可以替代流程工程师；
-- 软件可以自行授予真实 Aspen 工程认证。
+- 软件可以替代流程工程师或自行授予真实工程认证。
 
----
-
-## 安全与许可证
-
-不得提交客户模型、专有物性或动力学、生产 DCS 数据、许可证文件、私钥、Token、内部主机、私有路径或含商业数据的证据包。
-
-代码采用 Apache-2.0。Aspen 产品、模型、数据库、供应商文档和许可证受各自条款约束；AspenOps 不附带 Aspen 软件、许可证或专有模型。
-
-<div align="center">
-
-## Let agents design the experiment. Let Aspen solve the physics. Let AspenOps enforce the truth.
-
-</div>
+代码采用 Apache-2.0。不得提交客户模型、专有物性/动力学、生产 DCS 数据、许可证文件、私钥、Token、内部主机或含商业数据的证据包。
