@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 
+CHECKOUT_SHA = "11d5960a326750d5838078e36cf38b85af677262"
+SETUP_UV_SHA = "d0cc045d04ccac9d8b7881df0226f9e82c39688e"
+UPLOAD_ARTIFACT_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
+
+
 def workflow_text() -> str:
     return Path(".github/workflows/licensed-aspen-certification.yml").read_text(encoding="utf-8")
 
@@ -24,6 +29,9 @@ def test_licensed_workflow_is_manual_protected_and_self_hosted() -> None:
 def test_licensed_workflow_checks_out_exact_commit_without_write_credentials() -> None:
     text = workflow_text()
 
+    assert f"actions/checkout@{CHECKOUT_SHA}" in text
+    assert f"astral-sh/setup-uv@{SETUP_UV_SHA}" in text
+    assert f"actions/upload-artifact@{UPLOAD_ARTIFACT_SHA}" in text
     assert "ref: ${{ inputs.expected_head_sha }}" in text
     assert "persist-credentials: false" in text
     assert "git rev-parse HEAD" in text
@@ -33,15 +41,21 @@ def test_licensed_workflow_checks_out_exact_commit_without_write_credentials() -
     assert "merge" not in text.casefold()
 
 
-def test_preflight_precedes_approval_execution_and_signed_verification() -> None:
+def test_regression_and_preflight_precede_approval_execution_and_verification() -> None:
     text = workflow_text()
+    regression = text.index("Run licensed control-plane regression gate")
     preflight = text.index("aspenops certification-preflight")
     approval = text.index("Preflight completed, but licensed COM execution")
     execute = text.index("aspenops certify-licensed")
     verify = text.index("aspenops verify-licensed-bundle")
 
-    assert preflight < approval < execute < verify
-    assert "uv sync --extra dev --extra windows --extra signing" in text
+    assert regression < preflight < approval < execute < verify
+    assert "uv lock --check" in text
+    assert "uv sync --frozen --extra dev --extra windows --extra signing" in text
+    assert "tests/test_licensed_certification.py" in text
+    assert "tests/test_licensed_certification_governance.py" in text
+    assert "tests/test_aspen_process_ownership.py" in text
+    assert "software-regression.xml" in text
     assert "ASPENOPS_CERT_SIGNING_KEY_PATH" in text
     assert "ASPENOPS_CERT_PUBLIC_KEY_PATH" in text
 
@@ -58,6 +72,7 @@ def test_uploaded_artifact_excludes_private_key_and_contains_signed_evidence() -
     text = workflow_text()
     upload = text[text.index("Upload signed licensed evidence") :]
 
+    assert "software-regression.xml" in upload
     assert "preflight.json" in upload
     assert "licensed-certification-report.json" in upload
     assert "licensed-certification-bundle.zip" in upload
