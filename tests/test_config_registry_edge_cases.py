@@ -69,7 +69,7 @@ def test_settings_from_env_normalizes_all_control_plane_values(
     monkeypatch.setenv("ASPENOPS_MODE", " ENHANCED ")
     monkeypatch.setenv("ASPENOPS_VISIBLE", "true")
     monkeypatch.setenv("ASPENOPS_CACHE_FAILURES", "yes")
-    monkeypatch.setenv("ASPENOPS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("ASPENOPS_STATE_DIR", str(second / "state"))
     monkeypatch.setenv("ASPENOPS_MAX_RESIDENT_CASES", "4")
     monkeypatch.setenv("ASPENOPS_CANCELLATION_GRACE_S", "0")
 
@@ -81,9 +81,35 @@ def test_settings_from_env_normalizes_all_control_plane_values(
     assert settings.effective_workers == 2
     assert settings.visible is True
     assert settings.cache_failures is True
-    assert settings.state_dir == (tmp_path / "state").resolve()
+    assert settings.state_dir == (second / "state").resolve()
     assert settings.max_resident_cases == 4
     assert settings.cancellation_grace_s == 0.0
+
+
+def test_real_backend_paths_must_be_absolute_and_state_must_be_allowed(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    monkeypatch.setenv("ASPENOPS_BACKEND", "aspen_plus")
+
+    monkeypatch.setenv("ASPENOPS_ALLOWED_ROOTS", "relative-root")
+    with pytest.raises(ValueError, match="ALLOWED_ROOTS entry must be absolute"):
+        Settings.from_env()
+
+    monkeypatch.setenv("ASPENOPS_ALLOWED_ROOTS", str(allowed))
+    monkeypatch.setenv("ASPENOPS_STATE_DIR", "relative-state")
+    with pytest.raises(ValueError, match="STATE_DIR must be absolute"):
+        Settings.from_env()
+
+    monkeypatch.setenv("ASPENOPS_STATE_DIR", str(outside))
+    with pytest.raises(ValueError, match="STATE_DIR must be inside"):
+        Settings.from_env()
+
+    monkeypatch.setenv("ASPENOPS_STATE_DIR", str(allowed / "state"))
+    settings = Settings.from_env()
+    assert settings.state_dir == (allowed / "state").resolve()
 
 
 @pytest.mark.parametrize(
