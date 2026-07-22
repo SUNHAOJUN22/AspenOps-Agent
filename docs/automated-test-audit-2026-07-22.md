@@ -7,6 +7,8 @@ Repository: `SUNHAOJUN22/AspenOps-Agent`
 
 The validated AspenOps runtime already had a broad portable suite. The audit retained that runtime and corrected reproducibility, workflow trust, runtime path policy, dependency evidence, Windows bootstrap behavior, performance evidence, licensed evidence staging and documentation drift directly on `main`. No branch or parallel PR was created.
 
+The supported public Python matrix is Python 3.11, 3.12 and 3.13.
+
 ## Verified archived evidence
 
 Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, recorded:
@@ -100,16 +102,18 @@ exact trusted-main SHA
 → scoped real COM
 → signed-bundle verification
 → verify every required source file exists and is non-empty
-→ copy preflight/report/bundle to var/ci/licensed-evidence
+→ clean and rebuild var/ci/licensed-evidence
+→ copy preflight/report/bundle into the workspace
 → verify staged files
 → upload workspace-local var/ci only
 → human engineering review
 ```
 
-This fixes two evidence risks:
+This fixes three evidence risks:
 
 - missing required files cannot silently pass as a successful certification run;
-- an early failure cannot expand an undefined external state path in the upload action.
+- an early failure cannot expand an undefined external state path in the upload action;
+- a persistent self-hosted workspace cannot mix stale staged evidence into the new artifact.
 
 The software cannot emit `REAL_ASPEN_CERTIFIED`; the status remains `PENDING_REAL_ASPEN_CERTIFICATION` pending human review.
 
