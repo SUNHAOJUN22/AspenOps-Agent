@@ -142,6 +142,12 @@ def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
     return requests
 
 
+def _state_is_allowed(settings: Settings) -> bool:
+    state_dir = settings.state_dir.expanduser().resolve()
+    roots = tuple(root.expanduser().resolve() for root in settings.allowed_roots)
+    return any(state_dir == root or root in state_dir.parents for root in roots)
+
+
 def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _PreparedBatch:
     root = _object(data, "Batch request")
     request_bytes = _request_size_bytes(root)
@@ -161,8 +167,13 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
         "workers",
     )
     backend_name = str(root.get("backend", settings.backend)).strip().lower()
-    if backend_name != "mock" and not settings.allowed_roots:
-        raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
+    if backend_name != "mock":
+        if not settings.allowed_roots:
+            raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
+        if not _state_is_allowed(settings):
+            raise PolicyError(
+                "Real simulator state directory must be inside ASPENOPS_ALLOWED_ROOTS"
+            )
 
     policy = Policy(settings.mode, settings.allowed_roots)
     model_path = policy.assert_path(root.get("model_path", ""))
