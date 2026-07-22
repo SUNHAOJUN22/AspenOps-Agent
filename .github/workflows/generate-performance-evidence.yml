@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       baseline_ref:
-        description: Exact baseline commit, tag, or ref
+        description: Trusted main-history baseline commit, tag, or ref
         required: true
         default: 8283744093a210c07da16ffe006968776dff9547
         type: string
       candidate_ref:
-        description: Candidate commit, tag, or ref; normally main
+        description: Trusted main-history candidate commit, tag, or ref; normally main
         required: true
         default: main
         type: string
@@ -34,24 +34,14 @@ jobs:
           ref: ${{ inputs.candidate_ref }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-        with:
-          version: "0.11.16"
-          python-version: "3.12"
-          enable-cache: true
-      - name: Verify lockfile and sync frozen candidate dependencies
+      - name: Verify trusted revisions and prepare baseline worktree
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p var/benchmarks
-          uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
-          uv sync --frozen --extra dev --extra agent \
-            2>&1 | tee var/benchmarks/sync.log
-      - name: Resolve immutable revisions and prepare baseline worktree
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --tags --prune origin 2>&1 | tee var/benchmarks/prepare-baseline.log
+          git fetch --tags --prune origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            2>&1 | tee var/benchmarks/prepare-baseline.log
           baseline_sha="$(git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}")"
           candidate_sha="$(git rev-parse --verify HEAD^{commit})"
           if [[ ! "$baseline_sha" =~ ^[0-9a-f]{40}$ ]]; then
@@ -62,10 +52,34 @@ jobs:
             echo "candidate_ref did not resolve to a full commit SHA" >&2
             exit 2
           fi
+          if ! git merge-base --is-ancestor "$candidate_sha" origin/main; then
+            echo "candidate_ref is outside trusted main history" >&2
+            exit 2
+          fi
+          if ! git merge-base --is-ancestor "$baseline_sha" origin/main; then
+            echo "baseline_ref is outside trusted main history" >&2
+            exit 2
+          fi
+          if ! git merge-base --is-ancestor "$baseline_sha" "$candidate_sha"; then
+            echo "baseline_ref must be an ancestor of candidate_ref" >&2
+            exit 2
+          fi
           printf '%s\n' "$baseline_sha" | tee var/benchmarks/baseline-sha.txt
           printf '%s\n' "$candidate_sha" | tee var/benchmarks/candidate-sha.txt
           git worktree add --detach /tmp/aspenops-baseline "$baseline_sha" \
             2>&1 | tee -a var/benchmarks/prepare-baseline.log
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Verify lockfile and sync frozen candidate dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
+          uv sync --frozen --extra dev --extra agent \
+            2>&1 | tee var/benchmarks/sync.log
       - name: Run baseline matrix
         shell: bash
         env:
