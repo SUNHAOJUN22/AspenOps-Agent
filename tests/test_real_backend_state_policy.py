@@ -30,12 +30,10 @@ def test_mock_settings_cannot_authorize_a_real_backend(tmp_path: Path) -> None:
         dry_run_document(real_request(allowed), settings)
 
 
-def test_real_request_requires_explicit_allowed_roots(tmp_path: Path) -> None:
-    settings = Settings(
-        backend="aspen_plus",
-        allowed_roots=(),
-        state_dir=tmp_path / "state",
-    )
-
-    with pytest.raises(PolicyError, match="require ASPENOPS_ALLOWED_ROOTS"):
-        dry_run_document(real_request(tmp_path), settings)
+def test_real_settings_require_explicit_allowed_roots(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="require ASPENOPS_ALLOWED_ROOTS"):
+        Settings(
+            backend="aspen_plus",
+            allowed_roots=(),
+            state_dir=tmp_path / "state",
+        )
