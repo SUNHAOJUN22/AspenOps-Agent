@@ -154,7 +154,7 @@ uv run aspenops --help
 uv run aspenops demo
 ```
 
-CI expands dependency auditing across Linux and Windows for Python 3.11, 3.12 and 3.13: **six** supported platform/version combinations. Every audit artifact is parsed as JSON before the quality job continues.
+CI audits Linux and Windows for Python 3.11, 3.12 and 3.13: **six** supported combinations. All six execute even when one reports a vulnerability or service failure. Each combination retains JSON and stderr evidence, JSON is validated, and the quality job fails once collection is complete if any target failed.
 
 Repository pytest policy requires pytest 8.3+, strict markers, strict configuration and strict xfail, and treats `ResourceWarning` as an error.
 
@@ -165,7 +165,7 @@ Repository pytest policy requires pytest 8.3+, strict markers, strict configurat
 | Workflow | Trigger | Pinned environment | Responsibility |
 |---|---|---|---|
 | `ci.yml` | `main` push, PR, manual | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, formatting, mypy, six dependency audits, build, Mock, MCP, Wheel and README commands |
-| `windows-control-plane.yml` | `main` push, PR, manual | `windows-2025`; Python 3.12 | Windows Jobs, ownership, IPC, scheduling, archives, Fake Aspen/HYSYS, PowerShell AST, path, documentation and workflow governance |
+| `windows-control-plane.yml` | `main` push, PR, manual | `windows-2025`; Python 3.12 | Windows Jobs, ownership, IPC, scheduling, archives, Fake Aspen/HYSYS, PowerShell AST and executable helper contracts, path, documentation and workflow governance |
 | `generate-performance-evidence.yml` | manual | `ubuntu-24.04`; Python 3.12 | immutable baseline, independent trials and stable-regression policy |
 | `licensed-aspen-certification.yml` | protected manual | `self-hosted, windows, x64, aspen-licensed` | trusted-main SHA, Mock regression, realpath gate, preflight, real COM, signed evidence and human review |
 
@@ -184,8 +184,10 @@ The repository rejects:
 - direct manual-input interpolation in literal, folded, inline or shorthand `run` syntax;
 - raw baseline refs used for worktree execution;
 - arbitrary user input in artifact names;
-- stale tool versions, runner names, workflow names or broken local documentation links;
-- removal of required path, backend and documentation tests from either Windows gate.
+- incomplete six-target audits, missing stderr evidence, invalid JSON or failure before all targets run;
+- stale tool versions, runner names, workflow names, AspenOps titles or broken local documentation links;
+- removal of required path, backend and documentation tests from either Windows gate;
+- removal of the Windows `LibraryMode` helper behavior gate while leaving only static string checks.
 
 ### Locked-dependency Wheel verification
 
@@ -195,9 +197,9 @@ Portable CI exports hash-pinned runtime dependencies from `uv.lock`, synchronize
 
 `tests/test_documentation_contracts.py` checks that:
 
-- the Chinese and English READMEs, Windows guide, quality report, test audit and certification guide exist;
+- the Chinese and English READMEs, Security, Architecture, Performance, Windows guide, quality report, test audit and certification guide exist;
 - repository-local Markdown links resolve and cannot escape the repository;
-- `uv 0.11.16`, `ubuntu-24.04`, `windows-2025` and all four workflow names stay synchronized;
+- `uv 0.11.16`, `ubuntu-24.04`, `windows-2025`, AspenOps 2.0 titles and all four workflow names stay synchronized;
 - obsolete workflow names and drifting runner labels do not return;
 - both READMEs describe all six dependency-audit targets;
 - `.env.example` remains a portable Mock first-run configuration;
@@ -230,15 +232,19 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 The bootstrap:
 
 1. enables strict PowerShell behavior;
-2. installs `uv` through winget when missing;
-3. automatically upgrades an older `uv` to at least 0.11.16;
-4. refreshes machine and user PATH while preserving the current process PATH;
-5. checks the lockfile and installs `windows + agent + dev + signing` frozen;
-6. creates, validates and imports `.env`;
-7. rejects duplicate variables and unbalanced quotes;
-8. reports `.env` errors by line number without echoing possible secret values;
-9. runs `doctor --probe` with the imported configuration;
-10. checks native-command exit codes.
+2. installs missing `uv` through winget;
+3. tries `uv self update` first for an old standalone installation, with PATH modification disabled;
+4. falls back to winget upgrade and then winget install when self-update is unavailable or still leaves an old version;
+5. re-reads the actual version after every attempt and requires `uv >= 0.11.16`;
+6. refreshes machine and user PATH while preserving the current process PATH;
+7. checks the lockfile and installs `windows + agent + dev + signing` frozen;
+8. creates, validates and imports `.env`;
+9. rejects duplicate variables and unbalanced quotes;
+10. reports `.env` errors by line number without echoing possible secret values;
+11. runs `doctor --probe` with the imported configuration;
+12. checks native-command exit codes.
+
+`-LibraryMode` is CI-only: it loads helper functions without installing dependencies or running Doctor. Windows CI executes valid dotenv import, case-insensitive duplicate rejection, unbalanced-quote rejection, secret-safe errors, and self-update → winget fallback order.
 
 First real case:
 
@@ -277,6 +283,7 @@ checkout exact approved SHA
 → verify SHA belongs to trusted main history
 → check lockfile and install frozen dependencies
 → run Mock software regression without real keys
+→ run documentation, backend, output and workflow contracts
 → validate plan, allowed roots and state with realpath
 → licensed preflight
 → explicit human execution approval
