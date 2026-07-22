@@ -153,6 +153,9 @@ def test_windows_ci_parses_the_bootstrap_with_powershell_ast() -> None:
 def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
     text = Path("scripts/setup_windows.ps1").read_text(encoding="utf-8")
     assert "Set-StrictMode -Version Latest" in text
+    assert '$RequiredUvVersion = [version]"0.11.14"' in text
+    assert "uv --version" in text
+    assert "$ObservedUvVersion -lt $RequiredUvVersion" in text
     assert "--accept-package-agreements --accept-source-agreements" in text
     assert "Refresh-ProcessPath" in text
     assert "$currentPath = $env:Path" in text
