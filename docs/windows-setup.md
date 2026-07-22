@@ -2,9 +2,7 @@
 
 ## Scope
 
-This guide covers deterministic Windows installation, the public Windows control-plane gate, the first real Aspen Plus or Aspen HYSYS case, and the protected licensed-certification workflow.
-
-Mock and Fake-COM validation are not real Aspen physical certification.
+This guide covers deterministic Windows installation, the public Windows control-plane gate, the first real Aspen Plus or HYSYS case, and the protected licensed-certification workflow. Mock and Fake-COM validation are not real Aspen physical certification.
 
 ## Prerequisites
 
@@ -14,11 +12,11 @@ Mock and Fake-COM validation are not real Aspen physical certification.
 - licensed Aspen Plus and/or Aspen HYSYS for real execution;
 - a known license-seat limit;
 - a non-confidential model already convergent in the GUI;
-- a verified case-specific semantic registry or HYSYS Spreadsheet Contract;
-- non-empty, absolute, existing directories in `ASPENOPS_ALLOWED_ROOTS`;
+- a verified semantic registry or HYSYS Spreadsheet Contract;
+- non-empty absolute existing directories in `ASPENOPS_ALLOWED_ROOTS`;
 - absolute state, model, registry, output and evidence paths inside those roots.
 
-Real-backend `Settings` construction fails immediately when allowed roots are absent, relative, or do not contain the state directory. Unsafe configuration does not reach preflight or create runtime state.
+Real-backend `Settings` construction fails immediately when roots are absent, relative, or do not contain the state directory. Unsafe configuration does not reach preflight or create runtime state.
 
 ## Recommended bootstrap
 
@@ -26,22 +24,24 @@ Real-backend `Settings` construction fails immediately when allowed roots are ab
 powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-The script is fail-closed and:
+The script:
 
 1. enables strict PowerShell behavior;
-2. installs `uv` through winget when it is missing;
-3. automatically upgrades an older standalone installation with `uv self update`, while disabling PATH modification during that update;
-4. falls back to winget `upgrade` and then winget `install` when self-update is unavailable or disabled;
-5. verifies the resulting `uv` is at least `0.11.16`;
-6. refreshes machine and user PATH while preserving the process PATH;
-7. checks `uv.lock` and performs a frozen install of `windows + agent + dev + signing`;
+2. installs missing `uv` through winget;
+3. attempts `uv self update` for an old standalone installation while disabling PATH modification;
+4. falls back to winget `upgrade` and then `install`;
+5. rechecks the actual version after every attempt and requires `uv >= 0.11.16`;
+6. refreshes machine/user PATH while preserving the process PATH;
+7. checks `uv.lock` and installs `windows + agent + dev + signing` with `--frozen`;
 8. creates `.env` from `.env.example` when absent;
-9. validates and imports `.env` into the current process;
-10. rejects duplicate variable names and unbalanced quoted values;
-11. reports `.env` failures by line number without echoing raw values that may contain secrets;
-12. runs `aspenops doctor --probe` with the loaded backend and checks native exit codes.
+9. validates and imports `.env`;
+10. rejects duplicate variables and unbalanced quoted values;
+11. reports errors by line number without echoing raw values;
+12. runs `aspenops doctor --probe` with the imported backend and checks native exit codes.
 
-A newly copied `.env` uses `ASPENOPS_BACKEND=mock`, an empty allowlist and a repository-local state directory. Edit it to `aspen_plus` or `hysys`, configure real absolute paths, and rerun the script before using a real model.
+A newly copied `.env` uses Mock, an empty allowlist and a repository-local state directory. Configure real absolute paths before changing the backend to `aspen_plus` or `hysys`.
+
+`-LibraryMode` is reserved for Windows CI helper tests. It loads functions without installing dependencies or running Doctor.
 
 ## Manual equivalent
 
@@ -49,11 +49,11 @@ A newly copied `.env` uses `ASPENOPS_BACKEND=mock`, an empty allowlist and a rep
 uv lock --check
 uv sync --frozen --extra windows --extra dev --extra agent --extra signing
 Copy-Item .env.example .env
-# Edit and import .env into the current process before Doctor.
+# Edit and import .env before Doctor.
 uv run aspenops doctor --probe
 ```
 
-Copying `.env` alone does not load it into PowerShell. The repository bootstrap performs that import explicitly.
+Copying `.env` alone does not load it into PowerShell.
 
 ## Recommended real-backend configuration
 
@@ -76,56 +76,37 @@ ASPENOPS_VISIBLE=0
 
 The complete resource limits are documented in [`.env.example`](../.env.example).
 
-Use `ASPENOPS_PROGID` or `ASPENOPS_HYSYS_PROGID` only to pin a registration already verified on the host. Otherwise AspenOps performs newest-first discovery and retains an unversioned fallback.
-
-## Diagnose
-
-```powershell
-uv run aspenops doctor --probe
-```
-
-Confirm native Windows and expected bitness, `pywin32`, allowed roots, state placement, Automation Server candidates and license-aware Worker limits. Doctor does not prove that an approved model opens, solves or is physically valid.
-
 ## Public Windows control-plane gate
 
 Authoritative workflow: `windows-control-plane.yml`.
 
 It runs on pinned `windows-2025`, Python 3.12 and exact `uv 0.11.16`, without licensed Aspen. It enforces:
 
-- immutable Action SHAs and read-only checkout;
-- checked frozen dependencies;
-- Ruff lint/format and strict mypy;
-- PowerShell AST and workflow-governance contracts;
-- `tests/test_documentation_contracts.py` for links, tool versions, runner names, workflow names and first-run configuration;
-- Windows Job Object and process-ownership boundaries;
-- Worker IPC, timeout, recovery and singleflight;
-- Scheduler active leases;
-- Fake Aspen Plus/HYSYS convergence adapters;
-- archive and evidence-bundle safety;
-- direct `Settings`, backend-escalation, CLI-output and realpath policy tests;
-- licensed CLI, workflow and signed-bundle interfaces;
+- immutable Action SHAs, read-only permissions and non-persistent checkout credentials;
+- checked frozen dependencies, Ruff, format and strict mypy;
+- PowerShell AST parsing and executable bootstrap-helper contracts;
+- valid dotenv import, duplicate/unbalanced rejection and secret-safe errors;
+- self-update → winget upgrade → winget install fallback behavior;
+- documentation, version, link, runner and workflow contracts;
+- Job Objects, process ownership, Worker IPC/recovery and Scheduler leases;
+- Fake Aspen Plus/HYSYS convergence, archive safety and bundle integrity;
+- direct Settings, backend-escalation, CLI-output and realpath policy tests;
 - Windows CLI, Doctor smoke, JUnit and diagnostics.
 
-The archived pre-hardening Windows run recorded 104 passing tests. No new fixed selected-test count is claimed until a current JUnit artifact is readable.
+The archived Windows run recorded 104 passing tests. No new fixed count is claimed without a readable current JUnit artifact.
 
 ## First real case
 
 1. Put a non-confidential, already convergent model in an allowed root.
 2. Build and manually verify the semantic registry.
 3. Start with one Worker.
-4. Validate without opening Aspen:
-
-   ```powershell
-   uv run aspenops dry-run D:/AspenModels/request.json
-   ```
-
-5. Run one known point and verify its integrity bundle:
+4. Run `uv run aspenops dry-run D:/AspenModels/request.json`.
+5. Execute one known point and verify its bundle:
 
    ```powershell
    uv run aspenops run-batch D:/AspenModels/request.json `
      --output D:/AspenResults/results.json `
      --bundle D:/AspenResults/run-bundle.zip
-
    uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
    ```
 
@@ -143,31 +124,33 @@ Required runner labels:
 self-hosted, windows, x64, aspen-licensed
 ```
 
-Configure the protected environment `licensed-aspen-certification` with absolute allowed roots, an absolute state directory inside those roots, license metadata, a signing-key path secret and a trusted public-key path variable.
+Configure the protected environment with absolute allowed roots, an absolute state directory inside them, license metadata, a signing-key path secret and a trusted public-key path variable.
 
-Manual dispatch requires a repository-relative plan, exact lowercase 40-character commit SHA, backend selection and explicit execution approval.
+Manual dispatch requires a repository-relative plan, an exact lowercase 40-character SHA belonging to trusted `main`, backend selection and explicit execution approval.
 
 ```text
-exact SHA checkout and trusted-main ancestry check
-→ lockfile check and frozen sync
-→ isolated Mock software regression without real secrets
-→ documentation, path and workflow governance contracts
-→ realpath validation for plan, roots and state target
+exact SHA checkout and trusted-main verification
+→ frozen dependencies
+→ isolated Mock regression without real secrets
+→ documentation, backend and path governance
+→ plan/root/state realpath validation
 → licensed preflight
-→ explicit human execution approval
+→ explicit human approval
 → scoped real COM execution
 → signed-bundle verification
+→ verify every required evidence file is present and non-empty
+→ copy preflight/report/bundle to var/ci/licensed-evidence
+→ upload workspace-local var/ci only
 → pending human engineering review
 ```
 
+The upload action never expands an undefined external state path. Earlier failures collect only workspace-local diagnostics. Successful runs stage external certification files inside the checkout before upload.
+
 Security properties:
 
-- manual inputs are environment-bound instead of injected into PowerShell bodies;
-- the approved commit must belong to trusted `main` history;
-- the plan resolves inside the checkout;
-- roots and state are explicitly absolute;
+- manual inputs are environment-bound rather than injected into PowerShell bodies;
+- the approved commit belongs to trusted `main` history;
 - realpath rejects traversal, symlink and junction escapes;
-- canonical paths pass through `GITHUB_ENV`;
 - signing secrets are absent from setup and Mock regression;
 - artifact names use `github.run_id`;
 - software cannot self-grant final certification.
@@ -177,51 +160,21 @@ Security properties:
 ```powershell
 uv run aspenops certification-preflight D:/AspenModels/licensed-plan.json `
   --output D:/AspenResults/preflight.json
-
 uv run aspenops certify-licensed D:/AspenModels/licensed-plan.json `
   --output-dir D:/AspenResults/licensed-certification
-
 uv run aspenops verify-licensed-bundle `
   D:/AspenResults/licensed-certification/licensed-certification-bundle.zip `
   --public-key D:/AspenKeys/aspenops-certification-public.pem
 ```
 
-The runtime deliberately remains `PENDING_REAL_ASPEN_CERTIFICATION`; final engineering acceptance is human-owned.
+The runtime remains `PENDING_REAL_ASPEN_CERTIFICATION`; final engineering acceptance is human-owned.
 
 ## Troubleshooting
 
-### `uv lock --check` fails
-
-`pyproject.toml` and `uv.lock` disagree. Update and review the lockfile explicitly; do not remove `--frozen`.
-
-### `uv` is too old
-
-Rerun `scripts/setup_windows.ps1`. Standalone installations first use `uv self update`; package-manager installations fall back to winget upgrade/install. The script then verifies `uv >= 0.11.16`.
-
-### `.env` is rejected
-
-The script reports the failing line number without printing the raw value. Remove duplicate variable names, fix invalid names or balance surrounding quotes. Do not print the file in CI logs when it may contain secrets.
-
-### Real backend is rejected before Doctor
-
-Set non-empty absolute existing `ASPENOPS_ALLOWED_ROOTS` and an absolute `ASPENOPS_STATE_DIR` inside one root. This early failure is intentional.
-
-### Doctor still reports Mock
-
-Edit `.env` and rerun `scripts/setup_windows.ps1`. Copying `.env` without importing it does not alter the current process.
-
-### No COM server is found
-
-Check Aspen installation, Python/Aspen bitness, Registry registration and any explicit ProgID pin.
-
-### Paths are rejected
-
-Move models, registries, state, outputs and bundles into configured absolute roots. Do not disable path policy.
-
-### Aspen returns but the point fails
-
-Inspect convergence evidence, constraint violations, balance residuals and Aspen status/error nodes. Engine return alone is not success.
-
-### More Workers reduce throughput
-
-Lower concurrency and measure license waiting, memory pressure, model stability and Worker aging. Effective concurrency is bounded by licenses, memory and stability.
+- **Lock mismatch:** update and review `uv.lock`; never remove `--frozen` to hide it.
+- **Old uv:** rerun the bootstrap; it tries standalone self-update, then winget fallbacks, and verifies the resulting version.
+- **Rejected `.env`:** fix the reported line; do not print a potentially secret-bearing file in CI logs.
+- **Real backend rejected:** configure non-empty absolute roots and an absolute state directory inside one root.
+- **Doctor still reports Mock:** edit and import `.env`, then rerun the bootstrap.
+- **No COM server:** check Aspen installation, bitness, Registry registration and explicit ProgID pins.
+- **Point fails after engine return:** inspect convergence evidence, constraint violations and balance residuals; engine return alone is not success.
