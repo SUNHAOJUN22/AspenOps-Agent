@@ -2,56 +2,29 @@
 
 Date: 2026-07-22  
 Repository: `SUNHAOJUN22/AspenOps-Agent`  
-Branch policy: direct updates to the existing `main`; no new branch was created.
-
-## Scope
-
-This audit covers:
-
-- portable Python tests and branch coverage;
-- Linux and Windows quality gates;
-- build, wheel, CLI, MCP and README command smoke tests;
-- performance-regression evidence;
-- licensed Aspen workflow sequencing and safeguards;
-- GitHub Actions supply-chain and input handling;
-- Windows bootstrap behavior;
-- dependency reproducibility;
-- pytest failure policy;
-- documentation accuracy.
+Scope: automated tests, quality gates, Windows contracts, performance evidence, licensed-Aspen safeguards, runtime path policy, dependency reproducibility and README accuracy.
 
 ## Executive conclusion
 
-The existing runtime had a broad, validated automated-test baseline and did not justify a speculative rewrite. The audit found and corrected repository-governance, setup and workflow issues around that runtime:
+The AspenOps 2.0 runtime already had a broad validated portable suite. The audit retained that runtime and corrected reproducibility, workflow-security, path-policy, Windows-bootstrap and documentation gaps directly on `main`; no new branch was created.
 
-1. dependency sync was not consistently frozen;
-2. third-party Actions used movable major tags;
-3. public Windows checks lacked format, JUnit and several certification-interface tests;
-4. licensed execution did not first run a same-commit software regression gate;
-5. pytest configuration did not fail closed on unknown config, unexpected XPASS or resource leaks;
-6. README did not distinguish archived evidence, current workflow status and real Aspen certification;
-7. the Windows bootstrap copied `.env` but did not load it;
-8. installing `uv` did not reliably refresh the current process PATH;
-9. PATH refresh risked discarding process-specific entries;
-10. manual workflow inputs were interpolated directly into Shell or PowerShell bodies;
-11. performance refs were used before conversion to immutable commit SHAs;
-12. user-controlled refs appeared in artifact names;
-13. the licensed plan path was not canonicalized and persisted across steps;
-14. licensed state output was not explicitly constrained to absolute allowed roots;
-15. no repository-level test locked the workflow governance rules;
-16. one Windows-path assertion could interpret `\v` as a Python escape and fail incorrectly.
+The final design fails closed at several independent layers:
 
-All issues found in this static and evidence-backed audit were corrected directly on `main`.
+1. `Settings` environment loading;
+2. direct `Settings(...)` construction;
+3. batch/request backend policy;
+4. CLI output policy;
+5. licensed workflow trust and realpath gates;
+6. preflight, signed evidence and human engineering review.
 
-## Verified baseline evidence
+## Verified evidence inspected
 
-### Portable CI
+### Portable baseline
 
-Authoritative archived run: `29814739487`  
+Actions run: `29814739487`  
 Head SHA: `670e9523e915af309f16d959150cfadcd84219a6`
 
-Jobs passed for Python 3.11, 3.12, 3.13 and the quality/build/smoke job.
-
-The Python 3.12 artifact was downloaded and independently inspected through its JUnit, coverage JSON and pytest log:
+Inspected Python 3.12 JUnit, coverage JSON and pytest log:
 
 ```text
 72 test modules
@@ -67,12 +40,14 @@ The Python 3.12 artifact was downloaded and independently inspected through its 
 combined branch-aware coverage: 94.9719800747198%
 statement coverage: 96.23677786818551%
 branch coverage: 90.84880636604774%
-configured CI floor: 94.5%
+configured floor: 94.5%
 ```
 
-### Public Windows control plane
+Python 3.11, 3.12 and 3.13 jobs and the quality/build/smoke job all completed successfully in that archived run.
 
-Authoritative archived run: `29814739334`  
+### Public Windows baseline
+
+Actions run: `29814739334`  
 Head SHA: `670e9523e915af309f16d959150cfadcd84219a6`
 
 ```text
@@ -83,140 +58,153 @@ Head SHA: `670e9523e915af309f16d959150cfadcd84219a6`
 2.06 seconds
 ```
 
-The public Windows runner had no licensed Aspen installation. These results prove control-plane contracts, not real process-model validity.
+This proves Windows control-plane contracts, not licensed Aspen physics.
 
-## Coverage assessment
+## Coverage review
 
-The aggregate gate is strong but has only about 0.47 percentage points of margin above the configured floor. Primary future targets remain:
+The archived aggregate has about 0.47 percentage points of margin above the 94.5% floor.
 
-| Source module | Archived branch-aware coverage | Reason to prioritize |
+| Source module | Archived branch-aware coverage | Priority |
 |---|---:|---|
-| `scheduler.py` | 85.95% | lease, retry, restart and terminal-transition complexity |
-| `pool.py` | 87.28% | lifecycle, timeout and recovery branches |
-| `backends/mock.py` | 88.00% | small module with material uncovered branches |
-| `worker.py` | 89.20% | spawn, IPC and fatal-error handling |
-| `provenance.py` | 90.40% | malformed bundle and filesystem paths |
-| `batch.py` | 91.12% | resource limits and orchestration edges |
-| `convergence.py` | 91.20% | contradictory and inaccessible evidence |
-| `pool_manager.py` | 94.49% | already near the repository threshold |
+| `scheduler.py` | 85.95% | lease, retry and terminal transitions |
+| `pool.py` | 87.28% | worker lifecycle and recovery |
+| `backends/mock.py` | 88.00% | remaining deterministic branches |
+| `worker.py` | 89.20% | spawn, IPC and fatal paths |
+| `provenance.py` | 90.40% | file-system and malformed-bundle paths |
+| `batch.py` | 91.12% | orchestration/resource limits |
+| `convergence.py` | 91.20% | contradictory/inaccessible evidence |
+| `pool_manager.py` | 94.49% | near current global floor |
 
-The floor remains 94.5%. Raising it without first adding targeted tests would create a brittle gate rather than better evidence.
+The global floor was not raised merely for appearance.
 
-## Current automated gates
+## Authoritative workflows
 
-### `ci.yml`
+The repository contains exactly four long-lived workflows.
 
-Triggers on `main` push, pull request and manual dispatch. It enforces:
+### Portable CI
 
-- full-SHA pinned Actions;
-- read-only contents permission;
-- non-persistent checkout credentials;
-- `uv lock --check` and frozen dependency sync;
-- Ruff lint and format;
-- strict mypy;
-- source and wheel build;
-- Mock end-to-end demo;
-- README command-path smoke tests;
-- benchmark smoke and stable-regression policy;
-- exact 14-tool MCP surface;
-- clean-wheel CLI smoke;
-- full tests on Python 3.11, 3.12 and 3.13;
-- branch coverage floor 94.5%;
-- JUnit, coverage JSON, durations and diagnostic artifacts.
+`.github/workflows/ci.yml`
 
-### `windows-control-plane.yml`
+- triggers on `main` push, pull requests and manual dispatch;
+- uses pinned `ubuntu-24.04`;
+- pins third-party Actions to full commit SHAs;
+- pins `uv 0.11.14`;
+- checks `uv.lock` and performs frozen sync;
+- runs Ruff, format, strict mypy, build and Mock Demo;
+- verifies README command paths and the 14-tool MCP surface;
+- runs the complete test suite on Python 3.11, 3.12 and 3.13;
+- enforces branch-aware coverage floor 94.5%;
+- uploads JUnit, coverage JSON, durations and logs.
 
-Triggers on `main` push, pull request and manual dispatch. It enforces on Windows Python 3.12:
+The Wheel smoke exports hash-pinned runtime requirements from `uv.lock`, synchronizes a clean environment with `--require-hashes`, installs the Wheel offline with `--no-deps`, runs `uv pip check`, then exercises critical CLI surfaces.
 
-- the same immutable and frozen dependency policy;
-- Ruff lint and format;
-- strict mypy;
-- Windows Job Object and process-ownership rules;
-- Worker IPC, timeout, recovery and singleflight;
-- Scheduler active leases;
-- convergence and Fake Aspen Plus/HYSYS adapters;
-- archive and evidence-bundle safety;
-- licensed certification CLI, workflow and signed-bundle contracts;
-- repository-wide workflow-governance tests;
-- CLI and Doctor smoke;
-- JUnit and diagnostic artifacts.
+### Public Windows control plane
 
-The archived run contains 104 passing tests. No new fixed count is claimed for the expanded selected suite until a current JUnit artifact is readable.
+`.github/workflows/windows-control-plane.yml`
 
-### `generate-performance-evidence.yml`
+- uses pinned `windows-2025` and Python 3.12;
+- pins exact Action and `uv` versions;
+- parses `scripts/setup_windows.ps1` through the PowerShell AST;
+- runs lint, format and strict mypy;
+- tests Job Objects, process ownership, Worker IPC/recovery, Scheduler leases, convergence, archive safety and Fake Aspen/HYSYS adapters;
+- runs backend-escalation, direct-settings, CLI-output, licensed realpath and workflow-governance tests;
+- uploads JUnit and diagnostics.
 
-The protected manual benchmark workflow now:
+### Performance evidence
 
-- binds baseline and candidate inputs through environment variables;
-- never interpolates manual inputs into shell bodies;
-- uses a checked and frozen candidate environment;
-- resolves the baseline ref to a full immutable commit SHA;
-- records exact baseline and candidate SHAs;
-- creates the baseline worktree from the resolved SHA rather than raw input;
-- runs independent benchmark trials;
-- compares medians and coefficient of variation;
-- fails stable throughput or P95 regressions above policy;
-- checks benchmark scripts with Ruff, format, mypy and smoke execution;
-- names artifacts with `github.run_id` rather than user-controlled refs.
+`.github/workflows/generate-performance-evidence.yml`
 
-This remains portable Mock orchestration evidence, not licensed Aspen solve-performance evidence.
+- uses pinned `ubuntu-24.04`;
+- binds manual refs through environment variables;
+- resolves the baseline to a full immutable commit SHA;
+- creates the baseline worktree from that SHA;
+- records exact baseline and candidate revisions;
+- uses a fixed trusted concurrency group;
+- runs repeated portable Mock matrices and stable-regression policy;
+- validates benchmark scripts with Ruff, format, mypy and smoke execution;
+- names artifacts with `github.run_id`.
 
-### `licensed-aspen-certification.yml`
+Performance results remain portable orchestration evidence, not licensed Aspen solve-performance evidence.
 
-The protected workflow now requires:
+### Licensed Aspen certification
 
-- exact approved lowercase 40-character commit SHA;
-- pinned Actions, read-only permissions and no retained checkout credentials;
-- manual inputs bound through environment variables;
-- a one-line repository-relative plan path;
-- canonical plan path constrained to the checked-out workspace;
-- a one-line absolute certification state directory;
-- one-line semicolon-separated absolute allowed roots;
-- certification state output inside an allowed root;
-- canonical plan/state paths persisted through `GITHUB_ENV`;
-- checked, frozen `dev + windows + agent + signing` dependencies;
-- an isolated Mock software-regression gate before preflight;
-- explicit human approval before real COM execution;
-- signed-bundle verification;
-- a final status that remains `PENDING_REAL_ASPEN_CERTIFICATION`;
-- artifacts named with trusted backend choice plus `github.run_id`.
+`.github/workflows/licensed-aspen-certification.yml`
 
-Software cannot self-grant final engineering certification.
+```text
+exact approved SHA checkout
+→ verify SHA belongs to trusted main history
+→ lockfile check and frozen sync
+→ isolated Mock software regression without real secrets
+→ realpath validation for plan, roots and state target
+→ licensed preflight
+→ explicit human execution approval
+→ scoped real COM execution
+→ signed-bundle verification
+→ pending human engineering review
+```
 
-## Workflow governance tests
+The workflow:
 
-`tests/test_workflow_governance.py` fails if the repository regresses to any of the following:
+- runs only on `self-hosted, windows, x64, aspen-licensed`;
+- uses a protected environment;
+- keeps signing secrets out of dependency setup and Mock regression;
+- accepts a repository-relative single-line plan path;
+- requires absolute existing allowed roots and an absolute state directory inside them;
+- rejects traversal, symlink and junction escapes through `scripts/validate_licensed_paths.py`;
+- persists canonical paths through `GITHUB_ENV`;
+- runs direct-settings, backend-escalation, CLI-output and realpath regression tests before real execution;
+- names artifacts with trusted backend choice plus `github.run_id`;
+- cannot emit `REAL_ASPEN_CERTIFIED`.
 
-- extra long-lived workflow files;
-- unpinned third-party Actions;
-- writable contents permissions;
-- checkout credentials retained;
+## Runtime path-policy audit
+
+The final runtime policy is consistent across all entry points:
+
+- real backends require non-empty `ASPENOPS_ALLOWED_ROOTS`;
+- environment loading and direct `Settings(...)` construction reject rootless real configurations;
+- roots and state path must be explicitly absolute;
+- state path must resolve inside an allowed root;
+- request backend must match configured backend;
+- model, registry, CLI output, result bundle and certification output paths remain inside allowed roots;
+- realpath resolution rejects parent traversal, symlink and junction escape;
+- unsafe configuration fails before Aspen preflight or state-directory creation.
+
+Targeted local execution of the latest Settings/root/realpath cases passed. This supplements but does not replace the complete Actions matrix.
+
+## Workflow-governance regression tests
+
+`tests/test_workflow_governance.py` fails on:
+
+- extra long-lived workflows;
+- unpinned hosted runner images, Actions or `uv` version;
+- writable contents permission or retained checkout credentials;
 - `pull_request_target` or silent `continue-on-error`;
 - unfrozen dependency installation;
-- direct manual-input interpolation into shell blocks;
-- raw baseline refs passed to `git worktree`;
-- artifact names based on arbitrary inputs;
-- licensed plan or state paths without canonical handoff;
-- state directories outside allowed roots;
-- Windows bootstrap that does not load `.env`, preserve PATH or check exit codes.
+- direct dispatch-input interpolation in shell blocks;
+- raw baseline refs used for worktree execution;
+- arbitrary-input artifact names;
+- untrusted licensed commit ancestry;
+- missing realpath/canonical-path handoff;
+- secrets exposed to setup or Mock regression;
+- missing direct-settings and realpath tests from either Windows gate;
+- Windows bootstrap that does not load `.env`, preserve PATH, enforce minimum `uv` or check exit codes.
 
-`tests/test_licensed_certification_workflow.py` separately locks the licensed workflow’s exact sequencing, dependency extras, Mock isolation, path checks, signed evidence and no-self-certification boundary.
+`tests/test_licensed_certification_workflow.py` separately locks exact trust ordering, secret scope, dependency extras, path gate, signed evidence and no-self-certification behavior.
 
 ## Windows bootstrap audit
 
-`scripts/setup_windows.ps1` now:
+`scripts/setup_windows.ps1`:
 
 - enables strict PowerShell behavior;
-- installs `uv` only when missing;
-- accepts required winget agreements noninteractively;
-- refreshes machine and user PATH while retaining the original process PATH;
-- verifies `uv` after installation;
-- checks `uv.lock` and performs frozen sync;
-- creates `.env` only when absent;
-- validates and imports `.env` into the current process;
+- installs `uv` through winget only when missing;
+- accepts package/source agreements noninteractively;
+- refreshes machine/user PATH while retaining process PATH;
+- enforces `uv >= 0.11.14`;
+- checks the lock and performs frozen sync;
+- creates, validates and imports `.env`;
 - runs Doctor with the loaded backend;
-- checks every native command exit code;
-- avoids printing secret values.
+- checks native-command exit codes;
+- avoids printing secrets.
 
 ## pytest failure policy
 
@@ -227,30 +215,29 @@ xfail_strict = true
 filterwarnings = ["error::ResourceWarning"]
 ```
 
-Unknown pytest configuration, unregistered markers, unexpected XPASS and resource leaks therefore fail rather than silently pass.
+Unknown configuration, unregistered markers, unexpected XPASS and resource leaks fail rather than silently pass.
 
 ## Documentation audit
 
-The Chinese and English READMEs now:
+The Chinese and English READMEs, Windows setup guide and quality report now:
 
 - scope badges to `main` push runs;
 - label 563/104 results as archived validated baselines;
+- document pinned runners, Actions and `uv`;
 - provide frozen local installation and quality commands;
-- document the four authoritative workflows;
-- explain workflow input, ref, artifact and path safeguards;
+- describe all four authoritative workflows;
+- document Settings, request, CLI-output and licensed realpath safeguards;
 - describe the actual Windows bootstrap behavior;
-- separate control-plane, licensed runtime and engineering-model validation;
-- avoid claiming current green status when the latest push run is not observable through the available connector.
-
-`docs/windows-setup.md`, `docs/quality-report.md`, `.env.example` and the workflow files use the same terminology and boundaries.
+- separate control-plane, licensed-runtime and engineering-model validation;
+- avoid claiming current green status when the latest push artifact is not observable through the available connector.
 
 ## Remaining external limits
 
-1. The latest hardened `main` requires a fresh readable Actions artifact before a new passing test count or coverage value can replace the archived baseline.
+1. The newest hardened `main` requires a fresh readable Actions artifact before a new passing count or coverage value replaces the archived baseline.
 2. Public automation cannot instantiate proprietary Aspen Automation Servers.
-3. Real certification requires a native self-hosted Windows runner, a valid license, an approved non-confidential model, verified semantic paths, signing keys and human engineering review.
-4. This audit cannot logically guarantee the absence of every future defect; it resolves all issues found through repository inspection, archived evidence, workflow tracing and static regression rules.
+3. Real certification requires native self-hosted Windows, a valid license, an approved non-confidential model, verified semantic paths, signing keys and human engineering review.
+4. No audit can logically guarantee absence of every future defect; this audit resolves all issues found through code inspection, archived evidence, targeted execution and regression rules.
 
 ## Final decision
 
-Retain the existing AspenOps 2.0 runtime as the authoritative `main`. The correct remediation was to harden reproducibility, workflow security, Windows setup, evidence production and documentation—not replace a validated runtime or inflate coverage beyond observed evidence.
+Retain AspenOps 2.0 as the authoritative single-main runtime. The correct remediation was to harden runtime policy, reproducibility, workflow trust, Windows setup, evidence production and documentation—not replace a validated runtime or inflate coverage beyond observed evidence.
