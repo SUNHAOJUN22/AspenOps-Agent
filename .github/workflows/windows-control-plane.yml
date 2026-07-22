@@ -76,6 +76,7 @@ jobs:
             tests/test_windows_job.py `
             tests/test_windows_job_edges.py `
             tests/test_aspen_process_ownership.py `
+            tests/test_config_registry_edge_cases.py `
             tests/test_convergence.py `
             tests/test_backends_convergence.py `
             tests/test_v2_reliability.py `
@@ -90,6 +91,7 @@ jobs:
             tests/test_licensed_certification_cli.py `
             tests/test_licensed_certification_workflow.py `
             tests/test_workflow_governance.py `
+            tests/test_wheel_smoke_governance.py `
             --junitxml=var/ci/windows-contracts.xml `
             --durations=20 *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
