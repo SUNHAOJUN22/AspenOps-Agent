@@ -81,13 +81,11 @@ function Ensure-UvVersion {
         $observed = Get-UvVersion
     }
     if ($null -ne $observed -and $observed -lt $RequiredUvVersion) {
-        $upgraded = Invoke-WingetUv -Verb "upgrade"
-        if (-not $upgraded) {
-            $upgraded = Invoke-WingetUv -Verb "install"
-        }
-        if (-not $upgraded) {
-            throw "uv could not be upgraded by self-update or winget"
-        }
+        $null = Invoke-WingetUv -Verb "upgrade"
+        $observed = Get-UvVersion
+    }
+    if ($null -ne $observed -and $observed -lt $RequiredUvVersion) {
+        $null = Invoke-WingetUv -Verb "install"
         $observed = Get-UvVersion
     }
 
@@ -95,7 +93,7 @@ function Ensure-UvVersion {
         throw "uv is unavailable after installation or upgrade"
     }
     if ($observed -lt $RequiredUvVersion) {
-        throw "uv remains below the required version after upgrade"
+        throw "uv remains below the required version after self-update and winget fallbacks"
     }
     return $observed
 }
