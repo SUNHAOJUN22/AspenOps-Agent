@@ -71,7 +71,11 @@ def _request_size_bytes(data: dict[str, Any]) -> int:
     return len(encoded)
 
 
-def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
+def expand_batch_document(
+    data: dict[str, Any],
+    *,
+    default_backend: str = "mock",
+) -> list[EvaluationRequest]:
     root = _object(data, "Batch request")
     missing = [name for name in ("model_path", "registry_path") if name not in root]
     if missing:
@@ -84,7 +88,7 @@ def expand_batch_document(data: dict[str, Any]) -> list[EvaluationRequest]:
     common = {
         "model_path": root["model_path"],
         "registry_path": root["registry_path"],
-        "backend": root.get("backend", "mock"),
+        "backend": root.get("backend", default_backend),
         "reads": reads,
         "constraints": constraints,
         "balances": balances,
@@ -190,7 +194,7 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
     policy = Policy(settings.mode, settings.allowed_roots)
     model_path = policy.assert_path(root.get("model_path", ""))
     registry_path = policy.assert_path(root.get("registry_path", ""))
-    requests = expand_batch_document(root)
+    requests = expand_batch_document(root, default_backend=backend_name)
     if len(requests) > settings.max_batch_points:
         raise ValueError(
             f"Batch contains {len(requests)} points; limit is {settings.max_batch_points}"
