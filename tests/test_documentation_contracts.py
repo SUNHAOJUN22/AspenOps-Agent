@@ -82,6 +82,10 @@ def test_documentation_has_no_stale_toolchain_or_workflow_names() -> None:
 def test_documentation_describes_all_six_dependency_audit_targets() -> None:
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs" / "quality-report.md").read_text(encoding="utf-8")
+    audit = (ROOT / "docs" / "automated-test-audit-2026-07-22.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "Python 3.11、3.12、3.13" in chinese
     assert "Linux 与 Windows" in chinese
@@ -89,6 +93,10 @@ def test_documentation_describes_all_six_dependency_audit_targets() -> None:
     assert "Python 3.11, 3.12 and 3.13" in english
     assert "Linux and Windows" in english
     assert "six" in english.casefold()
+    for text in (quality, audit):
+        assert "Python 3.11, 3.12 and 3.13" in text
+        assert "six" in text.casefold()
+        assert "documentation" in text.casefold()
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
@@ -99,6 +107,17 @@ def test_environment_template_keeps_first_run_portable() -> None:
     assert "# ASPENOPS_BACKEND=aspen_plus" in text
     assert "# ASPENOPS_ALLOWED_ROOTS=C:/AspenModels;C:/AspenResults" in text
     assert "# ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state" in text
+
+
+def test_windows_guide_matches_hardened_bootstrap() -> None:
+    text = (ROOT / "docs" / "windows-setup.md").read_text(encoding="utf-8")
+    assert "automatically upgrades" in text
+    assert "self-update" in text
+    assert "winget" in text
+    assert "duplicate variable" in text.casefold()
+    assert "unbalanced" in text.casefold()
+    assert "without echoing raw" in text
+    assert "test_documentation_contracts.py" in text
 
 
 def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
