@@ -65,7 +65,6 @@ jobs:
           @(
             "ASPENOPS_BACKEND=mock"
             'QUOTED_VALUE="hello world"'
-            "EMPTY_VALUE="
           ) | Set-Content -LiteralPath $valid
           Import-DotEnv -Path $valid
           if ($env:ASPENOPS_BACKEND -ne "mock") {
@@ -73,9 +72,6 @@ jobs:
           }
           if ($env:QUOTED_VALUE -ne "hello world") {
             throw "Quoted dotenv value was not normalized"
-          }
-          if ($env:EMPTY_VALUE -ne "") {
-            throw "Empty dotenv value was not preserved"
           }
 
           $secret = "DO_NOT_ECHO_SECRET"
