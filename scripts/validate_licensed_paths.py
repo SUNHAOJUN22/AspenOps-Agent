@@ -19,7 +19,10 @@ def _within(path: Path, roots: tuple[Path, ...]) -> bool:
 
 
 def validate_paths(environment: Mapping[str, str]) -> dict[str, str]:
-    workspace = Path(_required(environment, "GITHUB_WORKSPACE")).expanduser().resolve(strict=True)
+    workspace_path = Path(_required(environment, "GITHUB_WORKSPACE")).expanduser()
+    if not workspace_path.is_absolute():
+        raise ValueError("GITHUB_WORKSPACE must be absolute")
+    workspace = workspace_path.resolve(strict=True)
     if not workspace.is_dir():
         raise ValueError("GITHUB_WORKSPACE must identify an existing directory")
 
@@ -36,11 +39,19 @@ def validate_paths(environment: Mapping[str, str]) -> dict[str, str]:
     )
     if not root_values:
         raise ValueError("ASPENOPS_ALLOWED_ROOTS must contain at least one root")
-    roots = tuple(Path(item).expanduser().resolve(strict=True) for item in root_values)
+    root_paths = tuple(Path(item).expanduser() for item in root_values)
+    if any(not root.is_absolute() for root in root_paths):
+        raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")
+    roots = tuple(root.resolve(strict=True) for root in root_paths)
     if any(not root.is_dir() for root in roots):
         raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be an existing directory")
 
-    state_dir = Path(_required(environment, "ASPENOPS_STATE_DIR")).expanduser().resolve(strict=False)
+    state_path = Path(_required(environment, "ASPENOPS_STATE_DIR")).expanduser()
+    if not state_path.is_absolute():
+        raise ValueError("ASPENOPS_STATE_DIR must be absolute")
+    state_dir = state_path.resolve(strict=False)
+    if state_dir.exists() and not state_dir.is_dir():
+        raise ValueError("ASPENOPS_STATE_DIR must identify a directory")
     if not _within(state_dir, roots):
         raise ValueError("ASPENOPS_STATE_DIR resolves outside ASPENOPS_ALLOWED_ROOTS")
 
