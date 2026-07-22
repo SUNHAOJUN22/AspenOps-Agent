@@ -194,7 +194,10 @@ def command_benchmark(args: argparse.Namespace) -> int:
 def command_optimize(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     document = _load(args.request)
-    output = _controlled_path(args.output, settings)
+    output = _controlled_path(
+        args.output or settings.state_dir / "optimization-result.json",
+        settings,
+    )
     with PoolManager(
         cache_path=settings.state_dir / "cache.sqlite3",
         license_slots=settings.license_slots,
@@ -222,7 +225,10 @@ def command_optimize(args: argparse.Namespace) -> int:
 def command_certify(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     document = _load(args.request)
-    output = _controlled_path(args.output, settings)
+    output = _controlled_path(
+        args.output or settings.state_dir / "certification-report.json",
+        settings,
+    )
     kwargs: dict[str, Any] = {
         "repeats": args.repeats,
         "abs_tol": args.abs_tol,
@@ -342,7 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
     optimize.add_argument("request")
-    optimize.add_argument("--output", default="var/optimization-result.json")
+    optimize.add_argument("--output")
     optimize.set_defaults(func=command_optimize)
 
     certify = sub.add_parser(
@@ -350,7 +356,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run a scoped repeatability gate; never grants real Aspen certification",
     )
     certify.add_argument("request")
-    certify.add_argument("--output", default="var/certification-report.json")
+    certify.add_argument("--output")
     certify.add_argument("--repeats", type=int, default=3)
     certify.add_argument("--abs-tol", type=float, default=1e-8)
     certify.add_argument("--rel-tol", type=float, default=1e-6)
