@@ -151,31 +151,29 @@ function Import-DotEnv {
     }
 }
 
-if ($LibraryMode) {
-    return
+if (-not $LibraryMode) {
+    $ObservedUvVersion = Ensure-UvVersion
+    Write-Host "Using uv $ObservedUvVersion"
+
+    uv lock --check
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    uv sync --frozen --extra windows --extra agent --extra dev --extra signing
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    if (-not (Test-Path -LiteralPath .env)) {
+        Copy-Item -LiteralPath .env.example -Destination .env
+    }
+
+    Import-DotEnv -Path .env
+    uv run aspenops doctor --probe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    if ($env:ASPENOPS_BACKEND -eq "mock") {
+        Write-Host "Portable setup passed with the Mock backend. Edit .env for Aspen Plus or HYSYS, then rerun this script before a real case."
+    } else {
+        Write-Host "Windows setup and configured backend diagnostics passed. Validate a non-confidential case with one worker before production use."
+    }
+
+    Write-Host "Keep signing keys, licenses, proprietary models, and confidential evidence outside the repository."
 }
-
-$ObservedUvVersion = Ensure-UvVersion
-Write-Host "Using uv $ObservedUvVersion"
-
-uv lock --check
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-uv sync --frozen --extra windows --extra agent --extra dev --extra signing
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-if (-not (Test-Path -LiteralPath .env)) {
-    Copy-Item -LiteralPath .env.example -Destination .env
-}
-
-Import-DotEnv -Path .env
-uv run aspenops doctor --probe
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-if ($env:ASPENOPS_BACKEND -eq "mock") {
-    Write-Host "Portable setup passed with the Mock backend. Edit .env for Aspen Plus or HYSYS, then rerun this script before a real case."
-} else {
-    Write-Host "Windows setup and configured backend diagnostics passed. Validate a non-confidential case with one worker before production use."
-}
-
-Write-Host "Keep signing keys, licenses, proprietary models, and confidential evidence outside the repository."
