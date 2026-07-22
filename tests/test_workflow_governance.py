@@ -95,14 +95,19 @@ def test_performance_refs_are_resolved_before_worktree_execution() -> None:
     assert "name: performance-evidence-${{ inputs." not in text
 
 
-def test_licensed_inputs_use_environment_and_canonical_plan_handoff() -> None:
+def test_licensed_inputs_and_output_paths_are_canonicalized() -> None:
     text = workflow_text("licensed-aspen-certification.yml")
     assert "PLAN_PATH: ${{ inputs.plan_path }}" in text
     assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in text
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in text
     assert "plan_path must be one non-empty line" in text
     assert "plan_path escapes the repository workspace" in text
+    assert "ASPENOPS_CERT_STATE_DIR must be one non-empty absolute path" in text
+    assert "ASPENOPS_ALLOWED_ROOTS must be one non-empty line" in text
+    assert "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute" in text
+    assert "ASPENOPS_CERT_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS" in text
     assert '"PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV' in text
+    assert '"ASPENOPS_STATE_DIR=$stateDir" | Out-File -FilePath $env:GITHUB_ENV' in text
     assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in text
     assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in text
 
@@ -112,6 +117,8 @@ def test_windows_bootstrap_is_frozen_fail_closed_and_loads_dotenv() -> None:
     assert "Set-StrictMode -Version Latest" in text
     assert "--accept-package-agreements --accept-source-agreements" in text
     assert "Refresh-ProcessPath" in text
+    assert "$currentPath = $env:Path" in text
+    assert "@($machinePath, $userPath, $currentPath)" in text
     assert "uv lock --check" in text
     assert "uv sync --frozen --extra windows --extra agent --extra dev --extra signing" in text
     assert "Import-DotEnv -Path .env" in text
