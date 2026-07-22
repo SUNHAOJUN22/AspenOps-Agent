@@ -26,14 +26,18 @@ function Get-UvVersion {
     return [version]$match.Groups[1].Value
 }
 
-function Install-Or-Upgrade-Uv {
+function Invoke-WingetUv {
     param(
-        [switch]$Upgrade
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("install", "upgrade")]
+        [string]$Verb
     )
 
-    $verb = if ($Upgrade) { "upgrade" } else { "install" }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return $false
+    }
     $arguments = @(
-        $verb,
+        $Verb,
         "--id", "astral-sh.uv",
         "-e",
         "--accept-package-agreements",
@@ -41,9 +45,59 @@ function Install-Or-Upgrade-Uv {
     )
     & winget @arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        throw "winget failed to $verb uv"
+        return $false
     }
     Refresh-ProcessPath
+    return $true
+}
+
+function Try-UvSelfUpdate {
+    $previous = $env:UV_NO_MODIFY_PATH
+    try {
+        $env:UV_NO_MODIFY_PATH = "1"
+        & uv self update 2>&1 | Out-Host
+        return $LASTEXITCODE -eq 0
+    } finally {
+        if ($null -eq $previous) {
+            Remove-Item Env:UV_NO_MODIFY_PATH -ErrorAction SilentlyContinue
+        } else {
+            $env:UV_NO_MODIFY_PATH = $previous
+        }
+        Refresh-ProcessPath
+    }
+}
+
+function Ensure-UvVersion {
+    $observed = Get-UvVersion
+    if ($null -eq $observed) {
+        if (-not (Invoke-WingetUv -Verb "install")) {
+            throw "uv is missing and winget could not install it"
+        }
+        $observed = Get-UvVersion
+    }
+
+    if ($null -ne $observed -and $observed -lt $RequiredUvVersion) {
+        $null = Try-UvSelfUpdate
+        $observed = Get-UvVersion
+    }
+    if ($null -ne $observed -and $observed -lt $RequiredUvVersion) {
+        $upgraded = Invoke-WingetUv -Verb "upgrade"
+        if (-not $upgraded) {
+            $upgraded = Invoke-WingetUv -Verb "install"
+        }
+        if (-not $upgraded) {
+            throw "uv could not be upgraded by self-update or winget"
+        }
+        $observed = Get-UvVersion
+    }
+
+    if ($null -eq $observed) {
+        throw "uv is unavailable after installation or upgrade"
+    }
+    if ($observed -lt $RequiredUvVersion) {
+        throw "uv remains below the required version after upgrade"
+    }
+    return $observed
 }
 
 function Import-DotEnv {
@@ -95,21 +149,8 @@ function Import-DotEnv {
     }
 }
 
-$ObservedUvVersion = Get-UvVersion
-if ($null -eq $ObservedUvVersion) {
-    Install-Or-Upgrade-Uv
-    $ObservedUvVersion = Get-UvVersion
-} elseif ($ObservedUvVersion -lt $RequiredUvVersion) {
-    Install-Or-Upgrade-Uv -Upgrade
-    $ObservedUvVersion = Get-UvVersion
-}
-
-if ($null -eq $ObservedUvVersion) {
-    throw "uv is unavailable after installation or upgrade"
-}
-if ($ObservedUvVersion -lt $RequiredUvVersion) {
-    throw "uv remains below the required version after upgrade"
-}
+$ObservedUvVersion = Ensure-UvVersion
+Write-Host "Using uv $ObservedUvVersion"
 
 uv lock --check
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
