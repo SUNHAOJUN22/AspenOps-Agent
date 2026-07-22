@@ -22,8 +22,14 @@ from aspenops_nexus.hashing import sha256_file
         (lambda: licensed._array({}, "value"), "must be an array"),
         (lambda: licensed._text(1, "value"), "must be a string"),
         (lambda: licensed._text("  ", "value"), "non-empty string"),
-        (lambda: licensed._finite_nonnegative(True, "value"), "finite non-negative"),
-        (lambda: licensed._finite_nonnegative(-1, "value"), "finite non-negative"),
+        (
+            lambda: licensed._finite_nonnegative(True, "value"),
+            "finite non-negative",
+        ),
+        (
+            lambda: licensed._finite_nonnegative(-1, "value"),
+            "finite non-negative",
+        ),
         (lambda: licensed._positive_integer(True, "value"), "must be an integer"),
         (lambda: licensed._positive_integer(0, "value"), "between 1"),
         (lambda: licensed._digest("bad", "digest"), "SHA-256"),
@@ -32,11 +38,23 @@ from aspenops_nexus.hashing import sha256_file
         (lambda: licensed._unique_texts(["A", "a"], "items"), "unique values"),
         (lambda: licensed._scoped_texts(["bad*"], "items"), "wildcard"),
         (lambda: licensed._version_patterns([".*"]), "anchored"),
-        (lambda: licensed._version_patterns(["^["]), "Invalid runtime version pattern"),
-        (lambda: licensed._timezone_aware("bad", "time"), "ISO-8601"),
-        (lambda: licensed._timezone_aware("2026-07-21T00:00:00", "time"), "timezone"),
         (
-            lambda: licensed.TolerancePolicy.from_document({"abs_tol": 1.0}, "policy"),
+            lambda: licensed._version_patterns(["^["]),
+            "Invalid runtime version pattern",
+        ),
+        (lambda: licensed._timezone_aware("bad", "time"), "ISO-8601"),
+        (
+            lambda: licensed._timezone_aware(
+                "2026-07-21T00:00:00",
+                "time",
+            ),
+            "timezone",
+        ),
+        (
+            lambda: licensed.TolerancePolicy.from_document(
+                {"abs_tol": 1.0},
+                "policy",
+            ),
             "requires abs_tol and rel_tol",
         ),
         (
@@ -225,7 +243,11 @@ def test_preflight_records_invalid_key_state_dir_and_dry_run(
     def fail_dry_run(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("invalid request")
 
-    monkeypatch.setattr(licensed.tempfile, "NamedTemporaryFile", fail_named_temporary_file)
+    monkeypatch.setattr(
+        licensed.tempfile,
+        "NamedTemporaryFile",
+        fail_named_temporary_file,
+    )
     monkeypatch.setattr(licensed, "dry_run_document", fail_dry_run)
     report = licensed.certification_preflight(
         plan,
@@ -247,11 +269,23 @@ def test_preflight_records_invalid_key_state_dir_and_dry_run(
         },
         system_name="Windows",
         machine_architecture="X64",
-        compatibility={"aspen_plus": [{"progid": "Apwn.Document.40.0", "registry_view": "64-bit"}]},
+        compatibility={
+            "aspen_plus": [
+                {
+                    "progid": "Apwn.Document.40.0",
+                    "registry_view": "64-bit",
+                }
+            ]
+        },
         current_time=datetime(2026, 7, 21, 1, tzinfo=UTC),
     )
     codes = {item["code"] for item in report["blockers"]}
-    assert {"signing_key_invalid", "state_dir_not_writable", "dry_run_failed"}.issubset(codes)
+    expected = {
+        "signing_key_invalid",
+        "state_dir_not_writable",
+        "dry_run_failed",
+    }
+    assert expected.issubset(codes)
 
 
 def test_non_ed25519_keys_are_rejected(tmp_path: Path) -> None:
