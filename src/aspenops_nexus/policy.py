@@ -18,8 +18,9 @@ class Policy:
         if not self.allowed_roots:
             return resolved
         for root in self.allowed_roots:
+            resolved_root = root.expanduser().resolve()
             try:
-                resolved.relative_to(root)
+                resolved.relative_to(resolved_root)
                 return resolved
             except ValueError:
                 continue
