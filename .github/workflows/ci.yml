@@ -31,40 +31,40 @@ jobs:
       - name: Verify lockfile and sync frozen dependencies
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p var/ci
-          set -o pipefail
           uv lock --check 2>&1 | tee var/ci/uv-lock.log
           uv sync --frozen --extra dev --extra agent --extra signing \
             2>&1 | tee var/ci/uv-sync.log
       - name: Ruff
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run ruff check . 2>&1 | tee var/ci/ruff.log
       - name: Ruff format
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run ruff format --check . 2>&1 | tee var/ci/ruff-format.log
       - name: Strict mypy
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
       - name: Build distributions
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv build 2>&1 | tee var/ci/build.log
       - name: Run portable demo
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run aspenops demo 2>&1 | tee var/ci/demo.log
       - name: Verify README command paths
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run aspenops --version 2>&1 | tee var/ci/cli-version.log
           uv run aspenops --help > var/ci/cli-help.log
           uv run aspenops dry-run examples/batch-request.example.json \
@@ -78,7 +78,7 @@ jobs:
       - name: Benchmark smoke and committed performance policy
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . \
             --output var/ci/benchmark-smoke.json \
@@ -93,12 +93,12 @@ jobs:
       - name: Verify MCP surface
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run python scripts/check_mcp.py 2>&1 | tee var/ci/mcp.json
       - name: Wheel install and CLI smoke from locked runtime dependencies
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv export --frozen \
             --no-default-groups \
             --no-emit-project \
@@ -157,15 +157,15 @@ jobs:
       - name: Verify lockfile and sync frozen dependencies
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p var/ci
-          set -o pipefail
           uv lock --check 2>&1 | tee var/ci/uv-lock-${{ matrix.python-version }}.log
           uv sync --frozen --extra dev --extra agent --extra signing \
             2>&1 | tee var/ci/uv-sync-${{ matrix.python-version }}.log
       - name: Pytest with branch coverage
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           uv run pytest -W error::ResourceWarning \
             --cov=aspenops_nexus \
             --cov-branch \
