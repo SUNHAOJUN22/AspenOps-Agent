@@ -79,7 +79,9 @@ def test_real_secrets_are_not_exposed_to_sync_or_mock_regression() -> None:
 
 def test_regression_and_path_gates_precede_real_execution() -> None:
     text = workflow_text()
+    checkout = text.index("Checkout exact approved commit")
     trust = text.index("Verify exact revision belongs to main")
+    setup = text.index("Set up Python")
     sync = text.index("Verify lockfile and sync frozen certification dependencies")
     regression = text.index("Run isolated licensed control-plane regression gate")
     resolve_paths = text.index("Resolve licensed filesystem targets")
@@ -88,7 +90,18 @@ def test_regression_and_path_gates_precede_real_execution() -> None:
     execute = text.index("aspenops certify-licensed")
     verify = text.index("aspenops verify-licensed-bundle")
 
-    assert trust < sync < regression < resolve_paths < preflight < approval < execute < verify
+    assert (
+        checkout
+        < trust
+        < setup
+        < sync
+        < regression
+        < resolve_paths
+        < preflight
+        < approval
+        < execute
+        < verify
+    )
     assert "uv lock --check" in text
     assert (
         "uv sync --frozen --extra dev --extra windows --extra agent --extra signing" in text
