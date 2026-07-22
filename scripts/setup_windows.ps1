@@ -1,3 +1,7 @@
+param(
+    [switch]$LibraryMode
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -145,6 +149,10 @@ function Import-DotEnv {
 
         [Environment]::SetEnvironmentVariable($name, $value, "Process")
     }
+}
+
+if ($LibraryMode) {
+    return
 }
 
 $ObservedUvVersion = Ensure-UvVersion
