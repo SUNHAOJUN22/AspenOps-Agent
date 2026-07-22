@@ -40,7 +40,7 @@ def test_licensed_workflow_checks_out_exact_commit_without_write_credentials() -
     assert "merge" not in text.casefold()
 
 
-def test_inputs_are_environment_bound_and_plan_path_is_canonicalized() -> None:
+def test_inputs_and_output_paths_are_canonicalized_before_execution() -> None:
     text = workflow_text()
 
     assert "PLAN_PATH: ${{ inputs.plan_path }}" in text
@@ -51,7 +51,13 @@ def test_inputs_are_environment_bound_and_plan_path_is_canonicalized() -> None:
     assert "plan_path must be one non-empty line" in text
     assert "plan_path must be repository-relative" in text
     assert "plan_path escapes the repository workspace" in text
+    assert "ASPENOPS_CERT_STATE_DIR must be one non-empty absolute path" in text
+    assert "ASPENOPS_CERT_STATE_DIR must be absolute" in text
+    assert "ASPENOPS_ALLOWED_ROOTS must be one non-empty line" in text
+    assert "Every ASPENOPS_ALLOWED_ROOTS entry must be absolute" in text
+    assert "ASPENOPS_CERT_STATE_DIR must be inside ASPENOPS_ALLOWED_ROOTS" in text
     assert '"PLAN_PATH=$plan" | Out-File -FilePath $env:GITHUB_ENV' in text
+    assert '"ASPENOPS_STATE_DIR=$stateDir" | Out-File -FilePath $env:GITHUB_ENV' in text
     assert '"$env:PLAN_PATH"' in text
 
 
