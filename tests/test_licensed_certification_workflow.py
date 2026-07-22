@@ -51,11 +51,15 @@ def test_regression_and_preflight_precede_approval_execution_and_verification() 
 
     assert regression < preflight < approval < execute < verify
     assert "uv lock --check" in text
-    assert "uv sync --frozen --extra dev --extra windows --extra signing" in text
+    assert (
+        "uv sync --frozen --extra dev --extra windows --extra agent --extra signing" in text
+    )
+    assert "ASPENOPS_BACKEND: mock" in text
+    assert "ASPENOPS_STATE_DIR: ${{ github.workspace }}\\var\\licensed-regression" in text
     assert "tests/test_licensed_certification.py" in text
     assert "tests/test_licensed_certification_governance.py" in text
     assert "tests/test_aspen_process_ownership.py" in text
-    assert "software-regression.xml" in text
+    assert "licensed-software-regression.xml" in text
     assert "ASPENOPS_CERT_SIGNING_KEY_PATH" in text
     assert "ASPENOPS_CERT_PUBLIC_KEY_PATH" in text
 
@@ -72,7 +76,7 @@ def test_uploaded_artifact_excludes_private_key_and_contains_signed_evidence() -
     text = workflow_text()
     upload = text[text.index("Upload signed licensed evidence") :]
 
-    assert "software-regression.xml" in upload
+    assert "licensed-software-regression.xml" in upload
     assert "preflight.json" in upload
     assert "licensed-certification-report.json" in upload
     assert "licensed-certification-bundle.zip" in upload
