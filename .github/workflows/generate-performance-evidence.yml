@@ -26,20 +26,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.candidate_ref }}
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Sync candidate dependencies
+      - name: Verify lockfile and sync frozen candidate dependencies
         shell: bash
         run: |
           mkdir -p var/benchmarks
           set -o pipefail
-          uv sync --extra dev --extra agent 2>&1 | tee var/benchmarks/sync.log
+          uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
+          uv sync --frozen --extra dev --extra agent \
+            2>&1 | tee var/benchmarks/sync.log
       - name: Prepare exact baseline worktree
         shell: bash
         run: |
@@ -87,6 +90,8 @@ jobs:
           set -o pipefail
           uv run ruff check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
             2>&1 | tee var/benchmarks/ruff.log
+          uv run ruff format --check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
+            2>&1 | tee var/benchmarks/ruff-format.log
           uv run mypy scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
             2>&1 | tee var/benchmarks/mypy.log
           uv run python scripts/run_benchmark_matrix.py \
@@ -94,7 +99,7 @@ jobs:
             2>&1 | tee var/benchmarks/smoke.log
       - name: Upload immutable comparison evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: performance-evidence-${{ inputs.candidate_ref }}
           path: var/benchmarks
