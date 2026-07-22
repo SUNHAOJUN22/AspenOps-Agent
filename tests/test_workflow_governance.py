@@ -94,7 +94,7 @@ def test_ci_audits_every_supported_python_platform_combination() -> None:
     assert 'dependency-audit-${platform}-py${version}.json' in text
     assert '--python-platform "$platform"' in text
     assert '--python-version "$version"' in text
-    assert "python -m json.tool \"$output\" >/dev/null" in text
+    assert 'python -m json.tool "$output" >/dev/null' in text
 
 
 def test_hosted_runner_os_versions_are_explicit() -> None:
@@ -202,8 +202,11 @@ def test_windows_bootstrap_is_frozen_fail_closed_and_secret_safe() -> None:
     assert "Set-StrictMode -Version Latest" in text
     assert '$RequiredUvVersion = [version]"0.11.16"' in text
     assert "Get-UvVersion" in text
-    assert "Install-Or-Upgrade-Uv -Upgrade" in text
-    assert '"upgrade"' in text
+    assert "Try-UvSelfUpdate" in text
+    assert "uv self update" in text
+    assert '$env:UV_NO_MODIFY_PATH = "1"' in text
+    assert 'Invoke-WingetUv -Verb "upgrade"' in text
+    assert 'Invoke-WingetUv -Verb "install"' in text
     assert "--accept-package-agreements" in text
     assert "--accept-source-agreements" in text
     assert "Refresh-ProcessPath" in text
