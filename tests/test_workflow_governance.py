@@ -14,22 +14,32 @@ UV_VERSION = "0.11.14"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
+BLOCK_SCALARS = {"|", "|-", "|+", ">", ">-", ">+"}
 
 
 def workflow_text(name: str) -> str:
     return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
 
-def shell_blocks(text: str) -> list[str]:
+def shell_commands(text: str) -> list[str]:
+    """Return literal, folded and inline GitHub Actions run commands."""
+
     lines = text.splitlines()
-    blocks: list[str] = []
+    commands: list[str] = []
     index = 0
     while index < len(lines):
-        match = re.match(r"^(\s*)run:\s*\|\s*$", lines[index])
+        match = re.match(r"^(\s*)run:\s*(.*)$", lines[index])
         if match is None:
             index += 1
             continue
+
         parent_indent = len(match.group(1))
+        suffix = match.group(2).strip()
+        if suffix not in BLOCK_SCALARS:
+            commands.append(suffix)
+            index += 1
+            continue
+
         block: list[str] = []
         index += 1
         while index < len(lines):
@@ -39,8 +49,8 @@ def shell_blocks(text: str) -> list[str]:
                 break
             block.append(line)
             index += 1
-        blocks.append("\n".join(block))
-    return blocks
+        commands.append("\n".join(block))
+    return commands
 
 
 def test_only_authoritative_long_lived_workflows_exist() -> None:
@@ -88,11 +98,11 @@ def test_hosted_runner_os_versions_are_explicit() -> None:
 
 def test_all_bash_steps_explicitly_fail_closed() -> None:
     for name in ("ci.yml", "generate-performance-evidence.yml"):
-        blocks = shell_blocks(workflow_text(name))
-        assert blocks
-        for block in blocks:
-            assert "set -euo pipefail" in block, f"Weak Bash mode in {name}"
-            assert "set -o pipefail" not in block
+        commands = shell_commands(workflow_text(name))
+        assert commands
+        for command in commands:
+            assert "set -euo pipefail" in command, f"Weak Bash mode in {name}"
+            assert "set -o pipefail" not in command
 
 
 def test_workflows_are_read_only_and_do_not_retain_checkout_credentials() -> None:
@@ -112,10 +122,12 @@ def test_all_workflows_use_checked_frozen_dependencies() -> None:
         assert "uv sync --frozen" in text
 
 
-def test_dispatch_inputs_never_interpolate_directly_into_shell_blocks() -> None:
+def test_dispatch_inputs_never_interpolate_into_any_run_command() -> None:
     for name in WORKFLOWS:
-        for block in shell_blocks(workflow_text(name)):
-            assert "${{ inputs." not in block, f"Direct input interpolation in {name} shell block"
+        for command in shell_commands(workflow_text(name)):
+            assert "${{ inputs." not in command, (
+                f"Direct input interpolation in {name} run command"
+            )
 
 
 def test_performance_refs_are_resolved_before_worktree_execution() -> None:
