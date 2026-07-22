@@ -215,6 +215,25 @@ jobs:
             throw "Runtime is not permitted to self-grant real Aspen certification"
           }
 
+      - name: Verify licensed evidence completeness
+        if: ${{ success() }}
+        shell: pwsh
+        run: |
+          $required = @(
+            "var/ci/licensed-software-regression.xml",
+            "$env:ASPENOPS_STATE_DIR\licensed-certification\preflight.json",
+            "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-report.json",
+            "$env:ASPENOPS_STATE_DIR\licensed-certification\licensed-certification-bundle.zip"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required licensed evidence file is missing: $path"
+            }
+            if ((Get-Item -LiteralPath $path).Length -le 0) {
+              throw "Required licensed evidence file is empty: $path"
+            }
+          }
+
       - name: Upload signed licensed evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -225,5 +244,5 @@ jobs:
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\preflight.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-report.json
             ${{ env.ASPENOPS_STATE_DIR }}\licensed-certification\licensed-certification-bundle.zip
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
