@@ -35,7 +35,7 @@ def test_licensed_workflow_checks_out_only_a_trusted_main_ancestor() -> None:
     assert "persist-credentials: false" in text
     assert "git rev-parse HEAD" in text
     assert "^[0-9a-f]{40}$" in text
-    assert '+refs/heads/main:refs/remotes/origin/main' in text
+    assert "+refs/heads/main:refs/remotes/origin/main" in text
     assert "git merge-base --is-ancestor $expected origin/main" in text
     assert "not an ancestor of the trusted main branch" in text
     assert "permissions:\n  contents: read" in text
@@ -71,7 +71,7 @@ def test_real_secrets_are_not_exposed_to_sync_or_mock_regression() -> None:
 
     assert "secrets." not in text[:steps]
     assert "secrets." not in text[sync:preflight]
-    assert "ASPENOPS_ALLOWED_ROOTS: \"\"" in text[regression:resolve_paths]
+    assert 'ASPENOPS_ALLOWED_ROOTS: ""' in text[regression:resolve_paths]
     assert text.count("${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}") == 2
     assert "${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}" in text[preflight:execute]
     assert "${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}" in text[execute:]
@@ -89,6 +89,8 @@ def test_regression_and_path_gates_precede_real_execution() -> None:
     approval = text.index("Preflight completed, but licensed COM execution")
     execute = text.index("aspenops certify-licensed")
     verify = text.index("aspenops verify-licensed-bundle")
+    completeness = text.index("Verify licensed evidence completeness")
+    upload = text.index("Upload signed licensed evidence")
 
     assert (
         checkout
@@ -101,6 +103,8 @@ def test_regression_and_path_gates_precede_real_execution() -> None:
         < approval
         < execute
         < verify
+        < completeness
+        < upload
     )
     assert "uv lock --check" in text
     assert (
@@ -126,6 +130,20 @@ def test_workflow_cannot_self_grant_real_certification() -> None:
     assert "PENDING_REAL_ASPEN_CERTIFICATION" in text
     assert "REAL_ASPEN_CERTIFIED" not in text
     assert "Runtime is not permitted to self-grant" in text
+
+
+def test_complete_signed_evidence_is_required_before_upload() -> None:
+    text = workflow_text()
+    completeness = text.index("Verify licensed evidence completeness")
+    upload = text.index("Upload signed licensed evidence")
+    block = text[completeness:upload]
+
+    assert "if: ${{ success() }}" in block
+    assert "Test-Path -LiteralPath $path -PathType Leaf" in block
+    assert "(Get-Item -LiteralPath $path).Length -le 0" in block
+    assert "Required licensed evidence file is missing" in block
+    assert "Required licensed evidence file is empty" in block
+    assert "if-no-files-found: error" in text[upload:]
 
 
 def test_uploaded_artifact_excludes_private_key_and_contains_signed_evidence() -> None:
