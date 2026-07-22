@@ -5,23 +5,24 @@
 This guide covers:
 
 1. local AspenOps installation and control-plane diagnostics on Windows;
-2. the first approved Aspen Plus or Aspen HYSYS run;
-3. the self-hosted licensed certification workflow.
+2. public Windows contract testing without licensed Aspen;
+3. the first approved Aspen Plus or Aspen HYSYS run;
+4. the protected self-hosted licensed certification workflow.
 
-Portable Mock validation is not real Aspen physical certification.
+Portable Mock and Fake-COM validation are not real Aspen physical certification.
 
 ## Prerequisites
 
 - native 64-bit Windows;
 - Python 3.11–3.13;
 - `uv`;
-- licensed Aspen Plus and/or Aspen HYSYS installation;
+- licensed Aspen Plus and/or Aspen HYSYS installation for real execution;
 - an available and known license-seat limit;
 - a project-owned, non-confidential, convergent model;
 - a case-specific semantic registry verified with Aspen Variable Explorer or an approved HYSYS Spreadsheet Contract;
 - writable model/result directories inside configured allowed roots.
 
-## Install
+## Install from the committed lockfile
 
 Recommended bootstrap:
 
@@ -32,10 +33,13 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 Manual equivalent:
 
 ```powershell
-uv sync --extra windows --extra dev --extra agent --extra signing
+uv lock --check
+uv sync --frozen --extra windows --extra dev --extra agent --extra signing
 Copy-Item .env.example .env
 uv run aspenops doctor --probe
 ```
+
+`uv lock --check` rejects stale project metadata. `uv sync --frozen` prevents setup or test execution from silently rewriting `uv.lock`.
 
 ## Configure
 
@@ -73,6 +77,29 @@ Confirm:
 - at least one expected Automation Server candidate is registered;
 - the effective worker cap does not exceed the license-seat limit;
 - any explicit ProgID pin is actually instantiable.
+
+## Public Windows control-plane gate
+
+The public workflow is:
+
+```text
+.github/workflows/windows-control-plane.yml
+```
+
+It runs on `windows-latest` with Python 3.12 and does not require Aspen. It verifies:
+
+- lockfile freshness and frozen dependencies;
+- Ruff lint and formatting;
+- strict mypy;
+- Windows Job Object and process-ownership boundaries;
+- Worker IPC, timeout, recovery and singleflight contracts;
+- Scheduler active leases;
+- convergence and Fake Aspen Plus/HYSYS adapters;
+- archive and evidence-bundle safety;
+- licensed-certification CLI, workflow and signed-bundle interfaces;
+- Windows CLI and Doctor smoke.
+
+The archived pre-hardening Windows evidence recorded 104 passing tests. The hardened selected suite contains 127 tests based on the archived JUnit inventory; that count becomes fresh evidence only after the revised workflow completes.
 
 ## First real case
 
@@ -160,9 +187,26 @@ Manual dispatch requires:
 - backend selection;
 - explicit `approve_real_execution=true` authorization.
 
-The workflow checks out the exact approved SHA, runs preflight, requires explicit execution approval, executes the scoped plan, verifies the signed bundle and uploads the evidence artifact. It never self-grants final engineering certification.
+The workflow performs the following sequence:
+
+```text
+exact SHA checkout
+→ lockfile check and frozen sync
+→ isolated Mock software-regression gate
+→ licensed preflight
+→ explicit human execution approval
+→ scoped real COM execution
+→ signed bundle verification
+→ pending human engineering review
+```
+
+The software-regression step uses a Mock backend and a workspace-local state directory so that it cannot accidentally open licensed COM before preflight. The current selected regression set contains 104 tests based on the archived JUnit inventory. The workflow never self-grants final engineering certification.
 
 ## Troubleshooting
+
+### `uv lock --check` fails
+
+`pyproject.toml` and `uv.lock` disagree. Update and review the lockfile explicitly. Do not remove `--frozen` from CI or setup to hide the mismatch.
 
 ### No COM server is found
 
