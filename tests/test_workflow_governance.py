@@ -91,10 +91,18 @@ def test_ci_audits_every_supported_python_platform_combination() -> None:
     assert tuple(map(int, UV_VERSION.split("."))) >= (0, 11, 15)
     assert "for platform in linux windows; do" in text
     assert "for version in 3.11 3.12 3.13; do" in text
-    assert 'dependency-audit-${platform}-py${version}.json' in text
-    assert '--python-platform "$platform"' in text
-    assert '--python-version "$version"' in text
-    assert 'python -m json.tool "$output" >/dev/null' in text
+    assert 'stem="var/ci/dependency-audit-${platform}-py${version}"' in text
+    assert 'output="${stem}.json"' in text
+    assert 'error_log="${stem}.log"' in text
+    assert "audit_failed=0" in text
+    assert "if ! uv audit --frozen" in text
+    assert '> "$output" 2> "$error_log"' in text
+    assert 'if ! python -m json.tool "$output" >/dev/null' in text
+    assert "audit_failed=1" in text
+    assert "One or more locked dependency audits failed" in text
+    assert text.index("for platform in linux windows; do") < text.index(
+        'if [[ "$audit_failed" -ne 0 ]]'
+    )
 
 
 def test_hosted_runner_os_versions_are_explicit() -> None:
