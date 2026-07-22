@@ -153,7 +153,7 @@ uv run aspenops --help
 uv run aspenops demo
 ```
 
-CI 会自动扩展漏洞审计：Linux 与 Windows 两个平台分别检查 Python 3.11、3.12、3.13，共**六种**受支持组合，并验证每份输出是合法 JSON。
+CI 会自动扩展漏洞审计：Linux 与 Windows 两个平台分别检查 Python 3.11、3.12、3.13，共**六种**受支持组合。六种组合全部执行，每种分别保存 JSON 和错误日志并校验 JSON；任一组合失败时，在完整证据收集后统一令质量任务失败。
 
 pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfail，并把 `ResourceWarning` 作为错误。
 
@@ -164,7 +164,7 @@ pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfa
 | 工作流 | 触发方式 | 固定环境 | 职责 |
 |---|---|---|---|
 | `ci.yml` | `main` push、PR、手动 | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、格式、mypy、六组合依赖审计、构建、Mock、MCP、Wheel、README 命令 |
-| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、PowerShell AST、路径、文档与工作流治理 |
+| `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、调度、归档、Fake Aspen/HYSYS、PowerShell AST 与 helper 行为测试、路径、文档和工作流治理 |
 | `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 不可变 baseline、独立重复、稳定性能回归策略 |
 | `licensed-aspen-certification.yml` | 受保护手动执行 | `self-hosted, windows, x64, aspen-licensed` | 受信 `main` SHA、Mock 回归、realpath 门、preflight、真实 COM、签名证据和人工审核 |
 
@@ -183,8 +183,10 @@ pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfa
 - 在 `run: |`、`run: >`、单行 `run:` 或简写 `- run:` 中直接插入手动输入；
 - 原始 baseline ref 直接进入 worktree；
 - 用户输入进入制品名称；
-- 文档中的旧工具版本、旧 runner、旧工作流名称或失效本地链接；
-- Windows 或持证门删除关键路径、后端和文档契约测试。
+- 六种漏洞审计未完整执行、未保存错误日志、未验证 JSON 或未在末尾统一失败；
+- 文档中的旧工具版本、旧 runner、旧工作流名称、旧 AspenOps 标题或失效本地链接；
+- Windows 或持证门删除关键路径、后端和文档契约测试；
+- Windows CI 删除 `LibraryMode` helper 行为门，只留下静态字符串检查。
 
 ### 锁定依赖 Wheel 验证
 
@@ -194,9 +196,9 @@ pytest 策略：pytest 8.3+、strict markers、strict configuration、strict xfa
 
 `tests/test_documentation_contracts.py` 自动检查：
 
-- 中英文 README、Windows 指南、质量报告、测试审计和认证文档均存在；
+- 中英文 README、Security、Architecture、Performance、Windows 指南、质量报告、测试审计和认证文档均存在；
 - 本地 Markdown 链接可解析且不得逃出仓库；
-- `uv 0.11.16`、`ubuntu-24.04`、`windows-2025` 和四个工作流名称保持一致；
+- `uv 0.11.16`、`ubuntu-24.04`、`windows-2025`、AspenOps 2.0 标题和四个工作流名称保持一致；
 - 不得重新出现旧工作流或漂移 runner；
 - README 必须明确六种依赖审计组合；
 - `.env.example` 必须保持可移植 Mock 首次运行；
@@ -232,14 +234,18 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 1. 开启严格 PowerShell 行为；
 2. 在缺少 `uv` 时通过 winget 安装；
-3. 在 `uv` 低于 0.11.16 时通过 winget 自动升级；
-4. 刷新机器和用户 PATH，同时保留当前进程 PATH；
-5. 校验锁文件并冻结安装 `windows + agent + dev + signing`；
-6. 创建、验证并加载 `.env`；
-7. 拒绝重复变量和未闭合引号；
-8. `.env` 错误只报告行号，不回显潜在密钥内容；
-9. 使用加载后的配置运行 `doctor --probe`；
-10. 检查所有外部命令退出码。
+3. 对旧的独立安装版先尝试 `uv self update`，并禁止修改 PATH；
+4. self-update 不可用或版本仍旧时，依次回退到 winget upgrade 与 winget install；
+5. 每次升级后重新读取实际版本，并要求最终 `uv >= 0.11.16`；
+6. 刷新机器和用户 PATH，同时保留当前进程 PATH；
+7. 校验锁文件并冻结安装 `windows + agent + dev + signing`；
+8. 创建、验证并加载 `.env`；
+9. 拒绝重复变量和未闭合引号；
+10. `.env` 错误只报告行号，不回显潜在密钥内容；
+11. 使用加载后的配置运行 `doctor --probe`；
+12. 检查所有外部命令退出码。
+
+`-LibraryMode` 只供 Windows CI 加载并执行 helper 契约，不安装依赖、不运行 Doctor，不应替代正常安装命令。Windows CI 会真实验证合法 `.env`、大小写不敏感的重复变量、未闭合引号、秘密不回显和 self-update → winget fallback 顺序。
 
 首次真实模型：
 
@@ -278,6 +284,7 @@ uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
 → 验证 SHA 属于受信 main 历史
 → 锁文件检查与冻结依赖
 → 不接触真实密钥的 Mock 软件回归
+→ 文档、后端、输出和工作流治理契约
 → 计划、允许根目录和状态目录 realpath 验证
 → 持证 preflight
 → 明确人工执行批准
