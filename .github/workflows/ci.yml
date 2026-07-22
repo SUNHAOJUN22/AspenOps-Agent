@@ -42,10 +42,16 @@ jobs:
           UV_PREVIEW_FEATURES: json-output
         run: |
           set -euo pipefail
-          uv audit --frozen --python-platform linux --python-version 3.12 \
-            --output-format json > var/ci/dependency-audit-linux.json
-          uv audit --frozen --python-platform windows --python-version 3.12 \
-            --output-format json > var/ci/dependency-audit-windows.json
+          for platform in linux windows; do
+            for version in 3.11 3.12 3.13; do
+              output="var/ci/dependency-audit-${platform}-py${version}.json"
+              uv audit --frozen \
+                --python-platform "$platform" \
+                --python-version "$version" \
+                --output-format json > "$output"
+              python -m json.tool "$output" >/dev/null
+            done
+          done
       - name: Ruff
         shell: bash
         run: |
@@ -61,6 +67,14 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
+      - name: Verify documentation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest -W error::ResourceWarning \
+            tests/test_documentation_contracts.py \
+            --junitxml=var/ci/documentation-contracts.xml \
+            2>&1 | tee var/ci/documentation-contracts.log
       - name: Build distributions
         shell: bash
         run: |
