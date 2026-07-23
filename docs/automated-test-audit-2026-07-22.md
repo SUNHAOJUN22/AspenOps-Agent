@@ -39,15 +39,28 @@ The Wheel gate uses hash-pinned exported requirements, `uv pip sync --require-ha
 
 `windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It runs PowerShell AST parsing and real helper behavior through `-LibraryMode`, including dotenv safety and self-update → winget upgrade → winget install fallback checks. It also covers Job Objects, process ownership, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
-## Main-ref-only manual workflows
+## Explicit manual-dispatch failure guards
 
-GitHub permits `workflow_dispatch` to target a branch or tag, and the workflow definition is loaded from the selected event ref. The authoritative performance and licensed jobs therefore now include:
+GitHub manual dispatch can target a branch or tag, and `GITHUB_REF` identifies that selected ref. The current authoritative workflow definitions no longer use a job-level condition that silently skips all work.
+
+### Performance evidence
+
+The first Ubuntu step always creates runner-temporary guard evidence:
 
 ```text
-if: github.ref == refs/heads/main
+dispatch-ref.txt
+dispatch-guard.log
 ```
 
-This prevents an older tag or non-main branch from supplying the workflow definition used to produce authoritative evidence.
+A ref other than `refs/heads/main` exits with status 2. The workflow therefore records a failed guard instead of an all-skipped run.
+
+### Licensed certification
+
+A separate `ubuntu-24.04` `dispatch-guard` job runs before the licensed job. A non-main ref exits with status 2. The `certify` job declares `needs: dispatch-guard`, so an invalid dispatch never occupies the self-hosted Aspen license machine.
+
+### Historical-ref boundary
+
+Each workflow run uses the workflow version present in its selected event ref. The guards above protect the current authoritative definitions on `main` and any refs that contain them; they cannot retroactively rewrite an older tag or branch containing an older workflow file. This audit did not obtain an authoritative tag inventory from the available connector, so it does not claim that every historical ref has the current guard. Repository operators should dispatch authoritative evidence only from `main` and retire obsolete refs through normal repository governance when identified.
 
 ## Trusted and isolated performance evidence
 
@@ -57,11 +70,10 @@ The default baseline is the validated main-history runtime:
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-The workflow now:
+After the explicit dispatch guard succeeds, the workflow uses:
 
 ```text
-load workflow definition from refs/heads/main
-→ checkout current trusted main workflow revision
+checkout current trusted main workflow revision
 → fetch main history and tags
 → resolve candidate_ref / baseline_ref with --end-of-options
 → require both SHAs in main
@@ -91,11 +103,11 @@ A temporary implementation placed `${{ runner.temp }}` in `jobs.<job_id>.env`, w
 
 ### Stale benchmark evidence defect found and fixed
 
-The repository tracks historical `var/benchmarks` files. The final workflow writes every current-run SHA, log, JSON result and report only to the runner temporary directory and uploads only that directory. Candidate-workspace historical files cannot enter the artifact.
+The repository tracks historical `var/benchmarks` files. The final workflow writes every current-run SHA, guard record, log, JSON result and report only to the runner temporary directory and uploads only that directory. Candidate-workspace historical files cannot enter the artifact.
 
 ## Licensed evidence and checkout trust chain
 
-The approved SHA was previously passed directly to `actions/checkout`, with validation occurring afterward. The final protected workflow runs only from `refs/heads/main` and uses:
+The approved SHA is not passed directly to `actions/checkout`. After the Ubuntu dispatch guard succeeds, the protected workflow uses:
 
 ```text
 checkout current trusted main workflow revision
@@ -128,7 +140,9 @@ Real backends require non-empty absolute allowed roots. State, models, registrie
 - unfrozen dependencies or weak Bash;
 - direct input interpolation in any `run` syntax;
 - incomplete dependency-audit evidence;
-- performance or licensed manual jobs not restricted to `refs/heads/main`;
+- job-level main-ref conditions that turn invalid dispatches into skipped jobs;
+- missing explicit performance guard evidence;
+- a licensed self-hosted job that does not depend on the Ubuntu dispatch guard;
 - candidate or approved SHA input passed directly to checkout;
 - unsupported runner context in job-level env;
 - untrusted/reverse performance refs;
@@ -138,7 +152,7 @@ Real backends require non-empty absolute allowed roots. State, models, registrie
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe local links, frozen operating instructions, portable `.env.example`, archived evidence boundaries, main-ref manual-workflow trust documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
+`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe local links, frozen operating instructions, portable `.env.example`, archived evidence boundaries, explicit manual-dispatch failure documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Executed targeted checks
 
@@ -149,4 +163,5 @@ The final validation reconstructs the current workflows and governance files in 
 1. A readable current Actions artifact is required before replacing archived counts or coverage.
 2. Public automation cannot instantiate proprietary Aspen Automation Servers.
 3. Real certification requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
-4. No finite audit proves the absence of every future defect; it resolves observed defects and installs regression guards.
+4. Historical refs were not enumerated by the available connector; current guards do not retroactively modify old workflow files.
+5. No finite audit proves the absence of every future defect; it resolves observed defects and installs regression guards.
