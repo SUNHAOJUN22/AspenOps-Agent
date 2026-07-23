@@ -74,7 +74,7 @@ The Wheel gate exports hash-pinned runtime requirements, synchronizes with `--re
 
 ## Trusted and isolated performance evidence
 
-The performance workflow originally accepted arbitrary refs, synchronized candidate dependencies before proving trust, and executed baseline source with the candidate environment and harness.
+The performance workflow originally accepted arbitrary refs, passed candidate input directly to checkout, synchronized candidate dependencies before proving trust, and executed baseline source with the candidate environment and harness.
 
 The current default baseline is the validated main-history runtime:
 
@@ -82,17 +82,20 @@ The current default baseline is the validated main-history runtime:
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-Trust validation now precedes tool setup or Python execution:
+Trust validation now precedes tool setup, candidate checkout or Python execution:
 
 ```text
-checkout candidate
-→ fetch trusted main
-→ resolve immutable candidate and baseline SHAs
-→ require candidate in main history
-→ require baseline in main history
+checkout current trusted main workflow revision
+→ fetch trusted main history and tags
+→ resolve candidate_ref and baseline_ref with --end-of-options
+→ require candidate SHA in main history
+→ require baseline SHA in main history
 → require baseline to be an ancestor of candidate
+→ detached checkout of the validated candidate SHA
 → create detached baseline worktree
 ```
+
+The manual candidate input is never passed directly to `actions/checkout`.
 
 The workflow then creates two independent frozen environments:
 
@@ -101,7 +104,7 @@ candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-Both lockfiles are checked, both environments use `uv sync --frozen`, and each revision executes the script stored in its own repository. Candidate dependencies, source or harness changes therefore cannot contaminate the baseline measurement. Incompatibility fails explicitly rather than silently changing the comparison method.
+Both lockfiles are checked, both environments use `uv sync --frozen`, and each revision executes the script stored in its own repository. Candidate input, dependencies, source or harness changes therefore cannot contaminate the baseline measurement. Incompatibility fails explicitly rather than silently changing the comparison method.
 
 Unmerged, unrelated or reverse-ordered commits cannot produce evidence that appears authoritative. Performance remains portable Mock orchestration evidence, not licensed Aspen solve performance.
 
@@ -154,6 +157,7 @@ The same real-backend policy applies across environment loading, direct Python c
 - unfrozen dependencies or weak Bash mode;
 - dispatch-input interpolation in literal, folded, inline or shorthand `run` syntax;
 - incomplete dependency-audit evidence;
+- candidate input passed directly to checkout;
 - untrusted or reverse-ordered performance refs;
 - candidate-environment contamination of baseline performance runs;
 - arbitrary-input artifact names;
@@ -189,4 +193,4 @@ The audit executed workflow YAML parsing, governance tests, Bash `run`-block syn
 
 ## Final decision
 
-Retain AspenOps 2.0 as the authoritative single-main runtime. The correct remediation was to harden runtime policy, complete dependency evidence, workflow trust, isolated performance environments, executable Windows bootstrap contracts, workspace-scoped licensed evidence and documentation—not to replace a validated runtime or inflate coverage beyond observed evidence.
+Retain AspenOps 2.0 as the authoritative single-main runtime. The correct remediation was to harden runtime policy, complete dependency evidence, workflow trust, safe candidate resolution, isolated performance environments, executable Windows bootstrap contracts, workspace-scoped licensed evidence and documentation—not to replace a validated runtime or inflate coverage beyond observed evidence.
