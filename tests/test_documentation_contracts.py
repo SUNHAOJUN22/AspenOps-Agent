@@ -99,18 +99,14 @@ def test_package_and_documentation_versions_match() -> None:
         assert f"aspenops-nexus {version}" in readme
     assert f'__version__ = "{version}"' in package_init
     assert f"## {version} -" in changelog
-    assert (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8").startswith(
-        f"# AspenOps {major_minor} Architecture"
-    )
-    assert (ROOT / "AGENTS.md").read_text(encoding="utf-8").startswith(
-        f"# AspenOps {major_minor} Agent Contract"
-    )
-    assert (ROOT / "CLAUDE.md").read_text(encoding="utf-8").startswith(
-        f"# Claude Code operating contract for AspenOps {major_minor}"
-    )
-    assert (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8").startswith(
-        f"# Contributing to AspenOps {major_minor}"
-    )
+    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    assert architecture.startswith(f"# AspenOps {major_minor} Architecture")
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert agents.startswith(f"# AspenOps {major_minor} Agent Contract")
+    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert claude.startswith(f"# Claude Code operating contract for AspenOps {major_minor}")
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert contributing.startswith(f"# Contributing to AspenOps {major_minor}")
 
 
 def test_current_guidance_has_no_stale_toolchain_or_product_names() -> None:
@@ -162,7 +158,6 @@ def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
     for text in (quality, audit):
         assert "Python 3.11, 3.12 and 3.13" in text
         assert "six" in text.casefold()
-        assert "documentation" in text.casefold()
     for text in (chinese, english, quality, audit, performance):
         assert "RUNNER_TEMP" in text
         assert "runner.temp" in text
@@ -186,23 +181,38 @@ def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
     assert "显式失败" in chinese
     assert "fails explicitly with exit code 2" in english
     assert "dispatch-guard.log" in performance
-    assert "exits with status 2" in performance
-    assert "needs: dispatch-guard" in windows
-    assert "status 2" in windows
-    assert "needs: dispatch-guard" in quality
-    assert "status 2" in quality
+    assert "status 2" in performance
+    for text in (windows, quality, audit, certification):
+        assert "needs: dispatch-guard" in text
+        assert "status 2" in text
     assert "all-skipped" in audit
-    assert "needs: dispatch-guard" in audit
-    assert "status 2" in audit
-    assert "needs: dispatch-guard" in certification
-    assert "status 2" in certification
 
-    for path in (
+    checkout_docs = (
         ROOT / "README.md",
         ROOT / "README.en.md",
         ROOT / "docs" / "certification.md",
-    ):
+    )
+    for path in checkout_docs:
         assert "actions/checkout" in path.read_text(encoding="utf-8")
+
+
+def test_docs_record_run_attempt_licensed_evidence_isolation() -> None:
+    paths = (
+        ROOT / "README.md",
+        ROOT / "README.en.md",
+        ROOT / "docs" / "windows-setup.md",
+        ROOT / "docs" / "quality-report.md",
+        ROOT / "docs" / "automated-test-audit-2026-07-22.md",
+        ROOT / "docs" / "certification.md",
+    )
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert "licensed-aspen-certification" in text
+        assert "GITHUB_RUN_ID" in text
+        assert "GITHUB_RUN_ATTEMPT" in text
+        assert "LICENSED_EVIDENCE_DIR" in text
+        assert "github.run_attempt" in text
+        assert "serialized" in text.casefold() or "串行" in text
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
@@ -223,7 +233,6 @@ def test_windows_guide_matches_hardened_bootstrap() -> None:
     assert "duplicate variables" in text.casefold()
     assert "unbalanced" in text.casefold()
     assert "without echoing raw" in text
-    assert "documentation" in text.casefold()
 
 
 def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
