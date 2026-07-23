@@ -105,20 +105,21 @@ The archived public Windows baseline recorded 104 passing tests. No current fixe
 
 Authoritative workflow: `licensed-aspen-certification.yml`.
 
-Runner labels:
+Execution environments:
 
 ```text
-self-hosted, windows, x64, aspen-licensed
+ubuntu-24.04 dispatch guard
+→ self-hosted, windows, x64, aspen-licensed certification job
 ```
 
 Configure the protected environment with absolute allowed roots, an absolute state directory inside them, license metadata, signing-key path secret and public-key path variable.
 
-The dispatch event itself must use `refs/heads/main`. Inputs provide a repository-relative plan, exact lowercase 40-character approved SHA, backend and explicit authorization.
+A lightweight Ubuntu job checks `GITHUB_REF` before the self-hosted job is eligible to run. A ref other than `refs/heads/main` exits with status 2, marks the workflow failed, and does not consume the Aspen license machine. Inputs provide a repository-relative plan, exact lowercase 40-character approved SHA, backend and explicit authorization.
 
 The input SHA is never passed directly to checkout. Execution order:
 
 ```text
-run workflow definition from refs/heads/main
+Ubuntu guard explicitly requires GITHUB_REF == refs/heads/main
 → checkout trusted main workflow revision
 → validate SHA format and commit existence
 → require SHA to be a trusted main ancestor
@@ -138,6 +139,8 @@ run workflow definition from refs/heads/main
 
 Security properties:
 
+- invalid manual refs fail rather than becoming skipped runs;
+- the self-hosted certification job has `needs: dispatch-guard`;
 - manual inputs are environment-bound rather than injected into PowerShell bodies;
 - traversal, symlink and junction escapes are rejected;
 - signing secrets are absent from setup and Mock regression;
