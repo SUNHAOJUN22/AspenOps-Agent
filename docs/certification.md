@@ -52,7 +52,25 @@ detached checkout remains exactly GITHUB_SHA
 
 This prevents current safety workflow definitions from certifying an arbitrary older main ancestor whose runtime, tests or `validate_licensed_paths.py` may predate current controls.
 
-## Run-attempt evidence isolation
+## Pre-checkout artifact isolation
+
+Before `actions/checkout`, the self-hosted job removes and recreates a run-attempt-specific directory:
+
+```text
+$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+`run-metadata.txt` records the run ID, attempt, ref, `GITHUB_SHA` and `expected_head_sha` before checkout. The Mock regression JUnit file is written directly to this directory. Successful licensed evidence is copied into its `licensed-evidence` child directory, and the final `job_status` is appended through an `if: always()` step.
+
+The final artifact upload reads only:
+
+```text
+${{ runner.temp }}/aspenops-licensed-artifact-${{ github.run_id }}-${{ github.run_attempt }}
+```
+
+It uses `if-no-files-found: error`. A checkout, setup or validation failure therefore cannot upload stale `var/ci` data from the persistent self-hosted workspace.
+
+## Run-attempt external evidence isolation
 
 All licensed jobs share the fixed concurrency group `licensed-aspen-certification`, which serializes Aspen Plus and HYSYS certifications.
 
@@ -62,9 +80,7 @@ External evidence is unique to the workflow attempt:
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used for preflight, real execution, bundle verification, status inspection and workspace staging. The Mock diagnostics directory `var/ci` is also deleted and recreated before regression tests.
-
-Successful evidence is revalidated and copied into clean `var/ci/licensed-evidence`. Artifact names contain both `github.run_id` and `github.run_attempt`; upload reads only workspace-local `var/ci`.
+The directory is deleted and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used for preflight, real execution, bundle verification, status inspection and runner-temp staging. Artifact names contain both `github.run_id` and `github.run_attempt`.
 
 These controls prevent stale report/bundle reuse, backend collisions, retry ambiguity and persistent self-hosted workspace contamination.
 
@@ -72,15 +88,18 @@ These controls prevent stale report/bundle reuse, backend collisions, retry ambi
 
 ```text
 Ubuntu guard requires GITHUB_REF == refs/heads/main
+→ create and clean the run-attempt runner-temp artifact directory
 → checkout this dispatch's GITHUB_SHA
 → verify expected_head_sha == GITHUB_SHA
 → verify initial HEAD and main ancestry
 → detached checkout the same GITHUB_SHA
 → validate the plan path
-→ frozen dependencies and isolated Mock regression
+→ frozen dependencies and Mock regression with JUnit in runner temp
+→ create the run-attempt external evidence directory
 → realpath validation → preflight → explicit approval → real COM
 → signed-bundle verification → require non-empty evidence
-→ clean workspace staging → upload → human engineering review
+→ copy evidence into runner-temp/licensed-evidence
+→ record job_status → upload only runner temp → human engineering review
 ```
 
 The realpath gate rejects traversal, symlink and junction escapes. Signing secrets are absent from setup and Mock regression.
