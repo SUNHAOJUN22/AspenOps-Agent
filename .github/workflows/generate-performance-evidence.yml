@@ -28,6 +28,7 @@ jobs:
     env:
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      PERFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}/aspenops-performance-evidence
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -37,18 +38,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          trust_dir="${RUNNER_TEMP}/aspenops-performance-trust"
-          rm -rf "$trust_dir"
-          mkdir -p "$trust_dir"
-          publish_trust_evidence() {
-            rm -rf "$GITHUB_WORKSPACE/var/benchmarks"
-            mkdir -p "$GITHUB_WORKSPACE/var/benchmarks"
-            cp -a "$trust_dir/." "$GITHUB_WORKSPACE/var/benchmarks/"
-          }
-          trap publish_trust_evidence EXIT
+          rm -rf "$PERFORMANCE_EVIDENCE_DIR"
+          mkdir -p "$PERFORMANCE_EVIDENCE_DIR"
           git fetch --tags --prune origin \
             "+refs/heads/main:refs/remotes/origin/main" \
-            2>&1 | tee "$trust_dir/prepare-revisions.log"
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/prepare-revisions.log"
           baseline_sha="$(git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}")"
           candidate_sha="$(git rev-parse --verify --end-of-options "${CANDIDATE_REF}^{commit}")"
           if [[ ! "$baseline_sha" =~ ^[0-9a-f]{40}$ ]]; then
@@ -71,12 +65,12 @@ jobs:
             echo "baseline_ref must be an ancestor of candidate_ref" >&2
             exit 2
           fi
-          printf '%s\n' "$baseline_sha" | tee "$trust_dir/baseline-sha.txt"
-          printf '%s\n' "$candidate_sha" | tee "$trust_dir/candidate-sha.txt"
+          printf '%s\n' "$baseline_sha" | tee "$PERFORMANCE_EVIDENCE_DIR/baseline-sha.txt"
+          printf '%s\n' "$candidate_sha" | tee "$PERFORMANCE_EVIDENCE_DIR/candidate-sha.txt"
           git checkout --detach "$candidate_sha" \
-            2>&1 | tee -a "$trust_dir/prepare-revisions.log"
+            2>&1 | tee -a "$PERFORMANCE_EVIDENCE_DIR/prepare-revisions.log"
           git worktree add --detach /tmp/aspenops-baseline "$baseline_sha" \
-            2>&1 | tee -a "$trust_dir/prepare-revisions.log"
+            2>&1 | tee -a "$PERFORMANCE_EVIDENCE_DIR/prepare-revisions.log"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.16"
@@ -86,15 +80,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv lock --check 2>&1 | tee var/benchmarks/candidate-uv-lock.log
+          uv lock --check \
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/candidate-uv-lock.log"
           uv sync --frozen --extra dev --extra agent \
-            2>&1 | tee var/benchmarks/candidate-sync.log
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/candidate-sync.log"
           (
             cd /tmp/aspenops-baseline
             uv lock --check \
-              2>&1 | tee "$GITHUB_WORKSPACE/var/benchmarks/baseline-uv-lock.log"
+              2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/baseline-uv-lock.log"
             uv sync --frozen --extra dev --extra agent \
-              2>&1 | tee "$GITHUB_WORKSPACE/var/benchmarks/baseline-sync.log"
+              2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/baseline-sync.log"
           )
       - name: Run baseline matrix in baseline environment
         shell: bash
@@ -103,45 +98,47 @@ jobs:
           /tmp/aspenops-baseline/.venv/bin/python \
             /tmp/aspenops-baseline/scripts/run_benchmark_matrix.py \
             --repo-root /tmp/aspenops-baseline \
-            --output "$GITHUB_WORKSPACE/var/benchmarks/baseline.json" \
-            2>&1 | tee var/benchmarks/baseline.log
+            --output "$PERFORMANCE_EVIDENCE_DIR/baseline.json" \
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/baseline.log"
       - name: Run candidate matrix in candidate environment
         shell: bash
         run: |
           set -euo pipefail
           .venv/bin/python scripts/run_benchmark_matrix.py \
             --repo-root . \
-            --output var/benchmarks/after.json \
-            2>&1 | tee var/benchmarks/after.log
+            --output "$PERFORMANCE_EVIDENCE_DIR/after.json" \
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/after.log"
       - name: Generate comparison and enforce stable regression policy
         shell: bash
         run: |
           set -euo pipefail
           .venv/bin/python scripts/compare_benchmarks.py \
-            --baseline var/benchmarks/baseline.json \
-            --after var/benchmarks/after.json \
-            --baseline-doc var/benchmarks/performance-baseline.md \
-            --after-doc var/benchmarks/performance-after.md \
+            --baseline "$PERFORMANCE_EVIDENCE_DIR/baseline.json" \
+            --after "$PERFORMANCE_EVIDENCE_DIR/after.json" \
+            --baseline-doc "$PERFORMANCE_EVIDENCE_DIR/performance-baseline.md" \
+            --after-doc "$PERFORMANCE_EVIDENCE_DIR/performance-after.md" \
             --fail-on-stable-regression \
-            2>&1 | tee var/benchmarks/compare.log
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/compare.log"
       - name: Validate benchmark tools and smoke path
         shell: bash
         run: |
           set -euo pipefail
           uv run ruff check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
-            2>&1 | tee var/benchmarks/ruff.log
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/ruff.log"
           uv run ruff format --check scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
-            2>&1 | tee var/benchmarks/ruff-format.log
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/ruff-format.log"
           uv run mypy scripts/run_benchmark_matrix.py scripts/compare_benchmarks.py \
-            2>&1 | tee var/benchmarks/mypy.log
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/mypy.log"
           uv run python scripts/run_benchmark_matrix.py \
-            --repo-root . --output var/benchmarks/smoke.json --smoke \
-            2>&1 | tee var/benchmarks/smoke.log
+            --repo-root . \
+            --output "$PERFORMANCE_EVIDENCE_DIR/smoke.json" \
+            --smoke \
+            2>&1 | tee "$PERFORMANCE_EVIDENCE_DIR/smoke.log"
       - name: Upload immutable comparison evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: performance-evidence-${{ github.run_id }}
-          path: var/benchmarks
+          path: ${{ env.PERFORMANCE_EVIDENCE_DIR }}
           if-no-files-found: error
           retention-days: 90
