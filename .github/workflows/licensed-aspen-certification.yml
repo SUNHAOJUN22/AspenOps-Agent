@@ -170,6 +170,9 @@ jobs:
             tests/test_documentation_contracts.py `
             tests/test_artifact_upload_governance.py `
             tests/test_test_dashboard.py `
+            tests/test_process_ir.py `
+            tests/test_process_ir_edges.py `
+            tests/test_process_ir_dashboard.py `
             tests/test_real_backend_state_policy.py `
             tests/test_licensed_path_gate.py `
             tests/test_licensed_bundle_integrity.py `
@@ -200,6 +203,22 @@ jobs:
             --title "AspenOps licensed Mock dashboard" `
             --scope "Software regression before licensed COM" `
             --note "This dashboard contains Mock software evidence, not Aspen physics."
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate and render Process Intent IR contract
+        shell: pwsh
+        run: |
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          uv run python scripts/validate_process_ir.py `
+            examples/process-intent.example.json `
+            --canonical-output "$artifactDir\process-intent-canonical.json" `
+            --report-output "$artifactDir\process-intent-report.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run python scripts/render_process_ir_dashboard.py `
+            --input "$artifactDir\process-intent-report.json" `
+            --output-html "$artifactDir\process-ir-dashboard.html" `
+            --output-svg "$artifactDir\process-ir-dashboard.svg"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve licensed filesystem targets
