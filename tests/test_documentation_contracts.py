@@ -35,11 +35,12 @@ HISTORICAL_DOCUMENTS = {
 CURRENT_GUIDES = tuple(
     document for document in PRIMARY_DOCUMENTS if document not in HISTORICAL_DOCUMENTS
 )
-UNIVERSAL_STALE_TOKENS = {
+STALE_TOKENS = {
     "ubuntu-latest",
     "windows-latest",
     "windows-aspen-certification.yml",
 }
+CHAT_INTERNAL_TOKENS = ("cite", "filecite", "sandbox:/")
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
 
@@ -56,9 +57,7 @@ def _local_link_target(document: Path, raw_target: str) -> Path | None:
         target = target.split(maxsplit=1)[0]
 
     parsed = urlsplit(target)
-    if parsed.scheme or parsed.netloc or target.startswith("#"):
-        return None
-    if not parsed.path:
+    if parsed.scheme or parsed.netloc or target.startswith("#") or not parsed.path:
         return None
 
     candidate = (document.parent / unquote(parsed.path)).resolve()
@@ -67,10 +66,14 @@ def _local_link_target(document: Path, raw_target: str) -> Path | None:
     return candidate
 
 
-def test_primary_documentation_exists_and_local_links_resolve() -> None:
+def test_primary_documentation_exists_links_resolve_and_chat_markup_is_absent() -> None:
     for document in PRIMARY_DOCUMENTS:
         assert document.is_file(), f"Missing documentation file: {document.relative_to(ROOT)}"
         text = document.read_text(encoding="utf-8")
+        for token in CHAT_INTERNAL_TOKENS:
+            assert token not in text, (
+                f"Chat-only token {token!r} leaked into {document.relative_to(ROOT)}"
+            )
         for raw_target in MARKDOWN_LINK.findall(text):
             candidate = _local_link_target(document, raw_target)
             if candidate is not None:
@@ -110,29 +113,23 @@ def test_package_and_documentation_versions_match() -> None:
     )
 
 
-def test_documentation_has_no_stale_current_guidance() -> None:
+def test_current_guidance_has_no_stale_toolchain_or_product_names() -> None:
     for document in PRIMARY_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
-        for token in UNIVERSAL_STALE_TOKENS:
+        for token in STALE_TOKENS:
             assert token not in text, f"Stale token {token!r} in {document.relative_to(ROOT)}"
 
     for document in CURRENT_GUIDES:
         text = document.read_text(encoding="utf-8")
-        assert "0.11.14" not in text, f"Stale uv guidance in {document.relative_to(ROOT)}"
-        assert "AspenOps 1.0" not in text, (
-            f"Stale product title in {document.relative_to(ROOT)}"
-        )
+        assert "0.11.14" not in text
+        assert "AspenOps 1.0" not in text
 
-    readmes = [
-        (ROOT / "README.md").read_text(encoding="utf-8"),
-        (ROOT / "README.en.md").read_text(encoding="utf-8"),
-    ]
-    for text in readmes:
+    for readme_path in (ROOT / "README.md", ROOT / "README.en.md"):
+        text = readme_path.read_text(encoding="utf-8")
         assert CURRENT_UV_VERSION in text
         assert "ubuntu-24.04" in text
         assert "windows-2025" in text
-        for workflow in WORKFLOWS:
-            assert workflow in text
+        assert WORKFLOWS.issubset(set(re.findall(r"[\w-]+\.yml", text)))
 
 
 def test_operational_guides_require_frozen_quality_gates() -> None:
@@ -147,13 +144,14 @@ def test_operational_guides_require_frozen_quality_gates() -> None:
         assert "--cov-fail-under=94.5" in text
 
 
-def test_documentation_describes_all_six_dependency_audit_targets() -> None:
+def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
     quality = (ROOT / "docs" / "quality-report.md").read_text(encoding="utf-8")
     audit = (ROOT / "docs" / "automated-test-audit-2026-07-22.md").read_text(
         encoding="utf-8"
     )
+    performance = (ROOT / "docs" / "performance.md").read_text(encoding="utf-8")
 
     assert "Python 3.11、3.12、3.13" in chinese
     assert "Linux 与 Windows" in chinese
@@ -165,6 +163,9 @@ def test_documentation_describes_all_six_dependency_audit_targets() -> None:
         assert "Python 3.11, 3.12 and 3.13" in text
         assert "six" in text.casefold()
         assert "documentation" in text.casefold()
+    for text in (chinese, english, quality, audit, performance):
+        assert "RUNNER_TEMP" in text
+        assert "runner.temp" in text
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
@@ -191,7 +192,6 @@ def test_windows_guide_matches_hardened_bootstrap() -> None:
 def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-
     assert "已验证归档基线" in chinese
     assert "不是对任意后续提交的自动声明" in chinese
     assert "PENDING_REAL_ASPEN_CERTIFICATION" in chinese
