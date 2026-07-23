@@ -183,6 +183,7 @@ jobs:
             tests/test_config_registry_edge_cases.py `
             tests/test_config_resource_budgets.py `
             tests/test_documentation_contracts.py `
+            tests/test_artifact_upload_governance.py `
             tests/test_real_backend_state_policy.py `
             tests/test_licensed_path_gate.py `
             tests/test_convergence.py `
@@ -218,7 +219,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-control-plane-diagnostics-${{ github.run_id }}
+          name: windows-control-plane-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: var/ci
-          if-no-files-found: ignore
+          if-no-files-found: error
           include-hidden-files: true
+          retention-days: 90
