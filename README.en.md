@@ -92,7 +92,7 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization and per-attempt real evidence |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization, pre-checkout artifact isolation and per-attempt real evidence |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -154,26 +154,36 @@ The licensed workflow first checks `GITHUB_REF` in a fixed Ubuntu guard. A non-m
 
 `expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial checkout already matches that SHA, confirms it remains an ancestor of trusted `origin/main`, and detached-checks out the same SHA. The workflow definition, runtime code, tests and `validate_licensed_paths.py` therefore come from one commit; an operator cannot select an older main ancestor to roll back current safety controls.
 
+Before `actions/checkout`, the self-hosted job removes and creates a run-attempt-specific artifact directory:
+
+```text
+$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha` before checkout. The Mock JUnit file, successful licensed evidence copies and final `job_status` all go to this runner-temp directory. If checkout, dependency sync or path validation fails, the `if: always()` upload still reads only the current-run directory and cannot upload stale `var/ci` from the persistent self-hosted workspace. Upload uses `${{ runner.temp }}` and `if-no-files-found: error`.
+
 All real certification runs use the fixed concurrency group `licensed-aspen-certification`. External evidence is isolated by run attempt:
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by preflight, real execution, signature verification, report checks and workspace staging. Reruns cannot consume a previous attempt's report or bundle, and Aspen Plus/HYSYS runs do not share a fixed output directory. Artifact names include `github.run_id` and `github.run_attempt`.
+The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by preflight, real execution, signature verification, report checks and runner-temp staging. Reruns cannot consume a previous attempt's report or bundle, and Aspen Plus/HYSYS runs do not share a fixed output directory. Artifact names include `github.run_id` and `github.run_attempt`.
 
 ```text
 Ubuntu guard verifies GITHUB_REF == refs/heads/main
+→ create and clean this run's runner-temp artifact directory before checkout
 → actions/checkout this dispatch's main GITHUB_SHA
 → verify expected_head_sha == GITHUB_SHA
 → verify initial HEAD and main ancestry
 → detached checkout the same GITHUB_SHA
-→ clean var/ci and run isolated Mock regression
+→ run isolated Mock regression and write JUnit to runner temp
 → create a run_id-run_attempt external evidence directory
 → realpath → preflight → human approval → real COM
 → signed-bundle verification → require non-empty evidence
-→ clean and stage into var/ci/licensed-evidence
-→ upload workspace var/ci only → engineering review
+→ copy external evidence into runner-temp/licensed-evidence
+→ record final job_status
+→ upload only this run's runner-temp directory → engineering review
 ```
 
 Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature is not engineering approval.
