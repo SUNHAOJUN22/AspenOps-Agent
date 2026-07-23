@@ -89,10 +89,10 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 
 | 工作流 | 固定环境 | 作用 |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
-| `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
+| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令和可视化仪表板 |
+| `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档、治理契约和 Windows 仪表板 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复和稳定回归证据 |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、调度 SHA 绑定、全局串行、checkout 前制品隔离和真实 COM |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、调度 SHA 绑定、全局串行、checkout 前制品隔离、Mock 仪表板和真实 COM |
 
 所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
@@ -117,6 +117,34 @@ licensed-<backend>-<run_id>-<run_attempt>
 ```
 
 所有上传步骤统一使用 `if-no-files-found: error`。证据路径不存在时工作流必须失败，不允许 `ignore` 或 `warn` 把缺失证据伪装成成功。`tests/test_artifact_upload_governance.py` 检查四个工作流，并在公共 Linux 质量门、Windows 合同门和持证 Mock 回归中均被执行。
+
+### 自动测试可视化界面
+
+`scripts/render_test_dashboard.py` 仅使用 Python 标准库，从当前 job 的 JUnit XML 与 coverage JSON 生成自包含交互 HTML 和静态 SVG，不加载任何网络资源。自动化会生成：
+
+```text
+test-dashboard-quality.html / .svg
+test-dashboard-python-3.11.html / .svg
+test-dashboard-python-3.12.html / .svg
+test-dashboard-python-3.13.html / .svg
+test-dashboard-windows.html / .svg
+test-dashboard-licensed.html / .svg
+```
+
+HTML 可切换 Summary 与 Evidence；SVG 适合 README、报告和归档预览。没有 JUnit、没有有效通过项或早期失败时状态为 `INCOMPLETE`，pass rate 为 0%，不会伪装为 PASS。持证 dashboard 只汇总真实 COM 之前的 Mock 软件证据，不证明 Aspen 物理正确性。
+
+本地生成示例：
+
+```bash
+uv run python scripts/render_test_dashboard.py \
+  --input-dir var/ci \
+  --output-html var/ci/test-dashboard-local.html \
+  --output-svg var/ci/test-dashboard-local.svg \
+  --title "AspenOps local test dashboard" \
+  --scope "Local JUnit and coverage evidence"
+```
+
+`tests/test_test_dashboard.py` 检查解析、无网络依赖、HTML/SVG 输出、`INCOMPLETE` 失败路径，以及 Linux、Python 矩阵、Windows 和持证 Mock 的 workflow 接入。
 
 ### 锁定依赖 Wheel
 
@@ -174,7 +202,7 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-`run-metadata.txt` 记录 run、ref、`GITHUB_SHA` 与 `expected_head_sha`。Mock JUnit、成功认证证据副本和最终 `job_status` 全部写入这个 runner-temp 目录；`if: always()` 上传只读取本次目录，并使用 `if-no-files-found: error`。
+`run-metadata.txt` 记录 run、ref、`GITHUB_SHA` 与 `expected_head_sha`。Mock JUnit、`test-dashboard-licensed.html`、`test-dashboard-licensed.svg`、成功认证证据副本和最终 `job_status` 全部写入这个 runner-temp 目录；`if: always()` 上传只读取本次目录，并使用 `if-no-files-found: error`。
 
 所有真实认证运行使用固定 concurrency group `licensed-aspen-certification` 串行执行。外部证据目录按运行尝试隔离：
 
