@@ -82,6 +82,31 @@ def test_dashboard_outputs_are_self_contained(tmp_path: Path) -> None:
     assert "Current supplied evidence only" in svg
 
 
+def test_dashboard_marks_all_failures_failed() -> None:
+    module = load_module()
+    summary = module.TestSummary(tests=3, failures=3)
+    coverage = module.CoverageSummary(percent=90.0)
+
+    page = module.render_html(
+        title="Dashboard",
+        scope="All failures",
+        note="Current evidence.",
+        summary=summary,
+        coverage=coverage,
+        files=[],
+    )
+    svg = module.render_svg(
+        title="Dashboard",
+        scope="All failures",
+        summary=summary,
+        coverage=coverage,
+    )
+
+    assert "FAIL" in page
+    assert "FAIL" in svg
+    assert "INCOMPLETE" not in page
+
+
 def test_dashboard_marks_missing_evidence_incomplete() -> None:
     module = load_module()
     summary = module.TestSummary()
