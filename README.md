@@ -34,27 +34,13 @@
 | MCP 工具数 | 14 |
 | 真实 Aspen 认证 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章显示当前 `main` push 状态；历史数字不会替代最新 Actions 证据。
+以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 状态；历史数字不会替代最新 Actions 证据。
 
 公共 CI 证明控制平面、路径策略、进程隔离、调度、归档和接口契约，不证明商业 Aspen、许可证、物性方法或工程模型已完成认证。
 
 ---
 
 ## 核心不变量
-
-```text
-Agent / CLI / Python
-        │ typed MCP / JSON
-        ▼
-AspenOps Control Plane
-Policy · Registry · Units · Scheduler · Cache · Evidence · Audit
-        │ one batched RPC per point
-        ▼
-Private Worker · COM STA · Private Model Copy
-        ├─ Aspen Plus
-        ├─ Aspen HYSYS
-        └─ Mock
-```
 
 1. 一个 COM 对象只属于一个 Windows 子进程和一个 STA apartment。
 2. Agent 只使用语义变量，不构造任意 Aspen Tree Path。
@@ -105,14 +91,12 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复与稳定回归证据 |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → `self-hosted, windows, x64, aspen-licensed` | 非主干显式失败、受信 SHA、realpath、真实 COM、签名证据与人工审核 |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复和稳定回归证据 |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、全局串行、按运行尝试隔离证据、真实 COM 与人工审核 |
 
-所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝块式、带注释或内联的任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
+所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
 ### 六组合冻结依赖审计
-
-CI 对 Linux 与 Windows 分别审计 Python 3.11、3.12、3.13，共**六种**组合：
 
 ```text
 Linux 与 Windows × Python 3.11、3.12、3.13
@@ -128,7 +112,9 @@ Linux 与 Windows × Python 3.11、3.12、3.13
 
 ## 受信、隔离且无旧文件污染的性能证据
 
-性能任务第一步在 Ubuntu runner 上检查事件 ref。若不是 `refs/heads/main`，任务会把实际 ref 与 guard 日志写入 runner 临时证据目录并以退出码 2 **显式失败**，不会显示成 skipped。默认 baseline 为已验证的主干运行时：
+性能任务第一步检查事件 ref。若不是 `refs/heads/main`，任务会写入 `dispatch-ref.txt` 和 `dispatch-guard.log`，再以退出码 2 **显式失败**，不会显示成 skipped。
+
+默认 baseline：
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
@@ -136,8 +122,7 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 
 ```text
 显式验证 GITHUB_REF == refs/heads/main
-→ checkout 当前受信 main 工作流版本
-→ 获取 main 历史和标签
+→ actions/checkout 当前受信 main 工作流版本
 → 用 --end-of-options 解析 candidate_ref / baseline_ref
 → 两个 SHA 都必须属于 main
 → baseline 必须是 candidate 的祖先
@@ -145,14 +130,7 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 → 创建 baseline detached worktree
 ```
 
-手动 candidate 输入不会直接进入 `actions/checkout`。两个锁文件分别检查，两个环境分别 `uv sync --frozen`，并执行各自仓库中的脚本：
-
-```text
-candidate/uv.lock → candidate .venv → candidate benchmark script
-baseline/uv.lock  → baseline .venv  → baseline benchmark script
-```
-
-所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 在允许的 `${{ runner.temp }}` 上下文中读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
+手动 candidate 输入不会直接进入 `actions/checkout`。两个提交分别使用自己的 `uv.lock`、`.venv` 和 benchmark 脚本。所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 通过 `${{ runner.temp }}` 读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
 
 Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 
@@ -172,22 +150,29 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 ## 持证 Aspen 认证
 
-持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度会明确失败，且不会占用自托管 Aspen 许可证主机；只有 guard 成功后，`certify` job 才进入 `self-hosted, windows, x64, aspen-licensed`。输入的获批 SHA 不会直接传给 `actions/checkout`。
+持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度明确失败，且不会占用 `self-hosted, windows, x64, aspen-licensed` 主机。获批 SHA 不会直接传给 `actions/checkout`。
+
+所有真实认证运行使用统一 concurrency group `licensed-aspen-certification`，Aspen Plus 与 HYSYS 不会并发写入同一状态空间。外部证据目录按运行尝试隔离：
+
+```text
+ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+该目录每次运行先删除再重建，并通过 `LICENSED_EVIDENCE_DIR` 贯穿 preflight、真实执行、签名验证、报告检查和工作区暂存。重跑不会复用上一次 report/bundle，两个 backend 也不会共享固定目录。上传制品名称包含 `github.run_id` 和 `github.run_attempt`。
 
 ```text
 Ubuntu guard 显式验证 GITHUB_REF == refs/heads/main
 → checkout 当前受信 main 工作流版本
-→ 校验输入 SHA 格式、commit 存在性和 main 祖先关系
-→ detached checkout 已验证的获批 SHA，并核对 HEAD
-→ 校验该提交中的计划路径
-→ 冻结依赖与隔离 Mock 回归
-→ realpath → preflight → 明确人工批准 → 真实 COM
+→ 校验获批 SHA 并 detached checkout
+→ 清理 var/ci 并执行隔离 Mock 回归
+→ 建立 run_id-run_attempt 独立外部目录
+→ realpath → preflight → 人工批准 → 真实 COM
 → 签名包验证 → 全部证据非空检查
 → 清理并暂存至 var/ci/licensed-evidence
 → 仅上传工作区 var/ci → 工程师审核
 ```
 
-早期失败不会展开未定义的外部状态路径；成功证据先进入干净的工作区暂存目录。软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`，签名不等于工程模型已获批准。
+软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`，签名不等于工程模型已获批准。
 
 ---
 
