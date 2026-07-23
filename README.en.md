@@ -105,8 +105,8 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted-main comparison, two frozen environments, repeated trials and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | trusted SHA, realpath, real COM, signed evidence and human review |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | main-ref-only trusted comparison, two frozen environments, repeated trials and stable-regression evidence |
+| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | main-ref-only trusted SHA, realpath, real COM, signed evidence and human review |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects block, commented or inline `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -128,14 +128,15 @@ Runtime requirements are exported from `uv.lock` with hashes, synchronized with 
 
 ## Trusted, isolated and stale-proof performance evidence
 
-The default baseline is the validated main-history runtime:
+The manual job runs only when the event ref is `refs/heads/main`. Its default baseline is the validated main-history runtime:
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
 ```text
-checkout the current trusted main workflow revision
+load the workflow definition from refs/heads/main
+→ checkout the current trusted main workflow revision
 → fetch main history and tags
 → resolve candidate_ref / baseline_ref with --end-of-options
 → require both SHAs to belong to main
@@ -144,14 +145,14 @@ checkout the current trusted main workflow revision
 → create a detached baseline worktree
 ```
 
-The manual candidate input is never passed directly to `actions/checkout`. The workflow then uses:
+The manual candidate input is never passed directly to `actions/checkout`. Both lockfiles are checked independently, both environments use `uv sync --frozen`, and each revision runs its own repository script:
 
 ```text
 candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-Both lockfiles are checked independently, both environments use `uv sync --frozen`, and each revision executes its own repository script. Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads the directory through the supported `${{ runner.temp }}` context and never reads tracked `var/benchmarks` files from the candidate workspace.
+Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through the supported `${{ runner.temp }}` context and never reads tracked `var/benchmarks` files from the candidate workspace.
 
 Mock performance is orchestration evidence, not licensed Aspen solve speed.
 
@@ -171,8 +172,15 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 ## Licensed Aspen certification
 
+The licensed job also runs only when the event ref is `refs/heads/main`; the approved input SHA is never passed directly to `actions/checkout`.
+
 ```text
-exact approved SHA → trusted-main verification → frozen dependencies and Mock regression
+load the workflow definition from refs/heads/main
+→ checkout the current trusted main workflow revision
+→ validate SHA format, commit existence and main ancestry
+→ detached checkout of the validated approved SHA and verify HEAD
+→ validate the plan path in that checkout
+→ frozen dependencies and isolated Mock regression
 → realpath → preflight → explicit human approval → real COM
 → signed-bundle verification → require all evidence files to be non-empty
 → clean staging in var/ci/licensed-evidence
@@ -185,7 +193,7 @@ Early failures never expand an undefined external state path; successful evidenc
 
 ## Documentation, CLI and MCP contracts
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and checks README, `__version__`, CHANGELOG, AGENTS, CLAUDE, CONTRIBUTING and core documents. Local links cannot escape the repository, and operating guides must use frozen quality gates.
+`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and checks README, `__version__`, CHANGELOG, AGENTS, CLAUDE, CONTRIBUTING and core documents. Local links cannot escape the repository, operating guides must use frozen quality gates, and chat-internal citation or `sandbox:/` markup cannot enter repository Markdown.
 
 Primary CLI commands: `demo`, `doctor`, `dry-run`, `run-batch`, `submit`, `job`, `benchmark`, `optimize`, `certify`, `certification-preflight`, `certify-licensed`, `verify-licensed-bundle`, `verify-bundle`, and `mcp`.
 
