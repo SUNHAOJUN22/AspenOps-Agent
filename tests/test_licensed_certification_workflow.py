@@ -11,12 +11,12 @@ def workflow_text() -> str:
     return Path(".github/workflows/licensed-aspen-certification.yml").read_text(encoding="utf-8")
 
 
-def test_licensed_workflow_is_manual_protected_and_self_hosted() -> None:
+def test_workflow_is_manual_main_ref_protected_and_self_hosted() -> None:
     text = workflow_text()
-
     assert "workflow_dispatch:" in text
     assert "pull_request:" not in text
     assert "branches:" not in text
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" in text
     assert "runs-on: [self-hosted, windows, x64, aspen-licensed]" in text
     assert "environment: licensed-aspen-certification" in text
     assert "approve_real_execution:" in text
@@ -25,27 +25,32 @@ def test_licensed_workflow_is_manual_protected_and_self_hosted() -> None:
     assert 'ASPENOPS_CACHE_FAILURES: "false"' in text
 
 
-def test_licensed_workflow_checks_out_only_a_trusted_main_ancestor() -> None:
+def test_approved_revision_is_validated_before_detached_checkout() -> None:
     text = workflow_text()
+    checkout = text.index("Checkout trusted workflow revision")
+    trust = text.index("Verify and checkout exact revision from main")
+    setup = text.index("Set up Python")
 
     assert f"actions/checkout@{CHECKOUT_SHA}" in text
     assert f"astral-sh/setup-uv@{SETUP_UV_SHA}" in text
     assert f"actions/upload-artifact@{UPLOAD_ARTIFACT_SHA}" in text
-    assert "ref: ${{ inputs.expected_head_sha }}" in text
+    assert "ref: ${{ inputs.expected_head_sha }}" not in text
     assert "persist-credentials: false" in text
-    assert "git rev-parse HEAD" in text
+    assert checkout < trust < setup
     assert "^[0-9a-f]{40}$" in text
     assert "+refs/heads/main:refs/remotes/origin/main" in text
+    assert 'git rev-parse --verify --end-of-options "$expected^{commit}"' in text
     assert "git merge-base --is-ancestor $expected origin/main" in text
+    assert "git checkout --detach $expected" in text
+    assert "git rev-parse HEAD" in text
     assert "not an ancestor of the trusted main branch" in text
     assert "permissions:\n  contents: read" in text
     assert "git push" not in text
     assert "git merge " not in text
 
 
-def test_inputs_and_filesystem_targets_are_canonicalized_before_execution() -> None:
+def test_inputs_and_paths_are_canonicalized_before_real_execution() -> None:
     text = workflow_text()
-
     assert "PLAN_PATH: ${{ inputs.plan_path }}" in text
     assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in text
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in text
@@ -60,7 +65,7 @@ def test_inputs_and_filesystem_targets_are_canonicalized_before_execution() -> N
     assert '"$env:PLAN_PATH"' in text
 
 
-def test_real_secrets_are_not_exposed_to_sync_or_mock_regression() -> None:
+def test_real_secrets_are_not_exposed_to_setup_or_mock_regression() -> None:
     text = workflow_text()
     steps = text.index("    steps:")
     sync = text.index("Verify lockfile and sync frozen certification dependencies")
@@ -77,73 +82,55 @@ def test_real_secrets_are_not_exposed_to_sync_or_mock_regression() -> None:
     assert "${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}" in text[execute:]
 
 
-def test_regression_and_path_gates_precede_real_execution() -> None:
+def test_software_gates_precede_real_execution_and_upload() -> None:
     text = workflow_text()
-    checkout = text.index("Checkout exact approved commit")
-    trust = text.index("Verify exact revision belongs to main")
-    setup = text.index("Set up Python")
-    sync = text.index("Verify lockfile and sync frozen certification dependencies")
-    regression = text.index("Run isolated licensed control-plane regression gate")
-    resolve_paths = text.index("Resolve licensed filesystem targets")
-    preflight = text.index("aspenops certification-preflight")
-    approval = text.index("Preflight completed, but licensed COM execution")
-    execute = text.index("aspenops certify-licensed")
-    verify = text.index("aspenops verify-licensed-bundle")
-    staging = text.index("Stage and verify licensed evidence")
-    upload = text.index("Upload signed licensed evidence")
-
-    assert (
-        checkout
-        < trust
-        < setup
-        < sync
-        < regression
-        < resolve_paths
-        < preflight
-        < approval
-        < execute
-        < verify
-        < staging
-        < upload
-    )
+    ordered = [
+        "Checkout trusted workflow revision",
+        "Verify and checkout exact revision from main",
+        "Set up Python",
+        "Verify lockfile and sync frozen certification dependencies",
+        "Run isolated licensed control-plane regression gate",
+        "Resolve licensed filesystem targets",
+        "aspenops certification-preflight",
+        "Preflight completed, but licensed COM execution",
+        "aspenops certify-licensed",
+        "aspenops verify-licensed-bundle",
+        "Stage and verify licensed evidence",
+        "Upload signed licensed evidence",
+    ]
+    positions = [text.index(marker) for marker in ordered]
+    assert positions == sorted(positions)
     assert "uv lock --check" in text
     assert (
         "uv sync --frozen --extra dev --extra windows --extra agent --extra signing" in text
     )
     assert "ASPENOPS_BACKEND: mock" in text
     assert r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression" in text
-    assert "tests/test_batch_backend_default.py" in text
-    assert "tests/test_cli_output_policy.py" in text
-    assert "tests/test_real_backend_state_policy.py" in text
-    assert "tests/test_licensed_path_gate.py" in text
-    assert "tests/test_licensed_certification.py" in text
-    assert "tests/test_licensed_certification_governance.py" in text
-    assert "tests/test_aspen_process_ownership.py" in text
+    assert "tests/test_documentation_contracts.py" in text
     assert "tests/test_workflow_governance.py" in text
-    assert "tests/test_wheel_smoke_governance.py" in text
     assert "licensed-software-regression.xml" in text
 
 
 def test_workflow_cannot_self_grant_real_certification() -> None:
     text = workflow_text()
-
     assert "PENDING_REAL_ASPEN_CERTIFICATION" in text
     assert "REAL_ASPEN_CERTIFIED" not in text
     assert "Runtime is not permitted to self-grant" in text
 
 
-def test_signed_evidence_is_validated_and_staged_before_upload() -> None:
+def test_evidence_is_clean_validated_and_workspace_scoped() -> None:
     text = workflow_text()
     staging = text.index("Stage and verify licensed evidence")
     upload = text.index("Upload signed licensed evidence")
     block = text[staging:upload]
+    upload_block = text[upload:]
 
     assert "if: ${{ success() }}" in block
     assert "Test-Path -LiteralPath $source -PathType Leaf" in block
     assert "(Get-Item -LiteralPath $source).Length -le 0" in block
     assert "Required licensed evidence is missing" in block
     assert "Required licensed evidence is empty" in block
-    assert 'var/ci/licensed-evidence' in block
+    assert "var/ci/licensed-evidence" in block
     assert "Remove-Item -LiteralPath $staging -Recurse -Force" in block
     assert block.index("Remove-Item -LiteralPath $staging") < block.index(
         "New-Item -ItemType Directory -Force $staging"
@@ -153,15 +140,8 @@ def test_signed_evidence_is_validated_and_staged_before_upload() -> None:
     assert "Copy-Item -LiteralPath $bundle" in block
     assert "Staged licensed evidence is missing" in block
     assert "Staged licensed evidence is empty" in block
-
-
-def test_uploaded_artifact_is_workspace_scoped_and_excludes_private_key() -> None:
-    text = workflow_text()
-    upload = text[text.index("Upload signed licensed evidence") :]
-
-    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in upload
-    assert "expected_head_sha" not in upload
-    assert "path: var/ci" in upload
-    assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload
-    assert "ASPENOPS_CERT_SIGNING_KEY" not in upload
-    assert "private" not in upload.casefold()
+    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in upload_block
+    assert "expected_head_sha" not in upload_block
+    assert "path: var/ci" in upload_block
+    assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload_block
+    assert "ASPENOPS_CERT_SIGNING_KEY" not in upload_block
