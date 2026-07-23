@@ -84,7 +84,6 @@ git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
 cd AspenOps-Agent
 uv lock --check
 uv sync --frozen --extra dev --extra agent --extra signing
-
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
@@ -135,8 +134,6 @@ Linux 与 Windows × Python 3.11、3.12、3.13
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-执行顺序：
-
 ```text
 checkout 当前受信 main 工作流版本
 → 获取 main 历史和标签
@@ -147,14 +144,14 @@ checkout 当前受信 main 工作流版本
 → 创建 baseline detached worktree
 ```
 
-手动 candidate 输入不会直接进入 `actions/checkout`。随后使用：
+手动 candidate 输入不会直接进入 `actions/checkout`。随后分别使用：
 
 ```text
 candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-两个锁文件分别检查，两个环境分别 `uv sync --frozen`，并执行各自仓库中的脚本。所有本次运行日志、JSON 和报告只写入 GitHub runner 的 `$RUNNER_TEMP/aspenops-performance-evidence`；上传步骤使用允许的 `${{ runner.temp }}` 路径，不读取候选工作区中已提交的旧 `var/benchmarks` 文件。GitHub 官方说明 `runner.temp` 是每个 job 的临时目录。citeturn926106search4
+两个锁文件分别检查，两个环境分别 `uv sync --frozen`，并执行各自仓库中的脚本。所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 在允许的 `${{ runner.temp }}` 上下文中读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
 
 Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 
