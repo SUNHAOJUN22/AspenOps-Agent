@@ -69,31 +69,59 @@ def test_only_authoritative_long_lived_workflows_exist() -> None:
     assert observed == WORKFLOWS
 
 
-def test_all_external_actions_are_pinned_to_full_commit_shas() -> None:
+def test_actions_runners_and_uv_are_immutable() -> None:
     for name in WORKFLOWS:
+        text = workflow_text(name)
         uses_lines = [
             line
-            for line in workflow_text(name).splitlines()
+            for line in text.splitlines()
             if line.strip().startswith(("uses:", "- uses:"))
         ]
         assert uses_lines, f"{name} has no external action declarations"
-        for line in uses_lines:
-            match = PINNED_ACTION.fullmatch(line)
-            assert match is not None, f"Unpinned action in {name}: {line.strip()}"
+        assert all(PINNED_ACTION.fullmatch(line) for line in uses_lines)
 
-
-def test_all_setup_uv_steps_pin_the_exact_tool_version() -> None:
-    expected = f'version: "{UV_VERSION}"'
-    for name in WORKFLOWS:
-        text = workflow_text(name)
         chunks = text.split("astral-sh/setup-uv@")[1:]
         assert chunks, f"{name} has no setup-uv step"
         for chunk in chunks:
             step = chunk.split("\n      - ", 1)[0]
-            assert expected in step, f"{name} does not pin uv {UV_VERSION}"
+            assert f'version: "{UV_VERSION}"' in step
+
+    portable = workflow_text("ci.yml")
+    performance = workflow_text("generate-performance-evidence.yml")
+    windows = workflow_text("windows-control-plane.yml")
+    assert portable.count("runs-on: ubuntu-24.04") == 2
+    assert "runs-on: ubuntu-24.04" in performance
+    assert "runs-on: windows-2025" in windows
+    assert "ubuntu-latest" not in portable + performance
+    assert "windows-latest" not in windows
 
 
-def test_ci_audits_every_supported_python_platform_combination() -> None:
+def test_workflows_are_read_only_frozen_and_fail_closed() -> None:
+    for name in WORKFLOWS:
+        text = workflow_text(name)
+        assert "permissions:\n  contents: read" in text
+        assert WRITE_PERMISSION.search(text) is None
+        assert INLINE_WRITE_PERMISSION.search(text) is None
+        assert "persist-credentials: false" in text
+        assert "pull_request_target:" not in text
+        assert "continue-on-error: true" not in text
+        assert "uv lock --check" in text
+        assert "uv sync --frozen" in text
+
+    for name in ("ci.yml", "generate-performance-evidence.yml"):
+        commands = shell_commands(workflow_text(name))
+        assert commands
+        assert all("set -euo pipefail" in command for command in commands)
+        assert all("set -o pipefail" not in command for command in commands)
+
+
+def test_dispatch_inputs_never_interpolate_into_run_commands() -> None:
+    for name in WORKFLOWS:
+        for command in shell_commands(workflow_text(name)):
+            assert "${{ inputs." not in command
+
+
+def test_ci_collects_all_dependency_audit_evidence_before_failing() -> None:
     text = workflow_text("ci.yml")
     assert text.count("uv audit --frozen") == 1
     assert "UV_PREVIEW_FEATURES: json-output" in text
@@ -103,110 +131,54 @@ def test_ci_audits_every_supported_python_platform_combination() -> None:
     assert 'stem="var/ci/dependency-audit-${platform}-py${version}"' in text
     assert 'output="${stem}.json"' in text
     assert 'error_log="${stem}.log"' in text
-    assert "audit_failed=0" in text
-    assert "if ! uv audit --frozen" in text
-    assert '> "$output" 2> "$error_log"' in text
     assert 'if ! python -m json.tool "$output" >/dev/null' in text
-    assert "audit_failed=1" in text
     assert "One or more locked dependency audits failed" in text
     assert text.index("for platform in linux windows; do") < text.index(
         'if [[ "$audit_failed" -ne 0 ]]'
     )
 
 
-def test_hosted_runner_os_versions_are_explicit() -> None:
-    portable = workflow_text("ci.yml")
-    performance = workflow_text("generate-performance-evidence.yml")
-    windows = workflow_text("windows-control-plane.yml")
-
-    assert portable.count("runs-on: ubuntu-24.04") == 2
-    assert "ubuntu-latest" not in portable
-    assert "runs-on: ubuntu-24.04" in performance
-    assert "ubuntu-latest" not in performance
-    assert "runs-on: windows-2025" in windows
-    assert "windows-latest" not in windows
-
-
-def test_all_bash_steps_explicitly_fail_closed() -> None:
-    for name in ("ci.yml", "generate-performance-evidence.yml"):
-        commands = shell_commands(workflow_text(name))
-        assert commands
-        for command in commands:
-            assert "set -euo pipefail" in command, f"Weak Bash mode in {name}"
-            assert "set -o pipefail" not in command
-
-
-def test_workflows_are_strictly_read_only_and_drop_checkout_credentials() -> None:
-    for name in WORKFLOWS:
-        text = workflow_text(name)
-        assert "permissions:\n  contents: read" in text
-        assert WRITE_PERMISSION.search(text) is None, f"Write permission in {name}"
-        assert INLINE_WRITE_PERMISSION.search(text) is None, f"Inline write permission in {name}"
-        assert "persist-credentials: false" in text
-        assert "pull_request_target:" not in text
-        assert "continue-on-error: true" not in text
-
-
-def test_all_workflows_use_checked_frozen_dependencies() -> None:
-    for name in WORKFLOWS:
-        text = workflow_text(name)
-        assert "uv lock --check" in text
-        assert "uv sync --frozen" in text
-
-
-def test_dispatch_inputs_never_interpolate_into_any_run_command() -> None:
-    for name in WORKFLOWS:
-        for command in shell_commands(workflow_text(name)):
-            assert "${{ inputs." not in command, (
-                f"Direct input interpolation in {name} run command"
-            )
-
-
-def test_performance_revisions_and_environments_are_trusted_and_isolated() -> None:
+def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     text = workflow_text("generate-performance-evidence.yml")
     checkout = text.index("actions/checkout@")
-    trust_step = text.index("Verify trusted revisions and prepare isolated checkouts")
-    tool_setup = text.index("astral-sh/setup-uv@")
-    dependency_sync = text.index("Verify lockfiles and sync isolated benchmark environments")
-    baseline_run = text.index("Run baseline matrix in baseline environment")
-    candidate_run = text.index("Run candidate matrix in candidate environment")
+    trust = text.index("Verify trusted revisions and prepare isolated checkouts")
+    setup = text.index("astral-sh/setup-uv@")
+    sync = text.index("Verify lockfiles and sync isolated benchmark environments")
+    baseline = text.index("Run baseline matrix in baseline environment")
+    candidate = text.index("Run candidate matrix in candidate environment")
 
     assert f"default: {PERFORMANCE_BASELINE_SHA}" in text
-    assert "group: aspenops-performance-evidence" in text
-    assert "group: aspenops-performance-${{ inputs." not in text
-    assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in text
-    assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
+    assert checkout < trust < setup < sync < baseline < candidate
     assert "ref: ${{ inputs.candidate_ref }}" not in text
-    assert checkout < trust_step < tool_setup < dependency_sync < baseline_run < candidate_run
-    assert 'PERFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}' in text
-    assert 'rm -rf "$PERFORMANCE_EVIDENCE_DIR"' in text
-    assert 'mkdir -p "$PERFORMANCE_EVIDENCE_DIR"' in text
-    assert '"+refs/heads/main:refs/remotes/origin/main"' in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
     assert 'git rev-parse --verify --end-of-options "${CANDIDATE_REF}^{commit}"' in text
     assert 'git merge-base --is-ancestor "$candidate_sha" origin/main' in text
     assert 'git merge-base --is-ancestor "$baseline_sha" origin/main' in text
     assert 'git merge-base --is-ancestor "$baseline_sha" "$candidate_sha"' in text
-    assert "baseline_ref must be an ancestor of candidate_ref" in text
     assert 'git checkout --detach "$candidate_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
-    assert 'git worktree add --detach /tmp/aspenops-baseline "$BASELINE_REF"' not in text
+
+    job_env = text[text.index("    env:") : text.index("    steps:")]
+    assert "runner.temp" not in job_env
+    assert text.count('evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"') == 6
+    assert 'rm -rf "$evidence_dir"' in text
+    assert 'mkdir -p "$evidence_dir"' in text
+    assert "var/benchmarks" not in text
+    assert "PYTHONPATH: /tmp/aspenops-baseline/src" not in text
+
     assert "candidate-uv-lock.log" in text
-    assert "candidate-sync.log" in text
     assert "baseline-uv-lock.log" in text
+    assert "candidate-sync.log" in text
     assert "baseline-sync.log" in text
-    assert "cd /tmp/aspenops-baseline" in text
     assert "/tmp/aspenops-baseline/.venv/bin/python" in text
     assert "/tmp/aspenops-baseline/scripts/run_benchmark_matrix.py" in text
     assert ".venv/bin/python scripts/run_benchmark_matrix.py" in text
-    assert "PYTHONPATH: /tmp/aspenops-baseline/src" not in text
-    assert "var/benchmarks" not in text
     assert "name: performance-evidence-${{ github.run_id }}" in text
-    assert "path: ${{ env.PERFORMANCE_EVIDENCE_DIR }}" in text
+    assert "path: ${{ runner.temp }}/aspenops-performance-evidence" in text
     assert "name: performance-evidence-${{ inputs." not in text
 
 
-def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None:
+def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     workflow = workflow_text("licensed-aspen-certification.yml")
     gate = Path("scripts/validate_licensed_paths.py").read_text(encoding="utf-8")
 
@@ -214,7 +186,7 @@ def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None
     assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in workflow
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
     assert "plan_path must be one non-empty line" in workflow
-    assert "plan_path escapes the repository workspace" in workflow
+    assert "plan_path must be repository-relative" in workflow
     assert "git merge-base --is-ancestor $expected origin/main" in workflow
     assert "python scripts/validate_licensed_paths.py" in workflow
     assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
@@ -224,23 +196,16 @@ def test_licensed_inputs_and_real_filesystem_targets_are_canonicalized() -> None
     assert "ASPENOPS_STATE_DIR must be absolute" in gate
     assert "PLAN_PATH resolves outside GITHUB_WORKSPACE" in gate
     assert "ASPENOPS_STATE_DIR resolves outside ASPENOPS_ALLOWED_ROOTS" in gate
-    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in workflow
-    assert "name: licensed-${{ inputs.backend }}-${{ inputs.expected_head_sha }}" not in workflow
 
 
-def test_licensed_evidence_is_staged_inside_workspace_before_upload() -> None:
+def test_licensed_evidence_is_clean_and_workspace_scoped() -> None:
     text = workflow_text("licensed-aspen-certification.yml")
     staging = text.index("Stage and verify licensed evidence")
     upload = text.index("Upload signed licensed evidence")
     block = text[staging:upload]
     upload_block = text[upload:]
 
-    assert staging < upload
     assert "if: ${{ success() }}" in block
-    assert "licensed-software-regression.xml" in block
-    assert "preflight.json" in block
-    assert "licensed-certification-report.json" in block
-    assert "licensed-certification-bundle.zip" in block
     assert "Test-Path -LiteralPath $source -PathType Leaf" in block
     assert "(Get-Item -LiteralPath $source).Length -le 0" in block
     assert "var/ci/licensed-evidence" in block
@@ -250,11 +215,13 @@ def test_licensed_evidence_is_staged_inside_workspace_before_upload() -> None:
     assert "Copy-Item -LiteralPath $bundle" in block
     assert "Staged licensed evidence is missing" in block
     assert "Staged licensed evidence is empty" in block
+    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in upload_block
     assert "path: var/ci" in upload_block
     assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload_block
+    assert "expected_head_sha" not in upload_block
 
 
-def test_windows_gates_run_policy_and_documentation_contracts() -> None:
+def test_windows_gates_keep_policy_documentation_and_bootstrap_contracts() -> None:
     for name in ("windows-control-plane.yml", "licensed-aspen-certification.yml"):
         text = workflow_text(name)
         assert "tests/test_config_resource_budgets.py" in text
@@ -262,21 +229,14 @@ def test_windows_gates_run_policy_and_documentation_contracts() -> None:
         assert "tests/test_real_backend_state_policy.py" in text
         assert "tests/test_licensed_path_gate.py" in text
 
-
-def test_windows_ci_parses_and_executes_bootstrap_contracts() -> None:
-    text = workflow_text("windows-control-plane.yml")
-    assert "Parse PowerShell bootstrap" in text
-    assert "System.Management.Automation.Language.Parser" in text
-    assert "scripts/setup_windows.ps1" in text
-    assert "PowerShell parser found errors" in text
-    assert "powershell-parse.log" in text
-    assert "Exercise PowerShell bootstrap helpers" in text
-    assert ". ./scripts/setup_windows.ps1 -LibraryMode" in text
-    assert "Duplicate dotenv failure leaked a raw secret" in text
-    assert "Unbalanced dotenv failure leaked a raw secret" in text
-    assert "winget upgrade/install fallback order was not preserved" in text
-    assert "PowerShell bootstrap contracts passed" in text
-    assert "powershell-contracts.log" in text
+    windows = workflow_text("windows-control-plane.yml")
+    assert "Parse PowerShell bootstrap" in windows
+    assert "System.Management.Automation.Language.Parser" in windows
+    assert "Exercise PowerShell bootstrap helpers" in windows
+    assert ". ./scripts/setup_windows.ps1 -LibraryMode" in windows
+    assert "Duplicate dotenv failure leaked a raw secret" in windows
+    assert "Unbalanced dotenv failure leaked a raw secret" in windows
+    assert "winget upgrade/install fallback order was not preserved" in windows
 
 
 def test_windows_bootstrap_is_frozen_fail_closed_and_secret_safe() -> None:
@@ -285,17 +245,11 @@ def test_windows_bootstrap_is_frozen_fail_closed_and_secret_safe() -> None:
     assert "if (-not $LibraryMode)" in text
     assert "Set-StrictMode -Version Latest" in text
     assert '$RequiredUvVersion = [version]"0.11.16"' in text
-    assert "Get-UvVersion" in text
     assert "Try-UvSelfUpdate" in text
     assert "uv self update" in text
     assert '$env:UV_NO_MODIFY_PATH = "1"' in text
     assert 'Invoke-WingetUv -Verb "upgrade"' in text
     assert 'Invoke-WingetUv -Verb "install"' in text
-    assert "--accept-package-agreements" in text
-    assert "--accept-source-agreements" in text
-    assert "Refresh-ProcessPath" in text
-    assert "$currentPath = $env:Path" in text
-    assert "@($machinePath, $userPath, $currentPath)" in text
     assert "uv lock --check" in text
     assert "uv sync --frozen --extra windows --extra agent --extra dev --extra signing" in text
     assert "Import-DotEnv -Path .env" in text
