@@ -24,7 +24,7 @@ Real-backend Settings fail before preflight when roots are missing, relative or 
 powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-The script enables strict PowerShell, installs or upgrades `uv`, rechecks the actual version, preserves PATH, checks `uv.lock`, runs frozen synchronization, imports `.env`, rejects duplicate variables and unbalanced quotes, reports failures without echoing raw secrets, and runs `doctor --probe`.
+The script enables strict PowerShell, tries `uv self update` for an old standalone installation, falls back to `winget` upgrade/install, rechecks the actual version after every attempt, preserves PATH, checks `uv.lock`, runs frozen synchronization, imports `.env`, rejects duplicate variables and unbalanced quotes, reports failures without echoing raw secrets, and runs `doctor --probe`.
 
 ```powershell
 uv lock --check
