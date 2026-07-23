@@ -79,15 +79,27 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
-      - name: Verify documentation and artifact contracts
+      - name: Verify documentation, artifact and dashboard contracts
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest -W error::ResourceWarning \
             tests/test_documentation_contracts.py \
             tests/test_artifact_upload_governance.py \
+            tests/test_test_dashboard.py \
             --junitxml=var/ci/documentation-contracts.xml \
             2>&1 | tee var/ci/documentation-contracts.log
+      - name: Render quality test dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/render_test_dashboard.py \
+            --input-dir var/ci \
+            --output-html var/ci/test-dashboard-quality.html \
+            --output-svg var/ci/test-dashboard-quality.svg \
+            --title "AspenOps quality dashboard" \
+            --scope "Linux quality, documentation and artifact governance" \
+            --note "This dashboard summarizes only evidence from the quality job."
       - name: Build distributions
         shell: bash
         run: |
@@ -213,6 +225,18 @@ jobs:
             --durations=20 \
             --cov-fail-under=94.5 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
+      - name: Render Python test dashboard
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/render_test_dashboard.py \
+            --input-dir var/ci \
+            --output-html var/ci/test-dashboard-python-${{ matrix.python-version }}.html \
+            --output-svg var/ci/test-dashboard-python-${{ matrix.python-version }}.svg \
+            --title "AspenOps Python ${{ matrix.python-version }} dashboard" \
+            --scope "Full Python test matrix with branch coverage" \
+            --note "This dashboard summarizes only this Python job's evidence."
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
