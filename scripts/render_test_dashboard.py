@@ -112,10 +112,10 @@ def _fmt_percent(value: float | None) -> str:
 
 
 def _status(summary: TestSummary) -> tuple[str, str]:
-    if summary.tests == 0 or summary.passed == 0:
-        return "INCOMPLETE", "#b45309"
     if summary.failures or summary.errors:
         return "FAIL", "#b91c1c"
+    if summary.tests == 0 or summary.passed == 0:
+        return "INCOMPLETE", "#b45309"
     return "PASS", "#15803d"
 
 
