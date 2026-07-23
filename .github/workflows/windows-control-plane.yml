@@ -184,6 +184,7 @@ jobs:
             tests/test_config_resource_budgets.py `
             tests/test_documentation_contracts.py `
             tests/test_artifact_upload_governance.py `
+            tests/test_test_dashboard.py `
             tests/test_real_backend_state_policy.py `
             tests/test_licensed_path_gate.py `
             tests/test_convergence.py `
@@ -204,6 +205,18 @@ jobs:
             --junitxml=var/ci/windows-contracts.xml `
             --durations=20 *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render Windows test dashboard
+        if: always()
+        shell: pwsh
+        run: |
+          uv run python scripts/render_test_dashboard.py `
+            --input-dir var/ci `
+            --output-html var/ci/test-dashboard-windows.html `
+            --output-svg var/ci/test-dashboard-windows.svg `
+            --title "AspenOps Windows dashboard" `
+            --scope "Windows control-plane and process contracts" `
+            --note "This dashboard summarizes only evidence from this Windows job."
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows CLI smoke
         shell: pwsh
