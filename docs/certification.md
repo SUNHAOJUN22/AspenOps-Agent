@@ -70,18 +70,19 @@ Direct CLI use is subject to the same Settings, backend and allowed-root policy.
 .github/workflows/licensed-aspen-certification.yml
 ```
 
-Runner labels:
+Execution environments:
 
 ```text
-self-hosted, windows, x64, aspen-licensed
+ubuntu-24.04 dispatch guard
+→ self-hosted, windows, x64, aspen-licensed certification job
 ```
 
-The workflow accepts manual dispatch only when the event ref is `refs/heads/main`. Inputs provide a repository-relative plan path, exact lowercase 40-character approved SHA, backend and explicit execution authorization.
+A lightweight Ubuntu guard always runs first. When `GITHUB_REF` is not `refs/heads/main`, it exits with status 2 and the workflow fails explicitly; the self-hosted Aspen job has `needs: dispatch-guard`, so an invalid dispatch never occupies the licensed machine.
 
-The approved SHA is never passed directly to `actions/checkout`. The actual sequence is:
+Inputs provide a repository-relative plan path, exact lowercase 40-character approved SHA, backend and explicit execution authorization. The approved SHA is never passed directly to `actions/checkout`.
 
 ```text
-run the workflow definition from refs/heads/main
+Ubuntu guard explicitly requires GITHUB_REF == refs/heads/main
 → checkout the trusted main workflow revision
 → validate the input SHA format
 → fetch trusted main
