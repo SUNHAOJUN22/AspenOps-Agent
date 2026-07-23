@@ -39,6 +39,19 @@ def test_dashboard_parses_junit_and_coverage(tmp_path: Path) -> None:
     assert totals.percent == 94.5
 
 
+def test_dashboard_rejects_malformed_coverage(tmp_path: Path) -> None:
+    module = load_module()
+    coverage = tmp_path / "coverage.json"
+    coverage.write_text('{"not_totals":{}}', encoding="utf-8")
+
+    try:
+        module.parse_coverage([coverage])
+    except ValueError as error:
+        assert "no totals object" in str(error)
+    else:
+        raise AssertionError("Malformed coverage evidence was accepted")
+
+
 def test_dashboard_outputs_are_self_contained(tmp_path: Path) -> None:
     module = load_module()
     summary = module.TestSummary(tests=10, failures=0, errors=0, skipped=0, seconds=2.0)
@@ -105,6 +118,14 @@ def test_dashboard_is_integrated_and_documented() -> None:
         text = workflow.read_text(encoding="utf-8")
         assert "scripts/render_test_dashboard.py" in text
         assert "test-dashboard-" in text
+
+    ci = workflows[0].read_text(encoding="utf-8")
+    windows = workflows[1].read_text(encoding="utf-8")
+    licensed = workflows[2].read_text(encoding="utf-8")
+    assert "- name: Render quality test dashboard\n        if: always()" in ci
+    assert "- name: Render Python test dashboard\n        if: always()" in ci
+    assert "- name: Render Windows test dashboard\n        if: always()" in windows
+    assert "- name: Render licensed Mock test dashboard\n        if: always()" in licensed
 
     for readme in (Path("README.md"), Path("README.en.md")):
         text = readme.read_text(encoding="utf-8")
