@@ -37,6 +37,7 @@ def test_workflow_has_explicit_main_ref_guard_before_self_hosted_job() -> None:
 
 def test_approved_sha_is_bound_to_dispatched_workflow_revision() -> None:
     text = workflow_text()
+    artifact_prep = text.index("Prepare clean licensed artifact directory")
     checkout = text.index("Checkout trusted workflow revision")
     trust = text.index("Verify dispatched revision and approved SHA")
     setup = text.index("Set up Python")
@@ -46,7 +47,7 @@ def test_approved_sha_is_bound_to_dispatched_workflow_revision() -> None:
     assert f"actions/upload-artifact@{UPLOAD_ARTIFACT_SHA}" in text
     assert "ref: ${{ inputs.expected_head_sha }}" not in text
     assert "persist-credentials: false" in text
-    assert checkout < trust < setup
+    assert artifact_prep < checkout < trust < setup
     assert '$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()' in text
     assert "expected_head_sha must equal the dispatched main GITHUB_SHA" in text
     assert "Initial checkout does not match the dispatched workflow revision" in text
@@ -98,6 +99,7 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     text = workflow_text()
     ordered = [
         "Reject non-main manual dispatch",
+        "Prepare clean licensed artifact directory",
         "Checkout trusted workflow revision",
         "Verify dispatched revision and approved SHA",
         "Set up Python",
@@ -109,6 +111,7 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
         "aspenops certify-licensed",
         "aspenops verify-licensed-bundle",
         "Stage and verify licensed evidence",
+        "Record licensed workflow outcome",
         "Upload signed licensed evidence",
     ]
     positions = [text.index(marker) for marker in ordered]
@@ -121,7 +124,6 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     assert "ASPENOPS_BACKEND: mock" in text
     mock_state = r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression"
     assert mock_state in text
-    assert "Remove-Item -LiteralPath var/ci -Recurse -Force" in text
     assert "tests/test_documentation_contracts.py" in text
     assert "tests/test_workflow_governance.py" in text
     assert "licensed-software-regression.xml" in text
@@ -154,34 +156,60 @@ def test_workflow_cannot_self_grant_real_certification() -> None:
     assert "Runtime is not permitted to self-grant" in text
 
 
-def test_evidence_is_clean_validated_and_workspace_scoped() -> None:
+def test_artifacts_are_precheckout_clean_validated_and_runner_temp_scoped() -> None:
     text = workflow_text()
+    prepare = text.index("Prepare clean licensed artifact directory")
+    checkout = text.index("Checkout trusted workflow revision")
+    regression = text.index("Run isolated licensed control-plane regression gate")
+    resolve = text.index("Resolve licensed filesystem targets")
     staging = text.index("Stage and verify licensed evidence")
+    outcome = text.index("Record licensed workflow outcome")
     upload = text.index("Upload signed licensed evidence")
-    block = text[staging:upload]
+    prepare_block = text[prepare:checkout]
+    regression_block = text[regression:resolve]
+    staging_block = text[staging:outcome]
+    outcome_block = text[outcome:upload]
     upload_block = text[upload:]
 
-    assert "if: ${{ success() }}" in block
-    assert "Test-Path -LiteralPath $source -PathType Leaf" in block
-    assert "(Get-Item -LiteralPath $source).Length -le 0" in block
-    assert "Required licensed evidence is missing" in block
-    assert "Required licensed evidence is empty" in block
-    assert "var/ci/licensed-evidence" in block
-    assert "Remove-Item -LiteralPath $staging -Recurse -Force" in block
-    assert block.index("Remove-Item -LiteralPath $staging") < block.index(
-        "New-Item -ItemType Directory -Force $staging"
+    assert prepare < checkout < regression < staging < outcome < upload
+    artifact_assignment = (
+        '$artifactName = "aspenops-licensed-artifact-'
+        '$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"'
     )
-    assert "Copy-Item -LiteralPath $preflight" in block
-    assert "Copy-Item -LiteralPath $report" in block
-    assert "Copy-Item -LiteralPath $bundle" in block
-    assert "Staged licensed evidence is missing" in block
-    assert "Staged licensed evidence is empty" in block
+    assert text.count(artifact_assignment) == 4
+    assert "Remove-Item -LiteralPath $artifactDir -Recurse -Force" in prepare_block
+    assert prepare_block.index("Remove-Item -LiteralPath $artifactDir") < prepare_block.index(
+        "New-Item -ItemType Directory -Force $artifactDir"
+    )
+    assert "run-metadata.txt" in prepare_block
+    assert "workflow_sha=$env:GITHUB_SHA" in prepare_block
+    assert '$junit = Join-Path $artifactDir "licensed-software-regression.xml"' in regression_block
+    assert '--junitxml="$junit"' in regression_block
+    assert "var/ci" not in text
+    assert "if: ${{ success() }}" in staging_block
+    assert "Test-Path -LiteralPath $source -PathType Leaf" in staging_block
+    assert "(Get-Item -LiteralPath $source).Length -le 0" in staging_block
+    assert '$staging = Join-Path $artifactDir "licensed-evidence"' in staging_block
+    assert "Remove-Item -LiteralPath $staging -Recurse -Force" in staging_block
+    assert "Copy-Item -LiteralPath $preflight" in staging_block
+    assert "Copy-Item -LiteralPath $report" in staging_block
+    assert "Copy-Item -LiteralPath $bundle" in staging_block
+    assert "Staged licensed evidence is missing" in staging_block
+    assert "Staged licensed evidence is empty" in staging_block
+    assert "JOB_STATUS: ${{ job.status }}" in outcome_block
+    assert "job_status=$env:JOB_STATUS" in outcome_block
+    assert "run-metadata.txt" in outcome_block
     artifact_name = (
         "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-"
         "${{ github.run_attempt }}"
     )
+    artifact_path = (
+        "path: ${{ runner.temp }}/aspenops-licensed-artifact-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+    )
     assert artifact_name in upload_block
+    assert artifact_path in upload_block
+    assert "if-no-files-found: error" in upload_block
     assert "expected_head_sha" not in upload_block
-    assert "path: var/ci" in upload_block
     assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload_block
     assert "ASPENOPS_CERT_SIGNING_KEY" not in upload_block
