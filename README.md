@@ -116,7 +116,7 @@ performance-evidence-<run_id>-<run_attempt>
 licensed-<backend>-<run_id>-<run_attempt>
 ```
 
-所有上传步骤统一使用 `if-no-files-found: error`。证据路径不存在时工作流必须失败，不允许 `ignore` 或 `warn` 把缺失证据伪装成成功。公共 CI、Windows 与性能工作流均由 `tests/test_artifact_upload_governance.py` 自动检查。
+所有上传步骤统一使用 `if-no-files-found: error`。证据路径不存在时工作流必须失败，不允许 `ignore` 或 `warn` 把缺失证据伪装成成功。`tests/test_artifact_upload_governance.py` 检查四个工作流，并在公共 Linux 质量门、Windows 合同门和持证 Mock 回归中均被执行。
 
 ### 锁定依赖 Wheel
 
