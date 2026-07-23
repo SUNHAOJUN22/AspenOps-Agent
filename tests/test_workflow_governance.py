@@ -170,8 +170,6 @@ def test_performance_revisions_and_environments_are_trusted_and_isolated() -> No
     dependency_sync = text.index("Verify lockfiles and sync isolated benchmark environments")
     baseline_run = text.index("Run baseline matrix in baseline environment")
     candidate_run = text.index("Run candidate matrix in candidate environment")
-    trap_setup = text.index("trap publish_trust_evidence EXIT")
-    fetch = text.index("git fetch --tags --prune origin")
 
     assert f"default: {PERFORMANCE_BASELINE_SHA}" in text
     assert "group: aspenops-performance-evidence" in text
@@ -180,11 +178,9 @@ def test_performance_revisions_and_environments_are_trusted_and_isolated() -> No
     assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
     assert "ref: ${{ inputs.candidate_ref }}" not in text
     assert checkout < trust_step < tool_setup < dependency_sync < baseline_run < candidate_run
-    assert trap_setup < fetch
-    assert 'trust_dir="${RUNNER_TEMP}/aspenops-performance-trust"' in text
-    assert "publish_trust_evidence()" in text
-    assert 'rm -rf "$GITHUB_WORKSPACE/var/benchmarks"' in text
-    assert 'cp -a "$trust_dir/." "$GITHUB_WORKSPACE/var/benchmarks/"' in text
+    assert 'PERFORMANCE_EVIDENCE_DIR: ${{ runner.temp }}' in text
+    assert 'rm -rf "$PERFORMANCE_EVIDENCE_DIR"' in text
+    assert 'mkdir -p "$PERFORMANCE_EVIDENCE_DIR"' in text
     assert '"+refs/heads/main:refs/remotes/origin/main"' in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
     assert 'git rev-parse --verify --end-of-options "${CANDIDATE_REF}^{commit}"' in text
@@ -204,7 +200,9 @@ def test_performance_revisions_and_environments_are_trusted_and_isolated() -> No
     assert "/tmp/aspenops-baseline/scripts/run_benchmark_matrix.py" in text
     assert ".venv/bin/python scripts/run_benchmark_matrix.py" in text
     assert "PYTHONPATH: /tmp/aspenops-baseline/src" not in text
+    assert "var/benchmarks" not in text
     assert "name: performance-evidence-${{ github.run_id }}" in text
+    assert "path: ${{ env.PERFORMANCE_EVIDENCE_DIR }}" in text
     assert "name: performance-evidence-${{ inputs." not in text
 
 
