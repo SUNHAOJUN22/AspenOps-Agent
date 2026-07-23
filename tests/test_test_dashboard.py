@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -11,6 +12,7 @@ def load_module():
     spec = importlib.util.spec_from_file_location("render_test_dashboard", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -65,6 +67,51 @@ def test_dashboard_outputs_are_self_contained(tmp_path: Path) -> None:
     assert "https://" not in page
     assert "<svg" in svg
     assert "Current supplied evidence only" in svg
+
+
+def test_dashboard_marks_missing_evidence_incomplete() -> None:
+    module = load_module()
+    summary = module.TestSummary()
+    coverage = module.CoverageSummary()
+
+    page = module.render_html(
+        title="Dashboard",
+        scope="No evidence",
+        note="Early failure.",
+        summary=summary,
+        coverage=coverage,
+        files=[],
+    )
+    svg = module.render_svg(
+        title="Dashboard",
+        scope="No evidence",
+        summary=summary,
+        coverage=coverage,
+    )
+
+    assert summary.pass_rate == 0.0
+    assert "INCOMPLETE" in page
+    assert "INCOMPLETE" in svg
+    assert "100.00%" not in page
+
+
+def test_dashboard_is_integrated_and_documented() -> None:
+    workflows = (
+        Path(".github/workflows/ci.yml"),
+        Path(".github/workflows/windows-control-plane.yml"),
+        Path(".github/workflows/licensed-aspen-certification.yml"),
+    )
+    for workflow in workflows:
+        text = workflow.read_text(encoding="utf-8")
+        assert "scripts/render_test_dashboard.py" in text
+        assert "test-dashboard-" in text
+
+    for readme in (Path("README.md"), Path("README.en.md")):
+        text = readme.read_text(encoding="utf-8")
+        assert "scripts/render_test_dashboard.py" in text
+        assert "test-dashboard-quality.html" in text
+        assert "test-dashboard-windows.html" in text
+        assert "test-dashboard-licensed.html" in text
 
 
 def test_dashboard_cli_writes_html_and_svg(tmp_path: Path, monkeypatch) -> None:
