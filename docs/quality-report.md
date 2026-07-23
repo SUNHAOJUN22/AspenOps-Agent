@@ -80,7 +80,7 @@ The same fail-closed real-backend policy applies to environment loading, direct 
 - input-injection scanning across literal, folded, inline and shorthand `run` forms;
 - complete six-target dependency evidence;
 - run-ID-scoped artifact names;
-- trusted revision checks before performance code execution;
+- trusted revision checks before candidate checkout or performance code execution;
 - independent baseline/candidate lockfiles, virtual environments and benchmark scripts;
 - trusted-main licensed SHA, realpath handoff and secret isolation;
 - clean workspace-staged licensed evidence before upload;
@@ -94,16 +94,19 @@ The same fail-closed real-backend policy applies to environment loading, direct 
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-It validates trust before setup or Python execution:
+It validates trust before setup, candidate checkout or Python execution:
 
 ```text
-checkout candidate
-→ fetch trusted main
-→ resolve candidate/baseline SHAs
-→ require both to belong to main
+checkout current trusted main workflow revision
+→ fetch trusted main history and tags
+→ resolve candidate_ref and baseline_ref with --end-of-options
+→ require both immutable SHAs to belong to main
 → require baseline to be an ancestor of candidate
+→ detached checkout of validated candidate SHA
 → create detached baseline worktree
 ```
+
+The manual candidate input is never passed directly to `actions/checkout`.
 
 It then creates and records two independent frozen environments:
 
@@ -112,7 +115,7 @@ candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-Both lockfiles are checked independently, both environments synchronize with `--frozen`, and both revisions execute the benchmark script stored in their own repository. This prevents candidate dependencies, source or harness changes from contaminating the baseline. An incompatible baseline must fail explicitly rather than silently changing the comparison method.
+Both lockfiles are checked independently, both environments synchronize with `--frozen`, and both revisions execute the benchmark script stored in their own repository. This prevents candidate input, dependencies, source or harness changes from contaminating the baseline. An incompatible baseline must fail explicitly rather than silently changing the comparison method.
 
 Results remain portable Mock orchestration evidence, not licensed Aspen solve performance.
 
