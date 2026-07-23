@@ -72,6 +72,12 @@ def test_matrix_and_specialized_artifact_names_remain_distinct() -> None:
     assert licensed_name in licensed
 
 
+def test_artifact_governance_remains_in_early_quality_gates() -> None:
+    marker = "tests/test_artifact_upload_governance.py"
+    assert marker in workflow_text("ci.yml")
+    assert marker in workflow_text("windows-control-plane.yml")
+
+
 def test_readmes_document_rerun_safe_fail_closed_artifacts() -> None:
     for path in (Path("README.md"), Path("README.en.md")):
         text = path.read_text(encoding="utf-8")
