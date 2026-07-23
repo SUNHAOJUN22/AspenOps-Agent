@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
-      - name: Verify documentation, artifact and dashboard contracts
+      - name: Verify documentation, artifact, dashboard and Process IR contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -87,6 +87,9 @@ jobs:
             tests/test_documentation_contracts.py \
             tests/test_artifact_upload_governance.py \
             tests/test_test_dashboard.py \
+            tests/test_process_ir.py \
+            tests/test_process_ir_edges.py \
+            tests/test_process_ir_dashboard.py \
             --junitxml=var/ci/documentation-contracts.xml \
             2>&1 | tee var/ci/documentation-contracts.log
       - name: Render quality test dashboard
@@ -101,6 +104,23 @@ jobs:
             --title "AspenOps quality dashboard" \
             --scope "Linux quality, documentation and artifact governance" \
             --note "This dashboard summarizes only evidence from the quality job."
+      - name: Validate simulator-neutral Process Intent IR
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/validate_process_ir.py \
+            examples/process-intent.example.json \
+            --canonical-output var/ci/process-intent-canonical.json \
+            --report-output var/ci/process-intent-report.json \
+            2>&1 | tee var/ci/process-intent-validation.log
+      - name: Render Process Intent IR dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/render_process_ir_dashboard.py \
+            --input var/ci/process-intent-report.json \
+            --output-html var/ci/process-ir-dashboard.html \
+            --output-svg var/ci/process-ir-dashboard.svg
       - name: Build distributions
         shell: bash
         run: |
@@ -125,6 +145,8 @@ jobs:
             --output var/ci/readme-certification.json \
             --repeats 2 \
             > var/ci/readme-certification-cli.json
+          uv run python scripts/validate_process_ir.py --capabilities-only \
+            > var/ci/readme-process-ir-capabilities.json
       - name: Benchmark smoke and committed performance policy
         shell: bash
         run: |
@@ -178,6 +200,10 @@ jobs:
           /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certify-licensed --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops verify-licensed-bundle --help >/dev/null
+          /tmp/aspenops-wheel/bin/python -c \
+            "from aspenops_nexus.process_ir import ProcessIntent; print(ProcessIntent)"
+          /tmp/aspenops-wheel/bin/python -c \
+            "from aspenops_nexus.simulation_agents import capability_matrix; print(capability_matrix())"
       - name: Upload quality evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
