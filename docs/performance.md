@@ -41,28 +41,43 @@ By default, a result is cached only when reset mode is `reinitialize`, every val
 
 ## Authoritative performance-evidence workflow
 
-The manual `generate-performance-evidence.yml` workflow is an evidence producer, not a general arbitrary-ref executor. It enforces the following sequence before any dependency synchronization or Python execution:
+The manual `generate-performance-evidence.yml` workflow is an evidence producer, not an arbitrary-ref executor. Its default baseline is the validated main-history runtime:
+
+```text
+ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
+```
+
+Before any dependency synchronization or Python execution, it performs:
 
 ```text
 checkout candidate ref
 → fetch trusted main history
 → resolve immutable candidate and baseline SHAs
-→ require candidate SHA to belong to main
-→ require baseline SHA to belong to main
-→ require baseline SHA to be an ancestor of candidate SHA
-→ create detached baseline worktree
-→ install frozen candidate dependencies
-→ run repeated baseline/candidate matrices
-→ enforce stable-regression policy
-→ upload run-ID-scoped evidence
+→ require both SHAs to belong to main
+→ require baseline to be an ancestor of candidate
+→ create a detached baseline worktree
 ```
 
-This prevents unmerged or unrelated commits from producing evidence that looks authoritative. Exact candidate and baseline SHAs are recorded in the artifact.
+It then builds two independent frozen environments:
 
-The baseline source is executed through the same candidate benchmark harness and frozen candidate environment so dependency and harness drift do not masquerade as runtime performance changes. A baseline that is not compatible with that environment must fail rather than silently change the comparison method.
+```text
+candidate checkout/uv.lock → candidate .venv → candidate benchmark script
+baseline worktree/uv.lock → baseline .venv → baseline benchmark script
+```
+
+Each lockfile is checked independently, each environment is synchronized with `--frozen`, and each revision executes the benchmark script stored in its own repository. The workflow records both SHAs, both lock/sync logs, both raw result files and the final comparison.
+
+This prevents:
+
+- unmerged or unrelated commits from producing authoritative-looking evidence;
+- candidate dependency changes from contaminating the baseline measurement;
+- candidate source or benchmark harness changes from silently executing baseline code under the wrong environment;
+- reverse-time comparisons where the baseline is newer than the candidate.
+
+A schema or dependency incompatibility must fail explicitly rather than silently changing the comparison method.
 
 ## Real benchmark protocol
 
-For each worker count, record startup time, model-open time, mean/P50/P95 solve time, throughput, peak memory, failure rate and license wait. Repeat the full benchmark from a clean process.
+For each worker count, record startup time, model-open time, mean/P50/P95 solve time, throughput, peak memory, failure rate and license wait. Repeat the full benchmark from clean processes and private model copies.
 
 Portable Mock measurements are orchestration evidence only. They must not be described as licensed Aspen solve speed or engineering-model performance.
