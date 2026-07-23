@@ -181,9 +181,13 @@ def test_manual_workflow_docs_record_main_ref_and_validated_checkout() -> None:
         text = path.read_text(encoding="utf-8")
         assert "refs/heads/main" in text
         assert "detached" in text.casefold()
-    for path in (ROOT / "README.md", ROOT / "README.en.md", ROOT / "docs" / "certification.md"):
-        text = path.read_text(encoding="utf-8")
-        assert "actions/checkout" in text
+    checkout_docs = (
+        ROOT / "README.md",
+        ROOT / "README.en.md",
+        ROOT / "docs" / "certification.md",
+    )
+    for path in checkout_docs:
+        assert "actions/checkout" in path.read_text(encoding="utf-8")
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
