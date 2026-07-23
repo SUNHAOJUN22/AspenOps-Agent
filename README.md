@@ -105,14 +105,14 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 受信 `main` 比较、双冻结环境、独立重复与稳定回归证据 |
-| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | 受信 SHA、realpath、真实 COM、签名证据与人工审核 |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 仅由主干工作流发起的受信比较、双冻结环境、独立重复与稳定回归证据 |
+| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | 仅由主干工作流发起的受信 SHA、realpath、真实 COM、签名证据与人工审核 |
 
 所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝块式、带注释或内联的任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
 ### 六组合冻结依赖审计
 
-CI 对 Linux 与 Windows 分别审计 Python 3.11、3.12、3.13，共**六种**组合：
+CI 对 Linux 与 Windows分别审计 Python 3.11、3.12、3.13，共**六种**组合：
 
 ```text
 Linux 与 Windows × Python 3.11、3.12、3.13
@@ -128,14 +128,15 @@ Linux 与 Windows × Python 3.11、3.12、3.13
 
 ## 受信、隔离且无旧文件污染的性能证据
 
-默认 baseline 为已验证的主干运行时：
+手动任务只有在事件 ref 为 `refs/heads/main` 时才运行。默认 baseline 为已验证的主干运行时：
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
 ```text
-checkout 当前受信 main 工作流版本
+由 refs/heads/main 加载当前工作流定义
+→ checkout 当前受信 main 工作流版本
 → 获取 main 历史和标签
 → 用 --end-of-options 解析 candidate_ref / baseline_ref
 → 两个 SHA 都必须属于 main
@@ -144,14 +145,14 @@ checkout 当前受信 main 工作流版本
 → 创建 baseline detached worktree
 ```
 
-手动 candidate 输入不会直接进入 `actions/checkout`。随后分别使用：
+手动 candidate 输入不会直接进入 `actions/checkout`。两个锁文件分别检查，两个环境分别 `uv sync --frozen`，并执行各自仓库中的脚本：
 
 ```text
 candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-两个锁文件分别检查，两个环境分别 `uv sync --frozen`，并执行各自仓库中的脚本。所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 在允许的 `${{ runner.temp }}` 上下文中读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
+所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 在允许的 `${{ runner.temp }}` 上下文中读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
 
 Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 
@@ -171,8 +172,15 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 ## 持证 Aspen 认证
 
+持证任务同样只有在事件 ref 为 `refs/heads/main` 时运行；输入的获批 SHA 不会直接传给 `actions/checkout`。
+
 ```text
-精确获批 SHA → 受信 main 验证 → 冻结依赖与 Mock 回归
+由 refs/heads/main 加载当前工作流定义
+→ checkout 当前受信 main 工作流版本
+→ 校验输入 SHA 格式、commit 存在性和 main 祖先关系
+→ detached checkout 已验证的获批 SHA，并核对 HEAD
+→ 校验该提交中的计划路径
+→ 冻结依赖与隔离 Mock 回归
 → realpath → preflight → 明确人工批准 → 真实 COM
 → 签名包验证 → 全部证据非空检查
 → 清理并暂存至 var/ci/licensed-evidence
@@ -185,7 +193,7 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 ## 文档、CLI 与 MCP 契约
 
-`tests/test_documentation_contracts.py` 从 `pyproject.toml` 动态读取版本，核对 README、`__version__`、CHANGELOG、AGENTS、CLAUDE、CONTRIBUTING 和核心文档；本地链接不得逃出仓库，操作指南必须使用冻结质量门。
+`tests/test_documentation_contracts.py` 从 `pyproject.toml` 动态读取版本，核对 README、`__version__`、CHANGELOG、AGENTS、CLAUDE、CONTRIBUTING 和核心文档；本地链接不得逃出仓库，操作指南必须使用冻结质量门，聊天内部引用或 `sandbox:/` 标记不得进入仓库 Markdown。
 
 主要 CLI：`demo`、`doctor`、`dry-run`、`run-batch`、`submit`、`job`、`benchmark`、`optimize`、`certify`、`certification-preflight`、`certify-licensed`、`verify-licensed-bundle`、`verify-bundle`、`mcp`。
 
