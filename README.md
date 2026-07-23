@@ -120,9 +120,7 @@ uv run aspenops --version
 uv run aspenops demo
 ```
 
-Windows 本地环境增加 `--extra windows`。
-
-pytest 使用 strict markers、strict configuration、strict xfail，并把 `ResourceWarning` 作为错误。
+Windows 本地环境增加 `--extra windows`。pytest 使用 strict markers、strict configuration、strict xfail，并把 `ResourceWarning` 作为错误。
 
 ---
 
@@ -132,17 +130,17 @@ pytest 使用 strict markers、strict configuration、strict xfail，并把 `Res
 |---|---|---|---|
 | `ci.yml` | `main` push、PR、手动 | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、格式、mypy、六组合依赖审计、构建、Mock、MCP、Wheel、README 命令 |
 | `windows-control-plane.yml` | `main` push、PR、手动 | `windows-2025`；Python 3.12 | Windows Job、进程归属、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和工作流治理 |
-| `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 受信 `main` baseline/candidate、独立重复、稳定性能回归证据 |
+| `generate-performance-evidence.yml` | 手动 | `ubuntu-24.04`；Python 3.12 | 受信 `main` baseline/candidate、双冻结环境、独立重复、稳定性能回归证据 |
 | `licensed-aspen-certification.yml` | 受保护手动执行 | `self-hosted, windows, x64, aspen-licensed` | 受信 `main` SHA、Mock 回归、realpath、真实 COM、签名证据和人工审核 |
 
-所有托管 runner、第三方 Actions 和 `uv 0.11.16` 均固定版本。所有工作流只授予 `contents: read`，自动测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
+所有托管 runner、第三方 Actions 和 `uv 0.11.16` 均固定版本。所有工作流只授予 `contents: read`，自动测试拒绝任意 `*: write`、带注释或内联的写权限、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
 ### 六组合冻结依赖审计
 
 CI 对 Linux 与 Windows 分别审计 Python 3.11、3.12、3.13，共**六种**组合：
 
 ```text
-linux  × 3.11 / 3.12 / 3.13
+linux   × 3.11 / 3.12 / 3.13
 windows × 3.11 / 3.12 / 3.13
 ```
 
@@ -165,7 +163,13 @@ CI 从 `uv.lock` 导出带哈希的运行时依赖，用 `uv pip sync --require-
 
 ---
 
-## 受信性能证据
+## 受信且隔离的性能证据
+
+默认 baseline 是已验证的主干运行时：
+
+```text
+ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
+```
 
 `generate-performance-evidence.yml` 在安装工具或运行 Python 前完成：
 
@@ -176,11 +180,18 @@ checkout candidate
 → 两者都必须属于 main
 → baseline 必须是 candidate 的祖先
 → 创建 baseline detached worktree
-→ 冻结安装 candidate 依赖
-→ 运行独立重复与稳定回归策略
 ```
 
-未合并、无关或反向时间顺序的提交不能生成看似权威的性能证据。Mock 结果仅表示编排性能，不代表真实 Aspen 求解速度。
+随后构建两个独立环境：
+
+```text
+candidate/uv.lock → candidate .venv → candidate benchmark script
+baseline/uv.lock  → baseline .venv  → baseline benchmark script
+```
+
+两个锁文件分别检查，两个环境分别 `uv sync --frozen`，两个提交分别执行各自仓库中的 benchmark 脚本。这样候选依赖、候选源码或候选脚本不会污染 baseline；不兼容必须明确失败，不能静默改变比较方法。
+
+Mock 结果仅表示编排性能，不代表真实 Aspen 求解速度。
 
 ---
 
@@ -210,12 +221,12 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 → 范围受限的真实 COM 执行
 → 签名包验证
 → 验证全部证据存在且非空
-→ 复制到 var/ci/licensed-evidence
+→ 清理并复制到 var/ci/licensed-evidence
 → 仅上传工作区 var/ci
 → 工程师最终审核
 ```
 
-早期失败时，上传动作不会解析未定义的外部状态目录；只有工作区内诊断可进入制品。成功时，preflight、认证报告和签名包先复制到工作区暂存目录后再上传。
+早期失败时，上传动作不会解析未定义的外部状态目录；只有工作区内诊断可进入制品。成功时，preflight、认证报告和签名包先复制到干净的工作区暂存目录后再上传。
 
 软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`。签名证明来源与完整性，不等于物性、反应、设备假设或工程适用范围已被批准。
 
