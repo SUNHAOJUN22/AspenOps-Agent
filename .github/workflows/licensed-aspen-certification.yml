@@ -194,8 +194,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          $dashboardArtifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $dashboardArtifactName
           uv run python scripts/render_test_dashboard.py `
             --input-dir "$artifactDir" `
             --output-html "$artifactDir\test-dashboard-licensed.html" `
@@ -208,8 +208,8 @@ jobs:
       - name: Validate and render Process Intent IR contract
         shell: pwsh
         run: |
-          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          $irArtifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $irArtifactName
           uv run python scripts/validate_process_ir.py `
             examples/process-intent.example.json `
             --canonical-output "$artifactDir\process-intent-canonical.json" `
