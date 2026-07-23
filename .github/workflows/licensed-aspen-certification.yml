@@ -58,6 +58,21 @@ jobs:
       EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
       EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}
     steps:
+      - name: Prepare clean licensed artifact directory
+        shell: pwsh
+        run: |
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          Remove-Item -LiteralPath $artifactDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $artifactDir | Out-Null
+          @(
+            "run_id=$env:GITHUB_RUN_ID"
+            "run_attempt=$env:GITHUB_RUN_ATTEMPT"
+            "ref=$env:GITHUB_REF"
+            "workflow_sha=$env:GITHUB_SHA"
+            "expected_head_sha=$env:EXPECTED_HEAD_SHA"
+          ) | Set-Content -LiteralPath (Join-Path $artifactDir "run-metadata.txt") -Encoding utf8
+
       - name: Checkout trusted workflow revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -144,8 +159,9 @@ jobs:
           ASPENOPS_VISIBLE: "false"
           ASPENOPS_CACHE_FAILURES: "false"
         run: |
-          Remove-Item -LiteralPath var/ci -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force var/ci | Out-Null
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          $junit = Join-Path $artifactDir "licensed-software-regression.xml"
           uv run pytest -W error::ResourceWarning `
             tests/test_batch_backend_default.py `
             tests/test_cli_output_policy.py `
@@ -165,7 +181,7 @@ jobs:
             tests/test_backends_convergence.py `
             tests/test_workflow_governance.py `
             tests/test_wheel_smoke_governance.py `
-            --junitxml=var/ci/licensed-software-regression.xml `
+            --junitxml="$junit" `
             --durations=20
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -259,7 +275,9 @@ jobs:
         if: ${{ success() }}
         shell: pwsh
         run: |
-          $regression = "var/ci/licensed-software-regression.xml"
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          $regression = Join-Path $artifactDir "licensed-software-regression.xml"
           $preflight = "$env:LICENSED_EVIDENCE_DIR\preflight.json"
           $report = "$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json"
           $bundle = "$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip"
@@ -279,7 +297,7 @@ jobs:
             }
           }
 
-          $staging = "var/ci/licensed-evidence"
+          $staging = Join-Path $artifactDir "licensed-evidence"
           Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force $staging | Out-Null
           Copy-Item -LiteralPath $preflight -Destination (Join-Path $staging "preflight.json")
@@ -295,12 +313,25 @@ jobs:
             }
           }
 
+      - name: Record licensed workflow outcome
+        if: always()
+        shell: pwsh
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          New-Item -ItemType Directory -Force $artifactDir | Out-Null
+          @(
+            "job_status=$env:JOB_STATUS"
+            "licensed_evidence_dir=$env:LICENSED_EVIDENCE_DIR"
+          ) | Add-Content -LiteralPath (Join-Path $artifactDir "run-metadata.txt") -Encoding utf8
+
       - name: Upload signed licensed evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: licensed-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: var/ci
-          if-no-files-found: warn
-          include-hidden-files: true
+          path: ${{ runner.temp }}/aspenops-licensed-artifact-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
           retention-days: 90
