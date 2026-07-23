@@ -139,7 +139,7 @@ def _safe_json(value: Any, label: str, *, depth: int = 0) -> Any:
 
 
 def _metadata(value: Any, label: str) -> dict[str, Any]:
-    metadata = _safe_json(_object(value, label), label)
+    metadata = cast(dict[str, Any], _safe_json(_object(value, label), label))
     encoded = json.dumps(
         metadata,
         ensure_ascii=False,
