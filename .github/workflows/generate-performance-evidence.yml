@@ -6,7 +6,7 @@ on:
       baseline_ref:
         description: Trusted main-history baseline commit, tag, or ref
         required: true
-        default: 8283744093a210c07da16ffe006968776dff9547
+        default: ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
         type: string
       candidate_ref:
         description: Trusted main-history candidate commit, tag, or ref; normally main
@@ -73,27 +73,31 @@ jobs:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Verify lockfile and sync frozen candidate dependencies
+      - name: Verify lockfiles and sync isolated benchmark environments
         shell: bash
         run: |
           set -euo pipefail
-          uv lock --check 2>&1 | tee var/benchmarks/uv-lock.log
+          uv lock --check 2>&1 | tee var/benchmarks/candidate-uv-lock.log
           uv sync --frozen --extra dev --extra agent \
-            2>&1 | tee var/benchmarks/sync.log
-      - name: Run baseline matrix
+            2>&1 | tee var/benchmarks/candidate-sync.log
+          (
+            cd /tmp/aspenops-baseline
+            uv lock --check \
+              2>&1 | tee "$GITHUB_WORKSPACE/var/benchmarks/baseline-uv-lock.log"
+            uv sync --frozen --extra dev --extra agent \
+              2>&1 | tee "$GITHUB_WORKSPACE/var/benchmarks/baseline-sync.log"
+          )
+      - name: Run baseline matrix in baseline environment
         shell: bash
-        env:
-          PYTHONPATH: /tmp/aspenops-baseline/src
         run: |
           set -euo pipefail
-          .venv/bin/python scripts/run_benchmark_matrix.py \
+          /tmp/aspenops-baseline/.venv/bin/python \
+            /tmp/aspenops-baseline/scripts/run_benchmark_matrix.py \
             --repo-root /tmp/aspenops-baseline \
-            --output var/benchmarks/baseline.json \
+            --output "$GITHUB_WORKSPACE/var/benchmarks/baseline.json" \
             2>&1 | tee var/benchmarks/baseline.log
-      - name: Run candidate matrix
+      - name: Run candidate matrix in candidate environment
         shell: bash
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -euo pipefail
           .venv/bin/python scripts/run_benchmark_matrix.py \
