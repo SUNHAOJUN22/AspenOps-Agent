@@ -50,13 +50,16 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 Before any dependency synchronization or Python execution, it performs:
 
 ```text
-checkout candidate ref
-→ fetch trusted main history
-→ resolve immutable candidate and baseline SHAs
-→ require both SHAs to belong to main
+checkout the trusted workflow revision from main
+→ fetch trusted main history and tags
+→ resolve candidate_ref and baseline_ref with --end-of-options
+→ require both immutable SHAs to belong to main
 → require baseline to be an ancestor of candidate
+→ detached checkout of the validated candidate SHA
 → create a detached baseline worktree
 ```
+
+The untrusted manual candidate input is never passed directly to `actions/checkout`.
 
 It then builds two independent frozen environments:
 
@@ -70,8 +73,9 @@ Each lockfile is checked independently, each environment is synchronized with `-
 This prevents:
 
 - unmerged or unrelated commits from producing authoritative-looking evidence;
+- candidate input from controlling the initial checkout action;
 - candidate dependency changes from contaminating the baseline measurement;
-- candidate source or benchmark harness changes from silently executing baseline code under the wrong environment;
+- candidate source or benchmark harness changes from executing baseline code under the wrong environment;
 - reverse-time comparisons where the baseline is newer than the candidate.
 
 A schema or dependency incompatibility must fail explicitly rather than silently changing the comparison method.
