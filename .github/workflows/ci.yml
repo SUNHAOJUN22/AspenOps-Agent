@@ -90,6 +90,7 @@ jobs:
             --junitxml=var/ci/documentation-contracts.xml \
             2>&1 | tee var/ci/documentation-contracts.log
       - name: Render quality test dashboard
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
