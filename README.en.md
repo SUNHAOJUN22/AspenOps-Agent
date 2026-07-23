@@ -161,7 +161,7 @@ Execution and automatic IR compilation are separate capability claims:
 | IDAES | planned | planned |
 | Modelica/FMI | planned | planned |
 
-**DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers are not implemented. The project will not represent a planned adapter as available.**
+**No adapter is claimed for DWSIM, IDAES, Modelica/FMI or automatic Aspen/HYSYS flowsheet construction in this release. These capabilities are not implemented.**
 
 Validate and render the example:
 
@@ -189,7 +189,7 @@ Runtime requirements are exported from `uv.lock` with hashes, synchronized with 
 
 ## Trusted and isolated performance evidence
 
-The performance workflow explicitly rejects non-main dispatches, resolves candidate and baseline with `--end-of-options`, requires both commits in trusted main history and executes each revision with its own lockfile, environment and benchmark script.
+The performance workflow requires `GITHUB_REF == refs/heads/main`, rejects any other dispatch with status 2, uses `actions/checkout` for the trusted workflow revision and performs a detached checkout of the validated candidate. Candidate and baseline are resolved with `--end-of-options`, must belong to trusted main history and use independent frozen environments.
 
 Default baseline:
 
@@ -215,7 +215,7 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 ## Licensed Aspen certification
 
-The licensed workflow first rejects non-main dispatches on fixed `ubuntu-24.04`. `expected_head_sha` must equal the dispatch `GITHUB_SHA`, and the initial and detached checkout must remain that trusted main commit.
+The licensed workflow first rejects non-main dispatches on fixed `ubuntu-24.04`. `expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch, and the initial `actions/checkout` and detached checkout must remain that trusted main commit.
 
 Before checkout, the self-hosted job creates:
 
@@ -223,7 +223,7 @@ Before checkout, the self-hosted job creates:
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-Run metadata, Mock JUnit, the general dashboard, the Process IR dashboard, successful licensed-evidence copies and final `job_status` remain in this run-attempt directory. Real certification is serialized and uses a separate cleaned external directory:
+Run metadata, Mock JUnit, the general dashboard, the Process IR dashboard, successful licensed-evidence copies and final `job_status` remain in this run-attempt directory. Real certification is serialized and uses a separately cleaned external `LICENSED_EVIDENCE_DIR`:
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
