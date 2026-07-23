@@ -105,8 +105,8 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | main-ref-only trusted comparison, two frozen environments, repeated trials and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | main-ref-only trusted SHA, realpath, real COM, signed evidence and human review |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments, repeated trials and stable-regression evidence |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → `self-hosted, windows, x64, aspen-licensed` | explicit non-main failure, trusted SHA, realpath, real COM, signed evidence and human review |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects block, commented or inline `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -128,14 +128,14 @@ Runtime requirements are exported from `uv.lock` with hashes, synchronized with 
 
 ## Trusted, isolated and stale-proof performance evidence
 
-The manual job runs only when the event ref is `refs/heads/main`. Its default baseline is the validated main-history runtime:
+The first performance step runs on Ubuntu and checks the event ref. A ref other than `refs/heads/main` writes the observed ref and guard log into runner-temporary evidence, then **fails explicitly with exit code 2** instead of appearing as skipped. The default baseline is the validated main-history runtime:
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
 ```text
-load the workflow definition from refs/heads/main
+explicitly verify GITHUB_REF == refs/heads/main
 → checkout the current trusted main workflow revision
 → fetch main history and tags
 → resolve candidate_ref / baseline_ref with --end-of-options
@@ -172,10 +172,10 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 ## Licensed Aspen certification
 
-The licensed job also runs only when the event ref is `refs/heads/main`; the approved input SHA is never passed directly to `actions/checkout`.
+The licensed workflow first runs a fixed `ubuntu-24.04` guard job. A non-main dispatch fails explicitly and never occupies the self-hosted Aspen license machine. Only after the guard succeeds does the `certify` job enter `self-hosted, windows, x64, aspen-licensed`. The approved input SHA is never passed directly to `actions/checkout`.
 
 ```text
-load the workflow definition from refs/heads/main
+Ubuntu guard explicitly verifies GITHUB_REF == refs/heads/main
 → checkout the current trusted main workflow revision
 → validate SHA format, commit existence and main ancestry
 → detached checkout of the validated approved SHA and verify HEAD
