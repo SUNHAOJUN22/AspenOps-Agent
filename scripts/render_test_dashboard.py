@@ -92,13 +92,14 @@ def _percentage(value: object) -> float | None:
 
 def parse_coverage(paths: Iterable[Path]) -> CoverageSummary:
     for path in paths:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
         totals = data.get("totals")
-        if isinstance(totals, dict):
-            return CoverageSummary(_percentage(totals.get("percent_covered")))
+        if not isinstance(totals, dict):
+            raise ValueError(f"Coverage evidence has no totals object: {path}")
+        percent = _percentage(totals.get("percent_covered"))
+        if percent is None:
+            raise ValueError(f"Coverage evidence has no valid percentage: {path}")
+        return CoverageSummary(percent)
     return CoverageSummary()
 
 
