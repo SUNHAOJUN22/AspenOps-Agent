@@ -6,14 +6,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_UV_VERSION = "0.11.16"
+UV_VERSION = "0.11.16"
 WORKFLOWS = {
     "ci.yml",
     "generate-performance-evidence.yml",
     "licensed-aspen-certification.yml",
     "windows-control-plane.yml",
 }
-PRIMARY_DOCUMENTS = (
+DOCUMENTS = (
     ROOT / "README.md",
     ROOT / "README.en.md",
     ROOT / "AGENTS.md",
@@ -28,109 +28,99 @@ PRIMARY_DOCUMENTS = (
     ROOT / "docs" / "automated-test-audit-2026-07-22.md",
     ROOT / "docs" / "certification.md",
 )
-HISTORICAL_DOCUMENTS = {
+HISTORICAL = {
     ROOT / "CHANGELOG.md",
     ROOT / "docs" / "automated-test-audit-2026-07-22.md",
 }
-CURRENT_GUIDES = tuple(
-    document for document in PRIMARY_DOCUMENTS if document not in HISTORICAL_DOCUMENTS
-)
 STALE_TOKENS = {
     "ubuntu-latest",
     "windows-latest",
     "windows-aspen-certification.yml",
 }
-CHAT_INTERNAL_TOKENS = ("cite", "filecite", "sandbox:/")
+CHAT_ONLY_TOKENS = ("cite", "filecite", "sandbox:/")
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 
 
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 def _project_version() -> str:
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads(_read(ROOT / "pyproject.toml"))
     return str(data["project"]["version"])
 
 
-def _local_link_target(document: Path, raw_target: str) -> Path | None:
+def _local_target(document: Path, raw_target: str) -> Path | None:
     target = raw_target.strip()
     if target.startswith("<") and target.endswith(">"):
         target = target[1:-1]
     else:
         target = target.split(maxsplit=1)[0]
-
     parsed = urlsplit(target)
     if parsed.scheme or parsed.netloc or target.startswith("#") or not parsed.path:
         return None
-
     candidate = (document.parent / unquote(parsed.path)).resolve()
     if candidate != ROOT and ROOT not in candidate.parents:
         raise AssertionError(f"Documentation link escapes repository: {document}: {target}")
     return candidate
 
 
-def test_primary_documentation_exists_links_resolve_and_chat_markup_is_absent() -> None:
-    for document in PRIMARY_DOCUMENTS:
+def test_documents_exist_links_resolve_and_chat_markup_is_absent() -> None:
+    for document in DOCUMENTS:
         assert document.is_file(), f"Missing documentation file: {document.relative_to(ROOT)}"
-        text = document.read_text(encoding="utf-8")
-        for token in CHAT_INTERNAL_TOKENS:
-            assert token not in text, (
-                f"Chat-only token {token!r} leaked into {document.relative_to(ROOT)}"
-            )
+        text = _read(document)
+        for token in CHAT_ONLY_TOKENS:
+            assert token not in text
         for raw_target in MARKDOWN_LINK.findall(text):
-            candidate = _local_link_target(document, raw_target)
+            candidate = _local_target(document, raw_target)
             if candidate is not None:
-                assert candidate.exists(), (
-                    f"Broken local link in {document.relative_to(ROOT)}: "
-                    f"{candidate.relative_to(ROOT)}"
-                )
+                assert candidate.exists(), f"Broken link in {document}: {raw_target}"
 
 
 def test_package_and_documentation_versions_match() -> None:
     version = _project_version()
     major_minor = ".".join(version.split(".")[:2])
-    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
-    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    package_init = (ROOT / "src" / "aspenops_nexus" / "__init__.py").read_text(
-        encoding="utf-8"
-    )
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-
-    for readme in (chinese, english):
+    readmes = (_read(ROOT / "README.md"), _read(ROOT / "README.en.md"))
+    for readme in readmes:
         assert f"# AspenOps {major_minor}" in readme
         assert f"version-{version}-" in readme
         assert f"aspenops-nexus {version}" in readme
+    package_init = _read(ROOT / "src" / "aspenops_nexus" / "__init__.py")
     assert f'__version__ = "{version}"' in package_init
-    assert f"## {version} -" in changelog
-    architecture = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-    assert architecture.startswith(f"# AspenOps {major_minor} Architecture")
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert agents.startswith(f"# AspenOps {major_minor} Agent Contract")
-    claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    assert claude.startswith(f"# Claude Code operating contract for AspenOps {major_minor}")
-    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
-    assert contributing.startswith(f"# Contributing to AspenOps {major_minor}")
+    assert f"## {version} -" in _read(ROOT / "CHANGELOG.md")
+    assert _read(ROOT / "docs" / "architecture.md").startswith(
+        f"# AspenOps {major_minor} Architecture"
+    )
+    assert _read(ROOT / "AGENTS.md").startswith(
+        f"# AspenOps {major_minor} Agent Contract"
+    )
+    assert _read(ROOT / "CLAUDE.md").startswith(
+        f"# Claude Code operating contract for AspenOps {major_minor}"
+    )
+    assert _read(ROOT / "CONTRIBUTING.md").startswith(
+        f"# Contributing to AspenOps {major_minor}"
+    )
 
 
 def test_current_guidance_has_no_stale_toolchain_or_product_names() -> None:
-    for document in PRIMARY_DOCUMENTS:
-        text = document.read_text(encoding="utf-8")
+    for document in DOCUMENTS:
+        text = _read(document)
         for token in STALE_TOKENS:
-            assert token not in text, f"Stale token {token!r} in {document.relative_to(ROOT)}"
-
-    for document in CURRENT_GUIDES:
-        text = document.read_text(encoding="utf-8")
-        assert "0.11.14" not in text
-        assert "AspenOps 1.0" not in text
-
-    for readme_path in (ROOT / "README.md", ROOT / "README.en.md"):
-        text = readme_path.read_text(encoding="utf-8")
-        assert CURRENT_UV_VERSION in text
+            assert token not in text
+        if document not in HISTORICAL:
+            assert "0.11.14" not in text
+            assert "AspenOps 1.0" not in text
+    for path in (ROOT / "README.md", ROOT / "README.en.md"):
+        text = _read(path)
+        assert UV_VERSION in text
         assert "ubuntu-24.04" in text
         assert "windows-2025" in text
         assert WORKFLOWS.issubset(set(re.findall(r"[\w-]+\.yml", text)))
 
 
 def test_operational_guides_require_frozen_quality_gates() -> None:
-    for document in (ROOT / "AGENTS.md", ROOT / "CONTRIBUTING.md"):
-        text = document.read_text(encoding="utf-8")
+    for path in (ROOT / "AGENTS.md", ROOT / "CONTRIBUTING.md"):
+        text = _read(path)
         assert "uv lock --check" in text
         assert "uv sync --frozen" in text
         assert "uv sync --extra" not in text
@@ -140,15 +130,12 @@ def test_operational_guides_require_frozen_quality_gates() -> None:
         assert "--cov-fail-under=94.5" in text
 
 
-def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
-    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
-    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    quality = (ROOT / "docs" / "quality-report.md").read_text(encoding="utf-8")
-    audit = (ROOT / "docs" / "automated-test-audit-2026-07-22.md").read_text(
-        encoding="utf-8"
-    )
-    performance = (ROOT / "docs" / "performance.md").read_text(encoding="utf-8")
-
+def test_docs_describe_six_audits_and_runner_temp_evidence() -> None:
+    chinese = _read(ROOT / "README.md")
+    english = _read(ROOT / "README.en.md")
+    quality = _read(ROOT / "docs" / "quality-report.md")
+    audit = _read(ROOT / "docs" / "automated-test-audit-2026-07-22.md")
+    performance = _read(ROOT / "docs" / "performance.md")
     assert "Python 3.11、3.12、3.13" in chinese
     assert "Linux 与 Windows" in chinese
     assert "六种" in chinese
@@ -164,20 +151,17 @@ def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
 
 
 def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
-    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
-    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    performance = (ROOT / "docs" / "performance.md").read_text(encoding="utf-8")
-    windows = (ROOT / "docs" / "windows-setup.md").read_text(encoding="utf-8")
-    quality = (ROOT / "docs" / "quality-report.md").read_text(encoding="utf-8")
-    audit = (ROOT / "docs" / "automated-test-audit-2026-07-22.md").read_text(
-        encoding="utf-8"
-    )
-    certification = (ROOT / "docs" / "certification.md").read_text(encoding="utf-8")
-
-    for text in (chinese, english, performance, windows, quality, audit, certification):
+    chinese = _read(ROOT / "README.md")
+    english = _read(ROOT / "README.en.md")
+    performance = _read(ROOT / "docs" / "performance.md")
+    windows = _read(ROOT / "docs" / "windows-setup.md")
+    quality = _read(ROOT / "docs" / "quality-report.md")
+    audit = _read(ROOT / "docs" / "automated-test-audit-2026-07-22.md")
+    certification = _read(ROOT / "docs" / "certification.md")
+    all_docs = (chinese, english, performance, windows, quality, audit, certification)
+    for text in all_docs:
         assert "refs/heads/main" in text
         assert "detached" in text.casefold()
-
     assert "显式失败" in chinese
     assert "fails explicitly with exit code 2" in english
     assert "dispatch-guard.log" in performance
@@ -186,14 +170,9 @@ def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
         assert "needs: dispatch-guard" in text
         assert "status 2" in text
     assert "all-skipped" in audit
-
-    checkout_docs = (
-        ROOT / "README.md",
-        ROOT / "README.en.md",
-        ROOT / "docs" / "certification.md",
-    )
-    for path in checkout_docs:
-        assert "actions/checkout" in path.read_text(encoding="utf-8")
+    for path in (ROOT / "README.md", ROOT / "README.en.md"):
+        assert "actions/checkout" in _read(path)
+    assert "actions/checkout" in certification
 
 
 def test_docs_record_run_attempt_licensed_evidence_isolation() -> None:
@@ -206,17 +185,17 @@ def test_docs_record_run_attempt_licensed_evidence_isolation() -> None:
         ROOT / "docs" / "certification.md",
     )
     for path in paths:
-        text = path.read_text(encoding="utf-8")
+        text = _read(path)
         assert "licensed-aspen-certification" in text
         assert "GITHUB_RUN_ID" in text
         assert "GITHUB_RUN_ATTEMPT" in text
         assert "LICENSED_EVIDENCE_DIR" in text
         assert "github.run_attempt" in text
-        assert "serialized" in text.casefold() or "串行" in text
+        assert "serial" in text.casefold() or "串行" in text
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
-    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    text = _read(ROOT / ".env.example")
     assert "ASPENOPS_BACKEND=mock" in text
     assert "ASPENOPS_ALLOWED_ROOTS=\n" in text
     assert "ASPENOPS_STATE_DIR=var/aspenops-state" in text
@@ -226,7 +205,7 @@ def test_environment_template_keeps_first_run_portable() -> None:
 
 
 def test_windows_guide_matches_hardened_bootstrap() -> None:
-    text = (ROOT / "docs" / "windows-setup.md").read_text(encoding="utf-8")
+    text = _read(ROOT / "docs" / "windows-setup.md")
     assert "uv self update" in text
     assert "winget" in text
     assert "rechecks the actual version" in text
@@ -236,8 +215,8 @@ def test_windows_guide_matches_hardened_bootstrap() -> None:
 
 
 def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
-    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
-    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    chinese = _read(ROOT / "README.md")
+    english = _read(ROOT / "README.en.md")
     assert "已验证归档基线" in chinese
     assert "不是对任意后续提交的自动声明" in chinese
     assert "PENDING_REAL_ASPEN_CERTIFICATION" in chinese
