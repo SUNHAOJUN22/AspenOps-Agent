@@ -48,7 +48,9 @@ Real backends require non-empty absolute allowed roots. State, model, registry, 
 - frozen dependencies and fail-closed Bash;
 - dispatch-input isolation;
 - complete six-target dependency evidence;
-- manual performance and licensed jobs restricted to `refs/heads/main`;
+- explicit failed guards for non-main performance and licensed dispatches;
+- performance guard evidence written before checkout;
+- a lightweight Ubuntu licensed guard before the self-hosted Aspen job;
 - input refs and SHAs validated before detached checkout;
 - separate baseline/candidate lockfiles, environments and scripts;
 - performance artifacts isolated in the runner temporary directory;
@@ -63,7 +65,9 @@ The default baseline is:
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-The manual job runs only from `refs/heads/main`. It loads the trusted main workflow revision, resolves candidate and baseline with `--end-of-options`, requires both in `main`, requires baseline ancestry, and only then performs detached candidate checkout and baseline worktree creation.
+The first Ubuntu step always records `dispatch-ref.txt` and `dispatch-guard.log` under `$RUNNER_TEMP/aspenops-performance-evidence`. A ref other than `refs/heads/main` exits with status 2, so an invalid manual dispatch fails rather than becoming an all-skipped run.
+
+After the guard succeeds, the workflow loads the trusted main revision, resolves candidate and baseline with `--end-of-options`, requires both in `main`, requires baseline ancestry, and only then performs detached candidate checkout and baseline worktree creation.
 
 It creates two independent frozen environments:
 
@@ -78,10 +82,12 @@ Results remain portable Mock orchestration evidence, not licensed Aspen solve pe
 
 ## Licensed evidence chain
 
-The protected job also runs only from `refs/heads/main`. The approved SHA is not passed directly to checkout:
+A fixed `ubuntu-24.04` `dispatch-guard` job runs first. A non-main ref exits with status 2 and marks the workflow failed. The self-hosted `certify` job declares `needs: dispatch-guard`, so an invalid dispatch never consumes the licensed Aspen machine.
+
+The approved SHA is not passed directly to checkout:
 
 ```text
-load the current main workflow definition
+Ubuntu guard explicitly requires GITHUB_REF == refs/heads/main
 → checkout the trusted main workflow revision
 → validate SHA format, commit existence and main ancestry
 → detached checkout of the validated SHA and verify HEAD
@@ -96,7 +102,7 @@ Early failures cannot expand an undefined external state path, and stale self-ho
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies package/README/CHANGELOG/title consistency, required documents, safe local links, frozen operating guides, portable `.env.example`, archived evidence boundaries, main-ref trust-chain documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
+`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies package/README/CHANGELOG/title consistency, required documents, safe local links, frozen operating guides, portable `.env.example`, archived evidence boundaries, explicit manual-dispatch failure documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Evidence boundary
 
