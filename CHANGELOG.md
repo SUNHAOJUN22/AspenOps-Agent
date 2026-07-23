@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- added simulator-neutral `aspenops.flowsheet/v1` Process Intent IR;
+- added deterministic normalization, SHA-256 identity and fail-closed topology validation;
+- added explicit execution-versus-compiler capability declarations for Mock, Aspen Plus, HYSYS, DWSIM, IDAES and Modelica;
+- added bounded knowledge, concept, parameter, execution, repair and review Agent contracts;
+- added flowsheet benchmark records that separate topology, compiler, execution, convergence, balances, repair and human intervention;
+- added Process IR validation commands, HTML/SVG visual evidence and Linux/Windows/licensed-Mock CI contracts;
+- documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
+- retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
+
 ## 2.0.0 - 2026-07-18
 
 - fail-closed convergence evidence for Aspen Plus and HYSYS;
