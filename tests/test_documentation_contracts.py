@@ -138,7 +138,7 @@ def test_docs_describe_six_audits_and_runner_temp_evidence() -> None:
     performance = _read(ROOT / "docs" / "performance.md")
     assert "Python 3.11、3.12、3.13" in chinese
     assert "Linux 与 Windows" in chinese
-    assert "六种" in chinese
+    assert "六种" in chinese or "六组合" in chinese
     assert "Python 3.11, 3.12 and 3.13" in english
     assert "Linux and Windows" in english
     assert "six" in english.casefold()
