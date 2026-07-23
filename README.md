@@ -174,13 +174,16 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 `generate-performance-evidence.yml` 在安装工具或运行 Python 前完成：
 
 ```text
-checkout candidate
-→ 获取受信 main 历史
-→ 解析 candidate 与 baseline 完整 SHA
-→ 两者都必须属于 main
+checkout 当前受信 main 工作流版本
+→ 获取 main 历史与标签
+→ 用 --end-of-options 解析 candidate_ref 与 baseline_ref
+→ 两个完整 SHA 都必须属于 main
 → baseline 必须是 candidate 的祖先
+→ 按已验证 candidate SHA detached checkout
 → 创建 baseline detached worktree
 ```
+
+手动输入的 candidate ref 不会直接传给 `actions/checkout`。
 
 随后构建两个独立环境：
 
@@ -189,7 +192,7 @@ candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-两个锁文件分别检查，两个环境分别 `uv sync --frozen`，两个提交分别执行各自仓库中的 benchmark 脚本。这样候选依赖、候选源码或候选脚本不会污染 baseline；不兼容必须明确失败，不能静默改变比较方法。
+两个锁文件分别检查，两个环境分别 `uv sync --frozen`，两个提交分别执行各自仓库中的 benchmark 脚本。这样候选输入、依赖、源码或脚本不会污染 baseline；不兼容必须明确失败，不能静默改变比较方法。
 
 Mock 结果仅表示编排性能，不代表真实 Aspen 求解速度。
 
