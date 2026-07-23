@@ -31,9 +31,10 @@ Automated tests lock:
 - `expected_head_sha == GITHUB_SHA` for real certification;
 - initial checkout, workflow definition, runtime code, tests and path validator on one commit;
 - one serialized licensed concurrency group;
-- run-attempt-scoped `LICENSED_EVIDENCE_DIR`;
-- cleanup of Mock diagnostics, external evidence and workspace staging;
-- run-attempt-qualified artifact names.
+- checkout-before artifact contamination prevention;
+- run-attempt-scoped runner-temp and external evidence directories;
+- Mock JUnit, licensed evidence and `job_status` written only to runner temp;
+- run-attempt-qualified artifact names and `if-no-files-found: error`.
 
 ## Performance evidence
 
@@ -47,19 +48,27 @@ A fixed Ubuntu `dispatch-guard` job exits with status 2 for non-main refs. The s
 
 `expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial `actions/checkout` HEAD, trusted-main ancestry and detached checkout all match that same SHA. It cannot use the current safety workflow to execute an arbitrary older main ancestor.
 
+Before checkout, the self-hosted job removes and creates:
+
+```text
+$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+`run-metadata.txt` is written before checkout. Mock JUnit, successful evidence copies and the final `job_status` remain in this directory. Upload reads only `${{ runner.temp }}/aspenops-licensed-artifact-${{ github.run_id }}-${{ github.run_attempt }}` and uses `if-no-files-found: error`; stale workspace `var/ci` cannot enter the artifact even when checkout fails.
+
 All real certification jobs share the fixed concurrency group `licensed-aspen-certification`, which serializes Aspen Plus and HYSYS runs.
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is removed and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used for preflight, real execution, bundle verification, report inspection and workspace staging. `var/ci` is also cleaned before Mock regression. Artifact names include `github.run_id` and `github.run_attempt`.
+The external directory is removed and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used for preflight, real execution, bundle verification, report inspection and runner-temp staging. Artifact names include `github.run_id` and `github.run_attempt`.
 
-These controls prevent old-code rollback, backend collisions, rerun contamination, stale report/bundle reuse and persistent self-hosted workspace diagnostics. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
+These controls prevent old-code rollback, checkout-failure contamination, backend collisions, rerun contamination, stale report/bundle reuse and persistent self-hosted workspace diagnostics. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
 
 ## Documentation contracts
 
-Documentation tests verify version/title consistency, safe links, frozen instructions, six audits, explicit guard failure behavior, `GITHUB_SHA` binding, per-attempt licensed evidence, certification boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
+Documentation tests verify version/title consistency, safe links, frozen instructions, six audits, explicit guard failure behavior, `GITHUB_SHA` binding, pre-checkout runner-temp artifacts, per-attempt licensed evidence, certification boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Evidence boundary
 
