@@ -105,14 +105,14 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 仅由主干工作流发起的受信比较、双冻结环境、独立重复与稳定回归证据 |
-| `licensed-aspen-certification.yml` | `self-hosted, windows, x64, aspen-licensed` | 仅由主干工作流发起的受信 SHA、realpath、真实 COM、签名证据与人工审核 |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复与稳定回归证据 |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → `self-hosted, windows, x64, aspen-licensed` | 非主干显式失败、受信 SHA、realpath、真实 COM、签名证据与人工审核 |
 
 所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝块式、带注释或内联的任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
 ### 六组合冻结依赖审计
 
-CI 对 Linux 与 Windows分别审计 Python 3.11、3.12、3.13，共**六种**组合：
+CI 对 Linux 与 Windows 分别审计 Python 3.11、3.12、3.13，共**六种**组合：
 
 ```text
 Linux 与 Windows × Python 3.11、3.12、3.13
@@ -128,14 +128,14 @@ Linux 与 Windows × Python 3.11、3.12、3.13
 
 ## 受信、隔离且无旧文件污染的性能证据
 
-手动任务只有在事件 ref 为 `refs/heads/main` 时才运行。默认 baseline 为已验证的主干运行时：
+性能任务第一步在 Ubuntu runner 上检查事件 ref。若不是 `refs/heads/main`，任务会把实际 ref 与 guard 日志写入 runner 临时证据目录并以退出码 2 **显式失败**，不会显示成 skipped。默认 baseline 为已验证的主干运行时：
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
 ```text
-由 refs/heads/main 加载当前工作流定义
+显式验证 GITHUB_REF == refs/heads/main
 → checkout 当前受信 main 工作流版本
 → 获取 main 历史和标签
 → 用 --end-of-options 解析 candidate_ref / baseline_ref
@@ -172,10 +172,10 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 ## 持证 Aspen 认证
 
-持证任务同样只有在事件 ref 为 `refs/heads/main` 时运行；输入的获批 SHA 不会直接传给 `actions/checkout`。
+持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度会明确失败，且不会占用自托管 Aspen 许可证主机；只有 guard 成功后，`certify` job 才进入 `self-hosted, windows, x64, aspen-licensed`。输入的获批 SHA 不会直接传给 `actions/checkout`。
 
 ```text
-由 refs/heads/main 加载当前工作流定义
+Ubuntu guard 显式验证 GITHUB_REF == refs/heads/main
 → checkout 当前受信 main 工作流版本
 → 校验输入 SHA 格式、commit 存在性和 main 祖先关系
 → detached checkout 已验证的获批 SHA，并核对 HEAD
