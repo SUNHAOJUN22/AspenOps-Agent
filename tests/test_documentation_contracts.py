@@ -175,7 +175,7 @@ def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
     assert "actions/checkout" in certification
 
 
-def test_docs_record_run_attempt_and_dispatch_sha_isolation() -> None:
+def test_docs_record_precheckout_and_run_attempt_licensed_isolation() -> None:
     paths = (
         ROOT / "README.md",
         ROOT / "README.en.md",
@@ -193,6 +193,11 @@ def test_docs_record_run_attempt_and_dispatch_sha_isolation() -> None:
         assert "GITHUB_RUN_ATTEMPT" in text
         assert "LICENSED_EVIDENCE_DIR" in text
         assert "github.run_attempt" in text
+        assert "aspenops-licensed-artifact" in text
+        assert "run-metadata.txt" in text
+        assert "job_status" in text
+        assert "runner.temp" in text
+        assert "if-no-files-found: error" in text
         assert "serial" in text.casefold() or "串行" in text
 
 
