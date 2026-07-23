@@ -82,13 +82,17 @@ def test_actions_runners_and_uv_are_immutable() -> None:
         for chunk in chunks:
             step = chunk.split("\n      - ", 1)[0]
             assert f'version: "{UV_VERSION}"' in step
+
     portable = workflow_text("ci.yml")
     performance = workflow_text("generate-performance-evidence.yml")
     windows = workflow_text("windows-control-plane.yml")
+    licensed = workflow_text("licensed-aspen-certification.yml")
     assert portable.count("runs-on: ubuntu-24.04") == 2
     assert "runs-on: ubuntu-24.04" in performance
     assert "runs-on: windows-2025" in windows
-    assert "ubuntu-latest" not in portable + performance
+    assert licensed.count("runs-on: ubuntu-24.04") == 1
+    assert "runs-on: [self-hosted, windows, x64, aspen-licensed]" in licensed
+    assert "ubuntu-latest" not in portable + performance + licensed
     assert "windows-latest" not in windows
 
 
@@ -103,6 +107,7 @@ def test_workflows_are_read_only_frozen_and_fail_closed() -> None:
         assert "continue-on-error: true" not in text
         assert "uv lock --check" in text
         assert "uv sync --frozen" in text
+
     for name in ("ci.yml", "generate-performance-evidence.yml"):
         commands = shell_commands(workflow_text(name))
         assert commands
@@ -135,15 +140,20 @@ def test_ci_collects_all_dependency_audit_evidence_before_failing() -> None:
 
 def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     text = workflow_text("generate-performance-evidence.yml")
+    guard = text.index("Reject non-main manual dispatch")
     checkout = text.index("actions/checkout@")
     trust = text.index("Verify trusted revisions and prepare isolated checkouts")
     setup = text.index("astral-sh/setup-uv@")
     sync = text.index("Verify lockfiles and sync isolated benchmark environments")
     baseline = text.index("Run baseline matrix in baseline environment")
     candidate = text.index("Run candidate matrix in candidate environment")
+
     assert f"default: {PERFORMANCE_BASELINE_SHA}" in text
-    assert "if: ${{ github.ref == 'refs/heads/main' }}" in text
-    assert checkout < trust < setup < sync < baseline < candidate
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" not in text
+    assert guard < checkout < trust < setup < sync < baseline < candidate
+    assert "Performance evidence must be dispatched from refs/heads/main" in text
+    assert 'printf \'%s\\n\' "$GITHUB_REF" > "$evidence_dir/dispatch-ref.txt"' in text
+    assert 'tee "$evidence_dir/dispatch-guard.log"' in text
     assert "ref: ${{ inputs.candidate_ref }}" not in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
     assert 'git rev-parse --verify --end-of-options "${CANDIDATE_REF}^{commit}"' in text
@@ -152,9 +162,11 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     assert 'git merge-base --is-ancestor "$baseline_sha" "$candidate_sha"' in text
     assert 'git checkout --detach "$candidate_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
+
     job_env = text[text.index("    env:") : text.index("    steps:")]
     assert "runner.temp" not in job_env
-    assert text.count('evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"') == 6
+    evidence_assignment = 'evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"'
+    assert text.count(evidence_assignment) == 7
     assert 'rm -rf "$evidence_dir"' in text
     assert 'mkdir -p "$evidence_dir"' in text
     assert "var/benchmarks" not in text
@@ -174,12 +186,19 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
 def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     workflow = workflow_text("licensed-aspen-certification.yml")
     gate = Path("scripts/validate_licensed_paths.py").read_text(encoding="utf-8")
+    dispatch_guard = workflow.index("dispatch-guard:")
+    guard_step = workflow.index("Require refs/heads/main")
+    certify = workflow.index("  certify:")
     checkout = workflow.index("Checkout trusted workflow revision")
     trust = workflow.index("Verify and checkout exact revision from main")
     setup = workflow.index("Set up Python")
-    assert "if: ${{ github.ref == 'refs/heads/main' }}" in workflow
+
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" not in workflow
+    assert "needs: dispatch-guard" in workflow
+    assert dispatch_guard < guard_step < certify < checkout < trust < setup
+    assert "Licensed certification must be dispatched from refs/heads/main" in workflow
+    assert "runs-on: ubuntu-24.04" in workflow[dispatch_guard:certify]
     assert "ref: ${{ inputs.expected_head_sha }}" not in workflow
-    assert checkout < trust < setup
     assert "PLAN_PATH: ${{ inputs.plan_path }}" in workflow
     assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in workflow
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
