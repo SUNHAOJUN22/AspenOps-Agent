@@ -89,10 +89,10 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 
 | Workflow | Pinned environment | Responsibility |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
-| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
+| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP, README commands and visual dashboards |
+| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, paths, documentation, governance and a Windows dashboard |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization, pre-checkout artifact isolation and real COM |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization, pre-checkout artifact isolation, a Mock dashboard and real COM |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -117,6 +117,34 @@ licensed-<backend>-<run_id>-<run_attempt>
 ```
 
 Every upload step uses `if-no-files-found: error`. A missing evidence path fails the workflow; `ignore` and `warn` cannot disguise missing evidence as success. `tests/test_artifact_upload_governance.py` checks all four workflows and runs in the public Linux quality gate, the Windows contracts gate and the licensed Mock regression before real COM.
+
+### Visual test dashboards
+
+`scripts/render_test_dashboard.py` uses only the Python standard library. It reads the current job's JUnit XML and coverage JSON, then writes a self-contained interactive HTML dashboard and a static SVG without loading network resources. Automation produces:
+
+```text
+test-dashboard-quality.html / .svg
+test-dashboard-python-3.11.html / .svg
+test-dashboard-python-3.12.html / .svg
+test-dashboard-python-3.13.html / .svg
+test-dashboard-windows.html / .svg
+test-dashboard-licensed.html / .svg
+```
+
+HTML switches between Summary and Evidence; SVG is suitable for reports and archive previews. When JUnit is absent, no valid test passed, or an early gate fails, the status is `INCOMPLETE` and the pass rate is 0% rather than a false PASS. The licensed dashboard summarizes only Mock software evidence before real COM and does not prove Aspen physics.
+
+Local example:
+
+```bash
+uv run python scripts/render_test_dashboard.py \
+  --input-dir var/ci \
+  --output-html var/ci/test-dashboard-local.html \
+  --output-svg var/ci/test-dashboard-local.svg \
+  --title "AspenOps local test dashboard" \
+  --scope "Local JUnit and coverage evidence"
+```
+
+`tests/test_test_dashboard.py` verifies parsing, no-network HTML/SVG output, the `INCOMPLETE` failure path, and workflow integration across Linux, the Python matrix, Windows and licensed Mock gates.
 
 ### Locked-dependency Wheel
 
@@ -174,7 +202,7 @@ Before checkout, the self-hosted job creates this run's dedicated directory:
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha`. The Mock JUnit file, successful licensed-evidence copies and final `job_status` all enter this runner-temp directory; the `if: always()` upload reads only this run's directory and uses `if-no-files-found: error`.
+`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha`. The Mock JUnit file, `test-dashboard-licensed.html`, `test-dashboard-licensed.svg`, successful licensed-evidence copies and final `job_status` all enter this runner-temp directory; the `if: always()` upload reads only this run's directory and uses `if-no-files-found: error`.
 
 All real certification runs use the fixed concurrency group `licensed-aspen-certification`. External evidence is isolated by run attempt:
 
