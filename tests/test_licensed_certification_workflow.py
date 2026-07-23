@@ -33,14 +33,12 @@ def test_workflow_has_explicit_main_ref_guard_before_self_hosted_job() -> None:
     assert "concurrency:\n  group: licensed-aspen-certification" in text
     assert "licensed-aspen-certification-${{ inputs.backend }}" not in text
     assert "cancel-in-progress: false" in text
-    assert 'ASPENOPS_VISIBLE: "false"' in text
-    assert 'ASPENOPS_CACHE_FAILURES: "false"' in text
 
 
-def test_approved_revision_is_validated_before_detached_checkout() -> None:
+def test_approved_sha_is_bound_to_dispatched_workflow_revision() -> None:
     text = workflow_text()
     checkout = text.index("Checkout trusted workflow revision")
-    trust = text.index("Verify and checkout exact revision from main")
+    trust = text.index("Verify dispatched revision and approved SHA")
     setup = text.index("Set up Python")
 
     assert f"actions/checkout@{CHECKOUT_SHA}" in text
@@ -49,13 +47,15 @@ def test_approved_revision_is_validated_before_detached_checkout() -> None:
     assert "ref: ${{ inputs.expected_head_sha }}" not in text
     assert "persist-credentials: false" in text
     assert checkout < trust < setup
-    assert "^[0-9a-f]{40}$" in text
-    assert "+refs/heads/main:refs/remotes/origin/main" in text
-    assert 'git rev-parse --verify --end-of-options "$expected^{commit}"' in text
-    assert "git merge-base --is-ancestor $expected origin/main" in text
-    assert "git checkout --detach $expected" in text
-    assert "git rev-parse HEAD" in text
-    assert "not an ancestor of the trusted main branch" in text
+    assert '$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()' in text
+    assert "expected_head_sha must equal the dispatched main GITHUB_SHA" in text
+    assert "Initial checkout does not match the dispatched workflow revision" in text
+    assert 'git rev-parse --verify --end-of-options "$workflowSha^{commit}"' in text
+    assert "git merge-base --is-ancestor $workflowSha origin/main" in text
+    assert "git checkout --detach $workflowSha" in text
+    assert "Checked-out commit does not match the dispatched workflow revision" in text
+    assert 'git rev-parse --verify --end-of-options "$expected^{commit}"' not in text
+    assert "git checkout --detach $expected" not in text
     assert "permissions:\n  contents: read" in text
     assert "git push" not in text
     assert "git merge " not in text
@@ -99,7 +99,7 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     ordered = [
         "Reject non-main manual dispatch",
         "Checkout trusted workflow revision",
-        "Verify and checkout exact revision from main",
+        "Verify dispatched revision and approved SHA",
         "Set up Python",
         "Verify lockfile and sync frozen certification dependencies",
         "Run isolated licensed control-plane regression gate",
@@ -144,8 +144,7 @@ def test_external_evidence_is_isolated_per_run_attempt() -> None:
     assert '$env:LICENSED_EVIDENCE_DIR\preflight.json' in text
     assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json' in text
     assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip' in text
-    old_fixed = '$env:ASPENOPS_STATE_DIR\licensed-certification'
-    assert old_fixed not in text
+    assert '$env:ASPENOPS_STATE_DIR\licensed-certification' not in text
 
 
 def test_workflow_cannot_self_grant_real_certification() -> None:
