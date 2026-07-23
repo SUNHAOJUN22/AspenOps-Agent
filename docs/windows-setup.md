@@ -52,7 +52,25 @@ A non-main dispatch exits with status 2. The licensed job has `needs: dispatch-g
 
 This keeps the workflow definition, runtime code, tests and path validator on one commit. An operator cannot select an older main ancestor to roll back current safety controls.
 
-### Per-run-attempt evidence
+### Pre-checkout runner-temp artifact directory
+
+Before checkout, the self-hosted job deletes and recreates:
+
+```text
+$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+`run-metadata.txt` is created before checkout. It records the run ID, attempt, ref, `GITHUB_SHA` and `expected_head_sha`. The Mock JUnit file, copied licensed evidence and final `job_status` remain in this directory.
+
+The final upload uses:
+
+```text
+${{ runner.temp }}/aspenops-licensed-artifact-${{ github.run_id }}-${{ github.run_attempt }}
+```
+
+It sets `if-no-files-found: error`. Checkout or setup failure therefore cannot upload stale `var/ci` from the persistent self-hosted workspace.
+
+### Per-run-attempt external evidence
 
 All real certification jobs use the fixed concurrency group `licensed-aspen-certification`, serializing Aspen Plus and HYSYS runs.
 
@@ -60,21 +78,21 @@ All real certification jobs use the fixed concurrency group `licensed-aspen-cert
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is removed and recreated, then exported as `LICENSED_EVIDENCE_DIR`. Preflight, real execution, bundle verification, report inspection and workspace staging all use that path.
-
-Before Mock regression, `var/ci` is removed and recreated. Successful evidence is copied into clean `var/ci/licensed-evidence`. The artifact name contains `github.run_id` and `github.run_attempt`.
+The directory is removed and recreated, then exported as `LICENSED_EVIDENCE_DIR`. Preflight, real execution, bundle verification, report inspection and runner-temp staging all use that path. Artifact names contain `github.run_id` and `github.run_attempt`.
 
 ```text
 Ubuntu guard requires GITHUB_REF == refs/heads/main
+→ create and clean the run-attempt runner-temp artifact directory
 → actions/checkout this dispatch's GITHUB_SHA
 → verify expected_head_sha == GITHUB_SHA
 → verify initial HEAD and main ancestry
 → detached checkout the same GITHUB_SHA
-→ clean Mock diagnostics
-→ create run_id-run_attempt evidence directory
+→ run Mock regression with JUnit in runner temp
+→ create run_id-run_attempt external evidence directory
 → realpath → preflight → approval → real COM
 → verify signed bundle and evidence files
-→ clean workspace staging → upload → human review
+→ copy evidence into runner-temp/licensed-evidence
+→ record job_status → upload runner temp → human review
 ```
 
 Security properties:
@@ -82,7 +100,8 @@ Security properties:
 - invalid refs fail rather than becoming skipped;
 - `needs: dispatch-guard` protects the licensed host;
 - certification jobs are serialized;
-- per-attempt evidence is cleaned before use;
+- runner-temp and external evidence are isolated per attempt;
+- checkout failures cannot expose stale workspace diagnostics;
 - traversal, symlink and junction escapes are rejected;
 - signing secrets are absent from setup and Mock regression;
 - software cannot self-grant final certification.
