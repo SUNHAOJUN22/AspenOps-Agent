@@ -169,6 +169,7 @@ jobs:
             tests/test_config_resource_budgets.py `
             tests/test_documentation_contracts.py `
             tests/test_artifact_upload_governance.py `
+            tests/test_test_dashboard.py `
             tests/test_real_backend_state_policy.py `
             tests/test_licensed_path_gate.py `
             tests/test_licensed_bundle_integrity.py `
@@ -184,6 +185,21 @@ jobs:
             tests/test_wheel_smoke_governance.py `
             --junitxml="$junit" `
             --durations=20
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Render licensed Mock test dashboard
+        if: always()
+        shell: pwsh
+        run: |
+          $artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $artifactDir = Join-Path $env:RUNNER_TEMP $artifactName
+          uv run python scripts/render_test_dashboard.py `
+            --input-dir "$artifactDir" `
+            --output-html "$artifactDir\test-dashboard-licensed.html" `
+            --output-svg "$artifactDir\test-dashboard-licensed.svg" `
+            --title "AspenOps licensed Mock dashboard" `
+            --scope "Software regression before licensed COM" `
+            --note "This dashboard contains Mock software evidence, not Aspen physics."
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve licensed filesystem targets
