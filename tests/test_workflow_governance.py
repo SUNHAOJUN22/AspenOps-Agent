@@ -42,14 +42,12 @@ def shell_commands(text: str) -> list[str]:
         if match is None:
             index += 1
             continue
-
         parent_indent = len(match.group(1))
         suffix = match.group(2).strip()
         if suffix not in BLOCK_SCALARS:
             commands.append(suffix)
             index += 1
             continue
-
         block: list[str] = []
         index += 1
         while index < len(lines):
@@ -79,13 +77,11 @@ def test_actions_runners_and_uv_are_immutable() -> None:
         ]
         assert uses_lines, f"{name} has no external action declarations"
         assert all(PINNED_ACTION.fullmatch(line) for line in uses_lines)
-
         chunks = text.split("astral-sh/setup-uv@")[1:]
         assert chunks, f"{name} has no setup-uv step"
         for chunk in chunks:
             step = chunk.split("\n      - ", 1)[0]
             assert f'version: "{UV_VERSION}"' in step
-
     portable = workflow_text("ci.yml")
     performance = workflow_text("generate-performance-evidence.yml")
     windows = workflow_text("windows-control-plane.yml")
@@ -107,7 +103,6 @@ def test_workflows_are_read_only_frozen_and_fail_closed() -> None:
         assert "continue-on-error: true" not in text
         assert "uv lock --check" in text
         assert "uv sync --frozen" in text
-
     for name in ("ci.yml", "generate-performance-evidence.yml"):
         commands = shell_commands(workflow_text(name))
         assert commands
@@ -146,8 +141,8 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     sync = text.index("Verify lockfiles and sync isolated benchmark environments")
     baseline = text.index("Run baseline matrix in baseline environment")
     candidate = text.index("Run candidate matrix in candidate environment")
-
     assert f"default: {PERFORMANCE_BASELINE_SHA}" in text
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" in text
     assert checkout < trust < setup < sync < baseline < candidate
     assert "ref: ${{ inputs.candidate_ref }}" not in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
@@ -157,7 +152,6 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     assert 'git merge-base --is-ancestor "$baseline_sha" "$candidate_sha"' in text
     assert 'git checkout --detach "$candidate_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
-
     job_env = text[text.index("    env:") : text.index("    steps:")]
     assert "runner.temp" not in job_env
     assert text.count('evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"') == 6
@@ -165,7 +159,6 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
     assert 'mkdir -p "$evidence_dir"' in text
     assert "var/benchmarks" not in text
     assert "PYTHONPATH: /tmp/aspenops-baseline/src" not in text
-
     assert "candidate-uv-lock.log" in text
     assert "baseline-uv-lock.log" in text
     assert "candidate-sync.log" in text
@@ -181,13 +174,20 @@ def test_performance_revisions_environments_and_evidence_are_isolated() -> None:
 def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     workflow = workflow_text("licensed-aspen-certification.yml")
     gate = Path("scripts/validate_licensed_paths.py").read_text(encoding="utf-8")
-
+    checkout = workflow.index("Checkout trusted workflow revision")
+    trust = workflow.index("Verify and checkout exact revision from main")
+    setup = workflow.index("Set up Python")
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" in workflow
+    assert "ref: ${{ inputs.expected_head_sha }}" not in workflow
+    assert checkout < trust < setup
     assert "PLAN_PATH: ${{ inputs.plan_path }}" in workflow
     assert "EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}" in workflow
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
     assert "plan_path must be one non-empty line" in workflow
     assert "plan_path must be repository-relative" in workflow
+    assert 'git rev-parse --verify --end-of-options "$expected^{commit}"' in workflow
     assert "git merge-base --is-ancestor $expected origin/main" in workflow
+    assert "git checkout --detach $expected" in workflow
     assert "python scripts/validate_licensed_paths.py" in workflow
     assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
     assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in workflow
@@ -204,7 +204,6 @@ def test_licensed_evidence_is_clean_and_workspace_scoped() -> None:
     upload = text.index("Upload signed licensed evidence")
     block = text[staging:upload]
     upload_block = text[upload:]
-
     assert "if: ${{ success() }}" in block
     assert "Test-Path -LiteralPath $source -PathType Leaf" in block
     assert "(Get-Item -LiteralPath $source).Length -le 0" in block
@@ -228,7 +227,6 @@ def test_windows_gates_keep_policy_documentation_and_bootstrap_contracts() -> No
         assert "tests/test_documentation_contracts.py" in text
         assert "tests/test_real_backend_state_policy.py" in text
         assert "tests/test_licensed_path_gate.py" in text
-
     windows = workflow_text("windows-control-plane.yml")
     assert "Parse PowerShell bootstrap" in windows
     assert "System.Management.Automation.Language.Parser" in windows
