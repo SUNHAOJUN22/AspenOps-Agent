@@ -36,7 +36,7 @@
 
 以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 状态；历史数字不会替代最新 Actions 证据。
 
-公共 CI 证明控制平面、路径策略、进程隔离、调度、归档和接口契约，不证明商业 Aspen、许可证、物性方法或工程模型已完成认证。
+公共 CI 证明控制平面、路径策略、进程隔离、调度、归档和接口契约，不证明商业 Aspen、许可证、物性方法或工程模型已经完成认证。
 
 ---
 
@@ -49,7 +49,7 @@
 5. 通信、引擎返回、收敛、可行性和守恒闭合分别判定。
 6. Mock CI 不冒充真实 Aspen 物理认证。
 
-只有以下条件全部成立，结果才为 `ok=true`：
+结果仅在以下条件全部成立时为 `ok=true`：
 
 ```text
 communication_ok
@@ -61,7 +61,7 @@ AND balances_passed
 
 ---
 
-## 快速开始与本地质量门
+## 快速开始与完整本地质量门
 
 要求：Python 3.11–3.13，`uv >= 0.11.16`。
 
@@ -92,7 +92,7 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 | `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复和稳定回归证据 |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、调度 SHA 绑定、全局串行、checkout 前制品隔离、按运行尝试隔离真实证据 |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、调度 SHA 绑定、全局串行、checkout 前制品隔离和真实 COM |
 
 所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
@@ -104,15 +104,29 @@ Linux 与 Windows × Python 3.11、3.12、3.13
 
 每种组合保存 JSON 和 stderr 日志并校验 JSON。某项失败不会阻止其余取证；全部完成后统一失败。
 
+### 重跑安全且失败闭合的制品
+
+`actions/upload-artifact` 制品不可变。为避免同一 workflow run 的后续 attempt 与先前制品重名，四个工作流的每个 artifact 名称都同时包含 `github.run_id` 和 `github.run_attempt`；矩阵制品还包含 Python 版本或 backend。
+
+```text
+ci-evidence-quality-<run_id>-<run_attempt>
+ci-evidence-python-<python>-<run_id>-<run_attempt>
+windows-control-plane-diagnostics-<run_id>-<run_attempt>
+performance-evidence-<run_id>-<run_attempt>
+licensed-<backend>-<run_id>-<run_attempt>
+```
+
+所有上传步骤统一使用 `if-no-files-found: error`。证据路径不存在时工作流必须失败，不允许 `ignore` 或 `warn` 把缺失证据伪装成成功。公共 CI、Windows 与性能工作流均由 `tests/test_artifact_upload_governance.py` 自动检查。
+
 ### 锁定依赖 Wheel
 
 运行时依赖从 `uv.lock` 导出并带哈希，使用 `uv pip sync --require-hashes` 创建干净环境，再以 `--offline --no-deps` 安装 Wheel，执行 `uv pip check` 和关键 CLI smoke，不在验证时重新解析版本。
 
 ---
 
-## 受信、隔离且无旧文件污染的性能证据
+## 受信且隔离的性能证据
 
-性能任务第一步检查事件 ref。若不是 `refs/heads/main`，任务会写入 `dispatch-ref.txt` 和 `dispatch-guard.log`，再以退出码 2 **显式失败**，不会显示成 skipped。
+性能任务第一步检查事件 ref。若不是 `refs/heads/main`，任务写入 `dispatch-ref.txt` 和 `dispatch-guard.log`，再以退出码 2 显式失败，不会显示成 skipped。
 
 默认 baseline：
 
@@ -130,7 +144,7 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 → 创建 baseline detached worktree
 ```
 
-手动 candidate 输入不会直接进入 `actions/checkout`。两个提交分别使用自己的 `uv.lock`、`.venv` 和 benchmark 脚本。所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 通过 `${{ runner.temp }}` 读取该目录，不接触候选工作区中已提交的旧 `var/benchmarks` 文件。
+两个提交分别使用自己的 `uv.lock`、`.venv` 和 benchmark 脚本。所有本次运行日志、JSON 和报告只写入 `$RUNNER_TEMP/aspenops-performance-evidence`；上传 action 通过 `${{ runner.temp }}` 读取该目录，不读取候选工作区中的历史 `var/benchmarks` 文件。
 
 Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 
@@ -152,55 +166,35 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度明确失败，且不会占用 `self-hosted, windows, x64, aspen-licensed` 主机。
 
-`expected_head_sha` 必须等于本次 `refs/heads/main` 调度的 `GITHUB_SHA`。工作流先核对初始 checkout 已经是该 SHA，再验证其仍属于可信 `origin/main`，随后以同一 SHA detached checkout。由此，工作流定义、运行代码、测试与 `validate_licensed_paths.py` 均来自同一提交；不能选择早期 main 祖先退回旧安全实现。
+`expected_head_sha` 必须等于本次 `refs/heads/main` 调度的 `GITHUB_SHA`。工作流核对初始 `actions/checkout` 已经是该 SHA，再验证其仍属于可信 `origin/main`，随后以同一 SHA detached checkout。工作流定义、运行代码、测试与 `validate_licensed_paths.py` 因而来自同一提交。
 
-自托管 job 在 `actions/checkout` **之前**清理并创建本次运行专属制品目录：
+自托管 job 在 checkout 之前创建本次运行专属目录：
 
 ```text
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-`run-metadata.txt` 会先记录 run、ref、`GITHUB_SHA` 与 `expected_head_sha`。Mock 回归 JUnit、成功认证证据副本和最终 `job_status` 全部写入这个 runner-temp 目录。即使 checkout、依赖同步或路径验证失败，`if: always()` 上传也只会读取本次目录，不会读取自托管工作区中上一次运行残留的 `var/ci`。上传路径使用 `${{ runner.temp }}`，并设置 `if-no-files-found: error`。
+`run-metadata.txt` 记录 run、ref、`GITHUB_SHA` 与 `expected_head_sha`。Mock JUnit、成功认证证据副本和最终 `job_status` 全部写入这个 runner-temp 目录；`if: always()` 上传只读取本次目录，并使用 `if-no-files-found: error`。
 
-所有真实认证运行使用统一 concurrency group `licensed-aspen-certification`。外部证据目录按运行尝试隔离：
+所有真实认证运行使用固定 concurrency group `licensed-aspen-certification` 串行执行。外部证据目录按运行尝试隔离：
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-该目录每次运行先删除再重建，并通过 `LICENSED_EVIDENCE_DIR` 贯穿 preflight、真实执行、签名验证、报告检查和 runner-temp 暂存。重跑不会复用上一次 report/bundle，Aspen Plus 与 HYSYS 也不会共享固定目录。上传制品名称包含 `github.run_id` 和 `github.run_attempt`。
+该目录每次先删除再重建，并通过 `LICENSED_EVIDENCE_DIR` 贯穿 realpath、preflight、真实执行、签名验证和报告检查。上传制品名称包含 `github.run_id` 与 `github.run_attempt`。
 
-```text
-Ubuntu guard 验证 GITHUB_REF == refs/heads/main
-→ checkout 前创建并清理本次 runner-temp 制品目录
-→ actions/checkout 本次主干 GITHUB_SHA
-→ 验证 expected_head_sha == GITHUB_SHA
-→ 核对初始 HEAD 与主干祖先关系
-→ detached checkout 同一 GITHUB_SHA
-→ 执行隔离 Mock 回归并将 JUnit 写入 runner temp
-→ 建立 run_id-run_attempt 独立外部目录
-→ realpath → preflight → 人工批准 → 真实 COM
-→ 签名包验证 → 全部证据非空检查
-→ 将外部证据复制到 runner-temp/licensed-evidence
-→ 记录最终 job_status
-→ 仅上传本次 runner-temp 目录 → 工程师审核
-```
-
-软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`，签名不等于工程模型已获批准。
+软件只能生成 `PENDING_REAL_ASPEN_CERTIFICATION`，签名不等于工程模型已经获批。
 
 ---
 
-## 文档、CLI 与 MCP 契约
+## 文档、CLI、MCP 与安全边界
 
 `tests/test_documentation_contracts.py` 从 `pyproject.toml` 动态读取版本，核对 README、`__version__`、CHANGELOG、AGENTS、CLAUDE、CONTRIBUTING 和核心文档；本地链接不得逃出仓库，操作指南必须使用冻结质量门，聊天内部引用或 `sandbox:/` 标记不得进入仓库 Markdown。
 
 主要 CLI：`demo`、`doctor`、`dry-run`、`run-batch`、`submit`、`job`、`benchmark`、`optimize`、`certify`、`certification-preflight`、`certify-licensed`、`verify-licensed-bundle`、`verify-bundle`、`mcp`。
 
 MCP 精确暴露 14 个窄接口工具，不提供任意 Shell、Python、VBA、`eval`、无限制 COM 方法或原始 Tree Path 写入。
-
----
-
-## 自动测试不证明什么
 
 自动化不证明任意 Aspen 版本都能启动、任意模型都收敛、物性/反应/设备假设工程上正确，也不能替代流程工程师或自行授予真实认证。
 
