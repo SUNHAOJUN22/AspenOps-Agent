@@ -32,8 +32,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  dispatch-guard:
+    name: Reject non-main manual dispatch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require refs/heads/main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Licensed certification must be dispatched from refs/heads/main" >&2
+            exit 2
+          fi
+          echo "Main workflow ref accepted"
+
   certify:
-    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: dispatch-guard
     name: licensed-${{ inputs.backend }}-certification
     runs-on: [self-hosted, windows, x64, aspen-licensed]
     environment: licensed-aspen-certification
