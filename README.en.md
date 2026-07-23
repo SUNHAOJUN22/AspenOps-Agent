@@ -92,7 +92,7 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, global serialization, per-attempt evidence, real COM and human review |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization and per-attempt real evidence |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -150,20 +150,24 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 ## Licensed Aspen certification
 
-The licensed workflow first checks `GITHUB_REF` in a fixed `ubuntu-24.04` guard job. A non-main dispatch fails explicitly and never occupies the `self-hosted, windows, x64, aspen-licensed` host. The approved SHA never enters `actions/checkout` directly.
+The licensed workflow first checks `GITHUB_REF` in a fixed Ubuntu guard. A non-main dispatch fails explicitly and never occupies the licensed Windows host.
 
-All real certification runs share the fixed concurrency group `licensed-aspen-certification`, preventing Aspen Plus and HYSYS runs from writing concurrently into the same state space. External evidence is isolated by run attempt:
+`expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial checkout already matches that SHA, confirms it remains an ancestor of trusted `origin/main`, and detached-checks out the same SHA. The workflow definition, runtime code, tests and `validate_licensed_paths.py` therefore come from one commit; an operator cannot select an older main ancestor to roll back current safety controls.
+
+All real certification runs use the fixed concurrency group `licensed-aspen-certification`. External evidence is isolated by run attempt:
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is then used by preflight, real execution, signature verification, report checks and workspace staging. A rerun cannot consume the previous attempt's report or bundle, and backend runs no longer share a fixed output directory. Artifact names include both `github.run_id` and `github.run_attempt`.
+The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by preflight, real execution, signature verification, report checks and workspace staging. Reruns cannot consume a previous attempt's report or bundle, and Aspen Plus/HYSYS runs do not share a fixed output directory. Artifact names include `github.run_id` and `github.run_attempt`.
 
 ```text
-Ubuntu guard explicitly verifies GITHUB_REF == refs/heads/main
-→ checkout the current trusted main workflow revision
-→ validate and detached-checkout the approved SHA
+Ubuntu guard verifies GITHUB_REF == refs/heads/main
+→ actions/checkout this dispatch's main GITHUB_SHA
+→ verify expected_head_sha == GITHUB_SHA
+→ verify initial HEAD and main ancestry
+→ detached checkout the same GITHUB_SHA
 → clean var/ci and run isolated Mock regression
 → create a run_id-run_attempt external evidence directory
 → realpath → preflight → human approval → real COM
