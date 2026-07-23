@@ -21,9 +21,7 @@ branch coverage: 90.84880636604774%
 CI floor: 94.5%
 ```
 
-Public Windows run `29814739334` recorded 104 passed in 2.06 seconds with no failures, errors or skips.
-
-These are archived validated baselines, not fresh current-head results.
+Public Windows run `29814739334` recorded 104 passed in 2.06 seconds with no failures, errors or skips. These are archived validated baselines, not fresh current-head results.
 
 ## Current portable and Windows gates
 
@@ -33,28 +31,22 @@ These are archived validated baselines, not fresh current-head results.
 
 No new fixed count is claimed without a readable current JUnit artifact.
 
-## Runtime path policy
-
-Real backends require non-empty absolute allowed roots. State, model, registry, result, bundle and certification outputs must resolve inside those roots. Backend mismatch, traversal, symlink and junction escapes fail before Aspen opens or state is created.
-
 ## Workflow governance
 
 `tests/test_workflow_governance.py` locks:
 
 - exactly four authoritative workflows;
 - pinned runners, Actions and uv;
-- no block, commented, inline or `write-all` permissions;
-- no retained credentials, `pull_request_target` or silent `continue-on-error`;
+- no arbitrary write permissions, retained credentials or `pull_request_target`;
 - frozen dependencies and fail-closed Bash;
-- dispatch-input isolation;
 - complete six-target dependency evidence;
 - explicit failed guards for non-main performance and licensed dispatches;
-- performance guard evidence written before checkout;
-- a lightweight Ubuntu licensed guard before the self-hosted Aspen job;
 - input refs and SHAs validated before detached checkout;
-- separate baseline/candidate lockfiles, environments and scripts;
-- performance artifacts isolated in the runner temporary directory;
-- trusted licensed SHA, realpath, secret isolation and clean evidence staging;
+- separate baseline/candidate environments and runner-temporary performance artifacts;
+- one global licensed-certification concurrency group;
+- run-attempt-scoped external evidence through `LICENSED_EVIDENCE_DIR`;
+- cleanup of Mock diagnostics, external evidence and workspace staging;
+- run-attempt-qualified licensed artifact names;
 - Windows helper and documentation contracts.
 
 ## Trusted and isolated performance evidence
@@ -65,44 +57,35 @@ The default baseline is:
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-The first Ubuntu step always records `dispatch-ref.txt` and `dispatch-guard.log` under `$RUNNER_TEMP/aspenops-performance-evidence`. A ref other than `refs/heads/main` exits with status 2, so an invalid manual dispatch fails rather than becoming an all-skipped run.
-
-After the guard succeeds, the workflow loads the trusted main revision, resolves candidate and baseline with `--end-of-options`, requires both in `main`, requires baseline ancestry, and only then performs detached candidate checkout and baseline worktree creation.
-
-It creates two independent frozen environments:
-
-```text
-candidate/uv.lock → candidate .venv → candidate script
-baseline/uv.lock  → baseline .venv  → baseline script
-```
-
-All current-run SHAs, logs, JSON and reports are written only to `$RUNNER_TEMP/aspenops-performance-evidence`. The upload action uses `${{ runner.temp }}/aspenops-performance-evidence`; job-level `env` does not use the runner context. Tracked `var/benchmarks` files cannot enter the artifact.
+The first Ubuntu step records `dispatch-ref.txt` and `dispatch-guard.log` under `$RUNNER_TEMP/aspenops-performance-evidence`. A ref other than `refs/heads/main` exits with status 2. After the guard succeeds, the workflow validates candidate/baseline ancestry, creates two independent frozen environments and writes all current-run evidence only to runner temporary storage. The upload action uses `${{ runner.temp }}/aspenops-performance-evidence`.
 
 Results remain portable Mock orchestration evidence, not licensed Aspen solve performance.
 
 ## Licensed evidence chain
 
-A fixed `ubuntu-24.04` `dispatch-guard` job runs first. A non-main ref exits with status 2 and marks the workflow failed. The self-hosted `certify` job declares `needs: dispatch-guard`, so an invalid dispatch never consumes the licensed Aspen machine.
+A fixed `ubuntu-24.04` `dispatch-guard` job runs first. A non-main ref exits with status 2. The self-hosted `certify` job has `needs: dispatch-guard`, so invalid dispatches do not consume the licensed Aspen machine.
 
-The approved SHA is not passed directly to checkout:
+All real certification jobs share:
 
 ```text
-Ubuntu guard explicitly requires GITHUB_REF == refs/heads/main
-→ checkout the trusted main workflow revision
-→ validate SHA format, commit existence and main ancestry
-→ detached checkout of the validated SHA and verify HEAD
-→ validate the plan in that checkout
-→ frozen Mock regression → realpath → preflight and approval
-→ real COM → signed-bundle verification → require non-empty evidence
-→ clean var/ci/licensed-evidence staging → upload workspace var/ci only
-→ human review
+concurrency group: licensed-aspen-certification
 ```
 
-Early failures cannot expand an undefined external state path, and stale self-hosted-runner staging is removed before copying. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
+External output is unique to the workflow attempt:
+
+```text
+ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+The workflow removes and recreates this directory, exports `LICENSED_EVIDENCE_DIR`, and uses it for preflight, real execution, bundle verification, report inspection and workspace staging. The old fixed `$ASPENOPS_STATE_DIR/licensed-certification` output is no longer used.
+
+Before Mock regression, `var/ci` is removed and recreated. Successful external evidence is revalidated and copied into clean `var/ci/licensed-evidence`. Artifact names include both `github.run_id` and `github.run_attempt`.
+
+These controls prevent backend collisions, rerun contamination, stale report/bundle reuse and stale self-hosted workspace diagnostics. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies package/README/CHANGELOG/title consistency, required documents, safe local links, frozen operating guides, portable `.env.example`, archived evidence boundaries, explicit manual-dispatch failure documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
+`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies package/README/CHANGELOG/title consistency, required documents, safe local links, frozen operating guides, portable `.env.example`, archived evidence boundaries, explicit dispatch failure documentation, per-attempt licensed evidence documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Evidence boundary
 
