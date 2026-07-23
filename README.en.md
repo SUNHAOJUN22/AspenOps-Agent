@@ -34,7 +34,7 @@
 | MCP tools | 14 |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-These figures are an **archived validated baseline** extracted from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about every later commit. The badges show current `main` push status; historical numbers never replace fresh Actions evidence.
+These figures are an **archived validated baseline** extracted from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about every later commit. The badges show current `main` push status; historical figures never replace fresh Actions evidence.
 
 Public CI validates the control plane, path policy, process isolation, scheduling, archives and interfaces. It cannot certify a commercial Aspen installation, a license, a property method or an engineering model.
 
@@ -92,7 +92,7 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization, pre-checkout artifact isolation and per-attempt real evidence |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatch-SHA binding, global serialization, pre-checkout artifacts and real COM |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -104,13 +104,27 @@ Linux and Windows × Python 3.11, 3.12 and 3.13
 
 Each target retains JSON and stderr logs and validates the JSON. One failure does not prevent the remaining evidence from being collected; the quality job fails once after all six finish.
 
+### Rerun-safe, fail-closed artifacts
+
+`actions/upload-artifact` artifacts are immutable. To avoid collisions between attempts of the same workflow run, every artifact name includes both `github.run_id` and `github.run_attempt`; matrix artifacts also include the Python version or backend.
+
+```text
+ci-evidence-quality-<run_id>-<run_attempt>
+ci-evidence-python-<python>-<run_id>-<run_attempt>
+windows-control-plane-diagnostics-<run_id>-<run_attempt>
+performance-evidence-<run_id>-<run_attempt>
+licensed-<backend>-<run_id>-<run_attempt>
+```
+
+Every upload uses `if-no-files-found: error`. Missing evidence must fail the workflow; `ignore` and `warn` are not accepted as successful evidence behavior. `tests/test_artifact_upload_governance.py` enforces this contract across public CI, Windows, performance and licensed workflows.
+
 ### Locked-dependency Wheel
 
 Runtime requirements are exported from `uv.lock` with hashes, synchronized with `uv pip sync --require-hashes`, and the Wheel is installed with `--offline --no-deps`. CI then runs `uv pip check` and critical CLI smoke without re-resolving versions.
 
 ---
 
-## Trusted, isolated and stale-proof performance evidence
+## Trusted and isolated performance evidence
 
 The first performance step checks the event ref. A ref other than `refs/heads/main` writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** instead of appearing as skipped.
 
@@ -130,7 +144,7 @@ explicitly verify GITHUB_REF == refs/heads/main
 → create a detached baseline worktree
 ```
 
-The manual candidate input never enters `actions/checkout`. Each revision uses its own `uv.lock`, `.venv` and benchmark script. Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through `${{ runner.temp }}` and never reads tracked `var/benchmarks` files from the candidate workspace.
+Each revision uses its own `uv.lock`, `.venv` and benchmark script. Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through `${{ runner.temp }}` and never reads historical `var/benchmarks` files from the candidate workspace.
 
 Mock performance is orchestration evidence, not licensed Aspen solve speed.
 
@@ -152,55 +166,35 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 The licensed workflow first checks `GITHUB_REF` in a fixed Ubuntu guard. A non-main dispatch fails explicitly and never occupies the licensed Windows host.
 
-`expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial checkout already matches that SHA, confirms it remains an ancestor of trusted `origin/main`, and detached-checks out the same SHA. The workflow definition, runtime code, tests and `validate_licensed_paths.py` therefore come from one commit; an operator cannot select an older main ancestor to roll back current safety controls.
+`expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial `actions/checkout` already matches that SHA, confirms it remains an ancestor of trusted `origin/main`, and detached-checks out the same SHA. The workflow definition, runtime code, tests and `validate_licensed_paths.py` therefore come from one commit.
 
-Before `actions/checkout`, the self-hosted job removes and creates a run-attempt-specific artifact directory:
+Before checkout, the self-hosted job creates a run-specific directory:
 
 ```text
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha` before checkout. The Mock JUnit file, successful licensed evidence copies and final `job_status` all go to this runner-temp directory. If checkout, dependency sync or path validation fails, the `if: always()` upload still reads only the current-run directory and cannot upload stale `var/ci` from the persistent self-hosted workspace. Upload uses `${{ runner.temp }}` and `if-no-files-found: error`.
+`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha`. Mock JUnit, successful certification evidence and final `job_status` all enter this runner-temporary directory. The `if: always()` upload reads only that directory and uses `if-no-files-found: error`.
 
-All real certification runs use the fixed concurrency group `licensed-aspen-certification`. External evidence is isolated by run attempt:
+All real certification runs use the fixed concurrency group `licensed-aspen-certification`, serializing execution. External evidence is isolated by attempt:
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by preflight, real execution, signature verification, report checks and runner-temp staging. Reruns cannot consume a previous attempt's report or bundle, and Aspen Plus/HYSYS runs do not share a fixed output directory. Artifact names include `github.run_id` and `github.run_attempt`.
-
-```text
-Ubuntu guard verifies GITHUB_REF == refs/heads/main
-→ create and clean this run's runner-temp artifact directory before checkout
-→ actions/checkout this dispatch's main GITHUB_SHA
-→ verify expected_head_sha == GITHUB_SHA
-→ verify initial HEAD and main ancestry
-→ detached checkout the same GITHUB_SHA
-→ run isolated Mock regression and write JUnit to runner temp
-→ create a run_id-run_attempt external evidence directory
-→ realpath → preflight → human approval → real COM
-→ signed-bundle verification → require non-empty evidence
-→ copy external evidence into runner-temp/licensed-evidence
-→ record final job_status
-→ upload only this run's runner-temp directory → engineering review
-```
+The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by realpath validation, preflight, real execution, signature verification and report checks. Artifact names include `github.run_id` and `github.run_attempt`.
 
 Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature is not engineering approval.
 
 ---
 
-## Documentation, CLI and MCP contracts
+## Documentation, CLI, MCP and safety boundaries
 
 `tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and checks README, `__version__`, CHANGELOG, AGENTS, CLAUDE, CONTRIBUTING and core documents. Local links cannot escape the repository, operating guides must use frozen quality gates, and chat-internal citation or `sandbox:/` markup cannot enter repository Markdown.
 
 Primary CLI commands: `demo`, `doctor`, `dry-run`, `run-batch`, `submit`, `job`, `benchmark`, `optimize`, `certify`, `certification-preflight`, `certify-licensed`, `verify-licensed-bundle`, `verify-bundle`, and `mcp`.
 
 MCP exposes exactly 14 narrow tools. It does not expose arbitrary Shell, Python, VBA, `eval`, unrestricted COM methods or raw Tree Path writes.
-
----
-
-## What automation does not prove
 
 Automation does not prove that every Aspen version starts, every model converges, or property methods, reactions and equipment assumptions are engineering-correct. It cannot replace a process engineer or self-grant real certification.
 
