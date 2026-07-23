@@ -49,7 +49,17 @@ detached checkout remains exactly GITHUB_SHA
 
 This keeps the workflow definition, runtime code, tests and `validate_licensed_paths.py` on one commit and prevents rollback to an earlier main ancestor.
 
-## Licensed evidence isolation
+## Licensed artifact and evidence isolation
+
+A second critical issue was found on the persistent self-hosted runner: checkout could fail before workspace `var/ci` was cleaned, while an `if: always()` upload could still read stale diagnostics from a previous run.
+
+The final job creates and cleans a run-attempt-specific artifact directory before checkout:
+
+```text
+$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+`run-metadata.txt` records run/ref/SHA data before checkout. Mock JUnit is written directly to this directory. Successful evidence is copied into its `licensed-evidence` child, and `job_status` is recorded in an always-running step. Upload reads only `${{ runner.temp }}/aspenops-licensed-artifact-${{ github.run_id }}-${{ github.run_attempt }}` and uses `if-no-files-found: error`. The licensed workflow no longer reads or uploads `var/ci`.
 
 All real certification jobs share the fixed concurrency group `licensed-aspen-certification`, serializing Aspen Plus and HYSYS runs.
 
@@ -57,11 +67,9 @@ All real certification jobs share the fixed concurrency group `licensed-aspen-ce
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used by preflight, real execution, bundle verification, report inspection and workspace staging. The old fixed output file paths are prohibited.
+The external directory is deleted and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used by preflight, real execution, bundle verification, report inspection and runner-temp staging. The old fixed output paths are prohibited.
 
-Before Mock regression, `var/ci` is deleted and recreated. Successful evidence is copied into clean `var/ci/licensed-evidence`. Artifact names include `github.run_id` and `github.run_attempt`.
-
-These controls prevent old-code rollback, backend collisions, rerun contamination, stale evidence reuse and persistent self-hosted diagnostics. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
+These controls prevent old-code rollback, checkout-failure contamination, backend collisions, rerun contamination, stale evidence reuse and persistent self-hosted diagnostics. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
 
 ## Workflow governance
 
@@ -76,14 +84,16 @@ Tests reject:
 - initial checkout/runtime/path-validator commit mismatch;
 - shared performance environments or candidate-workspace artifacts;
 - backend-specific licensed concurrency groups;
-- missing run-attempt evidence scope or `LICENSED_EVIDENCE_DIR`;
-- fixed shared licensed output paths;
-- licensed artifact names without `github.run_attempt`;
+- missing run-attempt external evidence scope or `LICENSED_EVIDENCE_DIR`;
+- licensed artifacts created only after checkout;
+- Mock JUnit or final upload paths pointing at workspace `var/ci`;
+- missing `run-metadata.txt`, `job_status` or runner-temp upload;
+- artifact names without `github.run_attempt`;
 - missing cleanup, realpath, secret-isolation or Windows helper contracts.
 
 ## Documentation contracts
 
-Documentation tests check package/version/title consistency, safe links, frozen instructions, portable `.env.example`, six audits, explicit dispatch failure behavior, `GITHUB_SHA` binding, per-attempt evidence isolation, archived certification boundaries, and absence of chat-internal citation or sandbox-link markup.
+Documentation tests check package/version/title consistency, safe links, frozen instructions, portable `.env.example`, six audits, explicit dispatch failure behavior, `GITHUB_SHA` binding, pre-checkout runner-temp artifacts, per-attempt external evidence, archived certification boundaries, and absence of chat-internal citation or sandbox-link markup.
 
 ## Validation boundary
 
