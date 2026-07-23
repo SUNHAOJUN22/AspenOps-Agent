@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → typed process intent → isolated execution → Aspen solve → engineering decision → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [External Agent Integration](docs/external-agent-integration.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -89,10 +89,10 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 
 | Workflow | Pinned environment | Responsibility |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP, README commands and visual dashboards |
-| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, paths, documentation, governance and a Windows dashboard |
+| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP, Process IR and visual dashboards |
+| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell, paths, Process IR, governance and dashboards |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, dispatched-SHA binding, global serialization, pre-checkout artifact isolation, a Mock dashboard and real COM |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | dispatch-SHA binding, Process IR software gate, Mock dashboards, isolated evidence and real COM |
 
 Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
@@ -106,7 +106,7 @@ Each target retains JSON and stderr logs and validates the JSON. One failure doe
 
 ### Rerun-safe, fail-closed artifacts
 
-`actions/upload-artifact` artifacts are immutable. To prevent a later attempt of the same workflow run from colliding with artifacts from an earlier attempt, every artifact name in all four workflows contains both `github.run_id` and `github.run_attempt`; matrix artifacts also include the Python version or backend.
+Every artifact name contains `github.run_id` and `github.run_attempt`; matrix artifacts also include the Python version or backend. Every upload uses `if-no-files-found: error`, so missing evidence cannot be represented as success.
 
 ```text
 ci-evidence-quality-<run_id>-<run_attempt>
@@ -116,11 +116,9 @@ performance-evidence-<run_id>-<run_attempt>
 licensed-<backend>-<run_id>-<run_attempt>
 ```
 
-Every upload step uses `if-no-files-found: error`. A missing evidence path fails the workflow; `ignore` and `warn` cannot disguise missing evidence as success. `tests/test_artifact_upload_governance.py` checks all four workflows and runs in the public Linux quality gate, the Windows contracts gate and the licensed Mock regression before real COM.
-
 ### Visual test dashboards
 
-`scripts/render_test_dashboard.py` uses only the Python standard library. It reads the current job's JUnit XML and coverage JSON, then writes a self-contained interactive HTML dashboard and a static SVG without loading network resources. Automation produces:
+`scripts/render_test_dashboard.py` uses only the Python standard library to turn each job's JUnit XML and coverage JSON into self-contained HTML and SVG. Missing evidence is `INCOMPLETE`, failures are `FAIL`, and no state can become a false PASS.
 
 ```text
 test-dashboard-quality.html / .svg
@@ -131,30 +129,67 @@ test-dashboard-windows.html / .svg
 test-dashboard-licensed.html / .svg
 ```
 
-HTML switches between Summary and Evidence; SVG is suitable for reports and archive previews. When JUnit is absent, no valid test passed, or an early gate fails, the status is `INCOMPLETE` and the pass rate is 0% rather than a false PASS. The licensed dashboard summarizes only Mock software evidence before real COM and does not prove Aspen physics.
+---
 
-Local example:
+## Simulator-neutral Process Intent IR and multi-backend roadmap
 
-```bash
-uv run python scripts/render_test_dashboard.py \
-  --input-dir var/ci \
-  --output-html var/ci/test-dashboard-local.html \
-  --output-svg var/ci/test-dashboard-local.svg \
-  --title "AspenOps local test dashboard" \
-  --scope "Local JUnit and coverage evidence"
+AspenOps absorbed compatible architecture patterns from public Text-to-Flowsheet, Sketch2Simulation, multi-Agent process design, DWSIM, IDAES, Modelica and Aspen Python automation projects. It did **not** copy external source code, proprietary prompts or commercial simulator documentation. See [External Agent Integration](docs/external-agent-integration.md).
+
+The new schema is:
+
+```text
+aspenops.flowsheet/v1
 ```
 
-`tests/test_test_dashboard.py` verifies parsing, no-network HTML/SVG output, the `INCOMPLETE` failure path, and workflow integration across Linux, the Python matrix, Windows and licensed Mock gates.
+It represents components, property package, unit operations, typed input/output ports, streams, scalar parameters and metadata. The implementation provides:
+
+- deterministic normalization, canonical JSON and SHA-256 graph identity;
+- duplicate-ID, unknown-reference, port-direction, self-connection, required-port and implicit multi-connection checks;
+- configurable recycle-cycle validation;
+- rejection of `code`, `script`, `shell`, `vba`, raw Tree Path and other executable/private-path injection;
+- a Knowledge → Concept → Parameter → Execution → Repair → Review Agent contract;
+- benchmark fields for topology validity, compiler availability, execution, convergence, material/energy closure, repair iterations and human intervention.
+
+Execution and automatic IR compilation are separate capability claims:
+
+| Backend | Current execution | Automatic IR compiler |
+|---|---|---|
+| Mock | available | planned |
+| Aspen Plus | available on licensed Windows | planned |
+| HYSYS | available on licensed Windows | planned |
+| DWSIM | planned | planned |
+| IDAES | planned | planned |
+| Modelica/FMI | planned | planned |
+
+**DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers are not implemented. The project will not represent a planned adapter as available.**
+
+Validate and render the example:
+
+```bash
+uv run python scripts/validate_process_ir.py \
+  examples/process-intent.example.json \
+  --canonical-output var/ci/process-intent-canonical.json \
+  --report-output var/ci/process-intent-report.json
+
+uv run python scripts/render_process_ir_dashboard.py \
+  --input var/ci/process-intent-report.json \
+  --output-html var/ci/process-ir-dashboard.html \
+  --output-svg var/ci/process-ir-dashboard.svg
+```
+
+`process-ir-dashboard.html` switches between issues, backend capabilities and the bounded Agent pipeline; `process-ir-dashboard.svg` is suitable for reports and artifact previews. Linux, Windows and licensed Mock gates run `tests/test_process_ir.py`, `tests/test_process_ir_edges.py` and `tests/test_process_ir_dashboard.py`.
+
+The full contract is in [Process Intent IR](docs/process-intent-ir.md).
 
 ### Locked-dependency Wheel
 
-Runtime requirements are exported from `uv.lock` with hashes, synchronized with `uv pip sync --require-hashes`, and the Wheel is installed with `--offline --no-deps`. CI then runs `uv pip check` and critical CLI smoke without re-resolving versions.
+Runtime requirements are exported from `uv.lock` with hashes, synchronized with `uv pip sync --require-hashes`, and the Wheel is installed with `--offline --no-deps`. CI then runs `uv pip check`, critical CLI smoke and Process IR import smoke without re-resolving versions.
 
 ---
 
 ## Trusted and isolated performance evidence
 
-The first performance step checks the event ref. A ref other than `refs/heads/main` writes `dispatch-ref.txt` and `dispatch-guard.log`, then fails explicitly with exit code 2 instead of appearing as skipped.
+The performance workflow explicitly rejects non-main dispatches, resolves candidate and baseline with `--end-of-options`, requires both commits in trusted main history and executes each revision with its own lockfile, environment and benchmark script.
 
 Default baseline:
 
@@ -162,19 +197,7 @@ Default baseline:
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-```text
-explicitly verify GITHUB_REF == refs/heads/main
-→ actions/checkout the current trusted main workflow revision
-→ resolve candidate_ref / baseline_ref with --end-of-options
-→ require both SHAs to belong to main
-→ require baseline to be an ancestor of candidate
-→ detached checkout of the validated candidate SHA
-→ create a detached baseline worktree
-```
-
-Each revision uses its own `uv.lock`, `.venv` and benchmark script. Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through `${{ runner.temp }}` and never reads historical `var/benchmarks` files from the candidate workspace.
-
-Mock performance is orchestration evidence, not licensed Aspen solve speed.
+All current-run evidence is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads `${{ runner.temp }}` and does not read historical candidate-workspace benchmark files. Mock performance is orchestration evidence, not licensed Aspen solve speed.
 
 ---
 
@@ -184,41 +207,35 @@ Mock performance is orchestration evidence, not licensed Aspen solve speed.
 powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-The bootstrap safely installs or upgrades `uv >= 0.11.16`, preserves PATH, installs `windows + agent + dev + signing` frozen, strictly imports `.env`, rejects duplicate variables and unbalanced quotes, reports line numbers without echoing possible secrets, and runs `doctor --probe`.
+The bootstrap installs or upgrades `uv >= 0.11.16`, preserves PATH, installs frozen `windows + agent + dev + signing` dependencies, safely loads `.env`, rejects duplicate variables and unbalanced quotes, and runs `doctor --probe`.
 
-Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model, registry, result and evidence paths must resolve inside those roots. Realpath checks reject `..`, symlink and Windows junction escapes.
+Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model, registry, result and evidence paths must resolve inside those roots. Realpath checks reject traversal, symlink and Windows junction escapes.
 
 ---
 
 ## Licensed Aspen certification
 
-The licensed workflow first checks `GITHUB_REF` in a fixed Ubuntu guard. A non-main dispatch fails explicitly and never occupies the licensed Windows host.
+The licensed workflow first rejects non-main dispatches on fixed `ubuntu-24.04`. `expected_head_sha` must equal the dispatch `GITHUB_SHA`, and the initial and detached checkout must remain that trusted main commit.
 
-`expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial `actions/checkout` already matches that SHA, confirms it remains an ancestor of trusted `origin/main`, and detached-checks out the same SHA. The workflow definition, runtime code, tests and `validate_licensed_paths.py` therefore come from one commit.
-
-Before checkout, the self-hosted job creates this run's dedicated directory:
+Before checkout, the self-hosted job creates:
 
 ```text
 $RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-`run-metadata.txt` records the run, ref, `GITHUB_SHA` and `expected_head_sha`. The Mock JUnit file, `test-dashboard-licensed.html`, `test-dashboard-licensed.svg`, successful licensed-evidence copies and final `job_status` all enter this runner-temp directory; the `if: always()` upload reads only this run's directory and uses `if-no-files-found: error`.
-
-All real certification runs use the fixed concurrency group `licensed-aspen-certification`. External evidence is isolated by run attempt:
+Run metadata, Mock JUnit, the general dashboard, the Process IR dashboard, successful licensed-evidence copies and final `job_status` remain in this run-attempt directory. Real certification is serialized and uses a separate cleaned external directory:
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is used by realpath, preflight, real execution, signature verification and report checks. Artifact names contain both `github.run_id` and `github.run_attempt`.
-
-Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature is not engineering approval.
+Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature or dashboard is not engineering approval.
 
 ---
 
 ## Documentation, CLI, MCP and security boundary
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and checks README, `__version__`, CHANGELOG, AGENTS, CLAUDE, CONTRIBUTING and core documents. Local links cannot escape the repository, operating guides must use frozen quality gates, and chat-internal citation or `sandbox:/` markup cannot enter repository Markdown.
+Documentation contracts derive the version from `pyproject.toml`, validate local links, frozen commands and certification wording, and reject chat-internal citation or `sandbox:/` markup.
 
 Primary CLI commands: `demo`, `doctor`, `dry-run`, `run-batch`, `submit`, `job`, `benchmark`, `optimize`, `certify`, `certification-preflight`, `certify-licensed`, `verify-licensed-bundle`, `verify-bundle`, and `mcp`.
 
