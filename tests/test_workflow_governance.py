@@ -164,7 +164,8 @@ def test_dispatch_inputs_never_interpolate_into_any_run_command() -> None:
 
 def test_performance_revisions_and_environments_are_trusted_and_isolated() -> None:
     text = workflow_text("generate-performance-evidence.yml")
-    trust_step = text.index("Verify trusted revisions and prepare baseline worktree")
+    checkout = text.index("actions/checkout@")
+    trust_step = text.index("Verify trusted revisions and prepare isolated checkouts")
     tool_setup = text.index("astral-sh/setup-uv@")
     dependency_sync = text.index("Verify lockfiles and sync isolated benchmark environments")
     baseline_run = text.index("Run baseline matrix in baseline environment")
@@ -175,13 +176,16 @@ def test_performance_revisions_and_environments_are_trusted_and_isolated() -> No
     assert "group: aspenops-performance-${{ inputs." not in text
     assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in text
     assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
-    assert trust_step < tool_setup < dependency_sync < baseline_run < candidate_run
+    assert "ref: ${{ inputs.candidate_ref }}" not in text
+    assert checkout < trust_step < tool_setup < dependency_sync < baseline_run < candidate_run
     assert '"+refs/heads/main:refs/remotes/origin/main"' in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
+    assert 'git rev-parse --verify --end-of-options "${CANDIDATE_REF}^{commit}"' in text
     assert 'git merge-base --is-ancestor "$candidate_sha" origin/main' in text
     assert 'git merge-base --is-ancestor "$baseline_sha" origin/main' in text
     assert 'git merge-base --is-ancestor "$baseline_sha" "$candidate_sha"' in text
     assert "baseline_ref must be an ancestor of candidate_ref" in text
+    assert 'git checkout --detach "$candidate_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$BASELINE_REF"' not in text
     assert "candidate-uv-lock.log" in text
