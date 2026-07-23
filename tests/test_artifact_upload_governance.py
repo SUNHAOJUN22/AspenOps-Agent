@@ -76,6 +76,7 @@ def test_artifact_governance_remains_in_early_quality_gates() -> None:
     marker = "tests/test_artifact_upload_governance.py"
     assert marker in workflow_text("ci.yml")
     assert marker in workflow_text("windows-control-plane.yml")
+    assert marker in workflow_text("licensed-aspen-certification.yml")
 
 
 def test_readmes_document_rerun_safe_fail_closed_artifacts() -> None:
