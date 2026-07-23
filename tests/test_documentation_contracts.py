@@ -22,6 +22,8 @@ DOCUMENTS = (
     ROOT / "CHANGELOG.md",
     ROOT / "SECURITY.md",
     ROOT / "docs" / "architecture.md",
+    ROOT / "docs" / "process-intent-ir.md",
+    ROOT / "docs" / "external-agent-integration.md",
     ROOT / "docs" / "performance.md",
     ROOT / "docs" / "windows-setup.md",
     ROOT / "docs" / "quality-report.md",
@@ -163,7 +165,11 @@ def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
         assert "refs/heads/main" in text
         assert "detached" in text.casefold()
     assert "显式失败" in chinese
-    assert "fails explicitly with exit code 2" in english
+    english_guard = english.casefold()
+    assert (
+        "fails explicitly with exit code 2" in english_guard
+        or "explicitly rejects non-main dispatches" in english_guard
+    )
     assert "dispatch-guard.log" in performance
     assert "status 2" in performance
     for text in (windows, quality, audit, certification):
@@ -199,6 +205,24 @@ def test_docs_record_precheckout_and_run_attempt_licensed_isolation() -> None:
         assert "runner.temp" in text
         assert "if-no-files-found: error" in text
         assert "serial" in text.casefold() or "串行" in text
+
+
+def test_process_intent_docs_preserve_capability_boundaries() -> None:
+    chinese = _read(ROOT / "README.md")
+    english = _read(ROOT / "README.en.md")
+    contract = _read(ROOT / "docs" / "process-intent-ir.md")
+    integration = _read(ROOT / "docs" / "external-agent-integration.md")
+    for text in (chinese, english, contract):
+        assert "aspenops.flowsheet/v1" in text
+        assert "DWSIM" in text
+        assert "IDAES" in text
+        assert "planned" in text
+        assert "scripts/validate_process_ir.py" in text
+        assert "process-ir-dashboard.html" in text
+    assert "no adapter" in english.casefold()
+    assert "未实现" in chinese
+    assert "not copied source code" in integration.casefold()
+    assert "proprietary prompts" in integration.casefold()
 
 
 def test_environment_template_keeps_first_run_portable() -> None:
