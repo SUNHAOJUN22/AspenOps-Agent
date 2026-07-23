@@ -42,20 +42,6 @@ Public CI validates the control plane, path policy, process isolation, schedulin
 
 ## Core invariants
 
-```text
-Agent / CLI / Python
-        │ typed MCP / JSON
-        ▼
-AspenOps Control Plane
-Policy · Registry · Units · Scheduler · Cache · Evidence · Audit
-        │ one batched RPC per point
-        ▼
-Private Worker · COM STA · Private Model Copy
-        ├─ Aspen Plus
-        ├─ Aspen HYSYS
-        └─ Mock
-```
-
 1. A COM object belongs to one Windows child process and one STA apartment.
 2. Agents use semantic variables and never construct arbitrary Aspen Tree Paths.
 3. Every Worker uses a private model copy and never overwrites the master model.
@@ -105,14 +91,12 @@ Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allo
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | full tests, coverage, Ruff, mypy, six dependency audits, build, Wheel, Mock, MCP and README commands |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Jobs, IPC, Fake Aspen/HYSYS, PowerShell helpers, path, documentation and governance contracts |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments, repeated trials and stable-regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → `self-hosted, windows, x64, aspen-licensed` | explicit non-main failure, trusted SHA, realpath, real COM, signed evidence and human review |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | explicit non-main failure, trusted comparison, two frozen environments and stable-regression evidence |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | explicit non-main failure, global serialization, per-attempt evidence, real COM and human review |
 
-Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects block, commented or inline `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
+Hosted runners, third-party Actions and `uv 0.11.16` are pinned. Workflows grant only `contents: read`; governance rejects arbitrary `*: write`, `write-all`, retained checkout credentials, `pull_request_target` and silent `continue-on-error`.
 
 ### Six frozen dependency audits
-
-CI audits Linux and Windows for Python 3.11, 3.12 and 3.13: **six** combinations.
 
 ```text
 Linux and Windows × Python 3.11, 3.12 and 3.13
@@ -128,7 +112,9 @@ Runtime requirements are exported from `uv.lock` with hashes, synchronized with 
 
 ## Trusted, isolated and stale-proof performance evidence
 
-The first performance step runs on Ubuntu and checks the event ref. A ref other than `refs/heads/main` writes the observed ref and guard log into runner-temporary evidence, then **fails explicitly with exit code 2** instead of appearing as skipped. The default baseline is the validated main-history runtime:
+The first performance step checks the event ref. A ref other than `refs/heads/main` writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** instead of appearing as skipped.
+
+Default baseline:
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
@@ -136,8 +122,7 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 
 ```text
 explicitly verify GITHUB_REF == refs/heads/main
-→ checkout the current trusted main workflow revision
-→ fetch main history and tags
+→ actions/checkout the current trusted main workflow revision
 → resolve candidate_ref / baseline_ref with --end-of-options
 → require both SHAs to belong to main
 → require baseline to be an ancestor of candidate
@@ -145,14 +130,7 @@ explicitly verify GITHUB_REF == refs/heads/main
 → create a detached baseline worktree
 ```
 
-The manual candidate input is never passed directly to `actions/checkout`. Both lockfiles are checked independently, both environments use `uv sync --frozen`, and each revision runs its own repository script:
-
-```text
-candidate/uv.lock → candidate .venv → candidate benchmark script
-baseline/uv.lock  → baseline .venv  → baseline benchmark script
-```
-
-Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through the supported `${{ runner.temp }}` context and never reads tracked `var/benchmarks` files from the candidate workspace.
+The manual candidate input never enters `actions/checkout`. Each revision uses its own `uv.lock`, `.venv` and benchmark script. Every current-run log, JSON result and report is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads it through `${{ runner.temp }}` and never reads tracked `var/benchmarks` files from the candidate workspace.
 
 Mock performance is orchestration evidence, not licensed Aspen solve speed.
 
@@ -172,22 +150,29 @@ Real backends require non-empty absolute `ASPENOPS_ALLOWED_ROOTS`. State, model,
 
 ## Licensed Aspen certification
 
-The licensed workflow first runs a fixed `ubuntu-24.04` guard job. A non-main dispatch fails explicitly and never occupies the self-hosted Aspen license machine. Only after the guard succeeds does the `certify` job enter `self-hosted, windows, x64, aspen-licensed`. The approved input SHA is never passed directly to `actions/checkout`.
+The licensed workflow first checks `GITHUB_REF` in a fixed `ubuntu-24.04` guard job. A non-main dispatch fails explicitly and never occupies the `self-hosted, windows, x64, aspen-licensed` host. The approved SHA never enters `actions/checkout` directly.
+
+All real certification runs share the fixed concurrency group `licensed-aspen-certification`, preventing Aspen Plus and HYSYS runs from writing concurrently into the same state space. External evidence is isolated by run attempt:
+
+```text
+ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+The directory is deleted and recreated before use. `LICENSED_EVIDENCE_DIR` is then used by preflight, real execution, signature verification, report checks and workspace staging. A rerun cannot consume the previous attempt's report or bundle, and backend runs no longer share a fixed output directory. Artifact names include both `github.run_id` and `github.run_attempt`.
 
 ```text
 Ubuntu guard explicitly verifies GITHUB_REF == refs/heads/main
 → checkout the current trusted main workflow revision
-→ validate SHA format, commit existence and main ancestry
-→ detached checkout of the validated approved SHA and verify HEAD
-→ validate the plan path in that checkout
-→ frozen dependencies and isolated Mock regression
-→ realpath → preflight → explicit human approval → real COM
-→ signed-bundle verification → require all evidence files to be non-empty
-→ clean staging in var/ci/licensed-evidence
+→ validate and detached-checkout the approved SHA
+→ clean var/ci and run isolated Mock regression
+→ create a run_id-run_attempt external evidence directory
+→ realpath → preflight → human approval → real COM
+→ signed-bundle verification → require non-empty evidence
+→ clean and stage into var/ci/licensed-evidence
 → upload workspace var/ci only → engineering review
 ```
 
-Early failures never expand an undefined external state path; successful evidence first enters a clean workspace staging directory. Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature is not engineering approval.
+Software can produce only `PENDING_REAL_ASPEN_CERTIFICATION`; a signature is not engineering approval.
 
 ---
 
