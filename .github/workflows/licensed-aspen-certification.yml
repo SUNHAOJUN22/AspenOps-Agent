@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       expected_head_sha:
-        description: Exact 40-character commit approved for certification
+        description: Exact GITHUB_SHA approved for certification
         required: true
         type: string
       backend:
@@ -64,32 +64,43 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify and checkout exact revision from main
+      - name: Verify dispatched revision and approved SHA
         shell: pwsh
         run: |
           $expected = $env:EXPECTED_HEAD_SHA.Trim().ToLowerInvariant()
+          $workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()
           if ($expected -notmatch '^[0-9a-f]{40}$') {
             throw "expected_head_sha must be a full lowercase 40-character Git SHA"
+          }
+          if ($workflowSha -notmatch '^[0-9a-f]{40}$') {
+            throw "GITHUB_SHA must be a full lowercase 40-character Git SHA"
+          }
+          if ($expected -ne $workflowSha) {
+            throw "expected_head_sha must equal the dispatched main GITHUB_SHA"
+          }
+          $observedBefore = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($observedBefore -ne $workflowSha) {
+            throw "Initial checkout does not match the dispatched workflow revision"
           }
           git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
           if ($LASTEXITCODE -ne 0) {
             throw "Unable to fetch the trusted main branch"
           }
-          git rev-parse --verify --end-of-options "$expected^{commit}" | Out-Null
+          git rev-parse --verify --end-of-options "$workflowSha^{commit}" | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            throw "expected_head_sha does not identify a commit"
+            throw "GITHUB_SHA does not identify a commit"
           }
-          git merge-base --is-ancestor $expected origin/main
+          git merge-base --is-ancestor $workflowSha origin/main
           if ($LASTEXITCODE -ne 0) {
-            throw "Approved commit is not an ancestor of the trusted main branch"
+            throw "Dispatched workflow revision is not an ancestor of trusted main"
           }
-          git checkout --detach $expected
+          git checkout --detach $workflowSha
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to checkout the approved commit"
+            throw "Unable to checkout the dispatched workflow revision"
           }
           $observed = (git rev-parse HEAD).Trim().ToLowerInvariant()
-          if ($observed -ne $expected) {
-            throw "Checked-out commit $observed does not match approved commit $expected"
+          if ($observed -ne $workflowSha) {
+            throw "Checked-out commit does not match the dispatched workflow revision"
           }
           if ([string]::IsNullOrWhiteSpace($env:PLAN_PATH) -or $env:PLAN_PATH -match "[`r`n]") {
             throw "plan_path must be one non-empty line"
