@@ -2,195 +2,134 @@
 
 Date: 2026-07-22  
 Repository: `SUNHAOJUN22/AspenOps-Agent`  
-Scope: automated tests, workflow trust, frozen dependencies, Windows contracts, performance evidence, licensed evidence, runtime path policy and documentation accuracy.
+Scope: automated tests, workflow trust, frozen dependencies, Windows contracts, performance evidence, licensed evidence, path policy and documentation accuracy.
 
 ## Executive conclusion
 
-The repository already had a broad portable control-plane suite. This audit retained that runtime and corrected reproducibility, workflow-security, path-policy, dependency-audit, Windows-bootstrap, performance-evidence, licensed-evidence and documentation gaps directly on `main`; no new branch was created.
-
-Final fail-closed layers:
-
-1. environment-loaded `Settings`;
-2. direct `Settings(...)` construction;
-3. request/backend and CLI-output policy;
-4. process ownership, scheduling and archive contracts;
-5. workflow and documentation governance;
-6. trusted and isolated performance evidence;
-7. licensed commit trust, realpath, signed evidence and human review.
+The repository already had a broad portable suite. This audit retained the validated runtime and corrected reproducibility, workflow security, path policy, dependency auditing, Windows bootstrap, performance evidence, licensed evidence and documentation directly on `main`; no new branch was created.
 
 ## Verified archived evidence
 
-Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, recorded:
+Portable Actions run `29814739487`, SHA `670e9523e915af309f16d959150cfadcd84219a6`:
 
 ```text
 72 test modules
 563 passed
-0 failed
-0 errors
-0 skipped
+0 failed / 0 errors / 0 skipped
 16.73 seconds
 combined branch-aware coverage: 94.9719800747198%
 statement coverage: 96.23677786818551%
 branch coverage: 90.84880636604774%
-configured floor: 94.5%
+floor: 94.5%
 ```
 
-Python 3.11, 3.12 and 3.13 jobs plus quality/build/smoke passed in that archived run.
+Python 3.11, 3.12 and 3.13 plus quality/build/smoke passed in that archived run. Public Windows run `29814739334` recorded 104 passed in 2.06 seconds.
 
-Public Windows run `29814739334` recorded 104 passed, 0 failed, 0 errors and 0 skipped in 2.06 seconds.
-
-These are archived validated baselines. They are not a fresh claim for the latest hardened head.
+These are archived validated baselines, not current-head claims.
 
 ## Portable CI
 
-`ci.yml` uses pinned `ubuntu-24.04`, immutable Action SHAs and `uv 0.11.16`. It enforces:
+`ci.yml` enforces pinned `ubuntu-24.04`, immutable Actions, `uv 0.11.16`, read-only permissions, frozen dependencies, Ruff/format/mypy, build, Mock, README command smoke, 14 MCP tools and full Python tests.
 
-- strictly read-only permissions and non-persistent checkout credentials;
-- checked, frozen dependency synchronization;
-- Linux and Windows audits for Python 3.11, 3.12 and 3.13—six combinations;
-- separate JSON and stderr evidence for every audit target;
-- continuation through all six targets before one aggregated failure;
-- Ruff, format, strict mypy and documentation contracts;
-- source/Wheel build, Mock Demo and README command smoke;
-- benchmark policy and exactly 14 MCP tools;
-- full Python matrix tests with branch-aware floor 94.5%;
-- JUnit, coverage, dependency and diagnostic artifacts.
+It audits Linux and Windows for Python 3.11, 3.12 and 3.13—six combinations. Each target preserves JSON and stderr evidence, validates JSON, and the job fails once after all targets finish.
 
-The Wheel gate exports hash-pinned runtime requirements, synchronizes with `--require-hashes`, installs the built Wheel with `--offline --no-deps`, runs `uv pip check`, and exercises critical CLI commands.
+The Wheel gate uses hash-pinned exported requirements, `uv pip sync --require-hashes`, offline/no-deps Wheel installation, `uv pip check` and CLI smoke.
 
 ## Windows control-plane gate
 
-`windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It adds:
-
-- PowerShell AST parsing;
-- non-installing `-LibraryMode` helper execution;
-- valid dotenv import, duplicate/unbalanced rejection and secret-safe errors;
-- self-update → winget upgrade → winget install fallback tests;
-- Job Object, ownership, IPC, recovery and Scheduler contracts;
-- Fake Aspen Plus/HYSYS convergence;
-- archive/bundle safety and realpath tests;
-- documentation/version/link contracts;
-- Windows CLI, Doctor smoke, JUnit and diagnostics.
+`windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It runs PowerShell AST parsing and real helper behavior through `-LibraryMode`, including dotenv safety and self-update → winget upgrade → winget install fallback checks. It also covers Job Objects, process ownership, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
 ## Trusted and isolated performance evidence
 
-The performance workflow originally accepted arbitrary refs, passed candidate input directly to checkout, synchronized candidate dependencies before proving trust, and executed baseline source with the candidate environment and harness.
-
-The current default baseline is the validated main-history runtime:
+The default baseline is the validated main-history runtime:
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-Trust validation now precedes tool setup, candidate checkout or Python execution:
+The workflow now:
 
 ```text
 checkout current trusted main workflow revision
-→ fetch trusted main history and tags
-→ resolve candidate_ref and baseline_ref with --end-of-options
-→ require candidate SHA in main history
-→ require baseline SHA in main history
-→ require baseline to be an ancestor of candidate
-→ detached checkout of the validated candidate SHA
+→ fetch main history and tags
+→ resolve candidate_ref / baseline_ref with --end-of-options
+→ require both SHAs in main
+→ require baseline ancestry
+→ detached checkout validated candidate
 → create detached baseline worktree
 ```
 
-The manual candidate input is never passed directly to `actions/checkout`.
+Candidate input is never sent directly to `actions/checkout`.
 
-The workflow then creates two independent frozen environments:
+Two independent frozen environments are used:
 
 ```text
-candidate/uv.lock → candidate .venv → candidate benchmark script
-baseline/uv.lock  → baseline .venv  → baseline benchmark script
+candidate/uv.lock → candidate .venv → candidate script
+baseline/uv.lock  → baseline .venv  → baseline script
 ```
 
-Both lockfiles are checked, both environments use `uv sync --frozen`, and each revision executes the script stored in its own repository. Candidate input, dependencies, source or harness changes therefore cannot contaminate the baseline measurement. Incompatibility fails explicitly rather than silently changing the comparison method.
+This fixes candidate dependency/source/harness contamination of the baseline.
 
-Unmerged, unrelated or reverse-ordered commits cannot produce evidence that appears authoritative. Performance remains portable Mock orchestration evidence, not licensed Aspen solve performance.
+### Runner-context defect found and fixed
+
+A temporary implementation placed `${{ runner.temp }}` in `jobs.<job_id>.env`. GitHub's context-availability rules do not permit the `runner` context there. The final workflow instead:
+
+- uses `$RUNNER_TEMP/aspenops-performance-evidence` inside Shell steps;
+- uses `${{ runner.temp }}/aspenops-performance-evidence` only in the upload action's `with.path`, where the runner context is available;
+- keeps job-level `env` limited to supported `inputs` values.
+
+### Stale benchmark evidence defect found and fixed
+
+The repository tracks historical `var/benchmarks` files for committed policy comparisons. Uploading from the candidate workspace could therefore publish old committed results after an early failure.
+
+The final workflow writes every current-run SHA, log, JSON result and report only to the runner temporary directory and uploads only that directory. Candidate-workspace `var/benchmarks` files cannot enter the artifact.
 
 ## Licensed evidence chain
 
-The protected licensed workflow uses:
-
 ```text
-exact trusted-main SHA
-→ frozen sync and isolated Mock regression
-→ plan/root/state realpath validation
-→ preflight and explicit human approval
-→ scoped real COM
-→ signed-bundle verification
-→ verify every required source file exists and is non-empty
-→ clean and rebuild var/ci/licensed-evidence
-→ copy preflight/report/bundle into the workspace
-→ verify staged files
-→ upload workspace-local var/ci only
-→ human engineering review
+trusted main SHA → frozen Mock regression → realpath validation
+→ preflight and explicit approval → scoped real COM
+→ signed-bundle verification → require non-empty source evidence
+→ clean var/ci/licensed-evidence → copy and revalidate
+→ upload workspace var/ci only → human review
 ```
 
-This resolves three evidence risks:
-
-- missing required files cannot silently pass as a successful certification run;
-- an early failure cannot expand an undefined external state path in the upload action;
-- a persistent self-hosted workspace cannot mix stale staged evidence into a new artifact.
-
-The software cannot emit `REAL_ASPEN_CERTIFIED`; it remains `PENDING_REAL_ASPEN_CERTIFICATION` pending human review.
+This prevents missing evidence, undefined external upload paths and stale self-hosted staging. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
 
 ## Runtime path policy
 
-The same real-backend policy applies across environment loading, direct Python construction, requests, CLI outputs and licensed certification:
-
-- real backends require non-empty allowed roots;
-- roots and state paths must be explicitly absolute;
-- state, model, registry, output, bundle and certification paths stay inside resolved roots;
-- request backend must match configured backend;
-- traversal, symlink and Windows junction escapes are rejected;
-- unsafe configuration fails before Aspen opens or state is created.
+Real backends require non-empty absolute allowed roots. State, models, registries, outputs and evidence must resolve inside them. Backend mismatch, traversal, symlink and Windows junction escapes fail before Aspen opens or state is created.
 
 ## Workflow governance
 
 `tests/test_workflow_governance.py` rejects:
 
-- additional long-lived workflows;
-- drifting runners, unpinned Actions or uv versions;
-- block, commented, inline or `write-all` workflow permissions;
-- retained checkout credentials, `pull_request_target` and silent `continue-on-error`;
-- unfrozen dependencies or weak Bash mode;
-- dispatch-input interpolation in literal, folded, inline or shorthand `run` syntax;
+- extra workflows, drifting runners, unpinned Actions or uv;
+- block, commented, inline or `write-all` permissions;
+- retained checkout credentials, `pull_request_target` or silent `continue-on-error`;
+- unfrozen dependencies or weak Bash;
+- direct input interpolation in any `run` syntax;
 - incomplete dependency-audit evidence;
-- candidate input passed directly to checkout;
-- untrusted or reverse-ordered performance refs;
-- candidate-environment contamination of baseline performance runs;
-- arbitrary-input artifact names;
-- untrusted licensed commits, missing realpath handoff or exposed signing secrets;
-- licensed uploads reading external state paths or retaining stale staged evidence;
+- candidate input passed to checkout;
+- unsupported runner context in job-level env;
+- untrusted/reverse performance refs;
+- shared performance environments or candidate-workspace artifacts;
+- untrusted licensed commits, missing realpath/secret isolation or stale evidence staging;
 - deletion of Windows helper, path or documentation contracts.
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies:
+`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe local links, frozen operating instructions, portable `.env.example`, archived evidence boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
 
-- README badges, package metadata, `__version__`, CHANGELOG and AspenOps titles agree;
-- README, README.en, AGENTS, CLAUDE, CONTRIBUTING, CHANGELOG, Security and core documentation exist;
-- local Markdown links resolve and cannot escape the repository;
-- current guides contain no stale uv, runner, workflow or product-title guidance;
-- AGENTS and CONTRIBUTING require frozen quality gates;
-- both READMEs describe all six dependency-audit targets;
-- `.env.example` remains a portable Mock first-run configuration;
-- archived evidence and the `PENDING_REAL_ASPEN_CERTIFICATION` boundary remain explicit.
+## Executed targeted checks
 
-The documentation contract runs in portable CI, public Windows CI and the isolated licensed regression gate.
+The current performance workflow was parsed as YAML and all six Bash `run` blocks passed `bash -n`. The rebuilt governance test compiled under Python, had no lines above the repository's 100-character limit, and its performance-specific pytest passed.
 
-## Executed static and targeted checks
-
-The audit executed workflow YAML parsing, governance tests, Bash `run`-block syntax checks, Python syntax/line-length checks and licensed realpath/symlink-escape tests. These checks supplement, but do not replace, a fresh complete Actions artifact for the current head.
+These checks supplement, but do not replace, a fresh full Actions artifact.
 
 ## Remaining external limits
 
-1. A readable current Actions artifact is required before replacing the archived pass counts or coverage values.
+1. A readable current Actions artifact is required before replacing archived counts or coverage.
 2. Public automation cannot instantiate proprietary Aspen Automation Servers.
-3. Real certification requires licensed self-hosted Windows, an approved case, verified semantics, signing material and human engineering review.
-4. No finite audit can prove the absence of every future defect; it can resolve observed defects and install regression guards.
-
-## Final decision
-
-Retain AspenOps 2.0 as the authoritative single-main runtime. The correct remediation was to harden runtime policy, complete dependency evidence, workflow trust, safe candidate resolution, isolated performance environments, executable Windows bootstrap contracts, workspace-scoped licensed evidence and documentation—not to replace a validated runtime or inflate coverage beyond observed evidence.
+3. Real certification requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
+4. No finite audit proves the absence of every future defect; it resolves observed defects and installs regression guards.
