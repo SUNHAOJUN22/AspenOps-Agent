@@ -168,6 +168,24 @@ def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
         assert "runner.temp" in text
 
 
+def test_manual_workflow_docs_record_main_ref_and_validated_checkout() -> None:
+    paths = (
+        ROOT / "README.md",
+        ROOT / "README.en.md",
+        ROOT / "docs" / "windows-setup.md",
+        ROOT / "docs" / "quality-report.md",
+        ROOT / "docs" / "automated-test-audit-2026-07-22.md",
+        ROOT / "docs" / "certification.md",
+    )
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert "refs/heads/main" in text
+        assert "detached" in text.casefold()
+    for path in (ROOT / "README.md", ROOT / "README.en.md", ROOT / "docs" / "certification.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "actions/checkout" in text
+
+
 def test_environment_template_keeps_first_run_portable() -> None:
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
     assert "ASPENOPS_BACKEND=mock" in text
