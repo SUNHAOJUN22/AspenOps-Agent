@@ -168,6 +168,7 @@ jobs:
             tests/test_config_registry_edge_cases.py `
             tests/test_config_resource_budgets.py `
             tests/test_documentation_contracts.py `
+            tests/test_artifact_upload_governance.py `
             tests/test_real_backend_state_policy.py `
             tests/test_licensed_path_gate.py `
             tests/test_licensed_bundle_integrity.py `
