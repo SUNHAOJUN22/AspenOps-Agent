@@ -30,6 +30,8 @@ def test_workflow_has_explicit_main_ref_guard_before_self_hosted_job() -> None:
     assert "runs-on: [self-hosted, windows, x64, aspen-licensed]" in text
     assert "environment: licensed-aspen-certification" in text
     assert "approve_real_execution:" in text
+    assert "concurrency:\n  group: licensed-aspen-certification" in text
+    assert "licensed-aspen-certification-${{ inputs.backend }}" not in text
     assert "cancel-in-progress: false" in text
     assert 'ASPENOPS_VISIBLE: "false"' in text
     assert 'ASPENOPS_CACHE_FAILURES: "false"' in text
@@ -72,6 +74,7 @@ def test_inputs_and_paths_are_canonicalized_before_real_execution() -> None:
     assert "python scripts/validate_licensed_paths.py" in text
     assert '"PLAN_PATH=$($resolved.plan_path)"' in text
     assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in text
+    assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in text
     assert '"$env:PLAN_PATH"' in text
 
 
@@ -111,15 +114,38 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     positions = [text.index(marker) for marker in ordered]
     assert positions == sorted(positions)
     assert "uv lock --check" in text
-    assert (
+    sync_command = (
         "uv sync --frozen --extra dev --extra windows --extra agent --extra signing"
-        in text
     )
+    assert sync_command in text
     assert "ASPENOPS_BACKEND: mock" in text
-    assert r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression" in text
+    mock_state = r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression"
+    assert mock_state in text
+    assert "Remove-Item -LiteralPath var/ci -Recurse -Force" in text
     assert "tests/test_documentation_contracts.py" in text
     assert "tests/test_workflow_governance.py" in text
     assert "licensed-software-regression.xml" in text
+
+
+def test_external_evidence_is_isolated_per_run_attempt() -> None:
+    text = workflow_text()
+    resolve = text.index("Resolve licensed filesystem targets")
+    preflight = text.index("Run licensed certification preflight")
+    block = text[resolve:preflight]
+
+    assert '$runScope = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"' in block
+    assert '$evidenceRoot = Join-Path $resolved.state_dir "licensed-certification"' in block
+    assert "$evidenceDir = Join-Path $evidenceRoot $runScope" in block
+    assert "Remove-Item -LiteralPath $evidenceDir -Recurse -Force" in block
+    assert block.index("Remove-Item -LiteralPath $evidenceDir") < block.index(
+        "New-Item -ItemType Directory -Force $evidenceDir"
+    )
+    assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in block
+    assert '$env:LICENSED_EVIDENCE_DIR\preflight.json' in text
+    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json' in text
+    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip' in text
+    old_fixed = '$env:ASPENOPS_STATE_DIR\licensed-certification'
+    assert old_fixed not in text
 
 
 def test_workflow_cannot_self_grant_real_certification() -> None:
@@ -151,7 +177,11 @@ def test_evidence_is_clean_validated_and_workspace_scoped() -> None:
     assert "Copy-Item -LiteralPath $bundle" in block
     assert "Staged licensed evidence is missing" in block
     assert "Staged licensed evidence is empty" in block
-    assert "name: licensed-${{ inputs.backend }}-${{ github.run_id }}" in upload_block
+    artifact_name = (
+        "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-"
+        "${{ github.run_attempt }}"
+    )
+    assert artifact_name in upload_block
     assert "expected_head_sha" not in upload_block
     assert "path: var/ci" in upload_block
     assert "${{ env.ASPENOPS_STATE_DIR }}" not in upload_block
