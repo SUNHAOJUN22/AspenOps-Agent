@@ -86,6 +86,7 @@ class ProcessIRCompiler(Protocol):
 
     def compile(self, intent: ProcessIntent) -> dict[str, Any]:
         """Compile validated IR into a backend-specific, non-executable plan."""
+        ...
 
 
 def backend_capabilities() -> tuple[BackendCapability, ...]:
