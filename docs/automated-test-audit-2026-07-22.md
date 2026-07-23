@@ -10,99 +10,83 @@ The repository already had a broad portable suite. This audit retained the valid
 
 ## Verified archived evidence
 
-Portable Actions run `29814739487`, SHA `670e9523e915af309f16d959150cfadcd84219a6`:
+Portable Actions run `29814739487`, SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13. Python 3.12 recorded 563 passed in 16.73 seconds, combined branch-aware coverage 94.9719800747198%, statement coverage 96.23677786818551% and branch coverage 90.84880636604774% against a 94.5% floor.
+
+Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are archived validated baselines, not current-head claims.
+
+## Public gates
+
+`ci.yml` enforces pinned `ubuntu-24.04`, immutable Actions, `uv 0.11.16`, read-only permissions, frozen dependencies, six dependency audits, Ruff/format/mypy, build, Mock, README smoke, 14 MCP tools and full Python tests.
+
+`windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It executes PowerShell AST/helper tests, dotenv safety, uv upgrade fallbacks, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
+
+## Explicit dispatch guards
+
+The performance workflow writes `dispatch-ref.txt` and `dispatch-guard.log`; a non-main ref exits with status 2 instead of creating an all-skipped run.
+
+The licensed workflow uses an Ubuntu `dispatch-guard`; the self-hosted job has `needs: dispatch-guard`. Invalid refs fail before the licensed host is occupied.
+
+Each run uses the workflow file in its selected ref. Current guards cannot retroactively rewrite old tags or branches, and the available connector did not provide an authoritative tag inventory.
+
+## Performance evidence
+
+Default baseline: `ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2`.
+
+Candidate and baseline are resolved with `--end-of-options`, validated against main ancestry and executed with independent lockfiles, `.venv`s and scripts. All current-run evidence is written to `$RUNNER_TEMP/aspenops-performance-evidence`; upload uses `${{ runner.temp }}/aspenops-performance-evidence`. Candidate-workspace `var/benchmarks` files cannot enter the artifact.
+
+## Licensed checkout trust
+
+A critical issue was found: allowing any main ancestor as `expected_head_sha` could execute an old runtime, old tests and an old path validator under the current protected workflow.
+
+The final workflow binds approval to the dispatch revision:
 
 ```text
-72 test modules
-563 passed
-0 failed / 0 errors / 0 skipped
-16.73 seconds
-combined branch-aware coverage: 94.9719800747198%
-statement coverage: 96.23677786818551%
-branch coverage: 90.84880636604774%
-floor: 94.5%
+expected_head_sha == GITHUB_SHA
+initial actions/checkout HEAD == GITHUB_SHA
+GITHUB_SHA is an ancestor of origin/main
+detached checkout remains exactly GITHUB_SHA
 ```
 
-Python 3.11, 3.12 and 3.13 plus quality/build/smoke passed in that archived run. Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are archived validated baselines, not current-head claims.
+This keeps the workflow definition, runtime code, tests and `validate_licensed_paths.py` on one commit and prevents rollback to an earlier main ancestor.
 
-## Portable and Windows public gates
+## Licensed evidence isolation
 
-`ci.yml` enforces pinned `ubuntu-24.04`, immutable Actions, `uv 0.11.16`, read-only permissions, frozen dependencies, six complete dependency audits, Ruff/format/mypy, build, Mock, README smoke, 14 MCP tools and full Python tests.
-
-`windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It executes PowerShell AST/helper contracts, dotenv safety, uv upgrade fallbacks, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
-
-## Explicit manual-dispatch failure guards
-
-The current performance workflow writes `dispatch-ref.txt` and `dispatch-guard.log` before checkout. A ref other than `refs/heads/main` exits with status 2 instead of producing an all-skipped run.
-
-The licensed workflow uses an `ubuntu-24.04` `dispatch-guard` job. The self-hosted `certify` job has `needs: dispatch-guard`; an invalid ref therefore fails before the licensed Aspen machine is occupied.
-
-Each run uses the workflow version present in its selected ref. These guards protect current authoritative definitions and cannot retroactively rewrite old tags or branches. The available connector did not provide an authoritative tag inventory, so this audit does not claim that every historical ref contains the current guard.
-
-## Trusted and isolated performance evidence
-
-Default baseline:
-
-```text
-ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
-```
-
-After the guard, candidate and baseline refs are resolved with `--end-of-options`, checked against `main`, ordered by ancestry, and checked out only by validated SHA. Candidate and baseline each use their own `uv.lock`, `.venv` and benchmark script.
-
-All current-run SHA, guard, lock, sync, JSON, Markdown and smoke evidence is written only to `$RUNNER_TEMP/aspenops-performance-evidence`; upload reads `${{ runner.temp }}/aspenops-performance-evidence`. Tracked `var/benchmarks` files cannot enter the artifact.
-
-## Licensed checkout and evidence trust chain
-
-The approved SHA is never passed directly to `actions/checkout`. After the Ubuntu guard succeeds, the workflow validates SHA format, commit existence and main ancestry before detached checkout and HEAD verification.
-
-### Global serialization
-
-All licensed Aspen Plus and HYSYS certification jobs share:
-
-```text
-concurrency group: licensed-aspen-certification
-```
-
-This prevents backend-specific runs from writing concurrently into one state space.
-
-### Run-attempt external evidence
-
-The previous fixed output directory could retain a prior attempt's report or bundle on a persistent self-hosted machine. The final workflow creates:
+All real certification jobs share the fixed concurrency group `licensed-aspen-certification`, serializing Aspen Plus and HYSYS runs.
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The directory is removed and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used consistently by preflight, `certify-licensed`, bundle verification, status inspection and workspace staging. The old fixed `$ASPENOPS_STATE_DIR/licensed-certification` path is no longer used for files.
+The directory is deleted and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used by preflight, real execution, bundle verification, report inspection and workspace staging. The old fixed output file paths are prohibited.
 
-Before the Mock software regression, `var/ci` is removed and recreated. Successful external evidence is revalidated and copied into clean `var/ci/licensed-evidence`. Artifact names include both `github.run_id` and `github.run_attempt`.
+Before Mock regression, `var/ci` is deleted and recreated. Successful evidence is copied into clean `var/ci/licensed-evidence`. Artifact names include `github.run_id` and `github.run_attempt`.
 
-These changes prevent backend collisions, rerun contamination, stale report/bundle reuse, stale diagnostics and ambiguous retry artifacts. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
+These controls prevent old-code rollback, backend collisions, rerun contamination, stale evidence reuse and persistent self-hosted diagnostics. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
 
 ## Workflow governance
 
-`tests/test_workflow_governance.py` rejects:
+Tests reject:
 
 - extra workflows, drifting runners, unpinned Actions or uv;
 - arbitrary write permissions, retained credentials or `pull_request_target`;
-- unfrozen dependencies, weak Bash or incomplete dependency evidence;
-- job-level ref conditions that turn invalid dispatches into skipped jobs;
-- missing performance guard evidence or missing licensed Ubuntu guard dependency;
-- direct checkout from candidate/approved inputs;
-- unsupported runner context in job-level env;
+- unfrozen dependencies, weak Bash or incomplete audit evidence;
+- skipped non-main manual dispatches instead of explicit failed guards;
+- candidate input passed directly to performance checkout;
+- licensed approval not equal to `GITHUB_SHA`;
+- initial checkout/runtime/path-validator commit mismatch;
 - shared performance environments or candidate-workspace artifacts;
 - backend-specific licensed concurrency groups;
-- missing run-attempt evidence scope or `LICENSED_EVIDENCE_DIR` handoff;
-- fixed shared licensed output file paths;
+- missing run-attempt evidence scope or `LICENSED_EVIDENCE_DIR`;
+- fixed shared licensed output paths;
 - licensed artifact names without `github.run_attempt`;
-- missing realpath, secret isolation, cleanup or Windows helper contracts.
+- missing cleanup, realpath, secret-isolation or Windows helper contracts.
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe links, frozen instructions, portable `.env.example`, archived evidence boundaries, explicit dispatch failure documentation, run-attempt licensed evidence documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
+Documentation tests check package/version/title consistency, safe links, frozen instructions, portable `.env.example`, six audits, explicit dispatch failure behavior, `GITHUB_SHA` binding, per-attempt evidence isolation, archived certification boundaries, and absence of chat-internal citation or sandbox-link markup.
 
-## Executed and external validation boundary
+## Validation boundary
 
-The final targeted validation reconstructs current workflows and governance files in an isolated directory, parses YAML, compiles Python tests, checks line length, validates Linux Bash blocks, and runs workflow-governance/licensed-workflow contract tests.
+Targeted validation reconstructs current workflow and governance files in an isolated directory, parses YAML, compiles Python, checks line length, validates Bash blocks and runs focused contract tests. These checks supplement, but do not replace, a fresh complete Actions artifact.
 
-These checks supplement, but do not replace, a fresh full Actions artifact. Public automation cannot instantiate proprietary Aspen Automation Servers, and real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
+Public automation cannot instantiate proprietary Aspen servers. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
