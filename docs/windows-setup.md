@@ -41,8 +41,6 @@ The fail-closed script:
 
 A new `.env` uses Mock, an empty allowlist and repository-local state. Edit it before real Aspen use.
 
-Manual equivalent:
-
 ```powershell
 uv lock --check
 uv sync --frozen --extra windows --extra agent --extra dev --extra signing
@@ -67,8 +65,6 @@ ASPENOPS_VISIBLE=0
 
 The complete resource limits are documented in [`.env.example`](../.env.example).
 
-Use explicit ProgID pins only for registrations already verified on the host. Otherwise AspenOps performs newest-first discovery with an unversioned fallback.
-
 ## Public Windows control-plane gate
 
 Authoritative workflow: `windows-control-plane.yml`.
@@ -82,21 +78,8 @@ The archived public Windows baseline recorded 104 passing tests. No current fixe
 1. Place a non-confidential, already convergent model inside an allowed root.
 2. Verify the case-specific registry.
 3. Start with one Worker.
-4. Validate without opening Aspen:
-
-   ```powershell
-   uv run aspenops dry-run D:/AspenModels/request.json
-   ```
-
-5. Run one point and verify its bundle:
-
-   ```powershell
-   uv run aspenops run-batch D:/AspenModels/request.json `
-     --output D:/AspenResults/results.json `
-     --bundle D:/AspenResults/run-bundle.zip
-   uv run aspenops verify-bundle D:/AspenResults/run-bundle.zip
-   ```
-
+4. Run `uv run aspenops dry-run D:/AspenModels/request.json`.
+5. Run one point and verify its evidence bundle.
 6. Add meaningful constraints and available balances.
 7. Repeat from private model copies.
 8. Increase concurrency only after stability, memory and license behavior are measured.
@@ -105,46 +88,52 @@ The archived public Windows baseline recorded 104 passing tests. No current fixe
 
 Authoritative workflow: `licensed-aspen-certification.yml`.
 
-Execution environments:
-
 ```text
 ubuntu-24.04 dispatch guard
 → self-hosted, windows, x64, aspen-licensed certification job
 ```
 
-Configure the protected environment with absolute allowed roots, an absolute state directory inside them, license metadata, signing-key path secret and public-key path variable.
+A lightweight Ubuntu job checks `GITHUB_REF`. A ref other than `refs/heads/main` exits with status 2, marks the workflow failed, and does not consume the Aspen license machine. The self-hosted job has `needs: dispatch-guard`.
 
-A lightweight Ubuntu job checks `GITHUB_REF` before the self-hosted job is eligible to run. A ref other than `refs/heads/main` exits with status 2, marks the workflow failed, and does not consume the Aspen license machine. Inputs provide a repository-relative plan, exact lowercase 40-character approved SHA, backend and explicit authorization.
-
-The input SHA is never passed directly to checkout. Execution order:
+The input SHA is never passed directly to checkout:
 
 ```text
-Ubuntu guard explicitly requires GITHUB_REF == refs/heads/main
+Ubuntu guard requires GITHUB_REF == refs/heads/main
 → checkout trusted main workflow revision
-→ validate SHA format and commit existence
-→ require SHA to be a trusted main ancestor
-→ detached checkout of validated SHA
+→ validate SHA format, commit existence and main ancestry
+→ detached checkout validated SHA
 → verify HEAD and plan path
-→ lock check and frozen sync
-→ isolated Mock regression without real secrets
-→ realpath validation of plan, roots and state
-→ preflight and explicit human approval
-→ scoped real COM
-→ signed-bundle verification
-→ require non-empty evidence
-→ clean var/ci/licensed-evidence staging
-→ upload workspace var/ci only
-→ human engineering review
+→ lock check and frozen Mock regression
+→ realpath → preflight → explicit approval → real COM
+→ signed-bundle verification → human engineering review
 ```
+
+### Per-run-attempt evidence
+
+All real certification jobs use one fixed concurrency group:
+
+```text
+licensed-aspen-certification
+```
+
+This serializes Aspen Plus and HYSYS certifications. The external output directory is unique to the workflow attempt:
+
+```text
+ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
+```
+
+The workflow removes and recreates this directory, exports `LICENSED_EVIDENCE_DIR`, and uses it for preflight, real execution, signature verification and report validation. This prevents a rerun from reading an earlier attempt's report or bundle.
+
+Before the Mock regression, `var/ci` is removed and recreated. Successful external evidence is copied into a clean `var/ci/licensed-evidence` directory. The artifact name includes both `github.run_id` and `github.run_attempt`, and upload reads only workspace-local `var/ci`.
 
 Security properties:
 
 - invalid manual refs fail rather than becoming skipped runs;
-- the self-hosted certification job has `needs: dispatch-guard`;
-- manual inputs are environment-bound rather than injected into PowerShell bodies;
+- `needs: dispatch-guard` protects the licensed host;
+- all real certification jobs are serialized;
+- per-attempt external evidence is cleaned before use;
 - traversal, symlink and junction escapes are rejected;
 - signing secrets are absent from setup and Mock regression;
-- stale staging is removed before evidence copy;
 - software cannot self-grant final certification.
 
 ## Troubleshooting
