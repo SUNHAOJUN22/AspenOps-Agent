@@ -10,6 +10,15 @@ AspenOps is the only permitted execution path for Aspen automation in this repos
 - Never rewrite unknown history.
 - External contributors work from forks; their branches are not retained in this repository.
 
+## Process-generation boundary
+
+- Knowledge stages may emit cited assumptions only.
+- Concept, parameter and repair stages may emit only validated `aspenops.flowsheet/v1` Process Intent IR.
+- Validate generated IR with `scripts/validate_process_ir.py` before requesting any backend action.
+- A planned compiler or backend must remain unavailable until an implementation and conformance tests exist.
+- Do not convert planned DWSIM, IDAES, Modelica or Aspen/HYSYS IR support into an availability claim.
+- Process IR validation does not grant COM ownership, licensed execution or engineering approval.
+
 ## Mandatory simulator sequence
 
 1. Call `system_info` and record the discovered backend and ProgID.
@@ -23,6 +32,7 @@ AspenOps is the only permitted execution path for Aspen automation in this repos
 
 - Do not generate a parallel raw `win32com` script.
 - Do not invent Aspen tree paths or HYSYS object chains.
+- Do not emit arbitrary Python, Shell, VBA or unrestricted simulator calls from a process Agent.
 - Do not bypass `ASPENOPS_ALLOWED_ROOTS`.
 - Do not overwrite the master model.
 - Do not increase concurrency beyond license evidence.
@@ -48,6 +58,8 @@ uv run pytest -W error::ResourceWarning \
   --cov-fail-under=94.5
 uv build
 uv run python scripts/check_mcp.py
+uv run python scripts/validate_process_ir.py \
+  examples/process-intent.example.json
 uv run aspenops --version
 uv run aspenops demo
 ```
