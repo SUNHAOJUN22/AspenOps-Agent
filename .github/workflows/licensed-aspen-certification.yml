@@ -33,6 +33,7 @@ concurrency:
 
 jobs:
   certify:
+    if: ${{ github.ref == 'refs/heads/main' }}
     name: licensed-${{ inputs.backend }}-certification
     runs-on: [self-hosted, windows, x64, aspen-licensed]
     environment: licensed-aspen-certification
@@ -42,31 +43,38 @@ jobs:
       EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
       EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}
     steps:
-      - name: Checkout exact approved commit
+      - name: Checkout trusted workflow revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.expected_head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact revision belongs to main
+      - name: Verify and checkout exact revision from main
         shell: pwsh
         run: |
-          $observed = (git rev-parse HEAD).Trim().ToLowerInvariant()
           $expected = $env:EXPECTED_HEAD_SHA.Trim().ToLowerInvariant()
           if ($expected -notmatch '^[0-9a-f]{40}$') {
             throw "expected_head_sha must be a full lowercase 40-character Git SHA"
-          }
-          if ($observed -ne $expected) {
-            throw "Checked-out commit $observed does not match approved commit $expected"
           }
           git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
           if ($LASTEXITCODE -ne 0) {
             throw "Unable to fetch the trusted main branch"
           }
+          git rev-parse --verify --end-of-options "$expected^{commit}" | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "expected_head_sha does not identify a commit"
+          }
           git merge-base --is-ancestor $expected origin/main
           if ($LASTEXITCODE -ne 0) {
             throw "Approved commit is not an ancestor of the trusted main branch"
+          }
+          git checkout --detach $expected
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to checkout the approved commit"
+          }
+          $observed = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($observed -ne $expected) {
+            throw "Checked-out commit $observed does not match approved commit $expected"
           }
           if ([string]::IsNullOrWhiteSpace($env:PLAN_PATH) -or $env:PLAN_PATH -match "[`r`n]") {
             throw "plan_path must be one non-empty line"
