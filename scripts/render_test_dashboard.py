@@ -24,7 +24,7 @@ class TestSummary:
 
     @property
     def pass_rate(self) -> float:
-        return 100.0 if self.tests == 0 else 100.0 * self.passed / self.tests
+        return 0.0 if self.tests == 0 else 100.0 * self.passed / self.tests
 
 
 @dataclass(frozen=True)
@@ -108,6 +108,14 @@ def discover_files(input_dir: Path) -> tuple[list[Path], list[Path]]:
 
 def _fmt_percent(value: float | None) -> str:
     return "Not available" if value is None else f"{value:.2f}%"
+
+
+def _status(summary: TestSummary) -> tuple[str, str]:
+    if summary.tests == 0 or summary.passed == 0:
+        return "INCOMPLETE", "#b45309"
+    if summary.failures or summary.errors:
+        return "FAIL", "#b91c1c"
+    return "PASS", "#15803d"
 
 
 def _metric(label: str, value: str, note: str) -> str:
@@ -205,8 +213,7 @@ def render_html(
         f"<li><code>{html.escape(path.name)}</code></li>" for path in files
     )
     evidence = evidence or "<li>No matching evidence files were supplied.</li>"
-    status = "PASS" if summary.failures == 0 and summary.errors == 0 else "FAIL"
-    status_color = "#15803d" if status == "PASS" else "#b91c1c"
+    status, status_color = _status(summary)
     summary_detail = (
         f"<p><strong>Duration:</strong> {summary.seconds:.2f} s</p>"
         f"<p><strong>Failures:</strong> {summary.failures}; "
@@ -270,8 +277,7 @@ def render_svg(
     coverage: CoverageSummary,
 ) -> str:
     coverage_value = coverage.percent or 0.0
-    status = "PASS" if summary.failures == 0 and summary.errors == 0 else "FAIL"
-    status_color = "#15803d" if status == "PASS" else "#b91c1c"
+    status, status_color = _status(summary)
     pass_width = 1072 * summary.pass_rate / 100
     coverage_width = 1072 * coverage_value / 100
     escaped_title = html.escape(title)
