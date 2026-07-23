@@ -191,7 +191,7 @@ def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     guard_step = workflow.index("Require refs/heads/main")
     certify = workflow.index("  certify:")
     checkout = workflow.index("Checkout trusted workflow revision")
-    trust = workflow.index("Verify and checkout exact revision from main")
+    trust = workflow.index("Verify dispatched revision and approved SHA")
     setup = workflow.index("Set up Python")
 
     assert "if: ${{ github.ref == 'refs/heads/main' }}" not in workflow
@@ -205,9 +205,12 @@ def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
     assert "plan_path must be one non-empty line" in workflow
     assert "plan_path must be repository-relative" in workflow
-    assert 'git rev-parse --verify --end-of-options "$expected^{commit}"' in workflow
-    assert "git merge-base --is-ancestor $expected origin/main" in workflow
-    assert "git checkout --detach $expected" in workflow
+    assert '$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()' in workflow
+    assert "expected_head_sha must equal the dispatched main GITHUB_SHA" in workflow
+    assert 'git rev-parse --verify --end-of-options "$workflowSha^{commit}"' in workflow
+    assert "git merge-base --is-ancestor $workflowSha origin/main" in workflow
+    assert "git checkout --detach $workflowSha" in workflow
+    assert 'git checkout --detach $expected' not in workflow
     assert "python scripts/validate_licensed_paths.py" in workflow
     assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
     assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in workflow
