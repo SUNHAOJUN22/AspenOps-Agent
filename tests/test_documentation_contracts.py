@@ -168,25 +168,40 @@ def test_documents_describe_six_audits_and_runner_temp_evidence() -> None:
         assert "runner.temp" in text
 
 
-def test_manual_workflow_docs_record_main_ref_and_validated_checkout() -> None:
-    paths = (
-        ROOT / "README.md",
-        ROOT / "README.en.md",
-        ROOT / "docs" / "windows-setup.md",
-        ROOT / "docs" / "quality-report.md",
-        ROOT / "docs" / "automated-test-audit-2026-07-22.md",
-        ROOT / "docs" / "certification.md",
+def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+    performance = (ROOT / "docs" / "performance.md").read_text(encoding="utf-8")
+    windows = (ROOT / "docs" / "windows-setup.md").read_text(encoding="utf-8")
+    quality = (ROOT / "docs" / "quality-report.md").read_text(encoding="utf-8")
+    audit = (ROOT / "docs" / "automated-test-audit-2026-07-22.md").read_text(
+        encoding="utf-8"
     )
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
+    certification = (ROOT / "docs" / "certification.md").read_text(encoding="utf-8")
+
+    for text in (chinese, english, performance, windows, quality, audit, certification):
         assert "refs/heads/main" in text
         assert "detached" in text.casefold()
-    checkout_docs = (
+
+    assert "显式失败" in chinese
+    assert "fails explicitly with exit code 2" in english
+    assert "dispatch-guard.log" in performance
+    assert "exits with status 2" in performance
+    assert "needs: dispatch-guard" in windows
+    assert "status 2" in windows
+    assert "needs: dispatch-guard" in quality
+    assert "status 2" in quality
+    assert "all-skipped" in audit
+    assert "needs: dispatch-guard" in audit
+    assert "status 2" in audit
+    assert "needs: dispatch-guard" in certification
+    assert "status 2" in certification
+
+    for path in (
         ROOT / "README.md",
         ROOT / "README.en.md",
         ROOT / "docs" / "certification.md",
-    )
-    for path in checkout_docs:
+    ):
         assert "actions/checkout" in path.read_text(encoding="utf-8")
 
 
