@@ -174,13 +174,16 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 Before installing tools or executing Python, `generate-performance-evidence.yml` performs:
 
 ```text
-checkout candidate
-→ fetch trusted main history
-→ resolve full candidate and baseline SHAs
-→ require both revisions to belong to main
+checkout the current trusted main workflow revision
+→ fetch main history and tags
+→ resolve candidate_ref and baseline_ref with --end-of-options
+→ require both immutable SHAs to belong to main
 → require baseline to be an ancestor of candidate
+→ detached checkout of the validated candidate SHA
 → create a detached baseline worktree
 ```
+
+The manual candidate input is never passed directly to `actions/checkout`.
 
 It then creates two independent environments:
 
@@ -189,7 +192,7 @@ candidate/uv.lock → candidate .venv → candidate benchmark script
 baseline/uv.lock  → baseline .venv  → baseline benchmark script
 ```
 
-Both lockfiles are checked independently, both environments use `uv sync --frozen`, and each revision executes the benchmark script stored in its own repository. Candidate dependencies, source or tooling cannot contaminate the baseline. An incompatible comparison fails explicitly rather than silently changing the method.
+Both lockfiles are checked independently, both environments use `uv sync --frozen`, and each revision executes the benchmark script stored in its own repository. Candidate input, dependencies, source or tooling cannot contaminate the baseline. An incompatible comparison fails explicitly rather than silently changing the method.
 
 Mock results are orchestration evidence only, not licensed Aspen solve speed.
 
