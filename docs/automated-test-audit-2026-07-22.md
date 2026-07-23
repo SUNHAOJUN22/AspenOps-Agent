@@ -39,6 +39,16 @@ The Wheel gate uses hash-pinned exported requirements, `uv pip sync --require-ha
 
 `windows-control-plane.yml` uses pinned `windows-2025`, Python 3.12 and `uv 0.11.16`. It runs PowerShell AST parsing and real helper behavior through `-LibraryMode`, including dotenv safety and self-update → winget upgrade → winget install fallback checks. It also covers Job Objects, process ownership, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
+## Main-ref-only manual workflows
+
+GitHub permits `workflow_dispatch` to target a branch or tag, and the workflow definition is loaded from the selected event ref. The authoritative performance and licensed jobs therefore now include:
+
+```text
+if: github.ref == refs/heads/main
+```
+
+This prevents an older tag or non-main branch from supplying the workflow definition used to produce authoritative evidence.
+
 ## Trusted and isolated performance evidence
 
 The default baseline is the validated main-history runtime:
@@ -50,7 +60,8 @@ ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 The workflow now:
 
 ```text
-checkout current trusted main workflow revision
+load workflow definition from refs/heads/main
+→ checkout current trusted main workflow revision
 → fetch main history and tags
 → resolve candidate_ref / baseline_ref with --end-of-options
 → require both SHAs in main
@@ -68,33 +79,40 @@ candidate/uv.lock → candidate .venv → candidate script
 baseline/uv.lock  → baseline .venv  → baseline script
 ```
 
-This fixes candidate dependency/source/harness contamination of the baseline.
+This fixes candidate input/dependency/source/harness contamination of the baseline.
 
 ### Runner-context defect found and fixed
 
-A temporary implementation placed `${{ runner.temp }}` in `jobs.<job_id>.env`. GitHub's context-availability rules do not permit the `runner` context there. The final workflow instead:
+A temporary implementation placed `${{ runner.temp }}` in `jobs.<job_id>.env`, where the `runner` context is unavailable. The final workflow:
 
 - uses `$RUNNER_TEMP/aspenops-performance-evidence` inside Shell steps;
-- uses `${{ runner.temp }}/aspenops-performance-evidence` only in the upload action's `with.path`, where the runner context is available;
+- uses `${{ runner.temp }}/aspenops-performance-evidence` only in upload `with.path`;
 - keeps job-level `env` limited to supported `inputs` values.
 
 ### Stale benchmark evidence defect found and fixed
 
-The repository tracks historical `var/benchmarks` files for committed policy comparisons. Uploading from the candidate workspace could therefore publish old committed results after an early failure.
+The repository tracks historical `var/benchmarks` files. The final workflow writes every current-run SHA, log, JSON result and report only to the runner temporary directory and uploads only that directory. Candidate-workspace historical files cannot enter the artifact.
 
-The final workflow writes every current-run SHA, log, JSON result and report only to the runner temporary directory and uploads only that directory. Candidate-workspace `var/benchmarks` files cannot enter the artifact.
+## Licensed evidence and checkout trust chain
 
-## Licensed evidence chain
+The approved SHA was previously passed directly to `actions/checkout`, with validation occurring afterward. The final protected workflow runs only from `refs/heads/main` and uses:
 
 ```text
-trusted main SHA → frozen Mock regression → realpath validation
+checkout current trusted main workflow revision
+→ validate approved SHA format
+→ fetch trusted main
+→ verify SHA identifies a commit and is a main ancestor
+→ detached checkout validated SHA
+→ verify HEAD equals approved SHA
+→ validate the plan path in that checkout
+→ frozen Mock regression → realpath validation
 → preflight and explicit approval → scoped real COM
 → signed-bundle verification → require non-empty source evidence
 → clean var/ci/licensed-evidence → copy and revalidate
 → upload workspace var/ci only → human review
 ```
 
-This prevents missing evidence, undefined external upload paths and stale self-hosted staging. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
+This prevents manual SHA input from controlling checkout before trust validation, and prevents missing evidence, undefined external upload paths and stale self-hosted staging. The software remains `PENDING_REAL_ASPEN_CERTIFICATION` and cannot emit `REAL_ASPEN_CERTIFIED`.
 
 ## Runtime path policy
 
@@ -110,7 +128,8 @@ Real backends require non-empty absolute allowed roots. State, models, registrie
 - unfrozen dependencies or weak Bash;
 - direct input interpolation in any `run` syntax;
 - incomplete dependency-audit evidence;
-- candidate input passed to checkout;
+- performance or licensed manual jobs not restricted to `refs/heads/main`;
+- candidate or approved SHA input passed directly to checkout;
 - unsupported runner context in job-level env;
 - untrusted/reverse performance refs;
 - shared performance environments or candidate-workspace artifacts;
@@ -119,13 +138,11 @@ Real backends require non-empty absolute allowed roots. State, models, registrie
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe local links, frozen operating instructions, portable `.env.example`, archived evidence boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
+`tests/test_documentation_contracts.py` derives the package version from `pyproject.toml` and checks README/package/CHANGELOG/title consistency, required docs, safe local links, frozen operating instructions, portable `.env.example`, archived evidence boundaries, main-ref manual-workflow trust documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Executed targeted checks
 
-The current performance workflow was parsed as YAML and all six Bash `run` blocks passed `bash -n`. The rebuilt governance test compiled under Python, had no lines above the repository's 100-character limit, and its performance-specific pytest passed.
-
-These checks supplement, but do not replace, a fresh full Actions artifact.
+The final validation reconstructs the current workflows and governance files in an isolated directory, parses YAML, compiles Python tests, checks the repository line-length convention, validates Linux Bash blocks, and runs the workflow-governance and licensed-workflow contract tests. These checks supplement, but do not replace, a fresh full Actions artifact.
 
 ## Remaining external limits
 
