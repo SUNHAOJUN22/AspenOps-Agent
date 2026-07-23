@@ -36,10 +36,14 @@ A result is cached only when reset mode is `reinitialize`, all validity gates pa
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
+The first Ubuntu step always runs. It records the actual dispatch ref and explicitly exits with status 2 when `GITHUB_REF` is not `refs/heads/main`; an invalid manual dispatch therefore fails rather than becoming an all-skipped workflow.
+
 Before tool installation or Python execution:
 
 ```text
-checkout current trusted main workflow revision
+record dispatch-ref.txt and dispatch-guard.log in runner temporary evidence
+→ explicitly require GITHUB_REF == refs/heads/main
+→ checkout current trusted main workflow revision
 → fetch main history and tags
 → resolve candidate_ref and baseline_ref with --end-of-options
 → require both immutable SHAs to belong to main
@@ -61,7 +65,7 @@ Each lockfile is checked independently, each environment uses `uv sync --frozen`
 
 ## Evidence isolation
 
-All current-run performance logs, SHAs, JSON results, Markdown reports and smoke output are written only to:
+All current-run performance logs, SHAs, JSON results, Markdown reports, guard evidence and smoke output are written only to:
 
 ```text
 $RUNNER_TEMP/aspenops-performance-evidence
