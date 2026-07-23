@@ -92,7 +92,7 @@ Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许�
 | `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | 全量测试、覆盖率、Ruff、mypy、六组合依赖审计、构建、Wheel、Mock、MCP、README 命令 |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell helper、路径、文档和治理契约 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 非主干显式失败、受信比较、双冻结环境、独立重复和稳定回归证据 |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、全局串行、按运行尝试隔离证据、真实 COM 与人工审核 |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 非主干显式失败、调度 SHA 绑定、全局串行、按运行尝试隔离证据和真实 COM |
 
 所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本。工作流仅授予 `contents: read`；治理测试拒绝任意 `*: write`、`write-all`、持久 checkout 凭据、`pull_request_target` 和静默 `continue-on-error`。
 
@@ -150,20 +150,24 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 ## 持证 Aspen 认证
 
-持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度明确失败，且不会占用 `self-hosted, windows, x64, aspen-licensed` 主机。获批 SHA 不会直接传给 `actions/checkout`。
+持证工作流先在固定 `ubuntu-24.04` guard job 上检查 `GITHUB_REF`。非主干调度明确失败，且不会占用 `self-hosted, windows, x64, aspen-licensed` 主机。
 
-所有真实认证运行使用统一 concurrency group `licensed-aspen-certification`，Aspen Plus 与 HYSYS 不会并发写入同一状态空间。外部证据目录按运行尝试隔离：
+`expected_head_sha` 必须等于本次 `refs/heads/main` 调度的 `GITHUB_SHA`。工作流先核对初始 checkout 已经是该 SHA，再验证其仍属于可信 `origin/main`，随后以同一 SHA detached checkout。由此，工作流定义、运行代码、测试与 `validate_licensed_paths.py` 均来自同一提交；不能选择早期 main 祖先退回旧安全实现。
+
+所有真实认证运行使用统一 concurrency group `licensed-aspen-certification`。外部证据目录按运行尝试隔离：
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-该目录每次运行先删除再重建，并通过 `LICENSED_EVIDENCE_DIR` 贯穿 preflight、真实执行、签名验证、报告检查和工作区暂存。重跑不会复用上一次 report/bundle，两个 backend 也不会共享固定目录。上传制品名称包含 `github.run_id` 和 `github.run_attempt`。
+该目录每次运行先删除再重建，并通过 `LICENSED_EVIDENCE_DIR` 贯穿 preflight、真实执行、签名验证、报告检查和工作区暂存。重跑不会复用上一次 report/bundle，Aspen Plus 与 HYSYS 也不会共享固定目录。上传制品名称包含 `github.run_id` 和 `github.run_attempt`。
 
 ```text
-Ubuntu guard 显式验证 GITHUB_REF == refs/heads/main
-→ checkout 当前受信 main 工作流版本
-→ 校验获批 SHA 并 detached checkout
+Ubuntu guard 验证 GITHUB_REF == refs/heads/main
+→ actions/checkout 本次主干 GITHUB_SHA
+→ 验证 expected_head_sha == GITHUB_SHA
+→ 核对初始 HEAD 与主干祖先关系
+→ detached checkout 同一 GITHUB_SHA
 → 清理 var/ci 并执行隔离 Mock 回归
 → 建立 run_id-run_attempt 独立外部目录
 → realpath → preflight → 人工批准 → 真实 COM
