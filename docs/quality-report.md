@@ -8,89 +8,59 @@ Historical detail is retained in [`automated-test-audit-2026-07-22.md`](automate
 
 ## Verified archived baseline
 
-Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13 plus quality/build/smoke. Inspected Python 3.12 evidence:
+Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13 plus quality/build/smoke. Python 3.12 recorded 563 passed with combined branch-aware coverage 94.9719800747198% against a 94.5% floor.
 
-```text
-72 test modules
-563 passed
-0 failed / 0 errors / 0 skipped
-16.73 seconds
-combined branch-aware coverage: 94.9719800747198%
-statement coverage: 96.23677786818551%
-branch coverage: 90.84880636604774%
-CI floor: 94.5%
-```
+Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are archived validated baselines, not fresh current-head results.
 
-Public Windows run `29814739334` recorded 104 passed in 2.06 seconds with no failures, errors or skips. These are archived validated baselines, not fresh current-head results.
+## Public gates
 
-## Current portable and Windows gates
+`ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
 
-`ci.yml` uses `ubuntu-24.04`, immutable Action SHAs and `uv 0.11.16`. It enforces read-only permissions, frozen dependencies, six Linux/Windows/Python dependency audits with complete evidence, Ruff/format/mypy, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix with branch-aware floor 94.5%.
-
-`windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It includes PowerShell AST and executable helper tests, dotenv safety, uv upgrade fallbacks, Job Object/IPC/recovery contracts, Fake Aspen Plus/HYSYS, archive/path/documentation contracts, CLI and Doctor smoke.
-
-No new fixed count is claimed without a readable current JUnit artifact.
+`windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It validates PowerShell AST/helper behavior, dotenv safety, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
 ## Workflow governance
 
-`tests/test_workflow_governance.py` locks:
+Automated tests lock:
 
 - exactly four authoritative workflows;
 - pinned runners, Actions and uv;
-- no arbitrary write permissions, retained credentials or `pull_request_target`;
-- frozen dependencies and fail-closed Bash;
-- complete six-target dependency evidence;
-- explicit failed guards for non-main performance and licensed dispatches;
-- input refs and SHAs validated before detached checkout;
-- separate baseline/candidate environments and runner-temporary performance artifacts;
-- one global licensed-certification concurrency group;
-- run-attempt-scoped external evidence through `LICENSED_EVIDENCE_DIR`;
+- read-only permissions and frozen dependency installation;
+- complete dependency-audit evidence;
+- explicit failed guards for non-main manual dispatches;
+- performance evidence isolated in runner temporary storage;
+- `expected_head_sha == GITHUB_SHA` for real certification;
+- initial checkout, workflow definition, runtime code, tests and path validator on one commit;
+- one serialized licensed concurrency group;
+- run-attempt-scoped `LICENSED_EVIDENCE_DIR`;
 - cleanup of Mock diagnostics, external evidence and workspace staging;
-- run-attempt-qualified licensed artifact names;
-- Windows helper and documentation contracts.
+- run-attempt-qualified artifact names.
 
-## Trusted and isolated performance evidence
+## Performance evidence
 
-The default baseline is:
+The default baseline is `ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2`. A non-main ref exits with status 2. Candidate and baseline are validated main-history SHAs, each using its own lockfile, environment and script.
 
-```text
-ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
-```
-
-The first Ubuntu step records `dispatch-ref.txt` and `dispatch-guard.log` under `$RUNNER_TEMP/aspenops-performance-evidence`. A ref other than `refs/heads/main` exits with status 2. After the guard succeeds, the workflow validates candidate/baseline ancestry, creates two independent frozen environments and writes all current-run evidence only to runner temporary storage. The upload action uses `${{ runner.temp }}/aspenops-performance-evidence`.
-
-Results remain portable Mock orchestration evidence, not licensed Aspen solve performance.
+All current-run evidence is written to `$RUNNER_TEMP/aspenops-performance-evidence`; upload uses `${{ runner.temp }}/aspenops-performance-evidence`. Tracked `var/benchmarks` files cannot enter the artifact.
 
 ## Licensed evidence chain
 
-A fixed `ubuntu-24.04` `dispatch-guard` job runs first. A non-main ref exits with status 2. The self-hosted `certify` job has `needs: dispatch-guard`, so invalid dispatches do not consume the licensed Aspen machine.
+A fixed Ubuntu `dispatch-guard` job exits with status 2 for non-main refs. The self-hosted job has `needs: dispatch-guard`.
 
-All real certification jobs share:
+`expected_head_sha` must equal the `GITHUB_SHA` of this `refs/heads/main` dispatch. The workflow verifies the initial `actions/checkout` HEAD, trusted-main ancestry and detached checkout all match that same SHA. It cannot use the current safety workflow to execute an arbitrary older main ancestor.
 
-```text
-concurrency group: licensed-aspen-certification
-```
-
-This group serializes all Aspen Plus and HYSYS certification runs.
-
-External output is unique to the workflow attempt:
+All real certification jobs share the fixed concurrency group `licensed-aspen-certification`, which serializes Aspen Plus and HYSYS runs.
 
 ```text
 ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>
 ```
 
-The workflow removes and recreates this directory, exports `LICENSED_EVIDENCE_DIR`, and uses it for preflight, real execution, bundle verification, report inspection and workspace staging. The old fixed `$ASPENOPS_STATE_DIR/licensed-certification` output is no longer used.
+The directory is removed and recreated, exported as `LICENSED_EVIDENCE_DIR`, and used for preflight, real execution, bundle verification, report inspection and workspace staging. `var/ci` is also cleaned before Mock regression. Artifact names include `github.run_id` and `github.run_attempt`.
 
-Before Mock regression, `var/ci` is removed and recreated. Successful external evidence is revalidated and copied into clean `var/ci/licensed-evidence`. Artifact names include both `github.run_id` and `github.run_attempt`.
-
-These controls prevent backend collisions, rerun contamination, stale report/bundle reuse and stale self-hosted workspace diagnostics. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
+These controls prevent old-code rollback, backend collisions, rerun contamination, stale report/bundle reuse and persistent self-hosted workspace diagnostics. Software cannot self-grant `REAL_ASPEN_CERTIFIED`.
 
 ## Documentation contracts
 
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml` and verifies package/README/CHANGELOG/title consistency, required documents, safe local links, frozen operating guides, portable `.env.example`, archived evidence boundaries, explicit dispatch failure documentation, per-attempt licensed evidence documentation, and absence of ChatGPT-internal citation or sandbox-link markup.
+Documentation tests verify version/title consistency, safe links, frozen instructions, six audits, explicit guard failure behavior, `GITHUB_SHA` binding, per-attempt licensed evidence, certification boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
 
 ## Evidence boundary
 
-The 563-test portable and 104-test Windows figures remain the inspected baseline. File inspection, YAML parsing, governance tests, Bash syntax checks and targeted tests supplement—but do not replace—a fresh complete Actions artifact.
-
-Real certification still requires licensed Windows, an approved non-confidential model, verified semantics, constraints/balances, independent repeats, signing material and human engineering review.
+The 563-test portable and 104-test Windows figures remain the inspected baseline. Targeted checks supplement—but do not replace—a fresh complete Actions artifact. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
