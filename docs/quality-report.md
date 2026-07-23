@@ -74,20 +74,27 @@ The same fail-closed real-backend policy applies to environment loading, direct 
 
 - exactly four authoritative workflows;
 - pinned hosted runners, Actions and uv version;
-- no `permissions: write-all` and no arbitrary `*: write` permission;
+- no block, commented, inline or `write-all` workflow permission;
 - no retained checkout credentials, `pull_request_target` or silent `continue-on-error`;
 - frozen dependencies and `set -euo pipefail` for Bash;
 - input-injection scanning across literal, folded, inline and shorthand `run` forms;
 - complete six-target dependency evidence;
 - run-ID-scoped artifact names;
 - trusted revision checks before performance code execution;
+- independent baseline/candidate lockfiles, virtual environments and benchmark scripts;
 - trusted-main licensed SHA, realpath handoff and secret isolation;
-- workspace-staged licensed evidence before upload;
+- clean workspace-staged licensed evidence before upload;
 - Windows bootstrap helper execution and documentation contracts.
 
-## Trusted performance evidence
+## Trusted and isolated performance evidence
 
-`generate-performance-evidence.yml` validates trust before setup or Python execution:
+`generate-performance-evidence.yml` uses the validated main-history runtime below as its default baseline:
+
+```text
+ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
+```
+
+It validates trust before setup or Python execution:
 
 ```text
 checkout candidate
@@ -96,11 +103,18 @@ checkout candidate
 → require both to belong to main
 → require baseline to be an ancestor of candidate
 → create detached baseline worktree
-→ frozen candidate environment
-→ repeated matrices and stable-regression policy
 ```
 
-This prevents unmerged, unrelated or reverse-ordered commits from generating evidence that appears authoritative. Results remain portable Mock orchestration evidence, not licensed Aspen solve performance.
+It then creates and records two independent frozen environments:
+
+```text
+candidate/uv.lock → candidate .venv → candidate benchmark script
+baseline/uv.lock  → baseline .venv  → baseline benchmark script
+```
+
+Both lockfiles are checked independently, both environments synchronize with `--frozen`, and both revisions execute the benchmark script stored in their own repository. This prevents candidate dependencies, source or harness changes from contaminating the baseline. An incompatible baseline must fail explicitly rather than silently changing the comparison method.
+
+Results remain portable Mock orchestration evidence, not licensed Aspen solve performance.
 
 ## Licensed evidence chain
 
@@ -114,7 +128,7 @@ trusted exact SHA
 → scoped real COM
 → signed-bundle verification
 → verify all evidence files are present and non-empty
-→ stage preflight/report/bundle in var/ci/licensed-evidence
+→ clean and stage preflight/report/bundle in var/ci/licensed-evidence
 → upload workspace-local var/ci only
 → human engineering review
 ```
