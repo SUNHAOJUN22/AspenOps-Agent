@@ -71,6 +71,8 @@ All real certification jobs share:
 concurrency group: licensed-aspen-certification
 ```
 
+This group serializes all Aspen Plus and HYSYS certification runs.
+
 External output is unique to the workflow attempt:
 
 ```text
