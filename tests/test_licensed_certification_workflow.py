@@ -8,15 +8,25 @@ UPLOAD_ARTIFACT_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
 
 
 def workflow_text() -> str:
-    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(encoding="utf-8")
+    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_workflow_is_manual_main_ref_protected_and_self_hosted() -> None:
+def test_workflow_has_explicit_main_ref_guard_before_self_hosted_job() -> None:
     text = workflow_text()
+    dispatch_guard = text.index("dispatch-guard:")
+    guard_step = text.index("Require refs/heads/main")
+    certify = text.index("  certify:")
+
     assert "workflow_dispatch:" in text
     assert "pull_request:" not in text
     assert "branches:" not in text
-    assert "if: ${{ github.ref == 'refs/heads/main' }}" in text
+    assert "if: ${{ github.ref == 'refs/heads/main' }}" not in text
+    assert "Licensed certification must be dispatched from refs/heads/main" in text
+    assert "runs-on: ubuntu-24.04" in text[dispatch_guard:certify]
+    assert "needs: dispatch-guard" in text[certify:]
+    assert dispatch_guard < guard_step < certify
     assert "runs-on: [self-hosted, windows, x64, aspen-licensed]" in text
     assert "environment: licensed-aspen-certification" in text
     assert "approve_real_execution:" in text
@@ -67,14 +77,13 @@ def test_inputs_and_paths_are_canonicalized_before_real_execution() -> None:
 
 def test_real_secrets_are_not_exposed_to_setup_or_mock_regression() -> None:
     text = workflow_text()
-    steps = text.index("    steps:")
     sync = text.index("Verify lockfile and sync frozen certification dependencies")
     regression = text.index("Run isolated licensed control-plane regression gate")
     resolve_paths = text.index("Resolve licensed filesystem targets")
     preflight = text.index("Run licensed certification preflight")
     execute = text.index("Execute scoped licensed certification plan")
 
-    assert "secrets." not in text[:steps]
+    assert "secrets." not in text[:preflight]
     assert "secrets." not in text[sync:preflight]
     assert 'ASPENOPS_ALLOWED_ROOTS: ""' in text[regression:resolve_paths]
     assert text.count("${{ secrets.ASPENOPS_CERT_SIGNING_KEY_PATH }}") == 2
@@ -85,6 +94,7 @@ def test_real_secrets_are_not_exposed_to_setup_or_mock_regression() -> None:
 def test_software_gates_precede_real_execution_and_upload() -> None:
     text = workflow_text()
     ordered = [
+        "Reject non-main manual dispatch",
         "Checkout trusted workflow revision",
         "Verify and checkout exact revision from main",
         "Set up Python",
@@ -102,7 +112,8 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     assert positions == sorted(positions)
     assert "uv lock --check" in text
     assert (
-        "uv sync --frozen --extra dev --extra windows --extra agent --extra signing" in text
+        "uv sync --frozen --extra dev --extra windows --extra agent --extra signing"
+        in text
     )
     assert "ASPENOPS_BACKEND: mock" in text
     assert r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression" in text
