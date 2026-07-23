@@ -175,7 +175,7 @@ def test_manual_workflow_docs_describe_explicit_failure_guards() -> None:
     assert "actions/checkout" in certification
 
 
-def test_docs_record_run_attempt_licensed_evidence_isolation() -> None:
+def test_docs_record_run_attempt_and_dispatch_sha_isolation() -> None:
     paths = (
         ROOT / "README.md",
         ROOT / "README.en.md",
@@ -187,6 +187,8 @@ def test_docs_record_run_attempt_licensed_evidence_isolation() -> None:
     for path in paths:
         text = _read(path)
         assert "licensed-aspen-certification" in text
+        assert "expected_head_sha" in text
+        assert "GITHUB_SHA" in text
         assert "GITHUB_RUN_ID" in text
         assert "GITHUB_RUN_ATTEMPT" in text
         assert "LICENSED_EVIDENCE_DIR" in text
