@@ -11,10 +11,18 @@ WORKFLOWS = {
     "windows-control-plane.yml",
 }
 UV_VERSION = "0.11.16"
+PERFORMANCE_BASELINE_SHA = "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2"
 PINNED_ACTION = re.compile(
     r"^\s*(?:-\s+)?uses:\s+[^@\s]+@([0-9a-f]{40})(?:\s+#.*)?$",
 )
-WRITE_PERMISSION = re.compile(r"^\s+[A-Za-z][A-Za-z0-9_-]*:\s*write\s*$", re.MULTILINE)
+WRITE_PERMISSION = re.compile(
+    r"^\s+[A-Za-z][A-Za-z0-9_-]*:\s*write(?:\s+#.*)?$",
+    re.MULTILINE,
+)
+INLINE_WRITE_PERMISSION = re.compile(
+    r"\bpermissions\s*:\s*(?:write-all|\{[^}\n]*:\s*write\b)",
+    re.IGNORECASE,
+)
 RUN_HEADER = re.compile(r"^(\s*)(?:-\s+)?run:\s*(.*)$")
 BLOCK_SCALARS = {"|", "|-", "|+", ">", ">-", ">+"}
 
@@ -132,8 +140,8 @@ def test_workflows_are_strictly_read_only_and_drop_checkout_credentials() -> Non
     for name in WORKFLOWS:
         text = workflow_text(name)
         assert "permissions:\n  contents: read" in text
-        assert "permissions: write-all" not in text
         assert WRITE_PERMISSION.search(text) is None, f"Write permission in {name}"
+        assert INLINE_WRITE_PERMISSION.search(text) is None, f"Inline write permission in {name}"
         assert "persist-credentials: false" in text
         assert "pull_request_target:" not in text
         assert "continue-on-error: true" not in text
@@ -154,17 +162,20 @@ def test_dispatch_inputs_never_interpolate_into_any_run_command() -> None:
             )
 
 
-def test_performance_revisions_are_trusted_before_code_execution() -> None:
+def test_performance_revisions_and_environments_are_trusted_and_isolated() -> None:
     text = workflow_text("generate-performance-evidence.yml")
     trust_step = text.index("Verify trusted revisions and prepare baseline worktree")
     tool_setup = text.index("astral-sh/setup-uv@")
-    dependency_sync = text.index("uv sync --frozen")
+    dependency_sync = text.index("Verify lockfiles and sync isolated benchmark environments")
+    baseline_run = text.index("Run baseline matrix in baseline environment")
+    candidate_run = text.index("Run candidate matrix in candidate environment")
 
+    assert f"default: {PERFORMANCE_BASELINE_SHA}" in text
     assert "group: aspenops-performance-evidence" in text
     assert "group: aspenops-performance-${{ inputs." not in text
     assert "BASELINE_REF: ${{ inputs.baseline_ref }}" in text
     assert "CANDIDATE_REF: ${{ inputs.candidate_ref }}" in text
-    assert trust_step < tool_setup < dependency_sync
+    assert trust_step < tool_setup < dependency_sync < baseline_run < candidate_run
     assert '"+refs/heads/main:refs/remotes/origin/main"' in text
     assert 'git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}"' in text
     assert 'git merge-base --is-ancestor "$candidate_sha" origin/main' in text
@@ -173,6 +184,15 @@ def test_performance_revisions_are_trusted_before_code_execution() -> None:
     assert "baseline_ref must be an ancestor of candidate_ref" in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$baseline_sha"' in text
     assert 'git worktree add --detach /tmp/aspenops-baseline "$BASELINE_REF"' not in text
+    assert "candidate-uv-lock.log" in text
+    assert "candidate-sync.log" in text
+    assert "baseline-uv-lock.log" in text
+    assert "baseline-sync.log" in text
+    assert "cd /tmp/aspenops-baseline" in text
+    assert "/tmp/aspenops-baseline/.venv/bin/python" in text
+    assert "/tmp/aspenops-baseline/scripts/run_benchmark_matrix.py" in text
+    assert ".venv/bin/python scripts/run_benchmark_matrix.py" in text
+    assert "PYTHONPATH: /tmp/aspenops-baseline/src" not in text
     assert "name: performance-evidence-${{ github.run_id }}" in text
     assert "name: performance-evidence-${{ inputs." not in text
 
@@ -215,6 +235,7 @@ def test_licensed_evidence_is_staged_inside_workspace_before_upload() -> None:
     assert "Test-Path -LiteralPath $source -PathType Leaf" in block
     assert "(Get-Item -LiteralPath $source).Length -le 0" in block
     assert "var/ci/licensed-evidence" in block
+    assert "Remove-Item -LiteralPath $staging" in block
     assert "Copy-Item -LiteralPath $preflight" in block
     assert "Copy-Item -LiteralPath $report" in block
     assert "Copy-Item -LiteralPath $bundle" in block
