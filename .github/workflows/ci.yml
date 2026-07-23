@@ -79,12 +79,13 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
-      - name: Verify documentation contracts
+      - name: Verify documentation and artifact contracts
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest -W error::ResourceWarning \
             tests/test_documentation_contracts.py \
+            tests/test_artifact_upload_governance.py \
             --junitxml=var/ci/documentation-contracts.xml \
             2>&1 | tee var/ci/documentation-contracts.log
       - name: Build distributions
@@ -168,10 +169,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-evidence-quality
+          name: ci-evidence-quality-${{ github.run_id }}-${{ github.run_attempt }}
           path: var/ci
-          if-no-files-found: ignore
+          if-no-files-found: error
           include-hidden-files: true
+          retention-days: 90
 
   tests:
     name: Python ${{ matrix.python-version }} tests
@@ -215,7 +217,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ci-evidence-python-${{ matrix.python-version }}
+          name: ci-evidence-python-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: var/ci
-          if-no-files-found: ignore
+          if-no-files-found: error
           include-hidden-files: true
+          retention-days: 90
