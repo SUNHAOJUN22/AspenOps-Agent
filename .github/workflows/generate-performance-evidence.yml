@@ -23,13 +23,26 @@ concurrency:
 
 jobs:
   benchmark:
-    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
     steps:
+      - name: Reject non-main manual dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"
+          rm -rf "$evidence_dir"
+          mkdir -p "$evidence_dir"
+          printf '%s\n' "$GITHUB_REF" > "$evidence_dir/dispatch-ref.txt"
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Performance evidence must be dispatched from refs/heads/main" \
+              | tee "$evidence_dir/dispatch-guard.log" >&2
+            exit 2
+          fi
+          echo "Main workflow ref accepted" > "$evidence_dir/dispatch-guard.log"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -39,7 +52,6 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="${RUNNER_TEMP}/aspenops-performance-evidence"
-          rm -rf "$evidence_dir"
           mkdir -p "$evidence_dir"
           git fetch --tags --prune origin \
             "+refs/heads/main:refs/remotes/origin/main" \
