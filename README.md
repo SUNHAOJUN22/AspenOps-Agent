@@ -224,14 +224,17 @@ uv run aspenops run-batch examples/batch-request.example.json \
 ### 2. 提交耐久后台任务并查询
 
 ```bash
-uv run aspenops submit examples/batch-request.example.json
+JOB_ID=$(
+  uv run aspenops submit examples/batch-request.example.json |
+  python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
+)
 uv run aspenops job "$JOB_ID"
 ```
 
 ### 3. 执行预算受限的约束优化
 
 ```bash
-uv run aspenops optimize path/to/optimization-request.json \
+uv run aspenops optimize examples/optimization-request.example.json \
   --output var/aspenops-state/optimization-result.json
 ```
 
@@ -418,7 +421,7 @@ PENDING_REAL_ASPEN_CERTIFICATION
 .github/workflows/       四个权威自动化工作流
 docs/                    架构、Windows、性能、认证与质量文档
 docs/assets/readme/      十二张受测试治理的 README SVG
-examples/                批处理与 Process Intent 示例
+examples/                批处理、优化与 Process Intent 示例
 scripts/                 校验器、dashboard、benchmark 与 Windows 设置
 src/aspenops_nexus/      控制平面、后端、Worker、调度、优化、证据与 MCP
 tests/                   Linux、Windows、工作流、文档和安全合同测试
