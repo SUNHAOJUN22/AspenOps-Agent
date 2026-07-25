@@ -23,6 +23,7 @@ EXPECTED = {
 }
 IMAGE_LINK = re.compile(r"!\[[^\]]*\]\((docs/assets/readme/[^)]+\.svg)\)")
 CJK_TEXT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+SHELL_PLACEHOLDER = re.compile(r"(?m)^uv run aspenops .*<[^>]+>")
 FORBIDDEN = (
     "<script",
     "<foreignobject",
@@ -144,6 +145,7 @@ def test_readmes_keep_operational_product_surface_complete() -> None:
         text = (ROOT / filename).read_text(encoding="utf-8")
         for marker in markers:
             assert marker in text, f"{filename} is missing {marker}"
+        assert SHELL_PLACEHOLDER.search(text) is None
 
 
 def test_visual_asset_governance_remains_in_all_software_gates() -> None:
