@@ -197,6 +197,7 @@ dry-run
 run-batch
 submit
 job
+scheduler
 benchmark
 optimize
 certify
@@ -221,7 +222,15 @@ uv run aspenops run-batch examples/batch-request.example.json \
   --bundle var/aspenops-state/run-bundle.zip
 ```
 
-### 2. 提交耐久后台任务并查询
+### 2. 运行耐久后台任务
+
+终端 1：启动常驻调度服务。该进程持续领取数据库中的任务，按 Ctrl+C 安全停止。
+
+```bash
+uv run aspenops scheduler
+```
+
+终端 2：严格验证并入队，然后查询同一个状态数据库中的任务。
 
 ```bash
 JOB_ID=$(
@@ -258,7 +267,7 @@ MCP 不提供 `eval`、任意文件系统、任意 Shell、VBA、无限制 COM �
 
 ![耐久调度生命周期](docs/assets/readme/scheduler-lifecycle.svg)
 
-后台调度器使用 SQLite WAL、幂等提交、租约、心跳、取消期限和最大尝试次数：
+`submit` 只验证并耐久入队；`scheduler` 是处理队列的常驻服务；`job` 只读取状态，不会隐式创建 Worker 或 PoolManager。调度器使用 SQLite WAL、幂等提交、租约、心跳、取消期限和最大尝试次数：
 
 ```text
 validate
@@ -334,7 +343,7 @@ Knowledge 阶段只读；Concept 与 Parameter 只能输出验证后的 IR；Exe
 
 | 工作流 | 固定环境 | 作用 |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、Process IR 和 dashboard |
+| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、Process Intent IR 和 dashboard |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell、路径、IR 和治理合同 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 受信 baseline/candidate、双冻结环境和稳定回归证据 |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 主干守卫、SHA 绑定、Mock/IR 软件门、证据隔离和真实 COM |
@@ -437,6 +446,7 @@ var/                     可复现基线、审计清单和本地运行状态
 | `doctor --probe` 显示未就绪 | Python 位数、COM ProgID、许可证、允许目录 | 不要绕过 preflight 或硬编码裸 COM |
 | 路径被拒绝 | `ASPENOPS_ALLOWED_ROOTS` 与 realpath | 将模型、registry、状态和输出放入获批绝对根目录 |
 | 批处理返回 `ok=false` | communication、engine、converged、feasible、balances | 分别修复，不把 Run2 返回当作收敛 |
+| 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务，状态目录是否一致 | 启动调度服务；不要期待 `submit` 自己在退出后继续运行 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
 | dashboard 显示 `INCOMPLETE` | JUnit/coverage 是否在当前 job 生成 | 不复用旧制品，不把缺证据当 PASS |
 | README SVG 不显示 | 文件名大小写、XML、字体与资源安全测试 | 使用仓库本地、自包含、无 CJK 内嵌文字的 SVG |
