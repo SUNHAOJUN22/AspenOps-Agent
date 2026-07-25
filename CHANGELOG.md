@@ -8,6 +8,8 @@
 - added bounded knowledge, concept, parameter, execution, repair and review Agent contracts;
 - added flowsheet benchmark records that separate topology, compiler, execution, convergence, balances, repair and human intervention;
 - added Process IR validation commands, HTML/SVG visual evidence and Linux/Windows/licensed-Mock CI contracts;
+- rebuilt the bilingual README around nine original, self-contained and repository-local SVG capability diagrams;
+- added fail-closed README visual inventory, accessibility and resource-safety contracts to Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
 - retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
 
