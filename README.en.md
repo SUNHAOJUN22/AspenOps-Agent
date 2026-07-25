@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → validated process intent → isolated execution → nonlinear solve → engineering decision → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [External Agent Integration](docs/external-agent-integration.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,7 +18,7 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> The nine diagrams in this README are original AI-generated SVG assets created for AspenOps. They visualize implemented contracts and explicitly labelled roadmap items; planned capabilities are never presented as available.
+> This README uses twelve original AI-generated SVG capability diagrams. They describe implemented contracts and explicitly labelled planned work; they never present software tests, Mock execution or signatures as licensed Aspen engineering certification.
 
 ---
 
@@ -29,30 +29,92 @@
 | Default and only long-lived branch | `main` |
 | Package | `aspenops-nexus 2.0.0` |
 | Public matrix | Python 3.11, 3.12 and 3.13 |
-| Archived portable run | Actions run `29814739487` |
+| Archived validated baseline | Actions run `29814739487` |
 | Archived Python 3.12 result | 72 test modules, 563 passed, 0 failed, 0 skipped, 16.73 s |
 | Combined branch-aware coverage | 94.9719800747198% |
-| Statement / branch coverage | 96.23677786818551% / 90.84880636604774% |
 | Coverage floor | 94.5% |
 | Archived public Windows run | Actions run `29814739334`, 104 passed, 2.06 s |
 | MCP tools | 14 |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-These figures are an **archived validated baseline** extracted from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. Badges represent the current `main` push state; historical figures never replace fresh Actions evidence.
+These figures come from inspected JUnit, coverage JSON and logs. They are an **archived validated baseline**, **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence for the current SHA.
 
-Public CI validates the control plane, path policy, process isolation, scheduling, archives, interfaces and Process Intent contracts. It cannot certify a commercial Aspen installation, licence, property method or engineering model.
+Public CI validates the control plane, path policy, process isolation, scheduling, archives, interfaces, Process Intent and documentation contracts. It cannot qualify a commercial Aspen installation, licence, property method, reaction model or engineering case.
 
 ---
 
 ## Product position
 
-AspenOps is not a wrapper that lets a model emit arbitrary COM scripts. It is deterministic infrastructure for Aspen Plus, Aspen HYSYS and process-simulation agents:
+AspenOps is not a wrapper that lets a model generate arbitrary COM scripts. Aspen Plus, Aspen HYSYS, CLI, Python and AI agents use one deterministic control plane:
 
-- semantic variables, validated Process Intent IR and narrow MCP tools instead of arbitrary Tree Paths, shell, VBA or raw COM;
-- OS-process isolation, STA ownership, private model copies and licence-slot controls;
-- independent transport, engine, convergence, feasibility, balance and human-approval gates;
-- frozen dependencies, exact trusted SHA, run-attempt artifacts, hashes, signatures and visual evidence;
-- selected architectural lessons from Text-to-Flowsheet, Sketch2Simulation, DWSIM, IDAES, Modelica and Aspen Python automation without copying proprietary code or prompts.
+- agents submit semantic variables or validated `aspenops.flowsheet/v1`;
+- each real Automation Server lives in one Windows child process and one STA apartment;
+- every Worker uses a private staged model copy;
+- concurrency is bounded by licence slots, resources and lifecycle policy;
+- communication, engine return, convergence, constraints, material/energy balances and human approval are separate gates;
+- accepted results bind request, model, registry, code revision and evidence hashes;
+- DWSIM, IDAES, Modelica/FMI and automatic flowsheet compilers remain `planned`; when no adapter exists, execution fails closed.
+
+---
+
+## Quick start
+
+Requirements: Python 3.11–3.13 and `uv >= 0.11.16`.
+
+```bash
+git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
+cd AspenOps-Agent
+
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
+
+uv run aspenops --version
+uv run aspenops demo
+uv run aspenops dry-run examples/batch-request.example.json
+```
+
+Add `--extra windows` for a real Windows backend:
+
+```powershell
+uv sync --frozen --extra windows --extra dev --extra agent --extra signing
+uv run aspenops doctor --probe
+```
+
+The first run defaults to Mock. Mock is cross-platform software validation, not Aspen Plus or HYSYS physics evidence.
+
+---
+
+## Configuration boundaries
+
+The portable defaults come from `.env.example`:
+
+```dotenv
+ASPENOPS_BACKEND=mock
+ASPENOPS_MODE=default
+ASPENOPS_ALLOWED_ROOTS=
+ASPENOPS_STATE_DIR=var/aspenops-state
+ASPENOPS_LICENSE_SLOTS=1
+ASPENOPS_MAX_WORKERS=1
+ASPENOPS_MAX_RESIDENT_CASES=2
+```
+
+Real Aspen requires absolute allowed roots, and the state directory must stay inside an allowed root:
+
+```dotenv
+ASPENOPS_BACKEND=aspen_plus
+ASPENOPS_ALLOWED_ROOTS=C:/AspenModels;C:/AspenResults
+ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state
+```
+
+Rules:
+
+1. Mock may use an empty allowlist; Aspen Plus and HYSYS may not.
+2. `..`, symlinks, Windows junctions and realpath escapes are rejected.
+3. `ASPENOPS_LICENSE_SLOTS` and `ASPENOPS_MAX_WORKERS` jointly cap concurrency.
+4. Duplicate dotenv variables, unbalanced quotes and raw secret echoing are rejected.
+5. Private keys, tokens, licence secrets, customer paths and production data never belong in the repository.
+
+See [Windows Setup](docs/windows-setup.md).
 
 ---
 
@@ -61,13 +123,11 @@ AspenOps is not a wrapper that lets a model emit arbitrary COM scripts. It is de
 ![Windows COM process isolation](docs/assets/readme/com-isolation.svg)
 
 1. One COM object belongs to one Windows child process and one STA apartment.
-2. Agents use semantic variables or `aspenops.flowsheet/v1`, never arbitrary Aspen Tree Paths.
-3. Every Worker uses a private staged model copy.
-4. Hard timeout recovery terminates only the AspenOps-owned Worker.
-5. Concurrency is capped by licence evidence and `ASPENOPS_LICENSE_SLOTS`.
-6. Communication, engine return, convergence, feasibility and balances remain independent gates.
-7. Mock, Fake COM and public CI never impersonate licensed Aspen physics certification.
-8. Missing DWSIM, IDAES, Modelica or flowsheet compilers fail closed.
+2. Agents never construct arbitrary Aspen Tree Paths or run arbitrary Python, Shell or VBA.
+3. Workers use private case copies; hard timeouts terminate only verified AspenOps-owned processes.
+4. Cache identity binds runtime, backend, model, registry and physical request.
+5. Failed writes roll back and tainted Workers are recycled.
+6. Mock, Fake COM, public Windows tests and signatures cannot self-grant real engineering certification.
 
 A result is `ok=true` only when:
 
@@ -91,9 +151,7 @@ The simulator-neutral schema is:
 aspenops.flowsheet/v1
 ```
 
-It represents components, property method, unit operations, ports, streams, parameters and safe metadata. It provides deterministic ordering, canonical JSON, SHA-256 graph identity, topology validation, quantity budgets, cycle policy and rejection of executable or private-path keys such as `code`, `script`, `shell`, `python`, `vba`, `command` and raw Tree Paths.
-
-Validate and render it locally:
+It represents components, property method, unit operations, input/output ports, streams, parameters and safe metadata. It provides deterministic ordering, canonical JSON, SHA-256 graph identity, topology validation, quantity budgets, recycle policy and rejection of `code`, `script`, `shell`, `python`, `vba`, `command` and raw Tree Paths.
 
 ```bash
 uv run python scripts/validate_process_ir.py \
@@ -107,49 +165,23 @@ uv run python scripts/render_process_ir_dashboard.py \
   --output-svg var/ci/process-ir-dashboard.svg
 ```
 
-`process-ir-dashboard.html` exposes issues, backend declarations and the agent pipeline. Details are in [Process Intent IR](docs/process-intent-ir.md).
+`process-ir-dashboard.html` exposes issues, backend declarations and the agent pipeline. See [Process Intent IR](docs/process-intent-ir.md).
 
 ---
 
-## Layered process agents
+## CLI, Python and MCP
 
-![Layered process agents](docs/assets/readme/agent-pipeline.svg)
+![CLI, Python and MCP surface](docs/assets/readme/cli-mcp-workflow.svg)
 
-```text
-Knowledge
-→ Concept
-→ Parameter
-→ Execution
-→ Repair
-→ Physics / Engineering Review
-```
+All three entry points reuse the same Settings, Policy, Scheduler, Worker and Evidence implementation.
 
-Knowledge is read-only. Concept and Parameter may output only validated `aspenops.flowsheet/v1`. Execution can use only declared available backends and narrow tools. Repair is bounded by iteration, time and solve budgets. Review independently evaluates physics, convergence, constraints, balances and human approval. No stage may emit arbitrary Python, Shell, VBA, raw COM or raw Aspen Tree Paths.
+| Surface | Primary use | Boundary |
+|---|---|---|
+| CLI | demo, diagnostics, batch, scheduling, optimization and verification | parameterized commands, no arbitrary code |
+| Python | embedded batch, scheduler, optimization and evidence workflows | the same policy and data models |
+| MCP | agent discovery, planning, submission, observation and verification | exactly 14 narrow tools, no arbitrary Shell/COM/Tree Path |
 
----
-
-## Multi-simulator capability declaration
-
-![Backend capability matrix](docs/assets/readme/backend-capabilities.svg)
-
-Execution and IR-compilation capability are independent:
-
-| Backend | Current execution | IR compiler | Boundary |
-|---|---|---|---|
-| Mock | available | planned | Cross-platform deterministic software testing, no Aspen physics |
-| Aspen Plus | available on licensed Windows | planned | Existing approved-model execution |
-| HYSYS | available on licensed Windows | planned | Existing approved-model execution |
-| DWSIM | planned | planned | **No adapter claimed** |
-| IDAES | planned | planned | **No adapter claimed** |
-| Modelica/FMI | planned | planned | **No adapter claimed** |
-
-**planned ≠ implemented; compiler ≠ executor; a signature ≠ engineering approval.**
-
----
-
-## CLI, scheduling, optimization and MCP
-
-Primary CLI commands:
+Primary commands:
 
 ```text
 demo
@@ -168,13 +200,119 @@ verify-bundle
 mcp
 ```
 
-The MCP server exposes exactly 14 narrow tools for discovery, planning, submission, observation, optimization and evidence verification. It exposes no arbitrary shell, Python, VBA, `eval`, unrestricted COM method or raw Tree Path write.
+---
 
-The scheduler uses SQLite WAL, leases, heartbeats, cancellation deadlines and idempotent commits. CasePool reuse is bound to backend, model, registry, concurrency and visibility; cache identity binds runtime, model, registry and physical request.
+## Common workflows
+
+### 1. Validate before batch execution
+
+```bash
+uv run aspenops dry-run examples/batch-request.example.json
+
+uv run aspenops run-batch examples/batch-request.example.json \
+  --output var/aspenops-state/results.json \
+  --bundle var/aspenops-state/run-bundle.zip
+```
+
+### 2. Submit and query a durable job
+
+```bash
+uv run aspenops submit examples/batch-request.example.json
+uv run aspenops job <JOB_ID>
+```
+
+### 3. Run budgeted constrained optimization
+
+```bash
+uv run aspenops optimize <optimization-request.json> \
+  --output var/aspenops-state/optimization-result.json
+```
+
+### 4. Verify an evidence bundle
+
+```bash
+uv run aspenops verify-bundle var/aspenops-state/run-bundle.zip
+```
+
+### 5. Start the local MCP stdio server
+
+```bash
+uv run aspenops mcp
+```
+
+MCP exposes no `eval`, arbitrary filesystem, arbitrary Shell, VBA, unrestricted COM method or raw Tree Path write.
 
 ---
 
-## Automated tests and visual evidence
+## Scheduling and recovery
+
+![Durable scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
+
+The background scheduler uses SQLite WAL, idempotent submission, leases, heartbeats, cancellation deadlines and attempt limits:
+
+```text
+validate
+→ persist QUEUED
+→ claim lease
+→ heartbeat RUNNING
+→ isolated Worker
+→ atomic COMPLETED / FAILED / CANCELLED
+```
+
+Expired leases can be reclaimed. Restarted processes mark incomplete work as interrupted rather than successful. Cancellation terminates only an owned Worker. CasePool reuse is bound to backend, model, registry, concurrency and visibility identity. Final state and evidence are committed atomically.
+
+---
+
+## Industrial use cases
+
+![Industrial operating scenarios](docs/assets/readme/industrial-scenarios.svg)
+
+| Scenario | AspenOps capability | Retained human responsibility |
+|---|---|---|
+| Parameter study | bounded sweeps over semantic temperature, pressure, flow and ratio variables | approval of operating ranges |
+| Constrained optimization | feasibility and Pareto evidence within evaluation budgets | equipment, control and safety review |
+| Regression and qualification | baseline/candidate, repeatability and tolerance evidence | licensed runtime and physics qualification |
+| Operational decision support | what-if analysis against an existing approved model | production DCS control and final process decisions |
+
+AspenOps never writes directly to production DCS. It creates governed simulation evidence for qualified engineers.
+
+---
+
+## Layered process agents
+
+![Layered process agents](docs/assets/readme/agent-pipeline.svg)
+
+```text
+Knowledge
+→ Concept
+→ Parameter
+→ Execution
+→ Repair
+→ Physics / Engineering Review
+```
+
+Knowledge is read-only. Concept and Parameter output only validated IR. Execution uses only declared available backends and narrow tools. Repair is bounded by iteration, time and solve budgets. Review independently checks physics, convergence, constraints, balances and human approval.
+
+---
+
+## Multi-simulator capability declaration
+
+![Backend capability matrix](docs/assets/readme/backend-capabilities.svg)
+
+| Backend | Current execution | IR compiler | Boundary |
+|---|---|---|---|
+| Mock | available | planned | cross-platform software tests, no Aspen physics |
+| Aspen Plus | available on licensed Windows | planned | existing approved-model execution |
+| HYSYS | available on licensed Windows | planned | existing approved-model execution |
+| DWSIM | planned | planned | **not implemented; no adapter** |
+| IDAES | planned | planned | **not implemented; no adapter** |
+| Modelica/FMI | planned | planned | **not implemented; no adapter** |
+
+**planned != implemented; compiler != executor; a signature != engineering approval.**
+
+---
+
+## Automated tests and quality gates
 
 ![Automated test matrix](docs/assets/readme/test-matrix.svg)
 
@@ -184,18 +322,10 @@ The four authoritative workflows are:
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, Process IR and dashboards |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, paths, IR and governance |
-| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, two frozen environments and stable-regression evidence |
+| `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, independent frozen environments and stable-regression evidence |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR software gates, evidence isolation and real COM |
 
-Frozen audits cover:
-
-```text
-Linux and Windows × Python 3.11, 3.12 and 3.13
-```
-
-That is six audit targets. Hosted runners, third-party Actions and `uv 0.11.16` are pinned; workflow permission is `contents: read`.
-
-Artifact names contain both `github.run_id` and `github.run_attempt`; uploads use `if-no-files-found: error`. Current-job evidence is written under `$RUNNER_TEMP` and upload reads through `${{ runner.temp }}`. Missing JUnit or an early failure renders `INCOMPLETE`; any failure/error renders `FAIL`.
+Frozen audits cover `Linux and Windows × Python 3.11, 3.12 and 3.13`: six targets. Hosted runners, third-party Actions and `uv 0.11.16` are pinned; workflow permission remains `contents: read`.
 
 Complete local quality gate:
 
@@ -212,12 +342,10 @@ uv run pytest -W error::ResourceWarning \
 uv build
 uv run python scripts/check_mcp.py
 uv run python scripts/validate_process_ir.py examples/process-intent.example.json
-uv run aspenops --version
 uv run aspenops demo
-uv run aspenops dry-run examples/batch-request.example.json
 ```
 
-Add `--extra windows` on Windows. `.env.example` defaults to Mock, an empty allowlist and a repository-local state directory.
+Artifact names contain both `github.run_id` and `github.run_attempt`. Current-job evidence is written under `$RUNNER_TEMP`; uploads read through `${{ runner.temp }}` and use `if-no-files-found: error`. Missing JUnit or early termination renders `INCOMPLETE`; any failure/error renders `FAIL`.
 
 ---
 
@@ -235,7 +363,7 @@ validated intent
 → qualified human acceptance
 ```
 
-Performance dispatch verifies `GITHUB_REF == refs/heads/main`. A non-main dispatch writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** instead of becoming all-skipped. `actions/checkout` loads the trusted workflow revision, candidate and baseline refs are resolved with `--end-of-options`, ancestry is checked, and the validated candidate is used through detached checkout.
+Performance dispatch first checks `GITHUB_REF == refs/heads/main`. A non-main dispatch writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** instead of becoming all-skipped. `actions/checkout` loads the trusted workflow revision; candidate and baseline pass `--end-of-options` and ancestry checks before validated detached checkout.
 
 Default performance baseline:
 
@@ -258,10 +386,10 @@ The protected workflow:
 3. verifies the initial `actions/checkout` and then uses detached checkout;
 4. creates `$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>` before checkout;
 5. records run identity in `run-metadata.txt`;
-6. stores Mock JUnit, dashboards, evidence copies and final `job_status` in that run directory;
-7. uses `LICENSED_EVIDENCE_DIR` at `ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`;
-8. serializes all real runs with concurrency group `licensed-aspen-certification`;
-9. uploads only the current `${{ runner.temp }}` directory using `if-no-files-found: error`.
+6. stores Mock JUnit, dashboards, successful evidence copies and final `job_status` in that run directory;
+7. uses `LICENSED_EVIDENCE_DIR=ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`;
+8. serializes real runs with concurrency group `licensed-aspen-certification`;
+9. uploads only the current `${{ runner.temp }}` directory, includes `github.run_attempt`, and uses `if-no-files-found: error`.
 
 Software can emit only:
 
@@ -269,7 +397,36 @@ Software can emit only:
 PENDING_REAL_ASPEN_CERTIFICATION
 ```
 
-Real certification still requires licensed Windows, a valid licence, an approved model, signing material and qualified human engineering acceptance.
+Real certification still requires licensed Windows, a valid licence, an approved model, signing material and qualified human engineering acceptance. The open certification gate is issue `#16`.
+
+---
+
+## Repository structure
+
+```text
+.github/workflows/       four authoritative automation workflows
+docs/                    architecture, Windows, performance, certification and quality
+docs/assets/readme/      twelve CI-governed README SVG assets
+examples/                batch and Process Intent examples
+scripts/                 validators, dashboards, benchmarks and Windows setup
+src/aspenops_nexus/      control plane, backends, Workers, scheduler, optimization, evidence and MCP
+tests/                   Linux, Windows, workflow, documentation and safety contracts
+var/                     reproducible baselines, audit manifests and local state
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Check first | Required approach |
+|---|---|---|
+| `doctor --probe` is not ready | Python bitness, COM ProgID, licence and allowed roots | never bypass preflight or add a raw COM shortcut |
+| path rejected | `ASPENOPS_ALLOWED_ROOTS` and realpath | place model, registry, state and outputs in approved absolute roots |
+| batch returns `ok=false` | communication, engine, convergence, feasibility and balances | repair each gate; `Run2` return is not convergence |
+| job remains running | lease, heartbeat, Worker PID and cancellation deadline | let the scheduler reclaim leases; do not kill unknown Aspen processes |
+| dashboard is `INCOMPLETE` | current-job JUnit and coverage | never reuse stale artifacts or convert missing evidence into PASS |
+| README SVG does not render | filename case, XML, fonts and resource-safety test | use local, self-contained SVG with no embedded CJK text |
+| licensed workflow does not run | ref, `expected_head_sha`, environment approval and runner labels | execute only on protected `main` and an approved licensed host |
 
 ---
 
@@ -281,23 +438,23 @@ Real certification still requires licensed Windows, a valid licence, an approved
 
 - Process Intent IR, strict validation, canonical JSON and SHA-256 graph identity;
 - Aspen Plus/HYSYS existing-model control plane;
-- Mock, Fake COM, Windows Job Object, scheduling, optimization and MCP;
-- frozen CI, visual dashboards, evidence bundles and licensed-certification boundaries.
+- Mock, Fake COM, Windows Job Object, durable scheduling, optimization and MCP;
+- frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
 
 - IR → Mock non-executable plan compiler;
 - open DWSIM process backend;
 - Text/Image → IR benchmark and data contracts;
-- bounded simulation-feedback repair loops;
+- bounded simulation-feedback Repair loops;
 - human review and visual-diff UI.
 
-### Evidence-gated later work
+### Evidence-gated later
 
 - Aspen/HYSYS automatic flowsheet compiler;
 - IDAES symbolic backend;
 - Modelica/FMI co-simulation;
-- image/PFD understanding;
+- PFD/sketch understanding;
 - industrial model and version qualification.
 
 No capability moves from planned to available without **code + tests + evidence**.
@@ -306,25 +463,26 @@ No capability moves from planned to available without **code + tests + evidence*
 
 ## AI-generated visual assets
 
-The following original SVGs are stored under `docs/assets/readme/` and load no external images:
+The following twelve original, self-contained SVGs live in `docs/assets/readme/` and load no external image or font resource:
 
 1. `hero-architecture.svg`
 2. `process-intent-ir.svg`
 3. `agent-pipeline.svg`
 4. `backend-capabilities.svg`
 5. `com-isolation.svg`
-6. `test-matrix.svg`
-7. `evidence-chain.svg`
-8. `licensed-certification.svg`
-9. `roadmap.svg`
+6. `cli-mcp-workflow.svg`
+7. `scheduler-lifecycle.svg`
+8. `industrial-scenarios.svg`
+9. `test-matrix.svg`
+10. `evidence-chain.svg`
+11. `licensed-certification.svg`
+12. `roadmap.svg`
 
-They contain no fabricated run result, customer model or proprietary simulator content.
+`tests/test_readme_visual_assets.py` checks bilingual references, exact inventory, XML, size, path safety, accessibility, renderer portability, scripts, events, remote resources, Data URIs and workflow inclusion.
 
 ---
 
-## Documentation and security boundary
-
-`tests/test_documentation_contracts.py` derives the version from `pyproject.toml`, validates README, `__version__`, CHANGELOG, AGENTS, CLAUDE, CONTRIBUTING and core documents, and rejects repository-escaping links or conversation-internal markup.
+## Documentation, contribution and security
 
 - [Architecture](docs/architecture.md)
 - [Process Intent IR](docs/process-intent-ir.md)
@@ -334,7 +492,7 @@ They contain no fabricated run result, customer model or proprietary simulator c
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
-Automation does not prove that every Aspen version starts, every model converges or that property methods, reactions and equipment assumptions are engineering-correct. It cannot replace a process engineer or self-grant real certification.
-
-The code is Apache-2.0. Never commit customer models, proprietary thermodynamics or kinetics, production DCS data, licences, private keys, tokens, internal hosts or commercial evidence bundles.
+Automation does not prove that every Aspen version starts, every model converges, or that property methods, reactions, equipment and control assumptions are engineering-correct. The code is Apache-2.0. Never commit customer models, proprietary thermodynamics or kinetics, production DCS data, licences, private keys, tokens, internal hosts or commercial evidence bundles.
