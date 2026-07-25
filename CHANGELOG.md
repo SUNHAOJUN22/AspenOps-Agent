@@ -8,6 +8,9 @@
 - added bounded knowledge, concept, parameter, execution, repair and review Agent contracts;
 - added flowsheet benchmark records that separate topology, compiler, execution, convergence, balances, repair and human intervention;
 - added Process IR validation commands, HTML/SVG visual evidence and Linux/Windows/licensed-Mock CI contracts;
+- added a real `aspenops scheduler` service so CLI `submit` durably enqueues work instead of relying on a daemon thread that ends with the submitting process;
+- made CLI `job` read durable state without constructing an unused PoolManager or Worker fabric;
+- added a portable constrained-optimization example and made the optimization tests execute that published document directly;
 - rebuilt the bilingual README as a complete installation, configuration, workflow, scheduling, industrial-use and troubleshooting guide;
 - expanded the governed visual system to twelve original, self-contained and repository-local SVG capability diagrams;
 - added fail-closed README inventory, accessibility, renderer-portability, resource-safety and required-product-surface contracts to Linux, Windows and pre-licensed-COM quality gates;
