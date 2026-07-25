@@ -103,6 +103,21 @@ Process-IR benchmark evidence adds independent topology, compiler availability, 
 
 ## Persistence
 
-The scheduler uses SQLite in WAL mode. Jobs survive process restarts as durable records. A job left in `running` during service restart is moved to `interrupted`, because silent resumption would violate execution identity.
+`JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI has three explicit responsibilities:
+
+```text
+submit     → validate and create a pending durable record
+scheduler  → long-lived lease, heartbeat, execute and commit service
+job        → read durable state only
+```
+
+This separation prevents a short-lived `submit` process from pretending that its daemon thread can continue after process exit.
+
+Recovery follows the actual state machine:
+
+- cancellation requested during restart or lease expiry → `cancelled`;
+- active work with attempts remaining → `retry_wait`;
+- active work after the final attempt → `dead_letter`;
+- completed results remain bound to an idempotent commit token and evidence bundle.
 
 The result cache is also SQLite WAL. Cache keys bind runtime schema/version, backend, model SHA-256, registry SHA-256 and solver-relevant request content. Process Intent uses its own canonical JSON SHA-256 identity before compilation.
