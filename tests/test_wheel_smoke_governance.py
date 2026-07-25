@@ -17,4 +17,7 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     assert "--offline" in text
     assert "--no-deps" in text
     assert "uv pip check --python /tmp/aspenops-wheel/bin/python" in text
+    assert "/tmp/aspenops-wheel/bin/aspenops scheduler --help" in text
+    assert "/tmp/aspenops-wheel/bin/aspenops optimize --help" in text
+    assert "uv run aspenops optimize examples/optimization-request.example.json" in text
     assert "/tmp/aspenops-wheel/bin/pip install dist/*.whl" not in text
