@@ -22,6 +22,7 @@ def make_settings(tmp_path: Path) -> SimpleNamespace:
         worker_max_age_s=6.0,
         startup_timeout_s=7.0,
         cache_failures=True,
+        job_max_attempts=3,
     )
 
 
@@ -133,7 +134,7 @@ def test_run_batch_writes_default_and_explicit_outputs(
     assert bundles[-1]["output_path"] == explicit_bundle
 
 
-def test_submit_job_and_benchmark_commands(
+def test_submit_job_scheduler_and_benchmark_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -144,29 +145,63 @@ def test_submit_job_and_benchmark_commands(
     printed: list[Any] = []
     monkeypatch.setattr(cli, "_json_print", printed.append)
 
-    class SubmitScheduler:
-        def __init__(self, active: Any) -> None:
-            assert active is settings
-            self.store = SimpleNamespace(path=tmp_path / "jobs.sqlite3")
+    validated: list[tuple[dict[str, Any], Any]] = []
+    monkeypatch.setattr(
+        cli,
+        "_validate_scheduled_request",
+        lambda request, active: validated.append((request, active)),
+    )
 
-        def submit(self, request: dict[str, Any]) -> str:
+    records: dict[str, dict[str, Any]] = {}
+
+    class FakeJobStore:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+        def create(self, request: dict[str, Any], max_attempts: int) -> str:
             assert request == {"backend": "mock"}
+            assert max_attempts == 3
+            records["job-123"] = {"job_id": "job-123", "status": "pending"}
             return "job-123"
 
-    monkeypatch.setattr(cli, "BackgroundScheduler", SubmitScheduler)
-    assert cli.command_submit(Namespace(request=str(request_path))) == 0
-    assert printed[-1]["job_id"] == "job-123"
+        def get(self, job_id: str) -> dict[str, Any] | None:
+            return records.get(job_id)
 
-    class JobScheduler:
+    monkeypatch.setattr(cli, "JobStore", FakeJobStore)
+    assert cli.command_submit(Namespace(request=str(request_path))) == 0
+    assert validated == [({"backend": "mock"}, settings)]
+    assert printed[-1]["job_id"] == "job-123"
+    assert printed[-1]["scheduler_required"] is True
+    assert printed[-1]["scheduler_command"] == "uv run aspenops scheduler"
+
+    assert cli.command_job(Namespace(job_id="job-123")) == 0
+    assert cli.command_job(Namespace(job_id="missing")) == 2
+
+    service_events: list[str] = []
+
+    class FakeScheduler:
         def __init__(self, active: Any) -> None:
             assert active is settings
-            self.store = SimpleNamespace(
-                get=lambda job_id: {"id": job_id} if job_id == "present" else None
-            )
+            self.owner = "scheduler-test"
+            self.store = SimpleNamespace(path=tmp_path / "state" / "jobs.sqlite3")
 
-    monkeypatch.setattr(cli, "BackgroundScheduler", JobScheduler)
-    assert cli.command_job(Namespace(job_id="present")) == 0
-    assert cli.command_job(Namespace(job_id="missing")) == 2
+        def start(self) -> None:
+            service_events.append("start")
+
+        def stop(self) -> None:
+            service_events.append("stop")
+
+    monkeypatch.setattr(cli, "BackgroundScheduler", FakeScheduler)
+
+    def interrupt_sleep(seconds: float) -> None:
+        assert seconds == 0.05
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli.time, "sleep", interrupt_sleep)
+    with pytest.raises(KeyboardInterrupt):
+        cli.command_scheduler(Namespace(idle_wait_s=0.01))
+    assert service_events == ["start", "stop"]
+    assert printed[-1]["service"] == "scheduler"
 
     model = tmp_path / "case.json"
     registry = tmp_path / "registry.json"
@@ -294,6 +329,7 @@ def test_mcp_parser_and_main_exit_semantics(
         ["run-batch", "request.json"],
         ["submit", "request.json"],
         ["job", "job-1"],
+        ["scheduler"],
         ["benchmark"],
         ["optimize", "request.json"],
         ["certify", "request.json"],
@@ -302,7 +338,7 @@ def test_mcp_parser_and_main_exit_semantics(
     ]
     parsed = [parser.parse_args(argv) for argv in commands]
     assert [item.command for item in parsed] == [argv[0] for argv in commands]
-    assert parsed[6].workers == "1,2,4"
+    assert parsed[7].workers == "1,2,4"
 
     class FakeParser:
         def __init__(self, func: Any) -> None:
