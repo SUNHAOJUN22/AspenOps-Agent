@@ -29,6 +29,12 @@ FORBIDDEN = (
     "url(http",
     "url(//",
 )
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
+GOVERNED_WORKFLOWS = (
+    "ci.yml",
+    "windows-control-plane.yml",
+    "licensed-aspen-certification.yml",
+)
 
 
 def _local_name(tag: str) -> str:
@@ -84,3 +90,10 @@ def test_readme_svgs_are_self_contained_safe_and_accessible() -> None:
                     assert not value.casefold().startswith(
                         ("http:", "https:", "//", "data:", "javascript:")
                     )
+
+
+def test_visual_asset_governance_remains_in_all_software_gates() -> None:
+    marker = "tests/test_readme_visual_assets.py"
+    for workflow in GOVERNED_WORKFLOWS:
+        text = (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")
+        assert marker in text
