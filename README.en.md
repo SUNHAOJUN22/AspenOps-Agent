@@ -190,6 +190,7 @@ dry-run
 run-batch
 submit
 job
+cancel
 scheduler
 benchmark
 optimize
@@ -233,6 +234,12 @@ JOB_ID=$(
 uv run aspenops job "$JOB_ID"
 ```
 
+To cancel, request termination of only the verified owned Worker after the grace period:
+
+```bash
+uv run aspenops cancel "$JOB_ID" --grace-s 2
+```
+
 ### 3. Run budgeted constrained optimization
 
 ```bash
@@ -260,7 +267,7 @@ MCP exposes no `eval`, arbitrary filesystem, arbitrary Shell, VBA, unrestricted 
 
 ![Durable scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
 
-`submit` validates and durably enqueues only; `scheduler` is the long-lived queue service; `job` reads state without creating Workers or a PoolManager. The scheduler uses SQLite WAL, idempotent submission, leases, heartbeats, cancellation deadlines and attempt limits:
+`submit` validates and durably enqueues only; `scheduler` is the long-lived queue service; `job` reads state; `cancel` requests cancellation and sets the owned-Worker force deadline. The scheduler uses SQLite WAL, idempotent submission, leases, heartbeats, cancellation deadlines and attempt limits:
 
 ```text
 validate
@@ -273,6 +280,7 @@ validate
 
 - after lease expiry or service restart, jobs with attempts remaining enter `retry_wait`; exhausted jobs enter `dead_letter`;
 - jobs with a pending cancellation request recover as `cancelled`;
+- pending and retry-waiting jobs cancel immediately; running jobs first enter `cancelling`;
 - cancellation terminates only an owned Worker;
 - CasePool reuse is bound to backend, model, registry, concurrency and visibility identity;
 - final state and evidence are committed atomically rather than treating `Run2` return as success.
@@ -440,6 +448,7 @@ var/                     reproducible baselines, audit manifests and local state
 | path rejected | `ASPENOPS_ALLOWED_ROOTS` and realpath | place model, registry, state and outputs in approved absolute roots |
 | batch returns `ok=false` | communication, engine, convergence, feasibility and balances | repair each gate; `Run2` return is not convergence |
 | job remains `pending` | a long-lived `aspenops scheduler` service and matching state directory | start the scheduler; `submit` cannot continue after its process exits |
+| cancellation returns `accepted=false` | the job is missing or already terminal | read `aspenops job`; a terminal job is not cancelled twice |
 | job remains running | lease, heartbeat, Worker PID and cancellation deadline | let the scheduler reclaim leases; do not kill unknown Aspen processes |
 | dashboard is `INCOMPLETE` | current-job JUnit and coverage | never reuse stale artifacts or convert missing evidence into PASS |
 | README SVG does not render | filename case, XML, fonts and resource-safety test | use local, self-contained SVG with no embedded CJK text |
@@ -455,7 +464,7 @@ var/                     reproducible baselines, audit manifests and local state
 
 - Process Intent IR, strict validation, canonical JSON and SHA-256 graph identity;
 - Aspen Plus/HYSYS existing-model control plane;
-- Mock, Fake COM, Windows Job Object, durable scheduling, optimization and MCP;
+- Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, optimization and MCP;
 - frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
