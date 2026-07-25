@@ -170,6 +170,7 @@ jobs:
             tests/test_documentation_contracts.py `
             tests/test_artifact_upload_governance.py `
             tests/test_test_dashboard.py `
+            tests/test_readme_visual_assets.py `
             tests/test_process_ir.py `
             tests/test_process_ir_edges.py `
             tests/test_process_ir_dashboard.py `
