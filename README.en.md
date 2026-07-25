@@ -271,7 +271,11 @@ validate
 → atomic COMPLETED / FAILED / CANCELLED
 ```
 
-Expired leases can be reclaimed. Restarted processes mark incomplete work as interrupted rather than successful. Cancellation terminates only an owned Worker. CasePool reuse is bound to backend, model, registry, concurrency and visibility identity. Final state and evidence are committed atomically.
+- after lease expiry or service restart, jobs with attempts remaining enter `retry_wait`; exhausted jobs enter `dead_letter`;
+- jobs with a pending cancellation request recover as `cancelled`;
+- cancellation terminates only an owned Worker;
+- CasePool reuse is bound to backend, model, registry, concurrency and visibility identity;
+- final state and evidence are committed atomically rather than treating `Run2` return as success.
 
 ---
 
