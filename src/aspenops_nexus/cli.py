@@ -204,6 +204,21 @@ def command_job(args: argparse.Namespace) -> int:
     return 0 if record is not None else 2
 
 
+def command_cancel(args: argparse.Namespace) -> int:
+    settings = Settings.from_env()
+    store = JobStore(settings.state_dir / "jobs.sqlite3")
+    accepted = store.cancel(args.job_id, grace_s=max(0.0, float(args.grace_s)))
+    record = store.get(args.job_id)
+    _json_print(
+        {
+            "accepted": accepted,
+            "job_id": args.job_id,
+            "job": record,
+        }
+    )
+    return 0 if accepted else 2
+
+
 def command_scheduler(args: argparse.Namespace) -> int:
     scheduler = BackgroundScheduler(Settings.from_env())
     scheduler.start()
@@ -385,6 +400,11 @@ def build_parser() -> argparse.ArgumentParser:
     job.add_argument("job_id")
     job.set_defaults(func=command_job)
 
+    cancel = sub.add_parser("cancel", help="Request durable job cancellation")
+    cancel.add_argument("job_id")
+    cancel.add_argument("--grace-s", type=float, default=2.0)
+    cancel.set_defaults(func=command_cancel)
+
     scheduler_service = sub.add_parser(
         "scheduler",
         help="Run the durable scheduler service until interrupted",
@@ -410,7 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     certify.add_argument("request")
     certify.add_argument("--output")
-    certify.add_argument("--repeats", type=int, default=3)
+    certify.add_argument("--repeats", type=float, default=3)
     certify.add_argument("--abs-tol", type=float, default=1e-8)
     certify.add_argument("--rel-tol", type=float, default=1e-6)
     certify.add_argument("--workers", type=int, default=1)
