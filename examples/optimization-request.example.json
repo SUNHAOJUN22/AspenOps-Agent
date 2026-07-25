@@ -1,0 +1,111 @@
+{
+  "backend": "mock",
+  "model_path": "examples/mock-case.json",
+  "registry_path": "examples/node-registry.example.json",
+  "workers": 2,
+  "base_writes": [
+    {
+      "key": "stream.input.pressure",
+      "identifiers": {
+        "stream": "FEED"
+      },
+      "value": 5,
+      "unit": "bar"
+    },
+    {
+      "key": "stream.input.mass_flow",
+      "identifiers": {
+        "stream": "FEED"
+      },
+      "value": 120,
+      "unit": "kg/h"
+    },
+    {
+      "key": "block.input.stages",
+      "identifiers": {
+        "block": "COL1"
+      },
+      "value": 24,
+      "unit": "1"
+    }
+  ],
+  "reads": [
+    {
+      "key": "stream.output.purity",
+      "identifiers": {
+        "stream": "PRODUCT"
+      },
+      "unit": "fraction"
+    },
+    {
+      "key": "block.output.reboiler_duty",
+      "identifiers": {
+        "block": "COL1"
+      },
+      "unit": "kW"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "minimum_purity",
+      "key": "stream.output.purity",
+      "identifiers": {
+        "stream": "PRODUCT"
+      },
+      "operator": ">=",
+      "value": 0.82,
+      "unit": "fraction"
+    }
+  ],
+  "optimization": {
+    "variables": [
+      {
+        "name": "temperature",
+        "key": "stream.input.temperature",
+        "identifiers": {
+          "stream": "FEED"
+        },
+        "kind": "continuous",
+        "lower": 60,
+        "upper": 120,
+        "unit": "C"
+      },
+      {
+        "name": "reflux",
+        "key": "block.input.reflux_ratio",
+        "identifiers": {
+          "block": "COL1"
+        },
+        "kind": "ordinal",
+        "choices": [
+          1.5,
+          2.0,
+          2.5,
+          3.0
+        ],
+        "unit": "1"
+      }
+    ],
+    "objectives": [
+      {
+        "output_key": "block.output.reboiler_duty:block=COL1",
+        "direction": "minimize"
+      },
+      {
+        "output_key": "stream.output.purity:stream=PRODUCT",
+        "direction": "maximize",
+        "weight": 0.1
+      }
+    ],
+    "budget": {
+      "population_size": 4,
+      "generations": 1,
+      "max_evaluations": 8,
+      "seed": 7
+    }
+  },
+  "metadata": {
+    "case": "portable-constrained-optimization-demo",
+    "qualification": "control-plane-only"
+  }
+}
