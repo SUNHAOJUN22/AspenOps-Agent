@@ -52,6 +52,46 @@ def test_json_helpers_and_request_loader(
         cli._load(path)
 
 
+def test_validate_scheduled_request_covers_batch_and_optimization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(tmp_path)
+    dry_runs: list[tuple[dict[str, Any], Any]] = []
+    monkeypatch.setattr(
+        cli,
+        "dry_run_document",
+        lambda request, active: dry_runs.append((request, active)),
+    )
+
+    batch_request = {"backend": "mock", "model_path": "case.json"}
+    cli._validate_scheduled_request(batch_request, settings)
+    assert dry_runs[-1] == (batch_request, settings)
+
+    validated: list[Any] = []
+
+    class FakeProblem:
+        def validate_limits(self, active: Any) -> None:
+            validated.append(active)
+
+    monkeypatch.setattr(
+        cli.OptimizationProblem,
+        "from_document",
+        classmethod(lambda cls, request: FakeProblem()),
+    )
+    optimization_request = {
+        "backend": "mock",
+        "model_path": "case.json",
+        "optimization": {"variables": []},
+    }
+    cli._validate_scheduled_request(optimization_request, settings)
+    assert validated == [settings]
+    assert dry_runs[-1] == (
+        {"backend": "mock", "model_path": "case.json"},
+        settings,
+    )
+
+
 def test_demo_doctor_and_dry_run_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
