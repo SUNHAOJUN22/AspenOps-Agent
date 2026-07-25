@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import Any
@@ -19,15 +20,18 @@ from .licensed_certification import (
     load_licensed_plan,
     verify_licensed_certification_bundle,
 )
-from .optimization import run_optimization_document
+from .optimization import OptimizationProblem, run_optimization_document
 from .policy import Policy
 from .pool_manager import PoolManager
 from .provenance import verify_run_bundle, write_run_bundle
-from .scheduler import BackgroundScheduler
+from .scheduler import BackgroundScheduler, JobStore
 
 
 def _json_print(value: Any) -> None:
-    print(json.dumps(value, indent=2, ensure_ascii=False, default=str, allow_nan=False))
+    print(
+        json.dumps(value, indent=2, ensure_ascii=False, default=str, allow_nan=False),
+        flush=True,
+    )
 
 
 def _resource_path(name: str) -> Path:
@@ -116,6 +120,18 @@ def _demo_request() -> dict[str, Any]:
     }
 
 
+def _validate_scheduled_request(request: dict[str, Any], settings: Settings) -> None:
+    if "optimization" in request:
+        problem = OptimizationProblem.from_document(request)
+        problem.validate_limits(settings)
+        dry_run_document(
+            {key: value for key, value in request.items() if key != "optimization"},
+            settings,
+        )
+    else:
+        dry_run_document(request, settings)
+
+
 def command_demo(args: argparse.Namespace) -> int:
     del args
     results = run_batch_document(_demo_request(), Settings.from_env())
@@ -164,17 +180,47 @@ def command_run_batch(args: argparse.Namespace) -> int:
 
 
 def command_submit(args: argparse.Namespace) -> int:
-    scheduler = BackgroundScheduler(Settings.from_env())
-    job_id = scheduler.submit(_load(args.request))
-    _json_print({"job_id": job_id, "state_db": str(scheduler.store.path)})
+    settings = Settings.from_env()
+    request = _load(args.request)
+    _validate_scheduled_request(request, settings)
+    store = JobStore(settings.state_dir / "jobs.sqlite3")
+    job_id = store.create(request, settings.job_max_attempts)
+    _json_print(
+        {
+            "job_id": job_id,
+            "state_db": str(store.path),
+            "scheduler_required": True,
+            "scheduler_command": "uv run aspenops scheduler",
+        }
+    )
     return 0
 
 
 def command_job(args: argparse.Namespace) -> int:
-    store = BackgroundScheduler(Settings.from_env()).store
+    settings = Settings.from_env()
+    store = JobStore(settings.state_dir / "jobs.sqlite3")
     record = store.get(args.job_id)
     _json_print({"found": record is not None, "job": record})
     return 0 if record is not None else 2
+
+
+def command_scheduler(args: argparse.Namespace) -> int:
+    scheduler = BackgroundScheduler(Settings.from_env())
+    scheduler.start()
+    _json_print(
+        {
+            "ok": True,
+            "service": "scheduler",
+            "owner": scheduler.owner,
+            "state_db": str(scheduler.store.path),
+            "stop": "Ctrl+C",
+        }
+    )
+    try:
+        while True:
+            time.sleep(max(0.05, float(args.idle_wait_s)))
+    finally:
+        scheduler.stop()
 
 
 def command_benchmark(args: argparse.Namespace) -> int:
@@ -331,13 +377,20 @@ def build_parser() -> argparse.ArgumentParser:
     run_batch.add_argument("--bundle")
     run_batch.set_defaults(func=command_run_batch)
 
-    submit = sub.add_parser("submit", help="Submit a durable background job")
+    submit = sub.add_parser("submit", help="Validate and enqueue a durable background job")
     submit.add_argument("request")
     submit.set_defaults(func=command_submit)
 
     job = sub.add_parser("job", help="Read durable job status")
     job.add_argument("job_id")
     job.set_defaults(func=command_job)
+
+    scheduler_service = sub.add_parser(
+        "scheduler",
+        help="Run the durable scheduler service until interrupted",
+    )
+    scheduler_service.add_argument("--idle-wait-s", type=float, default=1.0)
+    scheduler_service.set_defaults(func=command_scheduler)
 
     benchmark = sub.add_parser("benchmark", help="Benchmark the portable scheduler")
     benchmark.add_argument("--points", type=int, default=24)
