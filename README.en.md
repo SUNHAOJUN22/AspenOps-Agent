@@ -190,6 +190,7 @@ dry-run
 run-batch
 submit
 job
+scheduler
 benchmark
 optimize
 certify
@@ -214,7 +215,15 @@ uv run aspenops run-batch examples/batch-request.example.json \
   --bundle var/aspenops-state/run-bundle.zip
 ```
 
-### 2. Submit and query a durable job
+### 2. Run a durable background job
+
+Terminal 1: start the long-lived scheduler service. It continuously leases queued work and stops cleanly on Ctrl+C.
+
+```bash
+uv run aspenops scheduler
+```
+
+Terminal 2: validate and enqueue a request, then query the same durable state database.
 
 ```bash
 JOB_ID=$(
@@ -251,7 +260,7 @@ MCP exposes no `eval`, arbitrary filesystem, arbitrary Shell, VBA, unrestricted 
 
 ![Durable scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
 
-The background scheduler uses SQLite WAL, idempotent submission, leases, heartbeats, cancellation deadlines and attempt limits:
+`submit` validates and durably enqueues only; `scheduler` is the long-lived queue service; `job` reads state without creating Workers or a PoolManager. The scheduler uses SQLite WAL, idempotent submission, leases, heartbeats, cancellation deadlines and attempt limits:
 
 ```text
 validate
@@ -426,6 +435,7 @@ var/                     reproducible baselines, audit manifests and local state
 | `doctor --probe` is not ready | Python bitness, COM ProgID, licence and allowed roots | never bypass preflight or add a raw COM shortcut |
 | path rejected | `ASPENOPS_ALLOWED_ROOTS` and realpath | place model, registry, state and outputs in approved absolute roots |
 | batch returns `ok=false` | communication, engine, convergence, feasibility and balances | repair each gate; `Run2` return is not convergence |
+| job remains `pending` | a long-lived `aspenops scheduler` service and matching state directory | start the scheduler; `submit` cannot continue after its process exits |
 | job remains running | lease, heartbeat, Worker PID and cancellation deadline | let the scheduler reclaim leases; do not kill unknown Aspen processes |
 | dashboard is `INCOMPLETE` | current-job JUnit and coverage | never reuse stale artifacts or convert missing evidence into PASS |
 | README SVG does not render | filename case, XML, fonts and resource-safety test | use local, self-contained SVG with no embedded CJK text |
