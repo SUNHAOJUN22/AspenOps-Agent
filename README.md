@@ -278,8 +278,8 @@ validate
 → atomic COMPLETED / FAILED / CANCELLED
 ```
 
-- 租约过期可以安全回收；
-- 进程重启会把不完整执行标记为 interrupted，而不是假成功；
+- 租约过期或服务重启后，有剩余尝试的任务进入 `retry_wait`，耗尽尝试后进入 `dead_letter`；
+- 已请求取消的任务在恢复或租约过期时进入 `cancelled`；
 - 取消只终止归属已核验的 Worker；
 - CasePool 复用受 backend、模型、registry、并发与可见性身份限制；
 - 证据与最终状态必须原子提交，不能只记录“Run2 返回”。
