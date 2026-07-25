@@ -103,15 +103,16 @@ Process-IR benchmark evidence adds independent topology, compiler availability, 
 
 ## Persistence
 
-`JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI has three explicit responsibilities:
+`JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI has explicit responsibilities:
 
 ```text
 submit     → validate and create a pending durable record
 scheduler  → long-lived lease, heartbeat, execute and commit service
 job        → read durable state only
+cancel     → request cancellation and set the owned-worker grace deadline
 ```
 
-This separation prevents a short-lived `submit` process from pretending that its daemon thread can continue after process exit.
+This separation prevents a short-lived `submit` process from pretending that its daemon thread can continue after process exit. Cancellation of a pending or retry-waiting job is immediate; active work transitions to `cancelling`, and only the matching owned Worker may be terminated after the grace deadline.
 
 Recovery follows the actual state machine:
 
