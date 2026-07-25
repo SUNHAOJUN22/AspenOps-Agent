@@ -197,6 +197,7 @@ dry-run
 run-batch
 submit
 job
+cancel
 scheduler
 benchmark
 optimize
@@ -240,6 +241,12 @@ JOB_ID=$(
 uv run aspenops job "$JOB_ID"
 ```
 
+需要取消时，请求调度器在宽限期后只终止归属已核验的 Worker：
+
+```bash
+uv run aspenops cancel "$JOB_ID" --grace-s 2
+```
+
 ### 3. 执行预算受限的约束优化
 
 ```bash
@@ -267,7 +274,7 @@ MCP 不提供 `eval`、任意文件系统、任意 Shell、VBA、无限制 COM �
 
 ![耐久调度生命周期](docs/assets/readme/scheduler-lifecycle.svg)
 
-`submit` 只验证并耐久入队；`scheduler` 是处理队列的常驻服务；`job` 只读取状态，不会隐式创建 Worker 或 PoolManager。调度器使用 SQLite WAL、幂等提交、租约、心跳、取消期限和最大尝试次数：
+`submit` 只验证并耐久入队；`scheduler` 是处理队列的常驻服务；`job` 只读取状态；`cancel` 请求取消并设置归属 Worker 的强制终止期限。调度器使用 SQLite WAL、幂等提交、租约、心跳、取消期限和最大尝试次数：
 
 ```text
 validate
@@ -280,6 +287,7 @@ validate
 
 - 租约过期或服务重启后，有剩余尝试的任务进入 `retry_wait`，耗尽尝试后进入 `dead_letter`；
 - 已请求取消的任务在恢复或租约过期时进入 `cancelled`；
+- 待执行或重试等待任务可立即取消，运行中任务先进入 `cancelling`；
 - 取消只终止归属已核验的 Worker；
 - CasePool 复用受 backend、模型、registry、并发与可见性身份限制；
 - 证据与最终状态必须原子提交，不能只记录“Run2 返回”。
@@ -447,6 +455,7 @@ var/                     可复现基线、审计清单和本地运行状态
 | 路径被拒绝 | `ASPENOPS_ALLOWED_ROOTS` 与 realpath | 将模型、registry、状态和输出放入获批绝对根目录 |
 | 批处理返回 `ok=false` | communication、engine、converged、feasible、balances | 分别修复，不把 Run2 返回当作收敛 |
 | 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务，状态目录是否一致 | 启动调度服务；不要期待 `submit` 自己在退出后继续运行 |
+| 取消返回 `accepted=false` | 任务是否不存在或已经处于终态 | 读取 `aspenops job`；终态任务不会被重复取消 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
 | dashboard 显示 `INCOMPLETE` | JUnit/coverage 是否在当前 job 生成 | 不复用旧制品，不把缺证据当 PASS |
 | README SVG 不显示 | 文件名大小写、XML、字体与资源安全测试 | 使用仓库本地、自包含、无 CJK 内嵌文字的 SVG |
@@ -462,7 +471,7 @@ var/                     可复现基线、审计清单和本地运行状态
 
 - Process Intent IR、严格验证、canonical JSON 和 SHA-256 图身份；
 - Aspen Plus/HYSYS 既有模型控制面；
-- Mock、Fake COM、Windows Job Object、耐久调度、优化和 MCP；
+- Mock、Fake COM、Windows Job Object、耐久调度、取消、优化和 MCP；
 - 冻结 CI、dashboard、证据 bundle 和持证认证边界。
 
 ### 下一阶段
