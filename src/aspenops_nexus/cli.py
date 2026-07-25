@@ -430,7 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     certify.add_argument("request")
     certify.add_argument("--output")
-    certify.add_argument("--repeats", type=float, default=3)
+    certify.add_argument("--repeats", type=int, default=3)
     certify.add_argument("--abs-tol", type=float, default=1e-8)
     certify.add_argument("--rel-tol", type=float, default=1e-6)
     certify.add_argument("--workers", type=int, default=1)
