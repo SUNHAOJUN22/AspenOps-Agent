@@ -218,13 +218,13 @@ uv run aspenops run-batch examples/batch-request.example.json \
 
 ```bash
 uv run aspenops submit examples/batch-request.example.json
-uv run aspenops job <JOB_ID>
+uv run aspenops job "$JOB_ID"
 ```
 
 ### 3. Run budgeted constrained optimization
 
 ```bash
-uv run aspenops optimize <optimization-request.json> \
+uv run aspenops optimize path/to/optimization-request.json \
   --output var/aspenops-state/optimization-result.json
 ```
 
