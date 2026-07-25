@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → 统一流程意图 → 隔离执行 → 非线性求解 → 工程判定 → 可复现实验证据**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [External Agent Integration](docs/external-agent-integration.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Test Audit](docs/automated-test-audit-2026-07-22.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,7 +18,7 @@
 
 ![AspenOps 总体架构](docs/assets/readme/hero-architecture.svg)
 
-> 上图及本 README 中的九张功能图均为本轮为 AspenOps 原创生成的 AI SVG 视觉资产；图示只表达代码中已有架构与明确标注的路线图，不把 planned 能力画成已实现功能。
+> 本 README 使用十二张为 AspenOps 原创生成的 AI SVG 功能图。图像仅表达仓库中已经实现的合同与明确标注的 planned 路线，不把软件测试、Mock 或签名材料包装成真实 Aspen 工程认证。
 
 ---
 
@@ -29,30 +29,92 @@
 | 默认及唯一长期分支 | `main` |
 | 软件包 | `aspenops-nexus 2.0.0` |
 | 公共测试矩阵 | Python 3.11、3.12、3.13 |
-| 已归档便携式基线 | Actions run `29814739487` |
+| 已验证归档基线 | Actions run `29814739487` |
 | Python 3.12 归档结果 | 72 个测试模块，563 passed，0 failed，0 skipped，16.73 s |
 | 综合分支感知覆盖率 | 94.9719800747198% |
-| 语句 / 分支覆盖率 | 96.23677786818551% / 90.84880636604774% |
 | 覆盖率门槛 | 94.5% |
 | 已归档 Windows 公共门 | Actions run `29814739334`，104 passed，2.06 s |
 | MCP 工具数 | 14 |
 | 真实 Aspen 认证 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-以上是**已验证归档基线**，来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 状态；历史数字不会替代最新 Actions 证据。
+上述数字来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 工作流状态；历史数字不能替代当前提交的新 Actions 证据。
 
-公共 CI 证明控制平面、路径策略、进程隔离、调度、归档、接口与 Process Intent 合同，不证明商业 Aspen、许可证、物性方法或工程模型已经完成认证。
+公共 CI 可以证明控制平面、路径策略、进程隔离、调度、归档、接口、Process Intent 和文档合同，不证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
 
 ---
 
 ## 产品定位
 
-AspenOps 不是一个“让大模型随意写 COM 脚本”的包装器，而是面向 Aspen Plus、Aspen HYSYS 和化工仿真 Agent 的确定性执行基础设施：
+AspenOps 不是“让大模型自由生成 COM 脚本”的包装器。它把 Aspen Plus、Aspen HYSYS、CLI、Python 和 AI Agent 接入同一套确定性控制面：
 
-- 以语义变量、统一流程 IR 和受限 MCP 工具替代任意 Tree Path、Shell、VBA 和裸 COM；
-- 以进程隔离、STA 所有权、私有模型副本和许可槽限制控制 Windows 自动化；
-- 以收敛、约束、物料/能量衡算和工程审批区分“软件执行完成”与“工艺结果有效”；
-- 以冻结依赖、主干 SHA、运行尝试、哈希、签名与可视化制品形成证据闭环；
-- 吸收 Text-to-Flowsheet、Sketch2Simulation、DWSIM、IDAES、Modelica 和流程 Agent 的适合思想，但不复制外部专有代码或提示词。
+- Agent 只能提交语义变量或验证后的 `aspenops.flowsheet/v1`；
+- 每个真实 Automation Server 位于独立 Windows 子进程和 STA apartment；
+- 每个 Worker 使用私有模型副本，主模型不被覆盖；
+- 调度并发受许可证槽、资源预算和生命周期策略共同限制；
+- 通信、引擎返回、收敛、约束、物料/能量衡算和人工批准分别判定；
+- 每次可接受结果都绑定请求、模型、注册表、代码提交和证据哈希；
+- DWSIM、IDAES、Modelica/FMI 与自动 flowsheet 编译器保持 `planned`，未实现时无 adapter、必须 fail closed。
+
+---
+
+## 快速开始
+
+要求：Python 3.11–3.13，`uv >= 0.11.16`。
+
+```bash
+git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
+cd AspenOps-Agent
+
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
+
+uv run aspenops --version
+uv run aspenops demo
+uv run aspenops dry-run examples/batch-request.example.json
+```
+
+Windows 真实后端安装时增加 `--extra windows`：
+
+```powershell
+uv sync --frozen --extra windows --extra dev --extra agent --extra signing
+uv run aspenops doctor --probe
+```
+
+首次运行默认使用 Mock。Mock 用于跨平台软件验证，不代表 Aspen Plus/HYSYS 的物理结果。
+
+---
+
+## 配置边界
+
+便携式默认配置来自 `.env.example`：
+
+```dotenv
+ASPENOPS_BACKEND=mock
+ASPENOPS_MODE=default
+ASPENOPS_ALLOWED_ROOTS=
+ASPENOPS_STATE_DIR=var/aspenops-state
+ASPENOPS_LICENSE_SLOTS=1
+ASPENOPS_MAX_WORKERS=1
+ASPENOPS_MAX_RESIDENT_CASES=2
+```
+
+真实 Aspen 示例必须使用绝对允许根目录，且状态目录必须位于允许根目录内：
+
+```dotenv
+ASPENOPS_BACKEND=aspen_plus
+ASPENOPS_ALLOWED_ROOTS=C:/AspenModels;C:/AspenResults
+ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state
+```
+
+关键规则：
+
+1. Mock 可以使用空允许目录；真实 Aspen/HYSYS 不可以。
+2. `..`、符号链接、Windows junction 和 realpath 逃逸会被拒绝。
+3. `ASPENOPS_LICENSE_SLOTS` 与 `ASPENOPS_MAX_WORKERS` 共同限制并发。
+4. `.env` 中重复变量、未闭合引号和潜在密钥回显会被拒绝。
+5. 私钥、Token、许可证秘密、客户模型路径和生产数据不得进入仓库。
+
+完整 Windows 设置见 [Windows Setup](docs/windows-setup.md)。
 
 ---
 
@@ -61,15 +123,13 @@ AspenOps 不是一个“让大模型随意写 COM 脚本”的包装器，而是
 ![Windows COM 进程隔离](docs/assets/readme/com-isolation.svg)
 
 1. 一个 COM 对象只属于一个 Windows 子进程和一个 STA apartment。
-2. Agent 只使用语义变量或 `aspenops.flowsheet/v1`，不构造任意 Aspen Tree Path。
-3. 每个 Worker 使用私有模型副本，不覆盖主模型。
-4. 硬超时只终止 AspenOps 创建并核验归属的进程。
-5. 并发上限受有效许可证证据和 `ASPENOPS_LICENSE_SLOTS` 限制。
-6. 通信、引擎返回、收敛、可行性和守恒闭合分别判定。
-7. Mock、Fake COM 和公共 CI 不冒充真实 Aspen 物理认证。
-8. DWSIM、IDAES、Modelica 和自动 flowsheet 编译器未实现时必须 fail closed。
+2. Agent 不构造任意 Aspen Tree Path，不执行任意 Python、Shell 或 VBA。
+3. Worker 使用私有模型副本；硬超时只终止 AspenOps 创建并核验归属的进程。
+4. 缓存身份绑定运行时、后端、模型、注册表和物理请求。
+5. 失败写入必须回滚；污染 Worker 必须回收。
+6. Mock、Fake COM、公共 Windows 测试和签名均不能自行授予真实工程认证。
 
-结果仅在以下条件全部成立时为 `ok=true`：
+结果只有在以下条件全部成立时才是 `ok=true`：
 
 ```text
 communication_ok
@@ -94,13 +154,11 @@ aspenops.flowsheet/v1
 IR 描述组件、物性方法、设备、输入/输出端口、流股、参数和安全元数据，并提供：
 
 - 确定性排序、canonical JSON 和 SHA-256 图身份；
-- 重复 ID、未知引用、端口方向、自连接、悬空必需端口和隐式多连接检查；
+- 重复 ID、未知引用、端口方向、自连接、悬空端口和隐式多连接检查；
 - recycle cycle 警告或严格拒绝策略；
-- JSON 深度、数量、元数据大小和标识符预算；
-- 禁止 `code`、`script`、`shell`、`python`、`vba`、`command`、原始 Tree Path 等注入；
-- 拓扑有效性、编译器可用性、执行、收敛、守恒、修复轮次和人工介入 benchmark 字段。
-
-本地验证和图形化：
+- JSON 深度、对象数量、元数据和标识符预算；
+- 对 `code`、`script`、`shell`、`python`、`vba`、`command` 和原始 Tree Path 的拒绝；
+- 拓扑、编译器、执行、收敛、守恒、修复轮次和人工介入的独立 benchmark 字段。
 
 ```bash
 uv run python scripts/validate_process_ir.py \
@@ -114,54 +172,23 @@ uv run python scripts/render_process_ir_dashboard.py \
   --output-svg var/ci/process-ir-dashboard.svg
 ```
 
-`process-ir-dashboard.html` 可切换验证问题、后端能力和 Agent pipeline；`process-ir-dashboard.svg` 用于报告和 artifact 预览。详细规则见 [Process Intent IR](docs/process-intent-ir.md)。
+`process-ir-dashboard.html` 提供问题、后端声明和 Agent pipeline 视图。详细规则见 [Process Intent IR](docs/process-intent-ir.md)。
 
 ---
 
-## 分层化工 Agent
+## CLI、Python 与 MCP
 
-![分层化工 Agent](docs/assets/readme/agent-pipeline.svg)
+![CLI、Python 与 MCP 统一入口](docs/assets/readme/cli-mcp-workflow.svg)
 
-```text
-Knowledge
-→ Concept
-→ Parameter
-→ Execution
-→ Repair
-→ Physics / Engineering Review
-```
+三个入口复用同一 Settings、Policy、Scheduler、Worker 和 Evidence 实现，不创建平行的模拟器驱动。
 
-- Knowledge 阶段只读取资料和约束；
-- Concept 与 Parameter 阶段只能输出验证后的 `aspenops.flowsheet/v1`；
-- Execution 阶段只能通过已声明 available 的后端和受限工具；
-- Repair 阶段必须有轮次、时间和求解预算；
-- Review 阶段独立检查物理、收敛、约束、守恒和人工批准；
-- 任一阶段都不得输出任意 Python、Shell、VBA、裸 COM 或原始 Tree Path。
+| 入口 | 主要用途 | 安全边界 |
+|---|---|---|
+| CLI | 演示、诊断、批处理、调度、优化、认证与验证 | 参数化命令，无任意代码执行 |
+| Python | 嵌入批处理、调度、优化和证据流程 | 使用同一策略与数据模型 |
+| MCP | AI Agent 发现、规划、提交、查询和验证 | 精确 14 个窄工具，无任意 Shell/COM/Tree Path |
 
----
-
-## 多模拟器能力声明
-
-![多模拟器能力矩阵](docs/assets/readme/backend-capabilities.svg)
-
-执行能力和 IR 自动建模编译能力是两个独立声明：
-
-| 后端 | 当前执行 | IR 自动建模编译器 | 当前边界 |
-|---|---|---|---|
-| Mock | available | planned | 跨平台确定性软件测试，不代表 Aspen 物理 |
-| Aspen Plus | available，持证 Windows | planned | 运行既有获批模型 |
-| HYSYS | available，持证 Windows | planned | 运行既有获批模型 |
-| DWSIM | planned | planned | **未实现，无 adapter** |
-| IDAES | planned | planned | **未实现，无 adapter** |
-| Modelica/FMI | planned | planned | **未实现，无 adapter** |
-
-**planned ≠ implemented；compiler ≠ executor；签名 ≠ 工程批准。**
-
----
-
-## CLI、调度、优化和 MCP
-
-主要 CLI：
+主要命令：
 
 ```text
 demo
@@ -180,13 +207,123 @@ verify-bundle
 mcp
 ```
 
-MCP 精确暴露 14 个窄接口工具，用于发现、规划、提交、查询、优化和证据验证；不提供任意 Shell、Python、VBA、`eval`、无限制 COM 方法或原始 Tree Path 写入。
+---
 
-调度器使用 SQLite WAL、租约、心跳、取消期限和幂等提交；CasePool 按 backend、模型、registry、并发和可见性复用，缓存身份绑定运行时、模型、registry 与物理请求。
+## 典型工作流
+
+### 1. 先验证，再执行批处理
+
+```bash
+uv run aspenops dry-run examples/batch-request.example.json
+
+uv run aspenops run-batch examples/batch-request.example.json \
+  --output var/aspenops-state/results.json \
+  --bundle var/aspenops-state/run-bundle.zip
+```
+
+### 2. 提交耐久后台任务并查询
+
+```bash
+uv run aspenops submit examples/batch-request.example.json
+uv run aspenops job <JOB_ID>
+```
+
+### 3. 执行预算受限的约束优化
+
+```bash
+uv run aspenops optimize <optimization-request.json> \
+  --output var/aspenops-state/optimization-result.json
+```
+
+### 4. 验证证据包
+
+```bash
+uv run aspenops verify-bundle var/aspenops-state/run-bundle.zip
+```
+
+### 5. 启动本地 MCP stdio 服务
+
+```bash
+uv run aspenops mcp
+```
+
+MCP 不提供 `eval`、任意文件系统、任意 Shell、VBA、无限制 COM 方法或原始 Tree Path 写入。
 
 ---
 
-## 自动测试与视觉证据
+## 调度与恢复
+
+![耐久调度生命周期](docs/assets/readme/scheduler-lifecycle.svg)
+
+后台调度器使用 SQLite WAL、幂等提交、租约、心跳、取消期限和最大尝试次数：
+
+```text
+validate
+→ persist QUEUED
+→ claim lease
+→ heartbeat RUNNING
+→ isolated Worker
+→ atomic COMPLETED / FAILED / CANCELLED
+```
+
+- 租约过期可以安全回收；
+- 进程重启会把不完整执行标记为 interrupted，而不是假成功；
+- 取消只终止归属已核验的 Worker；
+- CasePool 复用受 backend、模型、registry、并发与可见性身份限制；
+- 证据与最终状态必须原子提交，不能只记录“Run2 返回”。
+
+---
+
+## 工业应用场景
+
+![工业应用场景](docs/assets/readme/industrial-scenarios.svg)
+
+| 场景 | AspenOps 能做什么 | 不能替代什么 |
+|---|---|---|
+| 参数扫描 | 对温度、压力、流量、回流比等语义变量执行有界批处理 | 工程师对工况范围的批准 |
+| 约束优化 | 在评价预算内输出可行性和 Pareto 证据 | 设备、控制和安全审查 |
+| 回归与资格验证 | 比较 baseline/candidate、重复性和容差 | 真实 Aspen 许可证与物理认证 |
+| 运行决策支持 | 对既有获批模型进行 what-if 分析 | 生产 DCS 自动控制或闭环写入 |
+
+AspenOps 不直接连接或写入生产 DCS；它生成受治理的模拟证据供合格工程师决策。
+
+---
+
+## 分层化工 Agent
+
+![分层化工 Agent](docs/assets/readme/agent-pipeline.svg)
+
+```text
+Knowledge
+→ Concept
+→ Parameter
+→ Execution
+→ Repair
+→ Physics / Engineering Review
+```
+
+Knowledge 阶段只读；Concept 与 Parameter 只能输出验证后的 IR；Execution 只能调用 declared available 的受限后端；Repair 有轮次、时间和求解预算；Review 独立检查物理、收敛、约束、守恒和人工批准。
+
+---
+
+## 多模拟器能力声明
+
+![多模拟器能力矩阵](docs/assets/readme/backend-capabilities.svg)
+
+| 后端 | 当前执行 | IR 自动建模编译器 | 当前边界 |
+|---|---|---|---|
+| Mock | available | planned | 跨平台软件测试，不代表 Aspen 物理 |
+| Aspen Plus | available，持证 Windows | planned | 运行既有获批模型 |
+| HYSYS | available，持证 Windows | planned | 运行既有获批模型 |
+| DWSIM | planned | planned | **未实现，无 adapter** |
+| IDAES | planned | planned | **未实现，无 adapter** |
+| Modelica/FMI | planned | planned | **未实现，无 adapter** |
+
+**planned ≠ implemented；compiler ≠ executor；签名 ≠ 工程批准。**
+
+---
+
+## 自动测试与质量门
 
 ![自动测试矩阵](docs/assets/readme/test-matrix.svg)
 
@@ -199,25 +336,7 @@ MCP 精确暴露 14 个窄接口工具，用于发现、规划、提交、查询
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 受信 baseline/candidate、双冻结环境和稳定回归证据 |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 主干守卫、SHA 绑定、Mock/IR 软件门、证据隔离和真实 COM |
 
-冻结依赖审计覆盖：
-
-```text
-Linux 与 Windows × Python 3.11、3.12、3.13
-```
-
-也就是六组合审计。所有托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本；workflow 权限保持 `contents: read`。
-
-artifact 规则：
-
-```text
-ci-evidence-quality-<run_id>-<run_attempt>
-ci-evidence-python-<python>-<run_id>-<run_attempt>
-windows-control-plane-diagnostics-<run_id>-<run_attempt>
-performance-evidence-<run_id>-<run_attempt>
-licensed-<backend>-<run_id>-<run_attempt>
-```
-
-每个名称同时包含 `github.run_id` 与 `github.run_attempt`；所有上传统一使用 `if-no-files-found: error`。当前 job 的临时证据写入 `$RUNNER_TEMP`，上传通过 `${{ runner.temp }}` 读取。没有 JUnit 或早期失败时 dashboard 显示 `INCOMPLETE`；任意 failure/error 显示 `FAIL`，不得出现假 PASS。
+冻结依赖审计覆盖 `Linux 与 Windows × Python 3.11、3.12、3.13`，即六组合。托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本；工作流权限保持 `contents: read`。
 
 完整本地质量门：
 
@@ -234,20 +353,16 @@ uv run pytest -W error::ResourceWarning \
 uv build
 uv run python scripts/check_mcp.py
 uv run python scripts/validate_process_ir.py examples/process-intent.example.json
-uv run aspenops --version
 uv run aspenops demo
-uv run aspenops dry-run examples/batch-request.example.json
 ```
 
-Windows 增加 `--extra windows`。`.env.example` 默认使用 Mock、空允许根目录和仓库内状态目录，首次运行保持跨平台。
+artifact 名称同时包含 `github.run_id` 与 `github.run_attempt`。当前 job 的证据写入 `$RUNNER_TEMP`，上传通过 `${{ runner.temp }}` 读取，并统一使用 `if-no-files-found: error`。缺失 JUnit 或提前失败显示 `INCOMPLETE`；出现 failure/error 显示 `FAIL`。
 
 ---
 
 ## 可复现实验证据
 
 ![证据链](docs/assets/readme/evidence-chain.svg)
-
-每个可接受结果应能追溯到：
 
 ```text
 validated intent
@@ -259,15 +374,15 @@ validated intent
 → qualified human acceptance
 ```
 
-性能任务首先验证 `GITHUB_REF == refs/heads/main`。非主干调度会写入 `dispatch-ref.txt` 和 `dispatch-guard.log`，然后以退出码 2 **显式失败**，而不是 all-skipped。`actions/checkout` 使用受信工作流版本，candidate 与 baseline 通过 `--end-of-options` 解析并进行 ancestor 检查，之后 detached checkout 已验证 SHA。
+性能任务先验证 `GITHUB_REF == refs/heads/main`。非主干调度写入 `dispatch-ref.txt` 与 `dispatch-guard.log`，再以退出码 2 **显式失败**，而不是 all-skipped。`actions/checkout` 读取受信工作流版本，candidate 与 baseline 经 `--end-of-options` 和 ancestor 检查后使用已验证 SHA 的 detached checkout。
 
-当前性能默认 baseline：
+默认性能 baseline：
 
 ```text
 ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2
 ```
 
-Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
+Mock 性能只代表编排性能，不代表真实 Aspen 求解速度。
 
 ---
 
@@ -275,19 +390,17 @@ Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 
 ![持证认证流程](docs/assets/readme/licensed-certification.svg)
 
-持证 workflow 的关键合同：
+持证工作流的关键合同：
 
-1. 固定 `ubuntu-24.04` guard 验证 `refs/heads/main`，错误 ref 显式失败且不占用许可证主机。
+1. 固定 `ubuntu-24.04` guard 验证 `refs/heads/main`。
 2. `expected_head_sha` 必须等于本次调度的 `GITHUB_SHA`。
-3. 初始 `actions/checkout` 必须匹配该 SHA，并确认其属于可信 `origin/main`，再 detached checkout。
-4. 自托管 job 在 checkout 前创建：
-   `$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`。
-5. `run-metadata.txt` 记录 run、ref、SHA 和 `expected_head_sha`。
-6. Mock JUnit、测试 dashboard、Process IR dashboard、成功证据副本和最终 `job_status` 进入本次 runner-temp 目录。
-7. 真实运行使用 `LICENSED_EVIDENCE_DIR`：
-   `ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`。
-8. 固定 concurrency group `licensed-aspen-certification` **串行**执行。
-9. `if: always()` 上传只读取本次目录，并使用 `if-no-files-found: error`。
+3. 初始 `actions/checkout` 必须匹配该 SHA，随后执行已验证的 detached checkout。
+4. 自托管 job 在 checkout 前创建 `$RUNNER_TEMP/aspenops-licensed-artifact-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`。
+5. `run-metadata.txt` 记录 run、ref、SHA 和批准身份。
+6. Mock JUnit、dashboard、成功证据副本和最终 `job_status` 进入本次 runner-temp 目录。
+7. 真实运行使用 `LICENSED_EVIDENCE_DIR=ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`。
+8. 固定 concurrency group `licensed-aspen-certification` 串行执行。
+9. 上传只读取本次 `${{ runner.temp }}`，名称含 `github.run_attempt`，并使用 `if-no-files-found: error`。
 
 软件只能生成：
 
@@ -295,7 +408,36 @@ Mock 性能只表示编排性能，不代表真实 Aspen 求解速度。
 PENDING_REAL_ASPEN_CERTIFICATION
 ```
 
-真实认证仍需持证 Windows、有效许可证、获批模型、签名材料和流程工程师验收。
+真实认证仍需持证 Windows、有效许可证、获批模型、签名材料和流程工程师验收。开放认证门见 issue `#16`。
+
+---
+
+## 项目结构
+
+```text
+.github/workflows/       四个权威自动化工作流
+docs/                    架构、Windows、性能、认证与质量文档
+docs/assets/readme/      十二张受测试治理的 README SVG
+examples/                批处理与 Process Intent 示例
+scripts/                 校验器、dashboard、benchmark 与 Windows 设置
+src/aspenops_nexus/      控制平面、后端、Worker、调度、优化、证据与 MCP
+tests/                   Linux、Windows、工作流、文档和安全合同测试
+var/                     可复现基线、审计清单和本地运行状态
+```
+
+---
+
+## 故障排查
+
+| 现象 | 首先检查 | 处理原则 |
+|---|---|---|
+| `doctor --probe` 显示未就绪 | Python 位数、COM ProgID、许可证、允许目录 | 不要绕过 preflight 或硬编码裸 COM |
+| 路径被拒绝 | `ASPENOPS_ALLOWED_ROOTS` 与 realpath | 将模型、registry、状态和输出放入获批绝对根目录 |
+| 批处理返回 `ok=false` | communication、engine、converged、feasible、balances | 分别修复，不把 Run2 返回当作收敛 |
+| 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
+| dashboard 显示 `INCOMPLETE` | JUnit/coverage 是否在当前 job 生成 | 不复用旧制品，不把缺证据当 PASS |
+| README SVG 不显示 | 文件名大小写、XML、字体与资源安全测试 | 使用仓库本地、自包含、无 CJK 内嵌文字的 SVG |
+| 持证工作流不运行 | ref、`expected_head_sha`、环境批准、自托管标签 | 仅在受保护 `main` 与持证主机执行 |
 
 ---
 
@@ -305,10 +447,10 @@ PENDING_REAL_ASPEN_CERTIFICATION
 
 ### 已实现
 
-- Process Intent IR、严格验证、canonical JSON、SHA-256 图身份；
+- Process Intent IR、严格验证、canonical JSON 和 SHA-256 图身份；
 - Aspen Plus/HYSYS 既有模型控制面；
-- Mock、Fake COM、Windows Job Object、调度、优化、MCP；
-- 冻结 CI、可视化 dashboard、证据 bundle 和持证认证边界。
+- Mock、Fake COM、Windows Job Object、耐久调度、优化和 MCP；
+- 冻结 CI、dashboard、证据 bundle 和持证认证边界。
 
 ### 下一阶段
 
@@ -324,7 +466,7 @@ PENDING_REAL_ASPEN_CERTIFICATION
 - IDAES 符号后端；
 - Modelica/FMI 联合仿真；
 - PFD/草图理解；
-- 工业模型和版本资格认证。
+- 工业模型与版本资格认证。
 
 任何能力都不能在缺少**代码 + 测试 + 证据**时从 planned 改为 available。
 
@@ -332,27 +474,26 @@ PENDING_REAL_ASPEN_CERTIFICATION
 
 ## AI 生成视觉资产清单
 
-本 README 使用以下原创 SVG，全部存放在 `docs/assets/readme/`，无外部图片依赖：
+以下十二张原创、自包含 SVG 存放在 `docs/assets/readme/`，没有外部图片或字体依赖：
 
 1. `hero-architecture.svg`
 2. `process-intent-ir.svg`
 3. `agent-pipeline.svg`
 4. `backend-capabilities.svg`
 5. `com-isolation.svg`
-6. `test-matrix.svg`
-7. `evidence-chain.svg`
-8. `licensed-certification.svg`
-9. `roadmap.svg`
+6. `cli-mcp-workflow.svg`
+7. `scheduler-lifecycle.svg`
+8. `industrial-scenarios.svg`
+9. `test-matrix.svg`
+10. `evidence-chain.svg`
+11. `licensed-certification.svg`
+12. `roadmap.svg`
 
-图像只描述仓库中的现行合同与明确路线图，不包含虚构测试结果、未公开客户模型或商业模拟器资料。
+`tests/test_readme_visual_assets.py` 检查双语引用、完整清单、XML、大小、路径、无障碍、渲染可移植性、脚本、事件、远程资源、Data URI 和工作流接入。
 
 ---
 
-## 文档与安全边界
-
-`tests/test_documentation_contracts.py` 从 `pyproject.toml` 动态读取版本，核对 README、`__version__`、CHANGELOG、AGENTS、CLAUDE、CONTRIBUTING 和核心文档；本地链接不得逃出仓库，聊天内部引用或会话专用下载标记不得进入仓库 Markdown。
-
-详细设计：
+## 文档、贡献与安全边界
 
 - [Architecture](docs/architecture.md)
 - [Process Intent IR](docs/process-intent-ir.md)
@@ -362,7 +503,7 @@ PENDING_REAL_ASPEN_CERTIFICATION
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
-自动化不证明任意 Aspen 版本都能启动、任意模型都收敛、物性/反应/设备假设工程上正确，也不能替代流程工程师或自行授予真实认证。
-
-代码采用 Apache-2.0。不得提交客户模型、专有物性/动力学、生产 DCS 数据、许可证、私钥、Token、内部主机或商业证据包。
+自动化不证明任意 Aspen 版本都能启动、任意模型都收敛，也不证明物性、反应、设备或控制假设工程上正确。代码采用 Apache-2.0；不得提交客户模型、专有物性/动力学、生产 DCS 数据、许可证、私钥、Token、内部主机或商业证据包。
