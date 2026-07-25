@@ -138,8 +138,12 @@ jobs:
           set -euo pipefail
           uv run aspenops --version 2>&1 | tee var/ci/cli-version.log
           uv run aspenops --help > var/ci/cli-help.log
+          uv run aspenops scheduler --help > var/ci/readme-scheduler-help.log
           uv run aspenops dry-run examples/batch-request.example.json \
             > var/ci/readme-dry-run.json
+          uv run aspenops optimize examples/optimization-request.example.json \
+            --output var/ci/readme-optimization.json \
+            > var/ci/readme-optimization-cli.json
           uv run aspenops benchmark --points 4 --workers 1,2 \
             > var/ci/readme-benchmark.json
           uv run aspenops certify examples/batch-request.example.json \
@@ -196,6 +200,7 @@ jobs:
           /tmp/aspenops-wheel/bin/aspenops --help > var/ci/wheel-help.log
           /tmp/aspenops-wheel/bin/aspenops demo \
             | tee var/ci/wheel-demo.log
+          /tmp/aspenops-wheel/bin/aspenops scheduler --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops optimize --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops mcp --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
