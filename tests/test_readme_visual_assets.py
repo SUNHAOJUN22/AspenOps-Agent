@@ -10,15 +10,19 @@ MAX_SVG_BYTES = 64_000
 EXPECTED = {
     "agent-pipeline.svg",
     "backend-capabilities.svg",
+    "cli-mcp-workflow.svg",
     "com-isolation.svg",
     "evidence-chain.svg",
     "hero-architecture.svg",
+    "industrial-scenarios.svg",
     "licensed-certification.svg",
     "process-intent-ir.svg",
     "roadmap.svg",
+    "scheduler-lifecycle.svg",
     "test-matrix.svg",
 }
 IMAGE_LINK = re.compile(r"!\[[^\]]*\]\((docs/assets/readme/[^)]+\.svg)\)")
+CJK_TEXT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 FORBIDDEN = (
     "<script",
     "<foreignobject",
@@ -28,6 +32,10 @@ FORBIDDEN = (
     "@import",
     "url(http",
     "url(//",
+    "noto sans cjk",
+    "microsoft yahei",
+    "simsun",
+    "simhei",
 )
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 GOVERNED_WORKFLOWS = (
@@ -35,6 +43,44 @@ GOVERNED_WORKFLOWS = (
     "windows-control-plane.yml",
     "licensed-aspen-certification.yml",
 )
+README_CONTRACTS = {
+    "README.md": (
+        "## 快速开始",
+        "## 配置边界",
+        "## 典型工作流",
+        "## 调度与恢复",
+        "## 工业应用场景",
+        "## 项目结构",
+        "## 故障排查",
+        "git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git",
+        "uv sync --frozen --extra dev --extra agent --extra signing",
+        "uv run aspenops doctor --probe",
+        "uv run aspenops run-batch",
+        "uv run aspenops submit",
+        "uv run aspenops job",
+        "uv run aspenops optimize",
+        "uv run aspenops verify-bundle",
+        "uv run aspenops mcp",
+    ),
+    "README.en.md": (
+        "## Quick start",
+        "## Configuration boundaries",
+        "## Common workflows",
+        "## Scheduling and recovery",
+        "## Industrial use cases",
+        "## Repository structure",
+        "## Troubleshooting",
+        "git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git",
+        "uv sync --frozen --extra dev --extra agent --extra signing",
+        "uv run aspenops doctor --probe",
+        "uv run aspenops run-batch",
+        "uv run aspenops submit",
+        "uv run aspenops job",
+        "uv run aspenops optimize",
+        "uv run aspenops verify-bundle",
+        "uv run aspenops mcp",
+    ),
+}
 
 
 def _local_name(tag: str) -> str:
@@ -52,7 +98,7 @@ def test_readme_visual_asset_inventory_is_complete_and_referenced() -> None:
         assert set(IMAGE_LINK.findall(text)) == expected_paths
 
 
-def test_readme_svgs_are_self_contained_safe_and_accessible() -> None:
+def test_readme_svgs_are_self_contained_safe_accessible_and_portable() -> None:
     asset_root = ASSET_DIR.resolve()
     for name in sorted(EXPECTED):
         path = ASSET_DIR / name
@@ -63,6 +109,7 @@ def test_readme_svgs_are_self_contained_safe_and_accessible() -> None:
 
         raw = path.read_text(encoding="utf-8")
         folded = raw.casefold()
+        assert CJK_TEXT.search(raw) is None, f"{name} contains renderer-dependent CJK text"
         for token in FORBIDDEN:
             assert token not in folded, f"{name} contains forbidden token {token}"
 
@@ -90,6 +137,13 @@ def test_readme_svgs_are_self_contained_safe_and_accessible() -> None:
                     assert not value.casefold().startswith(
                         ("http:", "https:", "//", "data:", "javascript:")
                     )
+
+
+def test_readmes_keep_operational_product_surface_complete() -> None:
+    for filename, markers in README_CONTRACTS.items():
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        for marker in markers:
+            assert marker in text, f"{filename} is missing {marker}"
 
 
 def test_visual_asset_governance_remains_in_all_software_gates() -> None:
