@@ -217,14 +217,17 @@ uv run aspenops run-batch examples/batch-request.example.json \
 ### 2. Submit and query a durable job
 
 ```bash
-uv run aspenops submit examples/batch-request.example.json
+JOB_ID=$(
+  uv run aspenops submit examples/batch-request.example.json |
+  python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
+)
 uv run aspenops job "$JOB_ID"
 ```
 
 ### 3. Run budgeted constrained optimization
 
 ```bash
-uv run aspenops optimize path/to/optimization-request.json \
+uv run aspenops optimize examples/optimization-request.example.json \
   --output var/aspenops-state/optimization-result.json
 ```
 
@@ -320,7 +323,7 @@ The four authoritative workflows are:
 
 | Workflow | Pinned environment | Responsibility |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, Process IR and dashboards |
+| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, Process Intent IR and dashboards |
 | `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, paths, IR and governance |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, independent frozen environments and stable-regression evidence |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR software gates, evidence isolation and real COM |
@@ -407,7 +410,7 @@ Real certification still requires licensed Windows, a valid licence, an approved
 .github/workflows/       four authoritative automation workflows
 docs/                    architecture, Windows, performance, certification and quality
 docs/assets/readme/      twelve CI-governed README SVG assets
-examples/                batch and Process Intent examples
+examples/                batch, optimization and Process Intent examples
 scripts/                 validators, dashboards, benchmarks and Windows setup
 src/aspenops_nexus/      control plane, backends, Workers, scheduler, optimization, evidence and MCP
 tests/                   Linux, Windows, workflow, documentation and safety contracts
