@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "docs" / "assets" / "readme"
+ARCHITECTURE = ROOT / "docs" / "architecture.md"
 MAX_SVG_BYTES = 64_000
 EXPECTED = {
     "agent-pipeline.svg",
@@ -64,6 +65,8 @@ README_CONTRACTS = {
         "uv run aspenops optimize examples/optimization-request.example.json",
         "uv run aspenops verify-bundle",
         "uv run aspenops mcp",
+        "retry_wait",
+        "dead_letter",
     ),
     "README.en.md": (
         "## Quick start",
@@ -84,6 +87,8 @@ README_CONTRACTS = {
         "uv run aspenops optimize examples/optimization-request.example.json",
         "uv run aspenops verify-bundle",
         "uv run aspenops mcp",
+        "retry_wait",
+        "dead_letter",
     ),
 }
 
@@ -150,6 +155,16 @@ def test_readmes_keep_operational_product_surface_complete() -> None:
         for marker in markers:
             assert marker in text, f"{filename} is missing {marker}"
         assert SHELL_PLACEHOLDER.search(text) is None
+
+
+def test_scheduler_documents_match_recovery_state_machine() -> None:
+    architecture = ARCHITECTURE.read_text(encoding="utf-8")
+    visual = (ASSET_DIR / "scheduler-lifecycle.svg").read_text(encoding="utf-8")
+    for text in (architecture, visual):
+        assert "retry_wait" in text
+        assert "dead_letter" in text
+    assert "moved to `interrupted`" not in architecture
+    assert "restart → interrupted state" not in visual
 
 
 def test_visual_asset_governance_remains_in_all_software_gates() -> None:
