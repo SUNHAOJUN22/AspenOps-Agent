@@ -59,6 +59,12 @@ def test_durable_request_paths_are_pinned_to_submission_directory(tmp_path: Path
     )
     assert absolute["model_path"] == str(absolute_model.resolve())
 
+    minimal = cli._normalize_durable_request(
+        {"backend": "mock"},
+        submission_cwd=submission_cwd,
+    )
+    assert minimal == {"backend": "mock"}
+
 
 def test_submit_persists_pinned_paths_and_reports_identity(
     tmp_path: Path,
@@ -113,6 +119,47 @@ def test_submit_persists_pinned_paths_and_reports_identity(
     )
     assert printed[-1]["paths_pinned"] is True
     assert printed[-1]["submission_cwd"] == str(submission_cwd.resolve())
+
+
+def test_persisted_request_is_independent_of_scheduler_working_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(tmp_path)
+    _install_settings(monkeypatch, settings)
+    submitter = tmp_path / "submitter"
+    scheduler_cwd = tmp_path / "scheduler"
+    submitter.mkdir()
+    scheduler_cwd.mkdir()
+    request_path = submitter / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "backend": "mock",
+                "model_path": "models/case.json",
+                "registry_path": "registries/nodes.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    printed: list[dict[str, Any]] = []
+    monkeypatch.setattr(cli, "_validate_scheduled_request", lambda request, active: None)
+    monkeypatch.setattr(cli, "_json_print", printed.append)
+    monkeypatch.chdir(submitter)
+    assert cli.command_submit(Namespace(request=str(request_path))) == 0
+
+    monkeypatch.chdir(scheduler_cwd)
+    store = cli.JobStore(settings.state_dir / "jobs.sqlite3")
+    claimed = store.claim_next("scheduler-test", lease_s=30)
+    assert claimed is not None
+    job_id, request = claimed
+    assert job_id == printed[-1]["job_id"]
+    assert request["model_path"] == str((submitter / "models/case.json").resolve())
+    assert request["registry_path"] == str(
+        (submitter / "registries/nodes.json").resolve()
+    )
+    assert request["metadata"]["submission_cwd"] == str(submitter.resolve())
 
 
 @pytest.mark.parametrize(
