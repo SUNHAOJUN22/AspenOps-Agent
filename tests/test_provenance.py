@@ -5,6 +5,7 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -60,6 +61,7 @@ def test_unsigned_bundle_roundtrip_and_tamper_detection(tmp_path: Path) -> None:
     assert verified["ok"]
     assert verified["verification_status"] == "unsigned-valid"
     assert verified["checks"]["signature"] is None
+    assert verified["checks"]["all_ok"] is True
 
     tampered = tmp_path / "tampered.zip"
 
@@ -74,6 +76,43 @@ def test_unsigned_bundle_roundtrip_and_tamper_detection(tmp_path: Path) -> None:
     assert result["verification_status"] == "content-invalid"
     assert result["checks"]["results_sha256"] is False
     assert result["checks"]["members"]["results.json"] is False
+
+
+def test_manifest_all_ok_requires_literal_true_results(tmp_path: Path) -> None:
+    path = write_run_bundle(
+        request=request(),
+        results=[{"ok": "false"}],  # type: ignore[list-item]
+        output_path=tmp_path / "strict-all-ok.zip",
+    )
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    assert manifest["all_ok"] is False
+
+    verified = verify_run_bundle(path)
+    assert verified["ok"] is True
+    assert verified["checks"]["all_ok"] is True
+
+
+def test_unsigned_manifest_all_ok_tampering_is_detected(tmp_path: Path) -> None:
+    path = write_run_bundle(
+        request=request(),
+        results=[{"ok": False}],
+        output_path=tmp_path / "run.zip",
+    )
+    rewritten = tmp_path / "all-ok-tampered.zip"
+
+    def change_manifest(name: str, payload: bytes) -> bytes:
+        if name != "manifest.json":
+            return payload
+        manifest = json.loads(payload)
+        manifest["all_ok"] = True
+        return json.dumps(manifest, indent=2, sort_keys=True).encode()
+
+    rewrite_archive(path, rewritten, change_manifest)
+    result = verify_run_bundle(rewritten)
+    assert result["ok"] is False
+    assert result["verification_status"] == "content-invalid"
+    assert result["checks"]["all_ok"] is False
 
 
 def test_bundle_rejects_undeclared_members(tmp_path: Path) -> None:
@@ -109,11 +148,25 @@ def test_signed_bundle_requires_matching_trusted_public_key(tmp_path: Path) -> N
     assert verified["ok"] is True
     assert verified["verification_status"] == "signed-valid"
     assert verified["checks"]["signature"] is True
+    assert verified["checks"]["all_ok"] is True
 
     wrong_key = Ed25519PrivateKey.generate()
     rejected = verify_run_bundle(path, verification_public_key=public_pem(wrong_key))
     assert rejected["ok"] is False
     assert rejected["verification_status"] == "signed-invalid"
+
+
+@pytest.mark.parametrize("key_id", ["", "x" * 129, "line\nbreak", "nul\x00key"])
+def test_writer_rejects_invalid_signing_key_ids(tmp_path: Path, key_id: str) -> None:
+    signing_key = Ed25519PrivateKey.generate()
+    with pytest.raises(ValueError, match="signing_key_id"):
+        write_run_bundle(
+            request=request(),
+            results=[{"ok": True}],
+            output_path=tmp_path / "invalid-key-id.zip",
+            signing_private_key=private_pem(signing_key),
+            signing_key_id=key_id,
+        )
 
 
 def test_signature_detects_manifest_rewrite_after_hash_recalculation(tmp_path: Path) -> None:
