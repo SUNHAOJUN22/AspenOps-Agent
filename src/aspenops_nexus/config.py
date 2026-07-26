@@ -54,14 +54,23 @@ def _require_int(name: str, value: object, minimum: int = 1) -> None:
         raise ValueError(f"{name} must be >= {minimum}")
 
 
-def _require_float(name: str, value: object, minimum: float) -> None:
+def _finite_number(name: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{name} must be numeric")
     number = float(value)
     if not math.isfinite(number):
         raise ValueError(f"{name} must be finite")
-    if number < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
+    return number
+
+
+def _require_positive_float(name: str, value: object) -> None:
+    if _finite_number(name, value) <= 0:
+        raise ValueError(f"{name} must be > 0")
+
+
+def _require_nonnegative_float(name: str, value: object) -> None:
+    if _finite_number(name, value) < 0:
+        raise ValueError(f"{name} must be >= 0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,16 +133,16 @@ class Settings:
         ):
             _require_int(name, getattr(self, name))
 
-        for name, minimum in (
-            ("timeout_s", 0.001),
-            ("startup_timeout_s", 0.001),
-            ("worker_max_age_s", 0.001),
-            ("scheduler_poll_s", 0.001),
-            ("pool_idle_timeout_s", 0.001),
-            ("job_lease_s", 0.001),
-            ("cancellation_grace_s", 0.0),
+        for name in (
+            "timeout_s",
+            "startup_timeout_s",
+            "worker_max_age_s",
+            "scheduler_poll_s",
+            "pool_idle_timeout_s",
+            "job_lease_s",
         ):
-            _require_float(name, getattr(self, name), minimum)
+            _require_positive_float(name, getattr(self, name))
+        _require_nonnegative_float("cancellation_grace_s", self.cancellation_grace_s)
 
         if not str(self.state_dir).strip():
             raise ValueError("state_dir must be non-empty")
