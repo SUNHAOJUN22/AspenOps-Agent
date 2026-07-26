@@ -24,7 +24,7 @@ dependencies = ["psutil>=5.9"]
 
 [project.optional-dependencies]
 windows = ["pywin32>=306; platform_system == 'Windows'"]
-agent = ["mcp>=1.9"]
+agent = ["mcp>=1.9,<2"]
 signing = ["cryptography>=45"]
 dev = [
   "build>=1.2",
