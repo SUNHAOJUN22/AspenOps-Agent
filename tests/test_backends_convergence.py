@@ -117,6 +117,14 @@ def test_aspen_backend_fails_closed_without_success_evidence(monkeypatch: Any) -
     assert result["convergence_state"] == "unknown"
 
 
+def test_hysys_running_state_does_not_use_string_truthiness() -> None:
+    assert HysysBackend._solver_running(SimpleNamespace(IsSolving="False")) is False
+    assert HysysBackend._solver_running(SimpleNamespace(IsSolving="TRUE")) is True
+    assert HysysBackend._solver_running(SimpleNamespace(IsSolving=-1)) is True
+    assert HysysBackend._solver_running(SimpleNamespace(IsSolving=0)) is False
+    assert HysysBackend._solver_running(SimpleNamespace(IsSolving="unknown")) is None
+
+
 def test_hysys_backend_uses_project_boolean_convergence_node(monkeypatch: Any) -> None:
     configure_fast_hysys_poll(monkeypatch)
     backend = FakeHysysBackend(True)
