@@ -62,6 +62,7 @@ def _normalize_durable_request(
 
     normalized = dict(request)
     base = submission_cwd.expanduser().resolve()
+    paths_pinned = False
     for key in ("model_path", "registry_path"):
         raw = normalized.get(key)
         if not isinstance(raw, str) or not raw.strip():
@@ -70,12 +71,14 @@ def _normalize_durable_request(
         if not candidate.is_absolute():
             candidate = base / candidate
         normalized[key] = str(candidate.resolve())
+        paths_pinned = True
 
-    metadata_raw = normalized.get("metadata", {})
-    if isinstance(metadata_raw, dict):
-        metadata = {str(key): value for key, value in metadata_raw.items()}
-        metadata.setdefault("submission_cwd", str(base))
-        normalized["metadata"] = metadata
+    if paths_pinned:
+        metadata_raw = normalized.get("metadata", {})
+        if isinstance(metadata_raw, dict):
+            metadata = {str(key): value for key, value in metadata_raw.items()}
+            metadata.setdefault("submission_cwd", str(base))
+            normalized["metadata"] = metadata
     return normalized
 
 
@@ -216,13 +219,17 @@ def command_submit(args: argparse.Namespace) -> int:
     job_id = store.create(request, settings.job_max_attempts)
     metadata = request.get("metadata", {})
     submission_cwd = metadata.get("submission_cwd") if isinstance(metadata, dict) else None
+    paths_pinned = all(
+        isinstance(request.get(key), str) and Path(request[key]).is_absolute()
+        for key in ("model_path", "registry_path")
+    )
     _json_print(
         {
             "job_id": job_id,
             "state_db": str(store.path),
             "scheduler_required": True,
             "scheduler_command": "uv run aspenops scheduler",
-            "paths_pinned": True,
+            "paths_pinned": paths_pinned,
             "submission_cwd": submission_cwd,
         }
     )
