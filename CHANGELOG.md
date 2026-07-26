@@ -9,12 +9,13 @@
 - added flowsheet benchmark records that separate topology, compiler, execution, convergence, balances, repair and human intervention;
 - added Process IR validation commands, HTML/SVG visual evidence and Linux/Windows/licensed-Mock CI contracts;
 - added a real `aspenops scheduler` service so CLI `submit` durably enqueues work instead of relying on a daemon thread that ends with the submitting process;
+- pinned relative model and registry paths at submission, persisted `submission_cwd`, and made queued execution independent of the scheduler working directory;
 - added `aspenops cancel` with immediate pending/retry cancellation, active-job grace deadlines and owned-Worker termination boundaries;
 - made CLI `job` read durable state without constructing an unused PoolManager or Worker fabric;
 - added a portable constrained-optimization example and made the optimization tests execute that published document directly;
-- added source and locked-Wheel smoke for scheduler, cancellation and the published optimization workflow;
+- added source, durable queue lifecycle and locked-Wheel smoke for scheduler, cancellation and the published optimization workflow;
 - rebuilt the bilingual README as a complete installation, configuration, workflow, scheduling, industrial-use and troubleshooting guide;
-- expanded the governed visual system to twelve original, self-contained and repository-local SVG capability diagrams;
+- expanded the governed visual system to thirteen original, self-contained and repository-local SVG capability diagrams;
 - added fail-closed README inventory, accessibility, renderer-portability, resource-safety and required-product-surface contracts to Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
 - retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
