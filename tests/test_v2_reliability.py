@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,17 @@ class CountingBackend(MockBackend):
 
     def read(self, node: ResolvedNode) -> Any:
         self.read_count += 1
+        return super().read(node)
+
+
+class NonFiniteReadBackend(MockBackend):
+    def __init__(self, key: str) -> None:
+        super().__init__()
+        self.key = key
+
+    def read(self, node: ResolvedNode) -> Any:
+        if node.key == self.key:
+            return float("nan")
         return super().read(node)
 
 
@@ -108,6 +120,62 @@ def request_with_duplicate_reads() -> EvaluationRequest:
     )
 
 
+def constraint_only_request() -> EvaluationRequest:
+    return EvaluationRequest.from_dict(
+        {
+            "model_path": str(MODEL),
+            "registry_path": str(REGISTRY),
+            "backend": "mock",
+            "writes": [],
+            "reads": [],
+            "constraints": [
+                {
+                    "name": "purity",
+                    "key": "stream.output.purity",
+                    "identifiers": {"stream": "PRODUCT"},
+                    "operator": ">=",
+                    "value": 0.5,
+                    "unit": "fraction",
+                }
+            ],
+        }
+    )
+
+
+def balance_only_request() -> EvaluationRequest:
+    return EvaluationRequest.from_dict(
+        {
+            "model_path": str(MODEL),
+            "registry_path": str(REGISTRY),
+            "backend": "mock",
+            "writes": [],
+            "reads": [],
+            "balances": [
+                {
+                    "name": "mass_closure",
+                    "terms": [
+                        {
+                            "key": "stream.input.mass_flow",
+                            "identifiers": {"stream": "FEED"},
+                            "coefficient": 1.0,
+                            "unit": "kg/h",
+                        },
+                        {
+                            "key": "stream.output.mass_flow",
+                            "identifiers": {"stream": "PRODUCT"},
+                            "coefficient": -1.0,
+                            "unit": "kg/h",
+                        },
+                    ],
+                    "expected": 0.0,
+                    "abs_tol": 1e-6,
+                    "rel_tol": 1e-6,
+                }
+            ],
+        }
+    )
+
+
 def test_unknown_convergence_fails_closed() -> None:
     backend = UnknownConvergenceBackend()
     backend.open(MODEL)
@@ -125,6 +193,59 @@ def test_evaluation_reads_duplicate_node_once() -> None:
     assert result.diagnostics["io"]["unique_read_nodes"] == 1
     assert result.diagnostics["io"]["avoided_duplicate_reads"] == 1
     assert result.diagnostics["io"]["com_reads"] == 1
+
+
+def test_non_finite_required_output_is_sanitized_and_rejected() -> None:
+    backend = NonFiniteReadBackend("stream.output.purity")
+    backend.open(MODEL)
+
+    result = evaluate(backend, NodeRegistry(REGISTRY), request_with_duplicate_reads())
+
+    key = "stream.output.purity:stream=PRODUCT"
+    assert result.values[key] is None
+    assert result.diagnostics["non_finite_outputs"] == {key: "nan"}
+    assert f"non_finite_required_output:{key}" in result.violations
+    assert not result.ok
+    json.dumps(result.to_dict(), allow_nan=False)
+
+
+def test_non_finite_constraint_cannot_pass_via_nan_comparison() -> None:
+    backend = NonFiniteReadBackend("stream.output.purity")
+    backend.open(MODEL)
+
+    result = evaluate(backend, NodeRegistry(REGISTRY), constraint_only_request())
+
+    assert "constraint_non_finite:purity" in result.violations
+    assert "constraint_failed:purity" in result.violations
+    assert result.diagnostics["total_constraint_violation"] is None
+    detail = result.diagnostics["constraints"][0]
+    assert detail["actual"] is None
+    assert detail["violation"] is None
+    assert detail["passed"] is False
+    assert detail["non_finite_value"] == "nan"
+    assert not result.feasible
+    json.dumps(result.to_dict(), allow_nan=False)
+
+
+def test_non_finite_balance_is_json_safe_and_fails_closed() -> None:
+    backend = NonFiniteReadBackend("stream.output.mass_flow")
+    backend.open(MODEL)
+
+    result = evaluate(backend, NodeRegistry(REGISTRY), balance_only_request())
+
+    assert "balance_non_finite:mass_closure" in result.violations
+    assert "balance_failed:mass_closure" in result.violations
+    assert result.balance_residuals["mass_closure"]["passed"] == 0.0
+    assert result.diagnostics["non_finite_balances"] == {
+        "mass_closure": [
+            {
+                "identity": "stream.output.mass_flow:stream=PRODUCT",
+                "value": "nan",
+            }
+        ]
+    }
+    assert not result.feasible
+    json.dumps(result.to_dict(), allow_nan=False)
 
 
 def node(key: str) -> ResolvedNode:
