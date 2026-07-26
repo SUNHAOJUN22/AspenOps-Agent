@@ -112,7 +112,9 @@ job        → read durable state only
 cancel     → request cancellation and set the owned-worker grace deadline
 ```
 
-A short-lived submission process and a long-lived scheduler may have different working directories. Before persistence, `submit` resolves relative `model_path` and `registry_path` values against the submission working directory, stores absolute paths, and records `submission_cwd`. The response exposes `paths_pinned=true`. The scheduler therefore consumes stable model and registry identities independent of its own launch directory; real backends still reapply allowed-root and realpath policy.
+A short-lived submission process and a long-lived scheduler may have different working directories. `pin_durable_request_paths()` resolves relative `model_path` and `registry_path` values against the submission working directory, stores absolute paths, and records `submission_cwd`. CLI and MCP durable submission surfaces call this shared helper before entering the Scheduler. The CLI response exposes `paths_pinned=true`.
+
+Direct Python callers that invoke `BackgroundScheduler.submit()` should supply absolute paths or call `pin_durable_request_paths()` first. This keeps the low-level Scheduler free from guessing the caller's intended path base while giving every public submission surface one explicit, reusable identity contract. Real backends still reapply allowed-root and realpath policy.
 
 This separation prevents a short-lived `submit` process from pretending that its daemon thread can continue after process exit. Cancellation of a pending or retry-waiting job is immediate; active work transitions to `cancelling`, and only the matching owned Worker may be terminated after the grace deadline.
 
