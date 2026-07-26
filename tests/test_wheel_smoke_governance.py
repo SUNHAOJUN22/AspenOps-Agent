@@ -37,12 +37,20 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     assert "/tmp/aspenops-wheel/bin/pip install dist/*.whl" not in text
 
 
-def test_mcp_runtime_lock_and_documentation_remain_on_supported_major() -> None:
+def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    agent_requirements = project["project"]["optional-dependencies"]["agent"]
+    assert agent_requirements == ["mcp>=1.9,<2"]
+
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     packages = lock.get("package", [])
     versions = [str(package["version"]) for package in packages if package.get("name") == "mcp"]
     assert versions == ["1.28.1"]
     assert mcp_server._require_supported_mcp_sdk() == "1.28.1"
+
+    major, minor, patch = (int(part) for part in versions[0].split("."))
+    assert major == mcp_server.SUPPORTED_MCP_MAJOR == 1
+    assert (major, minor, patch) >= (1, 9, 0)
 
     server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
     assert 'SUPPORTED_MCP_MAJOR = 1' in server
