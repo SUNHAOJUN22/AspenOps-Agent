@@ -53,6 +53,32 @@ def _controlled_path(path: str | Path, settings: Any) -> Path:
     return Policy(mode, roots).assert_path(path)
 
 
+def _normalize_durable_request(
+    request: dict[str, Any],
+    *,
+    submission_cwd: Path,
+) -> dict[str, Any]:
+    """Pin path-bearing fields before a request crosses a process boundary."""
+
+    normalized = dict(request)
+    base = submission_cwd.expanduser().resolve()
+    for key in ("model_path", "registry_path"):
+        raw = normalized.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            candidate = base / candidate
+        normalized[key] = str(candidate.resolve())
+
+    metadata_raw = normalized.get("metadata", {})
+    if isinstance(metadata_raw, dict):
+        metadata = {str(key): value for key, value in metadata_raw.items()}
+        metadata.setdefault("submission_cwd", str(base))
+        normalized["metadata"] = metadata
+    return normalized
+
+
 def _demo_request() -> dict[str, Any]:
     return {
         "backend": "mock",
@@ -181,16 +207,23 @@ def command_run_batch(args: argparse.Namespace) -> int:
 
 def command_submit(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
-    request = _load(args.request)
+    request = _normalize_durable_request(
+        _load(args.request),
+        submission_cwd=Path.cwd(),
+    )
     _validate_scheduled_request(request, settings)
     store = JobStore(settings.state_dir / "jobs.sqlite3")
     job_id = store.create(request, settings.job_max_attempts)
+    metadata = request.get("metadata", {})
+    submission_cwd = metadata.get("submission_cwd") if isinstance(metadata, dict) else None
     _json_print(
         {
             "job_id": job_id,
             "state_db": str(store.path),
             "scheduler_required": True,
             "scheduler_command": "uv run aspenops scheduler",
+            "paths_pinned": True,
+            "submission_cwd": submission_cwd,
         }
     )
     return 0
@@ -240,7 +273,7 @@ def command_scheduler(args: argparse.Namespace) -> int:
 
 def command_benchmark(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
-    candidates = [int(x) for x in args.workers.split(",")]
+    candidates = [int(value) for value in args.workers.split(",")]
     result = benchmark_worker_matrix(
         model_path=Path(args.model).resolve(),
         registry_path=Path(args.registry).resolve(),
