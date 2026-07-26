@@ -18,7 +18,7 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses thirteen original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests and signatures are never presented as licensed Aspen engineering certification.
+> This README uses fourteen original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, signatures and compatibility checks are never presented as licensed Aspen engineering certification.
 
 ---
 
@@ -35,11 +35,12 @@
 | Coverage floor | 94.5% |
 | Archived public Windows gate | Actions run `29814739334`, 104 passed, 2.06 s |
 | MCP tools | 14 |
+| Frozen MCP SDK | `1.28.1`; non-frozen installs require `mcp>=1.9,<2` |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
 These figures come from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence.
 
-Public CI can validate the control plane, path policy, process isolation, scheduler, archives, interfaces, Process Intent and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
+Public CI can validate the control plane, path policy, process isolation, scheduler, archives, interfaces, Process Intent, MCP compatibility and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
 
 ---
 
@@ -81,6 +82,12 @@ uv run aspenops doctor --probe
 ```
 
 The first run defaults to Mock. Mock is portable software evidence, not Aspen Plus/HYSYS physical evidence.
+
+For non-frozen Wheel installation outside the repository, constrain the MCP Python SDK to the supported 1.x line:
+
+```bash
+python -m pip install "aspenops-nexus[agent]" "mcp>=1.9,<2"
+```
 
 ---
 
@@ -204,6 +211,35 @@ mcp
 
 ---
 
+## MCP compatibility and server lifecycle
+
+![MCP compatibility and Scheduler lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg)
+
+AspenOps 2.0 currently targets the MCP Python SDK 1.x API. The frozen repository environment locks `mcp 1.28.1`; a non-frozen installation must use:
+
+```text
+mcp>=1.9,<2
+```
+
+Before importing `FastMCP`, the runtime reads the installed distribution version:
+
+- missing MCP produces an explicit frozen `agent` extra installation message;
+- major version 1 proceeds;
+- any other major version or an unparseable version fails closed;
+- an incompatible import is never presented as a working server.
+
+The Scheduler is no longer started without a shutdown boundary after `build_server()`. FastMCP lifespan owns:
+
+```text
+server startup → scheduler.start()
+serve 14 constrained tools
+server shutdown → scheduler.stop() → Worker / PoolManager cleanup
+```
+
+This lifecycle proves software resource governance only; it does not certify a real Aspen model.
+
+---
+
 ## Common workflows
 
 ### 1. Validate, then run a batch
@@ -265,7 +301,7 @@ uv run aspenops mcp
 
 ![Durable queue path portability](docs/assets/readme/durable-path-portability.svg)
 
-Before a request crosses a process boundary, `submit` performs:
+Before a request crosses a process boundary, CLI and MCP durable submission perform:
 
 ```text
 submission working directory
@@ -275,14 +311,14 @@ submission working directory
 → allow scheduler startup from any working directory
 ```
 
-The submission response explicitly records:
+The CLI submission response explicitly records:
 
 ```text
 paths_pinned = true
 submission_cwd = <absolute submission directory>
 ```
 
-This preserves the original convention—relative paths are interpreted from the submit command working directory—while preventing a long-lived scheduler launched elsewhere from changing model identity. Real backends still reapply allowed-root and realpath policy.
+This preserves the original convention—relative paths are interpreted from the submission call working directory—while preventing a long-lived scheduler launched elsewhere from changing model identity. Real backends still reapply allowed-root and realpath policy. Direct low-level Python calls to `BackgroundScheduler.submit()` should use absolute paths or first call `pin_durable_request_paths()`.
 
 ---
 
@@ -450,7 +486,7 @@ Real certification still requires licensed Windows, a valid licence, an approved
 ```text
 .github/workflows/       four authoritative workflows
 docs/                    architecture, Windows, performance, certification and quality
-docs/assets/readme/      thirteen governed README SVGs
+docs/assets/readme/      fourteen governed README SVGs
 examples/                batch, optimization and Process Intent examples
 scripts/                 validators, dashboards, benchmarks and Windows setup
 src/aspenops_nexus/      control plane, backends, Workers, scheduler, optimization, evidence and MCP
@@ -467,6 +503,8 @@ var/                     reproducible baselines, audit manifests and local state
 | `doctor --probe` is not ready | Python bitness, COM ProgID, licence and allowed roots | do not bypass preflight or hard-code raw COM |
 | A path is rejected | `ASPENOPS_ALLOWED_ROOTS` and realpath | keep model, registry, state and output inside approved absolute roots |
 | Submit succeeds but scheduler starts elsewhere | `paths_pinned` and `submission_cwd` | resubmit with the current version; persisted model and registry paths must be absolute |
+| MCP startup reports an incompatible SDK major | `python -m pip show mcp` | install `mcp>=1.9,<2`; do not bypass the version gate |
+| Workers remain after MCP shutdown | lifespan, Scheduler stop and current process ownership | use the current version; shutdown must call `scheduler.stop()` |
 | Batch returns `ok=false` | communication, engine, converged, feasible and balances | repair each gate separately; Run2 return is not convergence |
 | A job remains `pending` | whether `aspenops scheduler` is running | submit does not keep running after its process exits |
 | A job remains running | lease, heartbeat, Worker PID and cancellation deadline | let the scheduler recover the owned Worker |
@@ -485,6 +523,7 @@ var/                     reproducible baselines, audit manifests and local state
 - Process Intent IR, strict validation, canonical JSON and SHA-256 graph identity;
 - Aspen Plus/HYSYS existing-model control plane;
 - Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, optimization and MCP;
+- MCP 1.x fail-closed compatibility gate and FastMCP lifecycle cleanup;
 - frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
@@ -509,7 +548,7 @@ No capability moves from planned to available without **code + tests + evidence*
 
 ## AI-generated visual assets
 
-The thirteen original, self-contained SVGs under `docs/assets/readme/` are:
+The fourteen original, self-contained SVGs under `docs/assets/readme/` are:
 
 1. `hero-architecture.svg`
 2. `process-intent-ir.svg`
@@ -517,13 +556,14 @@ The thirteen original, self-contained SVGs under `docs/assets/readme/` are:
 4. `backend-capabilities.svg`
 5. `com-isolation.svg`
 6. `cli-mcp-workflow.svg`
-7. `durable-path-portability.svg`
-8. `scheduler-lifecycle.svg`
-9. `industrial-scenarios.svg`
-10. `test-matrix.svg`
-11. `evidence-chain.svg`
-12. `licensed-certification.svg`
-13. `roadmap.svg`
+7. `mcp-runtime-lifecycle.svg`
+8. `durable-path-portability.svg`
+9. `scheduler-lifecycle.svg`
+10. `industrial-scenarios.svg`
+11. `test-matrix.svg`
+12. `evidence-chain.svg`
+13. `licensed-certification.svg`
+14. `roadmap.svg`
 
 `tests/test_readme_visual_assets.py` checks bilingual references, exact inventory, XML, size, path confinement, accessibility, renderer portability, scripts, events, remote resources, Data URIs and all three software gates.
 
