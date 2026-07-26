@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from functools import partial
 from importlib.metadata import PackageNotFoundError, version as distribution_version
 from pathlib import Path
 from typing import Any
@@ -231,12 +230,17 @@ def build_server(
     active_settings.state_dir.mkdir(parents=True, exist_ok=True)
     scheduler = BackgroundScheduler(active_settings)
     tools = AspenOpsTools(active_settings, scheduler)
-    lifespan = partial(
-        _scheduler_lifespan,
-        scheduler=scheduler,
-        start_scheduler=start_scheduler,
-    )
-    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS, lifespan=lifespan)
+
+    @asynccontextmanager
+    async def app_lifespan(server: Any) -> AsyncIterator[None]:
+        async with _scheduler_lifespan(
+            server,
+            scheduler=scheduler,
+            start_scheduler=start_scheduler,
+        ):
+            yield None
+
+    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS, lifespan=app_lifespan)
     for name in TOOL_NAMES:
         mcp.tool()(getattr(tools, name))
     return mcp
