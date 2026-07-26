@@ -37,6 +37,62 @@ def test_float_environment_values_must_be_finite(
         _env_float("FINITE_FLOAT", 1.0)
 
 
+@pytest.mark.parametrize("backend", ["", "aspen", "dwsim", "MOCK"])
+def test_direct_settings_reject_unknown_backends(backend: str) -> None:
+    with pytest.raises(ValueError, match="Unsupported backend"):
+        Settings(backend=backend)
+
+
+@pytest.mark.parametrize("mode", ["", "write", "DEFAULT", "unsafe"])
+def test_direct_settings_reject_unknown_modes(mode: str) -> None:
+    with pytest.raises(ValueError, match="Unsupported mode"):
+        Settings(mode=mode)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("license_slots", 0),
+        ("max_workers", -1),
+        ("worker_max_points", True),
+        ("max_resident_cases", 0),
+        ("job_max_attempts", 0),
+        ("max_request_bytes", 0),
+        ("max_batch_points", 0),
+        ("max_semantic_operations", 0),
+        ("max_optimization_evaluations", 0),
+        ("max_optimization_variables", 0),
+        ("max_optimization_objectives", 0),
+    ],
+)
+def test_direct_settings_reject_invalid_integer_budgets(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match=field):
+        Settings(**{field: value})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timeout_s", 0.0),
+        ("startup_timeout_s", float("nan")),
+        ("worker_max_age_s", 0.5),
+        ("scheduler_poll_s", 0.0),
+        ("pool_idle_timeout_s", float("inf")),
+        ("job_lease_s", 0.5),
+        ("cancellation_grace_s", -0.1),
+    ],
+)
+def test_direct_settings_reject_invalid_float_budgets(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match=field):
+        Settings(**{field: value})  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     "name",
     [
