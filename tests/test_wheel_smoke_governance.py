@@ -36,6 +36,12 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     assert "uv run aspenops optimize examples/optimization-request.example.json" in text
     assert "/tmp/aspenops-wheel/bin/pip install dist/*.whl" not in text
 
+    assert text.index("- name: Build distributions") < text.index("- name: Verify MCP surface")
+    checker = Path("scripts/check_mcp.py").read_text(encoding="utf-8")
+    assert "inspect_wheel" in checker
+    assert 'Path("dist")' in checker
+    assert '"wheel_metadata": wheel_metadata' in checker
+
 
 def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
