@@ -55,12 +55,16 @@ def test_direct_settings_reject_truthy_string_booleans(field: str) -> None:
         Settings(**{field: "false"})  # type: ignore[arg-type]
 
 
-def test_direct_settings_reject_non_path_values() -> None:
+def test_direct_settings_require_concrete_path_values() -> None:
     with pytest.raises(ValueError, match="allowed_roots must be a tuple"):
         Settings(allowed_roots=[])  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="allowed_roots entry must be path-like"):
+    with pytest.raises(ValueError, match="allowed_roots entry must be a Path"):
+        Settings(allowed_roots=("relative-root",))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="allowed_roots entry must be a Path"):
         Settings(allowed_roots=(1,))  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="state_dir must be path-like"):
+    with pytest.raises(ValueError, match="state_dir must be a Path"):
+        Settings(state_dir="var")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="state_dir must be a Path"):
         Settings(state_dir=1)  # type: ignore[arg-type]
 
 
