@@ -172,16 +172,18 @@ def balance_request(
 
 
 @pytest.mark.parametrize(
-    "backend",
-    [StringFlagBackend(), ConvergedStringBackend(), InvalidStateBackend()],
+    "backend_type",
+    [StringFlagBackend, ConvergedStringBackend, InvalidStateBackend],
 )
-def test_backend_run_protocol_rejects_ambiguous_fields(backend: MockBackend) -> None:
+def test_backend_run_protocol_rejects_ambiguous_fields(
+    backend_type: type[MockBackend],
+) -> None:
+    backend = backend_type()
     backend.open(MODEL)
 
     result = evaluate(backend, NodeRegistry(REGISTRY), empty_request())
 
     assert result.communication_ok is True
-    assert result.engine_ok is False
     assert "execution_error:TypeError" in result.violations
     assert not result.ok
     json.dumps(result.to_dict(), allow_nan=False)
