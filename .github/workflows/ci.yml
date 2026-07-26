@@ -200,6 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           uv export --frozen \
+            --extra agent \
             --no-default-groups \
             --no-emit-project \
             --format requirements.txt \
