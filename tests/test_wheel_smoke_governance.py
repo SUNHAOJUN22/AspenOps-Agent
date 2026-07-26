@@ -40,6 +40,7 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     checker = Path("scripts/check_mcp.py").read_text(encoding="utf-8")
     assert "inspect_wheel" in checker
     assert 'Path("dist")' in checker
+    assert "if dist_dir.exists():" in checker
     assert '"wheel_metadata": wheel_metadata' in checker
 
 
