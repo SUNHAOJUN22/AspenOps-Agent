@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import time
 from collections.abc import Callable, Iterable
@@ -73,6 +74,32 @@ _POSITIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("ok", re.compile(r"\bok\b", re.IGNORECASE)),
 )
 
+_RUNNING_TRUE = {"1", "true", "yes", "on", "running", "solving"}
+_RUNNING_FALSE = {"0", "false", "no", "off", "idle", "stopped", "not_running"}
+
+
+def normalize_running_flag(value: Any) -> bool | None:
+    """Normalize COM-like running flags without Python truthiness guesses."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        number = float(value)
+        if not math.isfinite(number):
+            return None
+        if number in {-1.0, 1.0}:
+            return True
+        if number == 0.0:
+            return False
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().casefold().replace(" ", "_")
+        if normalized in _RUNNING_TRUE:
+            return True
+        if normalized in _RUNNING_FALSE:
+            return False
+    return None
+
 
 def poll_engine_idle(
     read_running: Callable[[], bool | None],
@@ -107,6 +134,8 @@ def poll_engine_idle(
                 error=f"{type(exc).__name__}: {exc}",
             )
         samples += 1
+        if running is not None and not isinstance(running, bool):
+            running = None
         if running is None:
             consecutive_idle = 0
         else:
