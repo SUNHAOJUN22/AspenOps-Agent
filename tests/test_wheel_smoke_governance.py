@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import tomllib
 from pathlib import Path
+from zipfile import ZipFile
 
 import aspenops_nexus.mcp_server as mcp_server
+from aspenops_nexus.wheel_metadata import inspect_wheel
 
 
 def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
@@ -69,6 +71,27 @@ def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
         text = readme.read_text(encoding="utf-8")
         assert "mcp>=1.9,<2" in text
         assert "mcp-runtime-lifecycle.svg" in text
+
+
+def test_built_wheel_metadata_parser_runs_on_every_software_gate(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    wheel = dist_dir / "aspenops_nexus-2.0.0-py3-none-any.whl"
+    metadata = "\n".join(
+        [
+            "Metadata-Version: 2.4",
+            "Name: aspenops-nexus",
+            "Version: 2.0.0",
+            "Requires-Dist: mcp<2,>=1.9; extra == 'agent'",
+            "",
+        ]
+    )
+    with ZipFile(wheel, "w") as archive:
+        archive.writestr("aspenops_nexus-2.0.0.dist-info/METADATA", metadata)
+
+    report = inspect_wheel(dist_dir)
+    assert report["ok"] is True
+    assert report["wheel"] == wheel.name
 
 
 def test_mcp_lifespan_starts_and_stops_the_owned_scheduler() -> None:
