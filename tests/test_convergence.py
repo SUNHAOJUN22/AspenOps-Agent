@@ -35,19 +35,19 @@ def sequence_reader(values: list[bool | None]) -> Callable[[], bool | None]:
 
 
 def test_running_flag_normalization_is_explicit_and_com_compatible() -> None:
-    accepted = {
-        True: True,
-        False: False,
-        -1: True,
-        1: True,
-        0: False,
-        "TRUE": True,
-        "false": False,
-        "running": True,
-        "idle": False,
-        "not running": False,
-    }
-    for value, expected in accepted.items():
+    accepted = [
+        (True, True),
+        (False, False),
+        (-1, True),
+        (1, True),
+        (0, False),
+        ("TRUE", True),
+        ("false", False),
+        ("running", True),
+        ("idle", False),
+        ("not running", False),
+    ]
+    for value, expected in accepted:
         assert normalize_running_flag(value) is expected
 
     for value in (2, -2, float("nan"), float("inf"), "unknown", object(), None):
