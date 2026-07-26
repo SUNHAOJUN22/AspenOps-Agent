@@ -17,7 +17,7 @@
 - added source, durable queue lifecycle and locked-Wheel smoke for scheduler, cancellation and the published optimization workflow;
 - constrained the packaged `agent` extra to `mcp>=1.9,<2`, kept the frozen runtime on `mcp 1.28.1`, and added a fail-closed SDK major-version gate;
 - bound Scheduler startup and Worker/PoolManager cleanup to FastMCP lifespan instead of leaving an unowned service fabric after server shutdown;
-- made source tests, locked-Wheel smoke and three-platform governance verify MCP package metadata, version and lifecycle contracts;
+- made source tests, actual built-Wheel `METADATA` inspection, locked-Wheel smoke and three-platform governance verify MCP package metadata, version and lifecycle contracts;
 - rebuilt the bilingual README as a complete installation, configuration, workflow, scheduling, industrial-use and troubleshooting guide;
 - expanded the governed visual system to fourteen original, self-contained and repository-local SVG capability diagrams;
 - added fail-closed README inventory, accessibility, renderer-portability, resource-safety and required-product-surface contracts to Linux, Windows and pre-licensed-COM quality gates;
