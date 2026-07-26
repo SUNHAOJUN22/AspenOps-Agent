@@ -15,8 +15,11 @@
 - made CLI `job` read durable state without constructing an unused PoolManager or Worker fabric;
 - added a portable constrained-optimization example and made the optimization tests execute that published document directly;
 - added source, durable queue lifecycle and locked-Wheel smoke for scheduler, cancellation and the published optimization workflow;
+- added an MCP Python SDK 1.x fail-closed compatibility gate and documented `mcp>=1.9,<2` for non-frozen installation;
+- bound Scheduler startup and Worker/PoolManager cleanup to FastMCP lifespan instead of leaving an unowned service fabric after server shutdown;
+- made source tests, locked-Wheel smoke and three-platform governance verify MCP version and lifecycle contracts;
 - rebuilt the bilingual README as a complete installation, configuration, workflow, scheduling, industrial-use and troubleshooting guide;
-- expanded the governed visual system to thirteen original, self-contained and repository-local SVG capability diagrams;
+- expanded the governed visual system to fourteen original, self-contained and repository-local SVG capability diagrams;
 - added fail-closed README inventory, accessibility, renderer-portability, resource-safety and required-product-surface contracts to Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
 - retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
