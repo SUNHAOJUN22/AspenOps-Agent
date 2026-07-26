@@ -85,6 +85,30 @@ def test_mcp_scheduler_lifespan_owns_start_and_stop() -> None:
     assert events == ["body", "stop"]
 
 
+def test_mcp_scheduler_lifespan_cleans_up_after_start_failure() -> None:
+    events: list[str] = []
+
+    class FailingScheduler:
+        def start(self) -> None:
+            events.append("start")
+            raise RuntimeError("startup failed")
+
+        def stop(self) -> None:
+            events.append("stop")
+
+    async def exercise() -> None:
+        async with mcp_server._scheduler_lifespan(
+            None,
+            scheduler=FailingScheduler(),  # type: ignore[arg-type]
+            start_scheduler=True,
+        ):
+            raise AssertionError("unreachable")
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        asyncio.run(exercise())
+    assert events == ["start", "stop"]
+
+
 def test_mcp_durable_submissions_pin_paths_without_mutating_input(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
