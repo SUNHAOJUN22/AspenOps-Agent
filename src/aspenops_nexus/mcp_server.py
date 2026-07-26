@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from functools import partial
+from importlib.metadata import PackageNotFoundError, version as distribution_version
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +15,9 @@ from .policy import Policy
 from .provenance import verify_run_bundle
 from .registry import NodeRegistry
 from .scheduler import BackgroundScheduler
+
+SUPPORTED_MCP_MAJOR = 1
+MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
 
 INSTRUCTIONS = """
 AspenOps is a deterministic execution fabric, not an unrestricted COM shell.
@@ -44,6 +51,46 @@ TOOL_NAMES = (
     "cancel_job",
     "verify_evidence_bundle",
 )
+
+
+def _require_supported_mcp_sdk() -> str:
+    """Return the installed SDK version or fail before importing an incompatible API."""
+
+    try:
+        installed = distribution_version("mcp")
+    except PackageNotFoundError as exc:
+        raise RuntimeError(
+            "Install the 'agent' extra: uv sync --frozen --extra agent"
+        ) from exc
+
+    major_text = installed.split(".", 1)[0]
+    try:
+        major = int(major_text)
+    except ValueError as exc:
+        raise RuntimeError(f"Cannot determine MCP SDK major version from {installed!r}") from exc
+    if major != SUPPORTED_MCP_MAJOR:
+        raise RuntimeError(
+            "AspenOps 2.0 requires MCP Python SDK 1.x; install "
+            f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
+        )
+    return installed
+
+
+@asynccontextmanager
+async def _scheduler_lifespan(
+    _server: Any,
+    *,
+    scheduler: BackgroundScheduler,
+    start_scheduler: bool,
+) -> AsyncIterator[None]:
+    """Tie the durable Worker fabric to the MCP server startup/shutdown boundary."""
+
+    if start_scheduler:
+        scheduler.start()
+    try:
+        yield None
+    finally:
+        scheduler.stop()
 
 
 class AspenOpsTools:
@@ -172,18 +219,24 @@ def build_server(
     *,
     start_scheduler: bool = True,
 ) -> Any:
+    _require_supported_mcp_sdk()
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
-        raise RuntimeError("Install the 'agent' extra: uv sync --extra agent") from exc
+        raise RuntimeError(
+            "The installed MCP 1.x SDK is incomplete; reinstall the 'agent' extra"
+        ) from exc
 
     active_settings = settings or Settings.from_env()
     active_settings.state_dir.mkdir(parents=True, exist_ok=True)
     scheduler = BackgroundScheduler(active_settings)
-    if start_scheduler:
-        scheduler.start()
     tools = AspenOpsTools(active_settings, scheduler)
-    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS)
+    lifespan = partial(
+        _scheduler_lifespan,
+        scheduler=scheduler,
+        start_scheduler=start_scheduler,
+    )
+    mcp = FastMCP("AspenOps 2.0", instructions=INSTRUCTIONS, lifespan=lifespan)
     for name in TOOL_NAMES:
         mcp.tool()(getattr(tools, name))
     return mcp
