@@ -106,11 +106,13 @@ Process-IR benchmark evidence adds independent topology, compiler availability, 
 `JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI has explicit responsibilities:
 
 ```text
-submit     → validate and create a pending durable record
+submit     → validate, pin paths and create a pending durable record
 scheduler  → long-lived lease, heartbeat, execute and commit service
 job        → read durable state only
 cancel     → request cancellation and set the owned-worker grace deadline
 ```
+
+A short-lived submission process and a long-lived scheduler may have different working directories. Before persistence, `submit` resolves relative `model_path` and `registry_path` values against the submission working directory, stores absolute paths, and records `submission_cwd`. The response exposes `paths_pinned=true`. The scheduler therefore consumes stable model and registry identities independent of its own launch directory; real backends still reapply allowed-root and realpath policy.
 
 This separation prevents a short-lived `submit` process from pretending that its daemon thread can continue after process exit. Cancellation of a pending or retry-waiting job is immediate; active work transitions to `cancelling`, and only the matching owned Worker may be terminated after the grace deadline.
 
