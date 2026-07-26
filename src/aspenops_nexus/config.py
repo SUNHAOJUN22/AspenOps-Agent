@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+_SUPPORTED_BACKENDS = {"mock", "aspen_plus", "hysys"}
+_SUPPORTED_MODES = {"readonly", "default", "enhanced"}
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -38,6 +42,23 @@ def _inside(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or root in path.parents for root in roots)
 
 
+def _require_int(name: str, value: object, minimum: int = 1) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+
+
+def _require_float(name: str, value: object, minimum: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{name} must be numeric")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    if number < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     backend: str = "mock"
@@ -66,7 +87,42 @@ class Settings:
     max_optimization_objectives: int = 16
 
     def __post_init__(self) -> None:
-        """Fail closed for every direct real-backend construction."""
+        """Apply the same fail-closed validation to env and direct construction."""
+
+        if self.backend not in _SUPPORTED_BACKENDS:
+            raise ValueError(f"Unsupported backend={self.backend!r}")
+        if self.mode not in _SUPPORTED_MODES:
+            raise ValueError(f"Unsupported mode={self.mode!r}")
+
+        for name in (
+            "license_slots",
+            "max_workers",
+            "worker_max_points",
+            "max_resident_cases",
+            "job_max_attempts",
+            "max_request_bytes",
+            "max_batch_points",
+            "max_semantic_operations",
+            "max_optimization_evaluations",
+            "max_optimization_variables",
+            "max_optimization_objectives",
+        ):
+            _require_int(name, getattr(self, name))
+
+        for name, minimum in (
+            ("timeout_s", 0.001),
+            ("startup_timeout_s", 0.001),
+            ("worker_max_age_s", 1.0),
+            ("scheduler_poll_s", 0.01),
+            ("pool_idle_timeout_s", 1.0),
+            ("job_lease_s", 1.0),
+            ("cancellation_grace_s", 0.0),
+        ):
+            _require_float(name, getattr(self, name), minimum)
+
+        state_text = str(self.state_dir).strip()
+        if not state_text:
+            raise ValueError("state_dir must be non-empty")
 
         if self.backend == "mock":
             return
@@ -89,7 +145,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         backend = os.getenv("ASPENOPS_BACKEND", "mock").strip().lower()
-        if backend not in {"mock", "aspen_plus", "hysys"}:
+        if backend not in _SUPPORTED_BACKENDS:
             raise ValueError(f"Unsupported ASPENOPS_BACKEND={backend!r}")
 
         root_values = tuple(
@@ -122,7 +178,7 @@ class Settings:
         slots = _env_int("ASPENOPS_LICENSE_SLOTS", 1)
         max_workers = _env_int("ASPENOPS_MAX_WORKERS", slots)
         mode = os.getenv("ASPENOPS_MODE", "default").strip().lower()
-        if mode not in {"readonly", "default", "enhanced"}:
+        if mode not in _SUPPORTED_MODES:
             raise ValueError(f"Unsupported ASPENOPS_MODE={mode!r}")
         return cls(
             backend=backend,
