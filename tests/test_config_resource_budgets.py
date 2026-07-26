@@ -49,6 +49,21 @@ def test_direct_settings_reject_unknown_modes(mode: str) -> None:
         Settings(mode=mode)
 
 
+@pytest.mark.parametrize("field", ["visible", "cache_failures"])
+def test_direct_settings_reject_truthy_string_booleans(field: str) -> None:
+    with pytest.raises(ValueError, match=field):
+        Settings(**{field: "false"})  # type: ignore[arg-type]
+
+
+def test_direct_settings_reject_non_path_values() -> None:
+    with pytest.raises(ValueError, match="allowed_roots must be a tuple"):
+        Settings(allowed_roots=[])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="allowed_roots entry must be path-like"):
+        Settings(allowed_roots=(1,))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="state_dir must be path-like"):
+        Settings(state_dir=1)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -78,10 +93,10 @@ def test_direct_settings_reject_invalid_integer_budgets(
     [
         ("timeout_s", 0.0),
         ("startup_timeout_s", float("nan")),
-        ("worker_max_age_s", 0.5),
+        ("worker_max_age_s", 0.0),
         ("scheduler_poll_s", 0.0),
         ("pool_idle_timeout_s", float("inf")),
-        ("job_lease_s", 0.5),
+        ("job_lease_s", 0.0),
         ("cancellation_grace_s", -0.1),
     ],
 )
