@@ -18,7 +18,7 @@
 
 ![AspenOps 总体架构](docs/assets/readme/hero-architecture.svg)
 
-> 本 README 使用十七张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试、签名材料或版本检查包装成真实 Aspen 工程认证。
+> 本 README 使用二十张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试、签名材料、版本检查或哈希完整性包装成真实 Aspen 工程认证。
 
 ---
 
@@ -40,7 +40,7 @@
 
 上述数字来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 工作流；历史数字不能替代当前提交的新 Actions 证据。
 
-公共 CI 能证明控制平面、配置与路径策略、进程隔离、调度、缓存、优化、归档、接口、Process Intent、MCP 兼容性和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
+公共 CI 能证明控制平面、配置与路径策略、IPC、进程隔离、调度、缓存、优化、数值 fail-closed、归档、接口、Process Intent、MCP 兼容性和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
 
 ---
 
@@ -53,6 +53,7 @@ AspenOps 不是让模型自由生成 COM 脚本的包装器。它把 Aspen Plus�
 - 每个 Worker 使用私有模型副本，主模型不被覆盖；
 - 调度并发受许可证槽、资源预算和生命周期策略共同限制；
 - 通信、引擎返回、收敛、约束、物料/能量衡算和人工批准分别判定；
+- 非有限数值、错误布尔协议和不可序列化诊断不得悄悄成为有效证据；
 - 每个可接受结果都绑定请求、模型、注册表、代码提交和证据哈希；
 - DWSIM、IDAES、Modelica/FMI 与自动 flowsheet 编译器保持 `planned`，未实现时无 adapter、必须 fail closed。
 
@@ -127,7 +128,7 @@ ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state
 3. `ASPENOPS_LICENSE_SLOTS` 与 `ASPENOPS_MAX_WORKERS` 共同限制并发。
 4. `.env` 中重复变量、未闭合引号和潜在密钥回显会被拒绝。
 5. 环境变量入口与 Python `Settings(...)` 直接构造使用同一 fail-closed 校验。
-6. 未知 backend/mode、字符串伪布尔值、非有限数、零/负预算和非 Path 参数会在对象创建时被拒绝。
+6. 未知 backend/mode、字符串伪布尔值、非有限数、零/负预算和非 `Path` 参数会在对象创建时被拒绝。
 7. 私钥、Token、许可证秘密、客户模型路径和生产数据不得进入仓库。
 
 完整 Windows 设置见 [Windows Setup](docs/windows-setup.md)。
@@ -137,8 +138,6 @@ ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state
 ## 配置与路径安全策略
 
 ![配置与路径安全策略](docs/assets/readme/policy-path-safety.svg)
-
-配置在创建 `Settings` 时完成统一验证，而不是等到 Worker 或 COM 启动后再失败：
 
 ```text
 environment or Python API
@@ -164,15 +163,25 @@ environment or Python API
 5. 失败写入必须回滚；污染 Worker 必须回收。
 6. Mock、Fake COM、公共 Windows 测试和签名均不能自行授予真实工程认证。
 
-结果只有在以下条件全部成立时才是 `ok=true`：
+---
+
+## 独立有效性门
+
+![独立模拟有效性门](docs/assets/readme/validity-gates.svg)
+
+结果不是因为模拟器方法返回就自动有效。AspenOps 分别检查：
 
 ```text
 communication_ok
 AND engine_ok
 AND converged
 AND feasible
+AND constraints_passed
 AND balances_passed
+AND finite_json_evidence
 ```
+
+约束和衡算中的 `NaN`、正负 Infinity、非数字值以及派生算术溢出都会 fail closed，并写入结构化违规代码；结果和证据使用 JSON 安全值，`allow_nan=False`。HYSYS 的运行状态使用明确布尔、COM `-1/0/1` 或受支持字符串解析，不使用 `bool("False")` 这类 Python truthiness 猜测。
 
 ---
 
@@ -243,20 +252,13 @@ mcp
 
 ![MCP 兼容性与 Scheduler 生命周期](docs/assets/readme/mcp-runtime-lifecycle.svg)
 
-AspenOps 2.0 当前使用 MCP Python SDK 1.x API。项目元数据和构建后的 Wheel `Requires-Dist` 都要求：
+项目元数据和构建后的 Wheel `Requires-Dist` 都要求：
 
 ```text
 mcp>=1.9,<2
 ```
 
-冻结环境锁定 `mcp 1.28.1`。运行时在导入 `FastMCP` 前读取已安装发行版版本：
-
-- 未安装 MCP：明确提示安装 frozen `agent` extra；
-- 主版本为 1：继续建立服务器；
-- 主版本不是 1 或版本不可解析：fail closed；
-- 构建后的 Wheel METADATA 由标准库解析器重新验证，`<20` 不能冒充 `<2`。
-
-FastMCP lifespan 负责：
+冻结环境锁定 `mcp 1.28.1`。运行时在导入 `FastMCP` 前验证 SDK；构建后的 Wheel METADATA 由标准库解析器重新验证，`<20` 不能冒充 `<2`。
 
 ```text
 server startup → scheduler.start()
@@ -323,7 +325,7 @@ uv run aspenops mcp
 
 ![约束优化闭环](docs/assets/readme/optimization-lifecycle.svg)
 
-优化器支持 continuous、integer、categorical 和 ordinal 变量，minimize/maximize 多目标及权重，并在进入求解前限制变量数、目标数、种群、代数和总评价次数。
+优化器支持 continuous、integer、categorical 和 ordinal 变量，minimize/maximize 多目标及权重，并限制变量数、目标数、种群、代数和总评价次数。
 
 ```text
 validate mixed variables and objectives
@@ -343,8 +345,6 @@ Mock 结果标记为 `control-plane-only`；真实 Aspen 结果保持 `licensed-
 
 ![耐久队列跨工作目录路径固定](docs/assets/readme/durable-path-portability.svg)
 
-`submit` 与 MCP 耐久提交在请求跨越进程边界前执行：
-
 ```text
 当前提交目录
 → 解析 model_path 与 registry_path
@@ -357,7 +357,7 @@ CLI 提交结果明确返回：
 
 ```text
 paths_pinned = true
-submission_cwd = <absolute submission directory>
+submission_cwd = absolute submission directory
 ```
 
 真实后端仍会再次执行允许根目录和 realpath 检查。直接调用低层 `BackgroundScheduler.submit()` 的 Python 代码应传入绝对路径，或先调用 `pin_durable_request_paths()`。
@@ -404,6 +404,23 @@ canonical physical identity
 
 ---
 
+## Worker 所有权与回收
+
+![Worker 所有权与回收](docs/assets/readme/worker-ownership-recycle.svg)
+
+```text
+source model
+→ private worker-generation copy
+→ spawned child process + one simulator owner
+→ correlated IPC request
+→ hard deadline and ownership supervision
+→ graceful close or verified recycle
+```
+
+回收原因包括 timeout、crash、protocol error、tainted write、point budget、worker age、cancellation 和 lease ownership loss。回收只作用于 AspenOps 核验归属的 Worker 或其受监督后代；原模型不被覆盖，旧临时副本在清理时删除。
+
+---
+
 ## 工业应用场景
 
 ![工业应用场景](docs/assets/readme/industrial-scenarios.svg)
@@ -444,7 +461,7 @@ Knowledge 只读；Concept 与 Parameter 只能输出验证后的 IR；Execution
 |---|---|---|---|
 | Mock | available | planned | 跨平台软件测试，不代表 Aspen 物理 |
 | Aspen Plus | available，持证 Windows | planned | 运行既有获批模型 |
-| HYSYS | available，持证 Windows | planned | 运行既有获批模型 |
+| HYSYS | available，持证 Windows | planned | 运行既有获批模型；严格解析 solver running flag |
 | DWSIM | planned | planned | **未实现，无 adapter** |
 | IDAES | planned | planned | **未实现，无 adapter** |
 | Modelica/FMI | planned | planned | **未实现，无 adapter** |
@@ -461,7 +478,7 @@ Knowledge 只读；Concept 与 Parameter 只能输出验证后的 IR；Execution
 
 | 工作流 | 固定环境 | 作用 |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、IR、配置、缓存、优化和耐久队列 smoke |
+| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、IR、配置、缓存、优化、数值证据和耐久队列 smoke |
 | `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell、配置、路径、IR 和治理合同 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 受信 baseline/candidate、双冻结环境和稳定回归证据 |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 主干守卫、SHA 绑定、Mock/IR 软件门、证据隔离和真实 COM |
@@ -514,6 +531,25 @@ Mock 性能只代表编排性能，不代表真实 Aspen 求解速度。
 
 ---
 
+## 证据包完整性与真实性
+
+![证据包完整性与真实性](docs/assets/readme/evidence-integrity.svg)
+
+`write_run_bundle()` 使用 `allow_nan=False` 写入 `request.json`、`results.json` 和 `environment.json`。manifest 绑定请求、结果、模型、注册表、运行时 schema/version，以及每个成员的 SHA-256 和大小。
+
+```text
+bounded ZIP structure
+→ exact required members
+→ member size + SHA-256 declarations
+→ request / result / model / registry hashes
+→ optional Ed25519 manifest signature
+→ trusted-key verification
+```
+
+未签名包只提供内部完整性检查；Ed25519 只有在公钥可信时才提供来源真实性。哈希、签名和软件 PASS 均不证明物性、动力学或流程模型工程上正确。
+
+---
+
 ## 持证 Aspen 认证
 
 ![持证认证流程](docs/assets/readme/licensed-certification.svg)
@@ -545,7 +581,7 @@ PENDING_REAL_ASPEN_CERTIFICATION
 ```text
 .github/workflows/       四个权威自动化工作流
 docs/                    架构、Windows、性能、认证与质量文档
-docs/assets/readme/      十七张受测试治理的 README SVG
+docs/assets/readme/      二十张受测试治理的 README SVG
 examples/                批处理、优化与 Process Intent 示例
 scripts/                 校验器、dashboard、benchmark 与 Windows 设置
 src/aspenops_nexus/      控制平面、后端、Worker、调度、缓存、优化、证据与 MCP
@@ -560,12 +596,14 @@ var/                     可复现基线、审计清单和本地运行状态
 | 现象 | 首先检查 | 处理原则 |
 |---|---|---|
 | `doctor --probe` 未就绪 | Python 位数、COM ProgID、许可证、允许目录 | 不绕过 preflight 或硬编码裸 COM |
-| 直接 `Settings(...)` 创建失败 | backend、mode、布尔字段、预算和 Path 类型 | 修正配置，不绕过构造期校验 |
+| 直接 `Settings(...)` 创建失败 | backend、mode、布尔字段、预算和 `Path` 类型 | 修正配置，不绕过构造期校验 |
 | 路径被拒绝 | `ASPENOPS_ALLOWED_ROOTS` 与 realpath | 将模型、registry、状态和输出放入获批绝对根目录 |
 | 提交通过但 scheduler 在另一目录启动 | `paths_pinned` 与 `submission_cwd` | 使用当前版本重新提交，数据库中应保存绝对模型和注册表路径 |
 | MCP 启动报告 SDK 大版本不兼容 | `python -m pip show mcp` | 安装 `mcp>=1.9,<2`；不要绕过版本门 |
 | MCP 服务退出后仍有 Worker | lifespan、Scheduler stop 与当前进程归属 | shutdown 必须执行 `scheduler.stop()` |
-| 批处理返回 `ok=false` | communication、engine、converged、feasible、balances | 分别修复，不把 Run2 返回当作收敛 |
+| 批处理返回 `ok=false` | communication、engine、converged、constraints、balances | 分别修复，不把 Run2 返回当作收敛 |
+| 结果出现 `constraint_non_finite` | 节点值、单位转换和派生溢出 | 不放宽限制；修复模型或量纲 |
+| 结果出现 `balance_non_finite` | 衡算项、系数、单位和残差 | 使用结构化 diagnostics 定位非有限项 |
 | 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务 | 启动调度服务 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
 | 缓存结果异常 | cache key、模型/registry 哈希、损坏记录 | 损坏记录应被删除并重新计算 |
@@ -584,6 +622,7 @@ var/                     可复现基线、审计清单和本地运行状态
 - Process Intent IR、严格验证、canonical JSON 和 SHA-256 图身份；
 - Aspen Plus/HYSYS 既有模型控制面；
 - 环境与 Python API 统一的 fail-closed Settings 和路径策略；
+- 独立通信、引擎、收敛、约束、衡算和有限数值证据门；
 - Mock、Fake COM、Windows Job Object、耐久调度、取消、缓存、单航班、优化和 MCP；
 - MCP 1.x 依赖/Wheel/运行时兼容门与 FastMCP 生命周期资源清理；
 - 冻结 CI、dashboard、证据 bundle 和持证认证边界。
@@ -610,27 +649,30 @@ var/                     可复现基线、审计清单和本地运行状态
 
 ## AI 生成视觉资产清单
 
-以下十七张原创、自包含 SVG 存放在 `docs/assets/readme/`：
+以下二十张原创、自包含 SVG 存放在 `docs/assets/readme/`：
 
 1. `hero-architecture.svg`
 2. `policy-path-safety.svg`
-3. `process-intent-ir.svg`
-4. `agent-pipeline.svg`
-5. `backend-capabilities.svg`
-6. `com-isolation.svg`
-7. `cli-mcp-workflow.svg`
-8. `mcp-runtime-lifecycle.svg`
-9. `optimization-lifecycle.svg`
-10. `durable-path-portability.svg`
-11. `scheduler-lifecycle.svg`
-12. `cache-singleflight.svg`
-13. `industrial-scenarios.svg`
-14. `test-matrix.svg`
-15. `evidence-chain.svg`
-16. `licensed-certification.svg`
-17. `roadmap.svg`
+3. `validity-gates.svg`
+4. `process-intent-ir.svg`
+5. `agent-pipeline.svg`
+6. `backend-capabilities.svg`
+7. `com-isolation.svg`
+8. `worker-ownership-recycle.svg`
+9. `cli-mcp-workflow.svg`
+10. `mcp-runtime-lifecycle.svg`
+11. `optimization-lifecycle.svg`
+12. `durable-path-portability.svg`
+13. `scheduler-lifecycle.svg`
+14. `cache-singleflight.svg`
+15. `industrial-scenarios.svg`
+16. `test-matrix.svg`
+17. `evidence-chain.svg`
+18. `evidence-integrity.svg`
+19. `licensed-certification.svg`
+20. `roadmap.svg`
 
-`tests/test_readme_visual_assets.py` 检查双语引用、完整清单、XML、大小、路径、无障碍、渲染可移植性、脚本、事件、远程资源、Data URI 和三道工作流接入。
+`tests/test_readme_visual_assets.py` 检查双语引用、完整清单、XML、大小、路径、无障碍、渲染可移植性、脚本、事件、远程资源、Data URI、源码能力绑定和三道工作流接入。
 
 ---
 
