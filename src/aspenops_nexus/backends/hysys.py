@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from ..compat import discover_hysys_candidates
-from ..convergence import ConvergenceState, classify_convergence, poll_engine_idle
+from ..convergence import (
+    ConvergenceState,
+    classify_convergence,
+    normalize_running_flag,
+    poll_engine_idle,
+)
 from ..registry import ResolvedNode
 from .base import BackendError, SimulatorBackend
 
@@ -130,7 +135,9 @@ class HysysBackend(SimulatorBackend):
                 value = getattr(solver, attribute)
                 if callable(value):
                     value = value()
-                return bool(value)
+                normalized = normalize_running_flag(value)
+                if normalized is not None:
+                    return normalized
             except Exception:
                 continue
         return None
