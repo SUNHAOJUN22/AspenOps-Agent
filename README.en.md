@@ -18,7 +18,7 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses fourteen original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, signatures and compatibility checks are never presented as licensed Aspen engineering certification.
+> This README uses seventeen original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, signatures and compatibility checks are never presented as licensed Aspen engineering certification.
 
 ---
 
@@ -35,12 +35,12 @@
 | Coverage floor | 94.5% |
 | Archived public Windows gate | Actions run `29814739334`, 104 passed, 2.06 s |
 | MCP tools | 14 |
-| Frozen MCP SDK | `1.28.1`; non-frozen installs require `mcp>=1.9,<2` |
+| Frozen MCP SDK | `1.28.1`; package requirement `mcp>=1.9,<2` |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
 These figures come from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence.
 
-Public CI can validate the control plane, path policy, process isolation, scheduler, archives, interfaces, Process Intent, MCP compatibility and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
+Public CI can validate the control plane, configuration and path policy, process isolation, scheduling, caching, optimization, archives, interfaces, Process Intent, MCP compatibility and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
 
 ---
 
@@ -83,10 +83,17 @@ uv run aspenops doctor --probe
 
 The first run defaults to Mock. Mock is portable software evidence, not Aspen Plus/HYSYS physical evidence.
 
-For non-frozen Wheel installation outside the repository, constrain the MCP Python SDK to the supported 1.x line:
+Outside the repository, the `agent` extra carries its own supported MCP 1.x constraint in Wheel metadata:
 
 ```bash
-python -m pip install "aspenops-nexus[agent]" "mcp>=1.9,<2"
+python -m pip install "aspenops-nexus[agent]"
+python -m pip show mcp
+```
+
+The accepted range is:
+
+```text
+mcp>=1.9,<2
 ```
 
 ---
@@ -119,9 +126,30 @@ Rules:
 2. `..`, symlinks, Windows junctions and realpath escapes are rejected.
 3. `ASPENOPS_LICENSE_SLOTS` and `ASPENOPS_MAX_WORKERS` jointly bound concurrency.
 4. Duplicate `.env` variables, unbalanced quotes and potential secret echoing are rejected.
-5. Private keys, tokens, licence secrets, customer model paths and production data do not belong in the repository.
+5. Environment loading and direct Python `Settings(...)` construction use the same fail-closed validation.
+6. Unknown backends or modes, string pseudo-Booleans, non-finite numbers, zero/negative budgets and non-path values are rejected during object construction.
+7. Private keys, tokens, licence secrets, customer model paths and production data do not belong in the repository.
 
 See [Windows Setup](docs/windows-setup.md).
+
+---
+
+## Configuration and path safety
+
+![Configuration and path safety](docs/assets/readme/policy-path-safety.svg)
+
+Configuration is validated when `Settings` is created, before any Worker or COM process exists:
+
+```text
+environment or Python API
+→ backend / mode / Boolean / budget validation
+→ real-backend absolute-root validation
+→ expanduser + resolve
+→ relative_to approved root
+→ readonly / default / enhanced operation gate
+```
+
+Truthy strings such as `visible="false"` and `cache_failures="false"` are not accepted as Booleans. Missing real-backend roots, escaped state/output paths and invalid budgets fail before Worker, COM or evidence creation.
 
 ---
 
@@ -172,7 +200,7 @@ uv run python scripts/render_process_ir_dashboard.py \
   --output-svg var/ci/process-ir-dashboard.svg
 ```
 
-`process-ir-dashboard.html` exposes issues, backend capabilities and the agent pipeline. DWSIM, IDAES, Modelica and Aspen/HYSYS automatic flowsheet compilers remain planned; there is currently **no adapter** for those unimplemented routes.
+`process-ir-dashboard.html` exposes issues, backend capabilities and the Agent pipeline. DWSIM, IDAES, Modelica and Aspen/HYSYS automatic flowsheet compilers remain planned; there is currently **no adapter** for those unimplemented routes.
 
 ---
 
@@ -186,7 +214,7 @@ All three surfaces reuse the same Settings, Policy, Scheduler, Worker and Eviden
 |---|---|---|
 | CLI | demo, diagnosis, batch, scheduling, optimization and evidence | parameterized commands, no arbitrary code |
 | Python | embed batch, scheduling, optimization and evidence | same policies and data models |
-| MCP | agent discovery, planning, submission, observation and verification | exactly 14 narrow tools, no arbitrary Shell/COM/Tree Path |
+| MCP | Agent discovery, planning, submission, observation and verification | exactly 14 narrow tools, no arbitrary Shell/COM/Tree Path |
 
 Commands:
 
@@ -215,20 +243,20 @@ mcp
 
 ![MCP compatibility and Scheduler lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg)
 
-AspenOps 2.0 currently targets the MCP Python SDK 1.x API. The frozen repository environment locks `mcp 1.28.1`; a non-frozen installation must use:
+AspenOps 2.0 uses the MCP Python SDK 1.x API. Project metadata and the built Wheel `Requires-Dist` both require:
 
 ```text
 mcp>=1.9,<2
 ```
 
-Before importing `FastMCP`, the runtime reads the installed distribution version:
+The frozen environment resolves `mcp 1.28.1`. Before importing `FastMCP`, the runtime reads the installed distribution version:
 
-- missing MCP produces an explicit frozen `agent` extra installation message;
-- major version 1 proceeds;
-- any other major version or an unparseable version fails closed;
-- an incompatible import is never presented as a working server.
+- a missing SDK reports the frozen `agent` installation command;
+- major version 1 may continue;
+- any other or unparseable major fails closed;
+- a standard-library parser rechecks built Wheel METADATA, so `<20` cannot impersonate `<2`.
 
-The Scheduler is no longer started without a shutdown boundary after `build_server()`. FastMCP lifespan owns:
+FastMCP lifespan owns the durable runtime:
 
 ```text
 server startup → scheduler.start()
@@ -236,7 +264,7 @@ serve 14 constrained tools
 server shutdown → scheduler.stop() → Worker / PoolManager cleanup
 ```
 
-This lifecycle proves software resource governance only; it does not certify a real Aspen model.
+This lifecycle is software evidence only; it does not grant licensed Aspen engineering certification.
 
 ---
 
@@ -246,7 +274,6 @@ This lifecycle proves software resource governance only; it does not certify a r
 
 ```bash
 uv run aspenops dry-run examples/batch-request.example.json
-
 uv run aspenops run-batch examples/batch-request.example.json \
   --output var/aspenops-state/results.json \
   --bundle var/aspenops-state/run-bundle.zip
@@ -254,13 +281,13 @@ uv run aspenops run-batch examples/batch-request.example.json \
 
 ### 2. Run a durable background job
 
-Terminal 1 starts the long-lived scheduler service:
+Terminal 1:
 
 ```bash
 uv run aspenops scheduler
 ```
 
-Terminal 2 validates, enqueues and reads the same durable state database:
+Terminal 2:
 
 ```bash
 JOB_ID=$(
@@ -268,11 +295,6 @@ JOB_ID=$(
   python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
 )
 uv run aspenops job "$JOB_ID"
-```
-
-Request cancellation when needed:
-
-```bash
 uv run aspenops cancel "$JOB_ID" --grace-s 2
 ```
 
@@ -297,11 +319,31 @@ uv run aspenops mcp
 
 ---
 
+## Constrained optimization lifecycle
+
+![Constrained optimization lifecycle](docs/assets/readme/optimization-lifecycle.svg)
+
+The optimizer supports continuous, integer, categorical and ordinal variables; weighted minimize/maximize objectives; and pre-solve limits over variables, objectives, population, generations and total evaluations.
+
+```text
+validate mixed variables and objectives
+→ enforce finite optimization budget
+→ seeded differential-evolution batches
+→ CasePool / Worker evaluation
+→ communication + convergence + constraints + balances
+→ atomic checkpoint + cancellation
+→ best candidate + Pareto evidence
+```
+
+Mock results are marked `control-plane-only`. Real Aspen results remain `licensed-runtime-pending-engineering-review` and `PENDING_REAL_ASPEN_CERTIFICATION`; a Pareto front is not engineering approval.
+
+---
+
 ## Cross-process path pinning
 
 ![Durable queue path portability](docs/assets/readme/durable-path-portability.svg)
 
-Before a request crosses a process boundary, CLI and MCP durable submission perform:
+Before a request crosses a durable process boundary, `submit` and MCP durable submissions perform:
 
 ```text
 submission working directory
@@ -311,22 +353,20 @@ submission working directory
 → allow scheduler startup from any working directory
 ```
 
-The CLI submission response explicitly records:
+The CLI response records:
 
 ```text
 paths_pinned = true
 submission_cwd = <absolute submission directory>
 ```
 
-This preserves the original convention—relative paths are interpreted from the submission call working directory—while preventing a long-lived scheduler launched elsewhere from changing model identity. Real backends still reapply allowed-root and realpath policy. Direct low-level Python calls to `BackgroundScheduler.submit()` should use absolute paths or first call `pin_durable_request_paths()`.
+Real backends reapply allowed-root and realpath policy. Direct Python callers of low-level `BackgroundScheduler.submit()` should provide absolute paths or call `pin_durable_request_paths()` first.
 
 ---
 
 ## Scheduling and recovery
 
 ![Durable scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
-
-`submit` validates and persists; `scheduler` is the long-lived service; `job` reads state; `cancel` sets cancellation and owned-Worker termination deadlines.
 
 ```text
 validate
@@ -340,8 +380,27 @@ validate
 - expired leases or service restart move work with remaining attempts to `retry_wait`;
 - work after its final attempt becomes `dead_letter`;
 - cancellation requested during recovery becomes `cancelled`;
-- cancellation can terminate only an owned Worker;
+- cancellation may terminate only an owned Worker;
 - evidence and terminal state are committed atomically.
+
+---
+
+## Cache, batch deduplication and singleflight
+
+![Cache, batch deduplication and singleflight](docs/assets/readme/cache-singleflight.svg)
+
+Cache identity binds the runtime schema, package version, backend, stable runtime identity, model SHA-256, registry SHA-256 and physical request. Lookup uses an in-memory LRU and SQLite WAL; corrupt JSON is discarded and recomputed.
+
+```text
+canonical physical identity
+→ memory LRU / SQLite WAL lookup
+→ same-batch duplicate collapse
+→ concurrent single-point leader + followers
+→ one governed solver call
+→ computed / persistent_cache / inflight_singleflight provenance
+```
+
+Only requests that satisfy cache policy are stored. A concurrent follower can observe cancellation while waiting, and singleflight never weakens model, registry or request identity.
 
 ---
 
@@ -402,12 +461,12 @@ The four authoritative workflows are:
 
 | Workflow | Pinned environment | Responsibility |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, IR and durable-queue smoke |
-| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, paths, IR and governance |
+| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, IR, configuration, cache, optimization and durable-queue smoke |
+| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, configuration, paths, IR and governance |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, two frozen environments and stable-regression evidence |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR software gates, evidence isolation and real COM |
 
-Frozen audits cover Linux and Windows × Python 3.11, 3.12 and 3.13: six audit targets. Hosted runners, third-party Actions and `uv 0.11.16` are pinned; workflow permission is `contents: read`.
+Frozen dependency audits cover Linux and Windows × Python 3.11, 3.12 and 3.13: six audit combinations. Hosted runners, third-party Actions and `uv 0.11.16` are pinned; workflow permission is `contents: read`.
 
 ```bash
 uv lock --check
@@ -443,7 +502,7 @@ validated intent
 → qualified human acceptance
 ```
 
-Performance dispatch first verifies `GITHUB_REF == refs/heads/main`. A non-main dispatch writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** rather than becoming all-skipped. `actions/checkout` loads the trusted workflow revision; candidate and baseline pass `--end-of-options` and ancestry checks before validated detached checkout.
+Performance dispatch first verifies `GITHUB_REF == refs/heads/main`. A non-main dispatch writes `dispatch-ref.txt` and `dispatch-guard.log`, then **fails explicitly with exit code 2** instead of becoming all-skipped. `actions/checkout` loads the trusted workflow revision; candidate and baseline pass `--end-of-options` and ancestry checks before validated detached checkout.
 
 Default performance baseline:
 
@@ -468,7 +527,7 @@ The protected workflow:
 5. records identity in `run-metadata.txt`;
 6. stores Mock JUnit, dashboards, evidence copies and final `job_status` in runner temp;
 7. uses `LICENSED_EVIDENCE_DIR=ASPENOPS_STATE_DIR/licensed-certification/<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`;
-8. serializes real runs with concurrency group `licensed-aspen-certification`;
+8. runs real work serially with concurrency group `licensed-aspen-certification`;
 9. uploads only the current `${{ runner.temp }}` directory, includes `github.run_attempt`, and uses `if-no-files-found: error`.
 
 Software can emit only:
@@ -486,10 +545,10 @@ Real certification still requires licensed Windows, a valid licence, an approved
 ```text
 .github/workflows/       four authoritative workflows
 docs/                    architecture, Windows, performance, certification and quality
-docs/assets/readme/      fourteen governed README SVGs
+docs/assets/readme/      seventeen governed README SVGs
 examples/                batch, optimization and Process Intent examples
 scripts/                 validators, dashboards, benchmarks and Windows setup
-src/aspenops_nexus/      control plane, backends, Workers, scheduler, optimization, evidence and MCP
+src/aspenops_nexus/      control plane, backends, Workers, scheduling, cache, optimization, evidence and MCP
 tests/                   Linux, Windows, workflow, documentation and security contracts
 var/                     reproducible baselines, audit manifests and local state
 ```
@@ -501,15 +560,17 @@ var/                     reproducible baselines, audit manifests and local state
 | Symptom | Check first | Principle |
 |---|---|---|
 | `doctor --probe` is not ready | Python bitness, COM ProgID, licence and allowed roots | do not bypass preflight or hard-code raw COM |
+| Direct `Settings(...)` construction fails | backend, mode, Boolean fields, budgets and path types | correct the configuration; do not bypass construction-time validation |
 | A path is rejected | `ASPENOPS_ALLOWED_ROOTS` and realpath | keep model, registry, state and output inside approved absolute roots |
-| Submit succeeds but scheduler starts elsewhere | `paths_pinned` and `submission_cwd` | resubmit with the current version; persisted model and registry paths must be absolute |
-| MCP startup reports an incompatible SDK major | `python -m pip show mcp` | install `mcp>=1.9,<2`; do not bypass the version gate |
-| Workers remain after MCP shutdown | lifespan, Scheduler stop and current process ownership | use the current version; shutdown must call `scheduler.stop()` |
+| Submit succeeds but scheduler starts elsewhere | `paths_pinned` and `submission_cwd` | resubmit; persisted model and registry paths must be absolute |
+| MCP reports an incompatible SDK major | `python -m pip show mcp` | install `mcp>=1.9,<2`; do not bypass the gate |
+| Workers remain after MCP exit | lifespan, Scheduler stop and process ownership | shutdown must execute `scheduler.stop()` |
 | Batch returns `ok=false` | communication, engine, converged, feasible and balances | repair each gate separately; Run2 return is not convergence |
-| A job remains `pending` | whether `aspenops scheduler` is running | submit does not keep running after its process exits |
+| A job remains `pending` | whether `aspenops scheduler` is running | start the scheduler service |
 | A job remains running | lease, heartbeat, Worker PID and cancellation deadline | let the scheduler recover the owned Worker |
-| Dashboard is `INCOMPLETE` | current job JUnit/coverage generation | do not reuse stale evidence or treat missing evidence as PASS |
-| README SVG does not render | case, XML, font and resource-safety contracts | use repository-local, self-contained SVG without embedded CJK text |
+| Cache output looks wrong | cache key, model/registry digests and corrupt records | corrupt entries must be discarded and recomputed |
+| Dashboard is `INCOMPLETE` | current-job JUnit/coverage generation | do not reuse stale evidence or treat missing evidence as PASS |
+| README SVG does not render | case, XML, font and resource-safety contracts | use repository-local self-contained SVG without embedded CJK text |
 | Licensed workflow does not run | ref, `expected_head_sha`, environment approval and runner labels | run only on protected `main` and a licensed host |
 
 ---
@@ -522,8 +583,9 @@ var/                     reproducible baselines, audit manifests and local state
 
 - Process Intent IR, strict validation, canonical JSON and SHA-256 graph identity;
 - Aspen Plus/HYSYS existing-model control plane;
-- Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, optimization and MCP;
-- MCP 1.x fail-closed compatibility gate and FastMCP lifecycle cleanup;
+- fail-closed Settings and path policy shared by environment and Python API construction;
+- Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, cache, singleflight, optimization and MCP;
+- MCP 1.x dependency/Wheel/runtime gates and FastMCP lifecycle cleanup;
 - frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
@@ -548,22 +610,25 @@ No capability moves from planned to available without **code + tests + evidence*
 
 ## AI-generated visual assets
 
-The fourteen original, self-contained SVGs under `docs/assets/readme/` are:
+The seventeen original, self-contained SVGs under `docs/assets/readme/` are:
 
 1. `hero-architecture.svg`
-2. `process-intent-ir.svg`
-3. `agent-pipeline.svg`
-4. `backend-capabilities.svg`
-5. `com-isolation.svg`
-6. `cli-mcp-workflow.svg`
-7. `mcp-runtime-lifecycle.svg`
-8. `durable-path-portability.svg`
-9. `scheduler-lifecycle.svg`
-10. `industrial-scenarios.svg`
-11. `test-matrix.svg`
-12. `evidence-chain.svg`
-13. `licensed-certification.svg`
-14. `roadmap.svg`
+2. `policy-path-safety.svg`
+3. `process-intent-ir.svg`
+4. `agent-pipeline.svg`
+5. `backend-capabilities.svg`
+6. `com-isolation.svg`
+7. `cli-mcp-workflow.svg`
+8. `mcp-runtime-lifecycle.svg`
+9. `optimization-lifecycle.svg`
+10. `durable-path-portability.svg`
+11. `scheduler-lifecycle.svg`
+12. `cache-singleflight.svg`
+13. `industrial-scenarios.svg`
+14. `test-matrix.svg`
+15. `evidence-chain.svg`
+16. `licensed-certification.svg`
+17. `roadmap.svg`
 
 `tests/test_readme_visual_assets.py` checks bilingual references, exact inventory, XML, size, path confinement, accessibility, renderer portability, scripts, events, remote resources, Data URIs and all three software gates.
 
