@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 
@@ -20,8 +21,30 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     assert "/tmp/aspenops-wheel/bin/aspenops scheduler --help" in text
     assert "/tmp/aspenops-wheel/bin/aspenops cancel --help" in text
     assert "/tmp/aspenops-wheel/bin/aspenops optimize --help" in text
+    assert "_require_supported_mcp_sdk" in text
+    assert "wheel-mcp-version.log" in text
     assert "tests/test_cli_durable_queue.py" in text
     assert "uv run aspenops submit examples/batch-request.example.json" in text
+    assert 'data["paths_pinned"] is True' in text
     assert "uv run aspenops cancel \"$job_id\" --grace-s 0" in text
     assert "uv run aspenops optimize examples/optimization-request.example.json" in text
     assert "/tmp/aspenops-wheel/bin/pip install dist/*.whl" not in text
+
+
+def test_mcp_runtime_lock_and_documentation_remain_on_supported_major() -> None:
+    lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
+    packages = lock.get("package", [])
+    versions = [str(package["version"]) for package in packages if package.get("name") == "mcp"]
+    assert len(versions) == 1
+    assert versions[0].split(".", 1)[0] == "1"
+
+    server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
+    assert 'SUPPORTED_MCP_MAJOR = 1' in server
+    assert 'MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"' in server
+    assert "_require_supported_mcp_sdk" in server
+    assert "_scheduler_lifespan" in server
+
+    for readme in (Path("README.md"), Path("README.en.md")):
+        text = readme.read_text(encoding="utf-8")
+        assert "mcp>=1.9,<2" in text
+        assert "mcp-runtime-lifecycle.svg" in text
