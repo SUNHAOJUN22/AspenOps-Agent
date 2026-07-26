@@ -43,13 +43,14 @@ class CountingBackend(MockBackend):
 
 
 class NonFiniteReadBackend(MockBackend):
-    def __init__(self, key: str) -> None:
+    def __init__(self, key: str, value: float = float("nan")) -> None:
         super().__init__()
         self.key = key
+        self.value = value
 
     def read(self, node: ResolvedNode) -> Any:
         if node.key == self.key:
-            return float("nan")
+            return self.value
         return super().read(node)
 
 
@@ -209,8 +210,19 @@ def test_non_finite_required_output_is_sanitized_and_rejected() -> None:
     json.dumps(result.to_dict(), allow_nan=False)
 
 
-def test_non_finite_constraint_cannot_pass_via_nan_comparison() -> None:
-    backend = NonFiniteReadBackend("stream.output.purity")
+@pytest.mark.parametrize(
+    ("value", "label"),
+    [
+        (float("nan"), "nan"),
+        (float("inf"), "positive_infinity"),
+        (float("-inf"), "negative_infinity"),
+    ],
+)
+def test_non_finite_constraint_cannot_pass_via_numeric_comparison(
+    value: float,
+    label: str,
+) -> None:
+    backend = NonFiniteReadBackend("stream.output.purity", value)
     backend.open(MODEL)
 
     result = evaluate(backend, NodeRegistry(REGISTRY), constraint_only_request())
@@ -222,7 +234,7 @@ def test_non_finite_constraint_cannot_pass_via_nan_comparison() -> None:
     assert detail["actual"] is None
     assert detail["violation"] is None
     assert detail["passed"] is False
-    assert detail["non_finite_value"] == "nan"
+    assert detail["non_finite_value"] == label
     assert not result.feasible
     json.dumps(result.to_dict(), allow_nan=False)
 
