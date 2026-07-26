@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from aspenops_nexus.mcp_server import _require_supported_mcp_sdk, build_server
+from aspenops_nexus.wheel_metadata import inspect_wheel
 
 
 async def main() -> None:
@@ -16,8 +17,6 @@ async def main() -> None:
     wheel_candidates = sorted(dist_dir.glob("aspenops_nexus-*.whl"))
     wheel_metadata: dict[str, object]
     if wheel_candidates:
-        from check_wheel_metadata import inspect_wheel
-
         wheel_metadata = inspect_wheel(dist_dir)
     else:
         wheel_metadata = {
