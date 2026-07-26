@@ -19,7 +19,7 @@
 - bound Scheduler startup and Worker/PoolManager cleanup to FastMCP lifespan instead of leaving an unowned service fabric after server shutdown;
 - made source tests, actual built-Wheel `METADATA` inspection, locked-Wheel smoke and three-platform governance verify MCP package metadata, version and lifecycle contracts;
 - applied the same fail-closed backend, mode, Boolean, `Path` and finite-resource validation to environment loading and direct Python `Settings(...)` construction;
-- required backend run flags to be real Boolean values, normalized HYSYS COM running-state flags without Python truthiness, and kept unknown simulator states fail closed;
+- required backend run flags to be real Boolean values, routed Aspen Plus and HYSYS public execution through explicit COM running-state normalization, and kept unknown simulator states fail closed;
 - rejected non-numeric, non-finite and derived-overflow constraint or balance evidence, sanitized backend diagnostics to JSON-safe values and preserved `allow_nan=False` evidence writing;
 - made the numeric/protocol smoke execute in Linux, public Windows and the pre-licensed-COM software gate;
 - made run-bundle `all_ok` use literal Boolean semantics, recomputed it during verification and rejected invalid or multiline Ed25519 key IDs before writing;
