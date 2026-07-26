@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .aspen_plus import AspenPlusBackend
+from .aspen_plus_strict import AspenPlusBackend
 from .base import SimulatorBackend
 from .hysys import HysysBackend
 from .mock import MockBackend
