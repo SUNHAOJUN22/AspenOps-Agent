@@ -11,6 +11,7 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "uv export --frozen" in text
+    assert "--extra agent" in text
     assert "--no-default-groups" in text
     assert "--no-emit-project" in text
     assert "--format requirements.txt" in text
