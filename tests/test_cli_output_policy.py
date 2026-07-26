@@ -151,3 +151,47 @@ def test_preflight_rejects_output_before_loading_the_plan(
             )
         )
     assert loaded is False
+
+
+def test_durable_request_paths_are_pinned_cross_platform(tmp_path: Path) -> None:
+    submission_cwd = tmp_path / "submitter"
+    normalized = cli._normalize_durable_request(
+        {
+            "model_path": "models/case.json",
+            "registry_path": "registries/nodes.json",
+        },
+        submission_cwd=submission_cwd,
+    )
+
+    assert Path(normalized["model_path"]).is_absolute()
+    assert Path(normalized["registry_path"]).is_absolute()
+    assert normalized["model_path"] == str((submission_cwd / "models/case.json").resolve())
+    assert normalized["metadata"]["submission_cwd"] == str(submission_cwd.resolve())
+
+
+def test_cancel_policy_clamps_negative_grace_on_windows_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active = settings(tmp_path)
+    install_settings(monkeypatch, active)
+    calls: list[tuple[str, float]] = []
+    printed: list[dict[str, Any]] = []
+
+    class FakeStore:
+        def __init__(self, path: Path) -> None:
+            self.path = path
+
+        def cancel(self, job_id: str, grace_s: float) -> bool:
+            calls.append((job_id, grace_s))
+            return True
+
+        def get(self, job_id: str) -> dict[str, Any]:
+            return {"job_id": job_id, "status": "cancelled"}
+
+    monkeypatch.setattr(cli, "JobStore", FakeStore)
+    monkeypatch.setattr(cli, "_json_print", printed.append)
+
+    assert cli.command_cancel(Namespace(job_id="job-1", grace_s=-3)) == 0
+    assert calls == [("job-1", 0.0)]
+    assert printed[-1]["job"]["status"] == "cancelled"
