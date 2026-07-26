@@ -103,11 +103,11 @@ class Settings:
         _require_bool("cache_failures", self.cache_failures)
 
         if not isinstance(self.allowed_roots, tuple):
-            raise ValueError("allowed_roots must be a tuple of paths")
-        if any(not isinstance(root, str | os.PathLike) for root in self.allowed_roots):
-            raise ValueError("Every allowed_roots entry must be path-like")
-        if not isinstance(self.state_dir, str | os.PathLike):
-            raise ValueError("state_dir must be path-like")
+            raise ValueError("allowed_roots must be a tuple of Path values")
+        if any(not isinstance(root, Path) for root in self.allowed_roots):
+            raise ValueError("Every allowed_roots entry must be a Path")
+        if not isinstance(self.state_dir, Path):
+            raise ValueError("state_dir must be a Path")
 
         for name in (
             "license_slots",
@@ -135,8 +135,7 @@ class Settings:
         ):
             _require_float(name, getattr(self, name), minimum)
 
-        state_text = str(self.state_dir).strip()
-        if not state_text:
+        if not str(self.state_dir).strip():
             raise ValueError("state_dir must be non-empty")
 
         if self.backend == "mock":
@@ -144,11 +143,11 @@ class Settings:
         if not self.allowed_roots:
             raise ValueError("Real backends require ASPENOPS_ALLOWED_ROOTS")
 
-        roots = tuple(Path(root).expanduser() for root in self.allowed_roots)
+        roots = tuple(root.expanduser() for root in self.allowed_roots)
         if any(not root.is_absolute() for root in roots):
             raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")
 
-        state_path = Path(self.state_dir).expanduser()
+        state_path = self.state_dir.expanduser()
         if not state_path.is_absolute():
             raise ValueError("ASPENOPS_STATE_DIR must be absolute for a real backend")
 
