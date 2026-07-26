@@ -9,7 +9,8 @@
 - added flowsheet benchmark records that separate topology, compiler, execution, convergence, balances, repair and human intervention;
 - added Process IR validation commands, HTML/SVG visual evidence and Linux/Windows/licensed-Mock CI contracts;
 - added a real `aspenops scheduler` service so CLI `submit` durably enqueues work instead of relying on a daemon thread that ends with the submitting process;
-- pinned relative model and registry paths at submission, persisted `submission_cwd`, and made queued execution independent of the scheduler working directory;
+- centralized durable request identity in `durable_request.py`, with CLI and MCP pinning relative model and registry paths before scheduling;
+- persisted `submission_cwd`, documented the direct Python helper contract, and made public queued execution independent of Scheduler working directory;
 - added `aspenops cancel` with immediate pending/retry cancellation, active-job grace deadlines and owned-Worker termination boundaries;
 - made CLI `job` read durable state without constructing an unused PoolManager or Worker fabric;
 - added a portable constrained-optimization example and made the optimization tests execute that published document directly;
