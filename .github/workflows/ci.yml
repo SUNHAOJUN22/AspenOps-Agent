@@ -152,6 +152,8 @@ jobs:
               uv run aspenops submit examples/batch-request.example.json
           )"
           printf '%s\n' "$submit_json" > var/ci/readme-submit.json
+          python -c \
+            'import json,pathlib; data=json.loads(pathlib.Path("var/ci/readme-submit.json").read_text()); assert data["paths_pinned"] is True; assert pathlib.Path(data["submission_cwd"]).is_absolute()'
           job_id="$(
             printf '%s' "$submit_json" |
               python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
@@ -228,6 +230,9 @@ jobs:
           /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certify-licensed --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops verify-licensed-bundle --help >/dev/null
+          /tmp/aspenops-wheel/bin/python -c \
+            "from aspenops_nexus.mcp_server import _require_supported_mcp_sdk; print(_require_supported_mcp_sdk())" \
+            | tee var/ci/wheel-mcp-version.log
           /tmp/aspenops-wheel/bin/python -c \
             "from aspenops_nexus.process_ir import ProcessIntent; print(ProcessIntent)"
           /tmp/aspenops-wheel/bin/python -c \
