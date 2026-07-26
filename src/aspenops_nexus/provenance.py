@@ -26,6 +26,7 @@ from .hashing import canonical_hash, sha256_file
 KeySource: TypeAlias = str | Path | bytes
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _RESERVED_MEMBERS = {"manifest.json", "manifest.sig", "signing-key-id.txt"}
+_MAX_KEY_ID_LENGTH = 128
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -50,6 +51,18 @@ def _json_bytes(value: Any) -> bytes:
 
 def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _results_all_ok(results: list[Any]) -> bool:
+    return all(isinstance(item, dict) and item.get("ok") is True for item in results)
+
+
+def _bounded_key_id(value: Any) -> str:
+    if not isinstance(value, str) or not value or len(value) > _MAX_KEY_ID_LENGTH:
+        raise ValueError("signing_key_id must be a non-empty bounded string")
+    if any(character in value for character in ("\x00", "\r", "\n")):
+        raise ValueError("signing_key_id must be one safe text line")
+    return value
 
 
 def _read_key_source(source: KeySource) -> bytes:
@@ -147,10 +160,15 @@ def write_run_bundle(
     private_key: Any = None
     if signing_private_key is not None:
         private_key = _load_private_key(signing_private_key)
+        key_id = (
+            _key_id(private_key.public_key())
+            if signing_key_id is None
+            else _bounded_key_id(signing_key_id)
+        )
         signing = {
             "status": "signed",
             "algorithm": "Ed25519",
-            "key_id": signing_key_id or _key_id(private_key.public_key()),
+            "key_id": key_id,
         }
 
     manifest = {
@@ -163,7 +181,7 @@ def write_run_bundle(
         "model_sha256": sha256_file(model_path),
         "registry_sha256": sha256_file(registry_path),
         "result_count": len(results),
-        "all_ok": all(bool(item.get("ok")) for item in results),
+        "all_ok": _results_all_ok(results),
         "members": {name: _member_record(payload) for name, payload in members.items()},
         "signing": signing,
     }
@@ -256,8 +274,10 @@ def _validate_signing(value: Any) -> tuple[dict[str, Any] | None, str | None]:
     elif status == "signed":
         if algorithm != "Ed25519":
             return None, "signed bundle must use Ed25519"
-        if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+        if not isinstance(key_id, str) or not key_id or len(key_id) > _MAX_KEY_ID_LENGTH:
             return None, "signed bundle key_id must be a non-empty bounded string"
+        if any(character in key_id for character in ("\x00", "\r", "\n")):
+            return None, "signed bundle key_id must be one safe text line"
     else:
         return None, "manifest signing status must be unsigned or signed"
     return {"status": status, "algorithm": algorithm, "key_id": key_id}, None
@@ -374,10 +394,15 @@ def verify_run_bundle(
                     and len(payload) == declaration["size"]
                 )
 
+            manifest_all_ok = manifest.get("all_ok")
             semantic_checks = {
                 "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
                 "results_sha256": canonical_hash(results) == manifest.get("results_sha256"),
                 "result_count": len(results) == manifest.get("result_count"),
+                "all_ok": (
+                    isinstance(manifest_all_ok, bool)
+                    and _results_all_ok(results) is manifest_all_ok
+                ),
             }
             content_valid = (
                 not unexpected
