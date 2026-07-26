@@ -4,8 +4,8 @@ import asyncio
 import json
 from pathlib import Path
 
-from check_wheel_metadata import inspect_wheel
 from aspenops_nexus.mcp_server import _require_supported_mcp_sdk, build_server
+from check_wheel_metadata import inspect_wheel
 
 
 async def main() -> None:
