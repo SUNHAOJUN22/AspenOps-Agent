@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from aspenops_nexus import cli
+from aspenops_nexus.durable_request import pin_durable_request_paths
 
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
@@ -38,7 +39,7 @@ def test_durable_request_paths_are_pinned_to_submission_directory(tmp_path: Path
         "metadata": {"case": "portable"},
     }
 
-    normalized = cli._normalize_durable_request(
+    normalized = pin_durable_request_paths(
         request,
         submission_cwd=submission_cwd,
     )
@@ -53,13 +54,13 @@ def test_durable_request_paths_are_pinned_to_submission_directory(tmp_path: Path
     }
     assert request["model_path"] == "models/case.json"
 
-    absolute = cli._normalize_durable_request(
+    absolute = pin_durable_request_paths(
         {"model_path": str(absolute_model)},
         submission_cwd=submission_cwd,
     )
     assert absolute["model_path"] == str(absolute_model.resolve())
 
-    minimal = cli._normalize_durable_request(
+    minimal = pin_durable_request_paths(
         {"backend": "mock"},
         submission_cwd=submission_cwd,
     )
