@@ -18,10 +18,13 @@
 - constrained the packaged `agent` extra to `mcp>=1.9,<2`, kept the frozen runtime on `mcp 1.28.1`, and added a fail-closed SDK major-version gate;
 - bound Scheduler startup and Worker/PoolManager cleanup to FastMCP lifespan instead of leaving an unowned service fabric after server shutdown;
 - made source tests, actual built-Wheel `METADATA` inspection, locked-Wheel smoke and three-platform governance verify MCP package metadata, version and lifecycle contracts;
-- applied the same fail-closed backend, mode, Boolean, path and finite-resource validation to environment loading and direct Python `Settings(...)` construction;
-- rebuilt the bilingual README as a complete installation, configuration, workflow, scheduling, caching, optimization, industrial-use and troubleshooting guide;
-- expanded the governed visual system to seventeen original, self-contained and repository-local SVG capability diagrams, including configuration/path policy, optimization lifecycle and cache/singleflight views;
-- bound the new diagrams to their real implementation markers and retained fail-closed inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
+- applied the same fail-closed backend, mode, Boolean, `Path` and finite-resource validation to environment loading and direct Python `Settings(...)` construction;
+- required backend run flags to be real Boolean values, normalized HYSYS COM running-state flags without Python truthiness, and kept unknown simulator states fail closed;
+- rejected non-numeric, non-finite and derived-overflow constraint or balance evidence, sanitized backend diagnostics to JSON-safe values and preserved `allow_nan=False` evidence writing;
+- made the numeric/protocol smoke execute in Linux, public Windows and the pre-licensed-COM software gate;
+- rebuilt the bilingual README as a complete installation, configuration, validity, workflow, scheduling, caching, optimization, Worker-ownership, evidence-integrity, industrial-use and troubleshooting guide;
+- expanded the governed visual system to twenty original, self-contained and repository-local SVG capability diagrams, including validity gates, Worker ownership/recycling and evidence integrity/authenticity;
+- bound every added diagram to real implementation markers and retained exact inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
 - retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
 
