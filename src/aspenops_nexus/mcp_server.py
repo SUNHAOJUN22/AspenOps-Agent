@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .batch import dry_run_document, run_batch_document
 from .config import Settings
 from .doctor import diagnose
+from .durable_request import pin_durable_request_paths
 from .policy import Policy
 from .provenance import verify_run_bundle
 from .registry import NodeRegistry
@@ -51,6 +53,10 @@ class AspenOpsTools:
         self.settings = settings
         self.scheduler = scheduler
 
+    @staticmethod
+    def _durable_request(request: dict[str, Any]) -> dict[str, Any]:
+        return pin_durable_request_paths(request, submission_cwd=Path.cwd())
+
     def system_info(self) -> dict[str, Any]:
         """Return runtime, policy, worker limits and locally registered Aspen COM candidates."""
         result = diagnose(self.settings, probe=False)
@@ -88,13 +94,13 @@ class AspenOpsTools:
 
     def submit_batch(self, request: dict[str, Any]) -> dict[str, str]:
         """Validate and submit a durable background batch; returns a stable job ID."""
-        return {"job_id": self.scheduler.submit(request)}
+        return {"job_id": self.scheduler.submit(self._durable_request(request))}
 
     def submit_optimization(self, request: dict[str, Any]) -> dict[str, str]:
         """Submit a durable budgeted optimization job."""
         if "optimization" not in request:
             raise ValueError("Optimization request requires an optimization object")
-        return {"job_id": self.scheduler.submit(request)}
+        return {"job_id": self.scheduler.submit(self._durable_request(request))}
 
     def optimization_status(self, job_id: str) -> dict[str, Any]:
         """Return durable optimization lease, progress and cancellation state."""
