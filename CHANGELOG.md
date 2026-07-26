@@ -22,6 +22,7 @@
 - required backend run flags to be real Boolean values, normalized HYSYS COM running-state flags without Python truthiness, and kept unknown simulator states fail closed;
 - rejected non-numeric, non-finite and derived-overflow constraint or balance evidence, sanitized backend diagnostics to JSON-safe values and preserved `allow_nan=False` evidence writing;
 - made the numeric/protocol smoke execute in Linux, public Windows and the pre-licensed-COM software gate;
+- made run-bundle `all_ok` use literal Boolean semantics, recomputed it during verification and rejected invalid or multiline Ed25519 key IDs before writing;
 - rebuilt the bilingual README as a complete installation, configuration, validity, workflow, scheduling, caching, optimization, Worker-ownership, evidence-integrity, industrial-use and troubleshooting guide;
 - expanded the governed visual system to twenty original, self-contained and repository-local SVG capability diagrams, including validity gates, Worker ownership/recycling and evidence integrity/authenticity;
 - bound every added diagram to real implementation markers and retained exact inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
