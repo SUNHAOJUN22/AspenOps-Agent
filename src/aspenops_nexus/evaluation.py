@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
 from typing import Any
 
 from .backends.base import SimulatorBackend, TransactionState, WriteTransactionError
@@ -31,6 +32,43 @@ def _non_finite_label(value: float) -> str:
     if math.isnan(value):
         return "nan"
     return "positive_infinity" if value > 0 else "negative_infinity"
+
+
+def _json_safe(
+    value: Any,
+    *,
+    path: str,
+    issues: dict[str, str],
+) -> Any:
+    if value is None or isinstance(value, bool | str | int):
+        return value
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        issues[path] = _non_finite_label(value)
+        return None
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe(item, path=f"{path}.{key}", issues=issues)
+            for key, item in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return [
+            _json_safe(item, path=f"{path}[{index}]", issues=issues)
+            for index, item in enumerate(value)
+        ]
+    issues[path] = f"unsupported_type:{type(value).__name__}"
+    text = repr(value)
+    return text if len(text) <= 512 else f"{text[:512]}...[truncated]"
+
+
+def _strict_run_flag(run_info: dict[str, Any], name: str) -> bool:
+    value = run_info.get(name)
+    if not isinstance(value, bool):
+        raise TypeError(f"Backend run field {name} must be Boolean")
+    return value
 
 
 def _constraint_violation(spec: ConstraintSpec, actual: float) -> float:
@@ -87,13 +125,32 @@ def evaluate(
         )
         diagnostics["state_trace"].append("writes_committed")
 
-        run_info = backend.run()
+        raw_run_info = backend.run()
         communication_ok = True
-        engine_ok = bool(run_info.get("engine_returned", False))
-        convergence_state = str(run_info.get("convergence_state", "unknown"))
-        converged = convergence_state == "converged" and bool(run_info.get("converged", False))
-        diagnostics["run"] = run_info
-        diagnostics["runtime"] = backend.runtime_identity()
+        if not isinstance(raw_run_info, dict):
+            raise TypeError("Backend run result must be an object")
+        engine_ok = _strict_run_flag(raw_run_info, "engine_returned")
+        converged_flag = _strict_run_flag(raw_run_info, "converged")
+        convergence_state_raw = raw_run_info.get("convergence_state")
+        if not isinstance(convergence_state_raw, str) or not convergence_state_raw:
+            raise TypeError("Backend run field convergence_state must be a non-empty string")
+        convergence_state = convergence_state_raw
+        converged = convergence_state == "converged" and converged_flag
+
+        raw_runtime = backend.runtime_identity()
+        if not isinstance(raw_runtime, dict):
+            raise TypeError("Backend runtime identity must be an object")
+        diagnostic_issues: dict[str, str] = {}
+        diagnostics["run"] = _json_safe(raw_run_info, path="run", issues=diagnostic_issues)
+        diagnostics["runtime"] = _json_safe(
+            raw_runtime,
+            path="runtime",
+            issues=diagnostic_issues,
+        )
+        if diagnostic_issues:
+            diagnostics["backend_diagnostic_sanitization"] = diagnostic_issues
+            violations.append("backend_diagnostics_not_json_safe")
+            feasible = False
         diagnostics["state_trace"].append("engine_returned")
 
         raw_by_identity = dict(
@@ -127,14 +184,37 @@ def evaluate(
         total_constraint_violation = 0.0
         constraint_violation_finite = True
         for index, compiled_constraint in enumerate(active_plan.constraints):
-            actual = float(
-                _converted(
-                    raw_by_identity[compiled_constraint.identity],
-                    compiled_constraint.node,
-                    compiled_constraint.spec.unit,
-                )
-            )
             name = compiled_constraint.spec.name or f"constraint_{index}"
+            converted = _converted(
+                raw_by_identity[compiled_constraint.identity],
+                compiled_constraint.node,
+                compiled_constraint.spec.unit,
+            )
+            try:
+                actual = float(converted)
+            except (TypeError, ValueError):
+                constraint_violation_finite = False
+                constraint_details.append(
+                    {
+                        "name": name,
+                        "actual": None,
+                        "operator": compiled_constraint.spec.operator,
+                        "limit": compiled_constraint.spec.value,
+                        "tolerance": compiled_constraint.spec.tolerance,
+                        "violation": None,
+                        "unit": (
+                            compiled_constraint.spec.unit
+                            or compiled_constraint.node.native_unit
+                        ),
+                        "passed": False,
+                        "failure": "non_numeric",
+                        "observed_type": type(converted).__name__,
+                    }
+                )
+                violations.append(f"constraint_non_numeric:{name}")
+                violations.append(f"constraint_failed:{name}")
+                feasible = False
+                continue
             if not math.isfinite(actual):
                 constraint_violation_finite = False
                 constraint_details.append(
@@ -159,6 +239,28 @@ def evaluate(
                 feasible = False
                 continue
             violation = _constraint_violation(compiled_constraint.spec, actual)
+            if not math.isfinite(violation):
+                constraint_violation_finite = False
+                constraint_details.append(
+                    {
+                        "name": name,
+                        "actual": actual,
+                        "operator": compiled_constraint.spec.operator,
+                        "limit": compiled_constraint.spec.value,
+                        "tolerance": compiled_constraint.spec.tolerance,
+                        "violation": None,
+                        "unit": (
+                            compiled_constraint.spec.unit
+                            or compiled_constraint.node.native_unit
+                        ),
+                        "passed": False,
+                        "failure": "derived_overflow",
+                    }
+                )
+                violations.append(f"constraint_non_finite:{name}")
+                violations.append(f"constraint_failed:{name}")
+                feasible = False
+                continue
             passed = violation <= 0.0
             total_constraint_violation += violation
             constraint_details.append(
@@ -187,35 +289,51 @@ def evaluate(
 
         non_finite_balances: dict[str, list[dict[str, str]]] = {}
         for compiled_balance in active_plan.balances:
+            name = compiled_balance.spec.name
             signed_terms: list[float] = []
             absolute_terms: list[float] = []
             invalid_terms: list[dict[str, str]] = []
             for compiled_term in compiled_balance.terms:
-                converted = float(
-                    _converted(
-                        raw_by_identity[compiled_term.identity],
-                        compiled_term.node,
-                        compiled_term.spec.unit,
-                    )
+                converted = _converted(
+                    raw_by_identity[compiled_term.identity],
+                    compiled_term.node,
+                    compiled_term.spec.unit,
                 )
-                if not math.isfinite(converted):
+                try:
+                    numeric = float(converted)
+                except (TypeError, ValueError):
                     invalid_terms.append(
                         {
                             "identity": compiled_term.identity,
-                            "value": _non_finite_label(converted),
+                            "value": f"non_numeric:{type(converted).__name__}",
                         }
                     )
                     continue
-                signed = compiled_term.spec.coefficient * converted
+                if not math.isfinite(numeric):
+                    invalid_terms.append(
+                        {
+                            "identity": compiled_term.identity,
+                            "value": _non_finite_label(numeric),
+                        }
+                    )
+                    continue
+                signed = compiled_term.spec.coefficient * numeric
+                if not math.isfinite(signed):
+                    invalid_terms.append(
+                        {
+                            "identity": compiled_term.identity,
+                            "value": "derived_overflow",
+                        }
+                    )
+                    continue
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
             if invalid_terms:
-                name = compiled_balance.spec.name
                 scale = max(math.fsum(absolute_terms), compiled_balance.spec.floor)
                 balance_residuals[name] = {
                     "residual": 0.0,
                     "absolute": 0.0,
-                    "scale": scale,
+                    "scale": scale if math.isfinite(scale) else 0.0,
                     "relative": 0.0,
                     "abs_tol": compiled_balance.spec.abs_tol,
                     "rel_tol": compiled_balance.spec.rel_tol,
@@ -226,14 +344,37 @@ def evaluate(
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
-            residual = math.fsum(signed_terms) - compiled_balance.spec.expected
-            scale = max(math.fsum(absolute_terms), compiled_balance.spec.floor)
-            relative = abs(residual) / scale
+            try:
+                signed_sum = math.fsum(signed_terms)
+                absolute_sum = math.fsum(absolute_terms)
+            except OverflowError:
+                signed_sum = math.inf
+                absolute_sum = math.inf
+            residual = signed_sum - compiled_balance.spec.expected
+            scale = max(absolute_sum, compiled_balance.spec.floor)
+            relative = abs(residual) / scale if scale > 0 else math.inf
+            if not all(math.isfinite(item) for item in (residual, scale, relative)):
+                balance_residuals[name] = {
+                    "residual": 0.0,
+                    "absolute": 0.0,
+                    "scale": 0.0,
+                    "relative": 0.0,
+                    "abs_tol": compiled_balance.spec.abs_tol,
+                    "rel_tol": compiled_balance.spec.rel_tol,
+                    "passed": 0.0,
+                }
+                non_finite_balances[name] = [
+                    {"identity": "derived_balance", "value": "derived_overflow"}
+                ]
+                violations.append(f"balance_non_finite:{name}")
+                violations.append(f"balance_failed:{name}")
+                feasible = False
+                continue
             passed = (
                 abs(residual) <= compiled_balance.spec.abs_tol
                 or relative <= compiled_balance.spec.rel_tol
             )
-            balance_residuals[compiled_balance.spec.name] = {
+            balance_residuals[name] = {
                 "residual": residual,
                 "absolute": abs(residual),
                 "scale": scale,
@@ -243,7 +384,7 @@ def evaluate(
                 "passed": 1.0 if passed else 0.0,
             }
             if not passed:
-                violations.append(f"balance_failed:{compiled_balance.spec.name}")
+                violations.append(f"balance_failed:{name}")
                 feasible = False
         if non_finite_balances:
             diagnostics["non_finite_balances"] = non_finite_balances
