@@ -6,7 +6,7 @@ Aspen Automation is a stateful COM interface around a proprietary nonlinear solv
 
 ## Control plane and data plane
 
-The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, provenance and certification. The data plane consists of spawned workers. Each worker owns:
+The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, optimization, provenance and certification. The data plane consists of spawned workers. Each worker owns:
 
 - one OS process;
 - one COM STA;
@@ -16,6 +16,28 @@ The control plane performs policy, schema validation, semantic resolution, unit 
 - one sequential command stream.
 
 No COM proxy crosses a process boundary.
+
+## Configuration and path-policy boundary
+
+Environment variables and direct Python `Settings(...)` construction enter the same fail-closed validation boundary. A configuration object is not valid merely because it can be instantiated by Python. Construction rejects:
+
+- unsupported backends or operating modes;
+- string or numeric values pretending to be Boolean flags;
+- non-integral, non-finite, zero or negative resource budgets;
+- non-path values in state and allowed-root fields;
+- real backends without absolute allowed roots;
+- a real-backend state directory outside those roots.
+
+```text
+environment / Python API
+→ type and finite-budget validation
+→ backend and mode allowlist
+→ real-backend root policy
+→ expanduser + resolve
+→ controlled operation
+```
+
+`Policy.assert_path()` resolves a requested path and requires it to remain under an approved root. This rejects traversal, symlink, junction and other realpath escapes before Worker, COM or evidence creation. `readonly`, `default` and `enhanced` remain explicit operation modes; an unknown mode cannot silently inherit default authority.
 
 ## Simulator-neutral intent plane
 
@@ -97,6 +119,48 @@ The registry is both an API schema and a capability boundary. A semantic node de
 
 The registry hash participates in cache identity. Changing a path, bound, unit or meaning invalidates cached results.
 
+## Cache identity, deduplication and singleflight
+
+One cache key binds:
+
+```text
+runtime schema and AspenOps version
++ backend and stable simulator runtime identity
++ model SHA-256
++ semantic registry SHA-256
++ physical request identity
+```
+
+`ResultCache` combines a bounded memory LRU with SQLite WAL persistence. Invalid JSON or non-object payloads are discarded rather than returned. Hit counters are batched, and bulk reads/writes remain under the SQLite parameter budget.
+
+`CasePool` provides two additional duplicate-work controls:
+
+- identical points inside one batch collapse to one task and receive cloned results marked `same_batch_dedup`;
+- concurrent identical single-point calls share one `_InflightEvaluation`; one leader executes while cancellable followers wait and receive `inflight_singleflight` provenance.
+
+Persistent cache and singleflight reduce solver work without weakening runtime, model, registry or request identity. Failed or warm-start results enter cache only when explicit cache policy allows them.
+
+## Budgeted constrained optimization
+
+Optimization parses a finite problem contract before any solver call:
+
+- continuous, integer, categorical and ordinal variables;
+- minimize or maximize objectives with positive weights;
+- unique variable names, targets and objective keys;
+- finite bounds, choices, population, generation and evaluation budgets;
+- optional checkpoint paths constrained to state or allowed roots.
+
+```text
+validated OptimizationProblem
+→ seeded differential-evolution population
+→ governed CasePool batch evaluations
+→ independent communication / convergence / feasibility / balance evidence
+→ atomic checkpoint and cancellation handling
+→ best candidate and Pareto evidence
+```
+
+Checkpoints use a temporary file followed by `os.replace`. Cancellation returns a terminal optimization document rather than silently accepting a partial best point. Mock output is qualified as control-plane evidence only; real backend output remains pending licensed runtime and human engineering review.
+
 ## Runtime compatibility
 
 Aspen Plus registrations are discovered from both Windows registry views. Versioned `Apwn.Document.*` candidates are sorted by numeric suffix and tried newest-first, followed by `Apwn.Document`. HYSYS uses the corresponding `HYSYS.Application.*` strategy.
@@ -142,5 +206,3 @@ Recovery follows the actual state machine:
 - active work with attempts remaining → `retry_wait`;
 - active work after the final attempt → `dead_letter`;
 - completed results remain bound to an idempotent commit token and evidence bundle.
-
-The result cache is also SQLite WAL. Cache keys bind runtime schema/version, backend, model SHA-256, registry SHA-256 and solver-relevant request content. Process Intent uses its own canonical JSON SHA-256 identity before compilation.
