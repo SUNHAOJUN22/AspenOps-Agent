@@ -84,9 +84,9 @@ async def _scheduler_lifespan(
 ) -> AsyncIterator[None]:
     """Tie the durable Worker fabric to the MCP server startup/shutdown boundary."""
 
-    if start_scheduler:
-        scheduler.start()
     try:
+        if start_scheduler:
+            scheduler.start()
         yield None
     finally:
         scheduler.stop()
