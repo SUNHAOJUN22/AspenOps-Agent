@@ -6,6 +6,7 @@ from aspenops_nexus.convergence import (
     ConvergenceState,
     IdleObservation,
     classify_convergence,
+    normalize_running_flag,
     poll_engine_idle,
 )
 
@@ -31,6 +32,26 @@ def sequence_reader(values: list[bool | None]) -> Callable[[], bool | None]:
         return last
 
     return read
+
+
+def test_running_flag_normalization_is_explicit_and_com_compatible() -> None:
+    accepted = {
+        True: True,
+        False: False,
+        -1: True,
+        1: True,
+        0: False,
+        "TRUE": True,
+        "false": False,
+        "running": True,
+        "idle": False,
+        "not running": False,
+    }
+    for value, expected in accepted.items():
+        assert normalize_running_flag(value) is expected
+
+    for value in (2, -2, float("nan"), float("inf"), "unknown", object(), None):
+        assert normalize_running_flag(value) is None
 
 
 def test_poll_requires_a_stable_idle_window() -> None:
@@ -69,6 +90,24 @@ def test_poll_returns_unknown_when_runtime_exposes_no_state() -> None:
         timeout_s=0.2,
         poll_interval_s=0.1,
         stable_samples=2,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    assert result.state is ConvergenceState.UNKNOWN
+    assert result.engine_idle is None
+
+
+def test_poll_discards_non_boolean_reader_values() -> None:
+    clock = FakeClock()
+
+    def invalid_reader() -> bool | None:
+        return "false"  # type: ignore[return-value]
+
+    result = poll_engine_idle(
+        invalid_reader,
+        timeout_s=0.2,
+        poll_interval_s=0.1,
+        stable_samples=1,
         clock=clock.monotonic,
         sleeper=clock.sleep,
     )
