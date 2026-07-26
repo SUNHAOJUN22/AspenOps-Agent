@@ -9,13 +9,15 @@ import aspenops_nexus.mcp_server as mcp_server
 
 def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    export_block = text[
+        text.index("uv export --frozen") : text.index("uv venv --python 3.12")
+    ]
 
-    assert "uv export --frozen" in text
-    assert "--extra agent" in text
-    assert "--no-default-groups" in text
-    assert "--no-emit-project" in text
-    assert "--format requirements.txt" in text
-    assert "--output-file var/ci/runtime-requirements.txt" in text
+    assert "--extra agent" in export_block
+    assert "--no-default-groups" in export_block
+    assert "--no-emit-project" in export_block
+    assert "--format requirements.txt" in export_block
+    assert "--output-file var/ci/runtime-requirements.txt" in export_block
     assert "uv pip sync" in text
     assert "--require-hashes" in text
     assert "uv pip install" in text
@@ -39,9 +41,8 @@ def test_mcp_runtime_lock_and_documentation_remain_on_supported_major() -> None:
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     packages = lock.get("package", [])
     versions = [str(package["version"]) for package in packages if package.get("name") == "mcp"]
-    assert len(versions) == 1
-    assert versions[0].split(".", 1)[0] == "1"
-    assert mcp_server._require_supported_mcp_sdk().split(".", 1)[0] == "1"
+    assert versions == ["1.28.1"]
+    assert mcp_server._require_supported_mcp_sdk() == "1.28.1"
 
     server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
     assert 'SUPPORTED_MCP_MAJOR = 1' in server
