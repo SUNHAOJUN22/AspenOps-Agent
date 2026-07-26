@@ -42,6 +42,11 @@ def _inside(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or root in path.parents for root in roots)
 
 
+def _require_bool(name: str, value: object) -> None:
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be Boolean")
+
+
 def _require_int(name: str, value: object, minimum: int = 1) -> None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an integer")
@@ -87,12 +92,22 @@ class Settings:
     max_optimization_objectives: int = 16
 
     def __post_init__(self) -> None:
-        """Apply the same fail-closed validation to env and direct construction."""
+        """Apply fail-closed validation to env and direct construction."""
 
         if self.backend not in _SUPPORTED_BACKENDS:
             raise ValueError(f"Unsupported backend={self.backend!r}")
         if self.mode not in _SUPPORTED_MODES:
             raise ValueError(f"Unsupported mode={self.mode!r}")
+
+        _require_bool("visible", self.visible)
+        _require_bool("cache_failures", self.cache_failures)
+
+        if not isinstance(self.allowed_roots, tuple):
+            raise ValueError("allowed_roots must be a tuple of paths")
+        if any(not isinstance(root, str | os.PathLike) for root in self.allowed_roots):
+            raise ValueError("Every allowed_roots entry must be path-like")
+        if not isinstance(self.state_dir, str | os.PathLike):
+            raise ValueError("state_dir must be path-like")
 
         for name in (
             "license_slots",
@@ -112,10 +127,10 @@ class Settings:
         for name, minimum in (
             ("timeout_s", 0.001),
             ("startup_timeout_s", 0.001),
-            ("worker_max_age_s", 1.0),
-            ("scheduler_poll_s", 0.01),
-            ("pool_idle_timeout_s", 1.0),
-            ("job_lease_s", 1.0),
+            ("worker_max_age_s", 0.001),
+            ("scheduler_poll_s", 0.001),
+            ("pool_idle_timeout_s", 0.001),
+            ("job_lease_s", 0.001),
             ("cancellation_grace_s", 0.0),
         ):
             _require_float(name, getattr(self, name), minimum)
@@ -221,4 +236,4 @@ class Settings:
 
     @property
     def effective_workers(self) -> int:
-        return max(1, min(self.max_workers, self.license_slots))
+        return min(self.max_workers, self.license_slots)
