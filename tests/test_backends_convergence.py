@@ -5,7 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from aspenops_nexus.backends.aspen_plus import AspenPlusBackend
+from aspenops_nexus.backends.aspen_plus_strict import AspenPlusBackend
+from aspenops_nexus.backends.factory import create_backend
 from aspenops_nexus.backends.hysys import HysysBackend
 from aspenops_nexus.backends.mock import MockBackend
 from aspenops_nexus.evaluation import evaluate
@@ -174,6 +175,16 @@ def test_aspen_backend_fails_closed_without_success_evidence(monkeypatch: Any) -
 
     assert result["converged"] is False
     assert result["convergence_state"] == "unknown"
+
+
+def test_factory_aspen_running_state_does_not_use_string_truthiness() -> None:
+    backend = create_backend("aspen_plus")
+    running = getattr(backend, "_engine_running")
+    assert running(SimpleNamespace(IsRunning="False")) is False
+    assert running(SimpleNamespace(IsRunning="TRUE")) is True
+    assert running(SimpleNamespace(IsRunning=-1)) is True
+    assert running(SimpleNamespace(IsRunning=0)) is False
+    assert running(SimpleNamespace(IsRunning="unknown")) is None
 
 
 def test_hysys_running_state_does_not_use_string_truthiness() -> None:
