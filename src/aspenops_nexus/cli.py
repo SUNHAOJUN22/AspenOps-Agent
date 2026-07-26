@@ -14,6 +14,11 @@ from .benchmark import benchmark_worker_matrix
 from .certification import certify_batch_document
 from .config import Settings
 from .doctor import diagnose
+from .durable_request import (
+    durable_paths_pinned,
+    pin_durable_request_paths,
+    submission_directory,
+)
 from .licensed_certification import (
     certification_preflight,
     execute_licensed_certification,
@@ -51,35 +56,6 @@ def _controlled_path(path: str | Path, settings: Any) -> Path:
     mode = str(getattr(settings, "mode", "default"))
     roots = tuple(Path(root) for root in getattr(settings, "allowed_roots", ()))
     return Policy(mode, roots).assert_path(path)
-
-
-def _normalize_durable_request(
-    request: dict[str, Any],
-    *,
-    submission_cwd: Path,
-) -> dict[str, Any]:
-    """Pin path-bearing fields before a request crosses a process boundary."""
-
-    normalized = dict(request)
-    base = submission_cwd.expanduser().resolve()
-    paths_pinned = False
-    for key in ("model_path", "registry_path"):
-        raw = normalized.get(key)
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        candidate = Path(raw).expanduser()
-        if not candidate.is_absolute():
-            candidate = base / candidate
-        normalized[key] = str(candidate.resolve())
-        paths_pinned = True
-
-    if paths_pinned:
-        metadata_raw = normalized.get("metadata", {})
-        if isinstance(metadata_raw, dict):
-            metadata = {str(key): value for key, value in metadata_raw.items()}
-            metadata.setdefault("submission_cwd", str(base))
-            normalized["metadata"] = metadata
-    return normalized
 
 
 def _demo_request() -> dict[str, Any]:
@@ -210,27 +186,21 @@ def command_run_batch(args: argparse.Namespace) -> int:
 
 def command_submit(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
-    request = _normalize_durable_request(
+    request = pin_durable_request_paths(
         _load(args.request),
         submission_cwd=Path.cwd(),
     )
     _validate_scheduled_request(request, settings)
     store = JobStore(settings.state_dir / "jobs.sqlite3")
     job_id = store.create(request, settings.job_max_attempts)
-    metadata = request.get("metadata", {})
-    submission_cwd = metadata.get("submission_cwd") if isinstance(metadata, dict) else None
-    paths_pinned = all(
-        isinstance(request.get(key), str) and Path(request[key]).is_absolute()
-        for key in ("model_path", "registry_path")
-    )
     _json_print(
         {
             "job_id": job_id,
             "state_db": str(store.path),
             "scheduler_required": True,
             "scheduler_command": "uv run aspenops scheduler",
-            "paths_pinned": paths_pinned,
-            "submission_cwd": submission_cwd,
+            "paths_pinned": durable_paths_pinned(request),
+            "submission_cwd": submission_directory(request),
         }
     )
     return 0
