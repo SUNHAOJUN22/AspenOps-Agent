@@ -10,6 +10,7 @@ import pytest
 from aspenops_nexus import cli
 from aspenops_nexus.cli import _controlled_path
 from aspenops_nexus.config import Settings
+from aspenops_nexus.durable_request import pin_durable_request_paths
 from aspenops_nexus.policy import PolicyError
 
 
@@ -155,7 +156,7 @@ def test_preflight_rejects_output_before_loading_the_plan(
 
 def test_durable_request_paths_are_pinned_cross_platform(tmp_path: Path) -> None:
     submission_cwd = tmp_path / "submitter"
-    normalized = cli._normalize_durable_request(
+    normalized = pin_durable_request_paths(
         {
             "model_path": "models/case.json",
             "registry_path": "registries/nodes.json",
