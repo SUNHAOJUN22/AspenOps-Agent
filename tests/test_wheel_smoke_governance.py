@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import tomllib
 from pathlib import Path
+
+import aspenops_nexus.mcp_server as mcp_server
 
 
 def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
@@ -37,6 +40,7 @@ def test_mcp_runtime_lock_and_documentation_remain_on_supported_major() -> None:
     versions = [str(package["version"]) for package in packages if package.get("name") == "mcp"]
     assert len(versions) == 1
     assert versions[0].split(".", 1)[0] == "1"
+    assert mcp_server._require_supported_mcp_sdk().split(".", 1)[0] == "1"
 
     server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
     assert 'SUPPORTED_MCP_MAJOR = 1' in server
@@ -48,3 +52,25 @@ def test_mcp_runtime_lock_and_documentation_remain_on_supported_major() -> None:
         text = readme.read_text(encoding="utf-8")
         assert "mcp>=1.9,<2" in text
         assert "mcp-runtime-lifecycle.svg" in text
+
+
+def test_mcp_lifespan_starts_and_stops_the_owned_scheduler() -> None:
+    events: list[str] = []
+
+    class FakeScheduler:
+        def start(self) -> None:
+            events.append("start")
+
+        def stop(self) -> None:
+            events.append("stop")
+
+    async def exercise() -> None:
+        async with mcp_server._scheduler_lifespan(
+            None,
+            scheduler=FakeScheduler(),  # type: ignore[arg-type]
+            start_scheduler=True,
+        ):
+            events.append("serve")
+
+    asyncio.run(exercise())
+    assert events == ["start", "serve", "stop"]
