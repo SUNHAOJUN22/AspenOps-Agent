@@ -61,7 +61,7 @@ Every stage has a declared responsibility and permitted output. Simulator feedba
 
 ## MCP compatibility and ownership
 
-AspenOps 2.0 uses the MCP Python SDK 1.x API. The frozen environment currently resolves `mcp 1.28.1`; non-frozen installations must constrain the dependency to `mcp>=1.9,<2`. Before importing `FastMCP`, the runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions. This prevents an implicit major-version change from being mistaken for a working Agent surface.
+AspenOps 2.0 uses the MCP Python SDK 1.x API. Project and built-Wheel metadata constrain the `agent` extra to `mcp>=1.9,<2`; the frozen environment currently resolves `mcp 1.28.1`. CI inspects the actual Wheel `Requires-Dist` entry after `uv build`. Before importing `FastMCP`, the runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions. This prevents either dependency resolution or an implicit major-version change from being mistaken for a working Agent surface.
 
 MCP server lifetime owns the durable execution fabric:
 
