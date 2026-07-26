@@ -75,7 +75,7 @@ README_CONTRACTS = {
         "uv run aspenops doctor --probe",
         "uv run aspenops run-batch",
         "uv run aspenops scheduler",
-        "JOB_ID=$( ".strip(),
+        "JOB_ID=(".replace("(", "$("),
         "uv run aspenops submit",
         "uv run aspenops job",
         "uv run aspenops cancel",
@@ -113,7 +113,7 @@ README_CONTRACTS = {
         "uv run aspenops doctor --probe",
         "uv run aspenops run-batch",
         "uv run aspenops scheduler",
-        "JOB_ID=$( ".strip(),
+        "JOB_ID=(".replace("(", "$("),
         "uv run aspenops submit",
         "uv run aspenops job",
         "uv run aspenops cancel",
@@ -194,6 +194,10 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     config = (ROOT / "src/aspenops_nexus/config.py").read_text(encoding="utf-8")
     evaluation = (ROOT / "src/aspenops_nexus/evaluation.py").read_text(encoding="utf-8")
     convergence = (ROOT / "src/aspenops_nexus/convergence.py").read_text(encoding="utf-8")
+    aspen_strict = (ROOT / "src/aspenops_nexus/backends/aspen_plus_strict.py").read_text(
+        encoding="utf-8"
+    )
+    factory = (ROOT / "src/aspenops_nexus/backends/factory.py").read_text(encoding="utf-8")
     hysys = (ROOT / "src/aspenops_nexus/backends/hysys.py").read_text(encoding="utf-8")
     optimization = (ROOT / "src/aspenops_nexus/optimization.py").read_text(encoding="utf-8")
     pool = (ROOT / "src/aspenops_nexus/pool.py").read_text(encoding="utf-8")
@@ -227,6 +231,8 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     ):
         assert marker in evaluation
     assert "normalize_running_flag" in convergence
+    assert "normalize_running_flag" in aspen_strict
+    assert "from .aspen_plus_strict import AspenPlusBackend" in factory
     assert "normalize_running_flag" in hysys
     for marker in ("Communication", "Finite Evidence", "JSON-Safe Evidence"):
         assert marker in validity_visual
