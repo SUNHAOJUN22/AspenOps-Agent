@@ -34,6 +34,13 @@ def _non_finite_label(value: float) -> str:
     return "positive_infinity" if value > 0 else "negative_infinity"
 
 
+def _safe_fsum(values: list[float]) -> float:
+    try:
+        return math.fsum(values)
+    except OverflowError:
+        return math.inf
+
+
 def _json_safe(
     value: Any,
     *,
@@ -329,7 +336,7 @@ def evaluate(
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
             if invalid_terms:
-                scale = max(math.fsum(absolute_terms), compiled_balance.spec.floor)
+                scale = max(_safe_fsum(absolute_terms), compiled_balance.spec.floor)
                 balance_residuals[name] = {
                     "residual": 0.0,
                     "absolute": 0.0,
@@ -344,12 +351,8 @@ def evaluate(
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
-            try:
-                signed_sum = math.fsum(signed_terms)
-                absolute_sum = math.fsum(absolute_terms)
-            except OverflowError:
-                signed_sum = math.inf
-                absolute_sum = math.inf
+            signed_sum = _safe_fsum(signed_terms)
+            absolute_sum = _safe_fsum(absolute_terms)
             residual = signed_sum - compiled_balance.spec.expected
             scale = max(absolute_sum, compiled_balance.spec.floor)
             relative = abs(residual) / scale if scale > 0 else math.inf
