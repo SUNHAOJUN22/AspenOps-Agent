@@ -18,7 +18,7 @@
 
 ![AspenOps 总体架构](docs/assets/readme/hero-architecture.svg)
 
-> 本 README 使用十三张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试或签名材料包装成真实 Aspen 工程认证。
+> 本 README 使用十四张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试、签名材料或版本检查包装成真实 Aspen 工程认证。
 
 ---
 
@@ -35,11 +35,12 @@
 | 覆盖率门槛 | 94.5% |
 | 已归档 Windows 公共门 | Actions run `29814739334`，104 passed，2.06 s |
 | MCP 工具数 | 14 |
+| 冻结 MCP SDK | `1.28.1`；非冻结安装要求 `mcp>=1.9,<2` |
 | 真实 Aspen 认证 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
 上述数字来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 工作流；历史数字不能替代当前提交的新 Actions 证据。
 
-公共 CI 能证明控制平面、路径策略、进程隔离、调度、归档、接口、Process Intent 和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
+公共 CI 能证明控制平面、路径策略、进程隔离、调度、归档、接口、Process Intent、MCP 兼容性和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
 
 ---
 
@@ -81,6 +82,12 @@ uv run aspenops doctor --probe
 ```
 
 首次运行默认使用 Mock。Mock 只用于跨平台软件验证，不代表 Aspen Plus/HYSYS 的物理结果。
+
+对仓库外的非冻结 Wheel 安装，必须把 MCP Python SDK 限制在已支持的 1.x：
+
+```bash
+python -m pip install "aspenops-nexus[agent]" "mcp>=1.9,<2"
+```
 
 ---
 
@@ -204,6 +211,35 @@ mcp
 
 ---
 
+## MCP 兼容性与服务生命周期
+
+![MCP 兼容性与 Scheduler 生命周期](docs/assets/readme/mcp-runtime-lifecycle.svg)
+
+AspenOps 2.0 当前使用 MCP Python SDK 1.x API。仓库冻结环境锁定 `mcp 1.28.1`；非冻结安装必须使用：
+
+```text
+mcp>=1.9,<2
+```
+
+运行时在导入 `FastMCP` 前读取已安装发行版版本：
+
+- 未安装 MCP：明确提示安装 frozen `agent` extra；
+- 主版本为 1：继续建立服务器；
+- 主版本不是 1 或版本不可解析：fail closed，拒绝以未知 API 启动；
+- 不会把不兼容导入错误伪装成可运行服务。
+
+Scheduler 不再在 `build_server()` 后无生命周期地常驻。FastMCP lifespan 负责：
+
+```text
+server startup → scheduler.start()
+serve 14 constrained tools
+server shutdown → scheduler.stop() → Worker / PoolManager cleanup
+```
+
+该生命周期只证明软件资源被治理，不代表真实 Aspen 模型已经获得工程认证。
+
+---
+
 ## 典型工作流
 
 ### 1. 先验证，再执行批处理
@@ -265,7 +301,7 @@ uv run aspenops mcp
 
 ![耐久队列跨工作目录路径固定](docs/assets/readme/durable-path-portability.svg)
 
-`submit` 在请求跨越进程边界之前执行以下操作：
+`submit` 与 MCP 耐久提交在请求跨越进程边界前执行：
 
 ```text
 当前提交目录
@@ -275,14 +311,14 @@ uv run aspenops mcp
 → scheduler 可从任意工作目录执行
 ```
 
-提交结果明确返回：
+CLI 提交结果明确返回：
 
 ```text
 paths_pinned = true
 submission_cwd = <absolute submission directory>
 ```
 
-这保留了原有“相对路径按提交命令当前目录解释”的语义，同时避免常驻服务从另一目录启动时改变模型身份。真实后端仍会再次执行允许根目录和 realpath 检查。
+这保留“相对路径按提交调用当前目录解释”的语义，同时避免常驻服务从另一目录启动时改变模型身份。真实后端仍会再次执行允许根目录和 realpath 检查。直接调用低层 `BackgroundScheduler.submit()` 的 Python 代码应传入绝对路径，或先调用 `pin_durable_request_paths()`。
 
 ---
 
@@ -450,7 +486,7 @@ PENDING_REAL_ASPEN_CERTIFICATION
 ```text
 .github/workflows/       四个权威自动化工作流
 docs/                    架构、Windows、性能、认证与质量文档
-docs/assets/readme/      十三张受测试治理的 README SVG
+docs/assets/readme/      十四张受测试治理的 README SVG
 examples/                批处理、优化与 Process Intent 示例
 scripts/                 校验器、dashboard、benchmark 与 Windows 设置
 src/aspenops_nexus/      控制平面、后端、Worker、调度、优化、证据与 MCP
@@ -467,6 +503,8 @@ var/                     可复现基线、审计清单和本地运行状态
 | `doctor --probe` 未就绪 | Python 位数、COM ProgID、许可证、允许目录 | 不绕过 preflight 或硬编码裸 COM |
 | 路径被拒绝 | `ASPENOPS_ALLOWED_ROOTS` 与 realpath | 将模型、registry、状态和输出放入获批绝对根目录 |
 | 提交通过但 scheduler 在另一目录启动 | `paths_pinned` 与 `submission_cwd` | 使用当前版本重新提交，数据库中应保存绝对模型和注册表路径 |
+| MCP 启动报告 SDK 大版本不兼容 | `python -m pip show mcp` | 安装 `mcp>=1.9,<2`；不要绕过版本门 |
+| MCP 服务退出后仍有 Worker | lifespan、Scheduler stop 与当前进程归属 | 使用当前版本；shutdown 必须执行 `scheduler.stop()` |
 | 批处理返回 `ok=false` | communication、engine、converged、feasible、balances | 分别修复，不把 Run2 返回当作收敛 |
 | 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务 | 启动调度服务；不要期待 `submit` 进程退出后继续运行 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
@@ -485,6 +523,7 @@ var/                     可复现基线、审计清单和本地运行状态
 - Process Intent IR、严格验证、canonical JSON 和 SHA-256 图身份；
 - Aspen Plus/HYSYS 既有模型控制面；
 - Mock、Fake COM、Windows Job Object、耐久调度、取消、优化和 MCP；
+- MCP 1.x fail-closed 兼容门与 FastMCP 生命周期资源清理；
 - 冻结 CI、dashboard、证据 bundle 和持证认证边界。
 
 ### 下一阶段
@@ -509,7 +548,7 @@ var/                     可复现基线、审计清单和本地运行状态
 
 ## AI 生成视觉资产清单
 
-以下十三张原创、自包含 SVG 存放在 `docs/assets/readme/`：
+以下十四张原创、自包含 SVG 存放在 `docs/assets/readme/`：
 
 1. `hero-architecture.svg`
 2. `process-intent-ir.svg`
@@ -517,13 +556,14 @@ var/                     可复现基线、审计清单和本地运行状态
 4. `backend-capabilities.svg`
 5. `com-isolation.svg`
 6. `cli-mcp-workflow.svg`
-7. `durable-path-portability.svg`
-8. `scheduler-lifecycle.svg`
-9. `industrial-scenarios.svg`
-10. `test-matrix.svg`
-11. `evidence-chain.svg`
-12. `licensed-certification.svg`
-13. `roadmap.svg`
+7. `mcp-runtime-lifecycle.svg`
+8. `durable-path-portability.svg`
+9. `scheduler-lifecycle.svg`
+10. `industrial-scenarios.svg`
+11. `test-matrix.svg`
+12. `evidence-chain.svg`
+13. `licensed-certification.svg`
+14. `roadmap.svg`
 
 `tests/test_readme_visual_assets.py` 检查双语引用、完整清单、XML、大小、路径、无障碍、渲染可移植性、脚本、事件、远程资源、Data URI 和三道工作流接入。
 
