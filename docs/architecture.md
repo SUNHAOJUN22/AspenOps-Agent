@@ -59,6 +59,24 @@ Knowledge
 
 Every stage has a declared responsibility and permitted output. Simulator feedback may propose bounded IR edits, but it cannot silently rewrite the execution policy or self-grant engineering approval.
 
+## MCP compatibility and ownership
+
+AspenOps 2.0 uses the MCP Python SDK 1.x API. The frozen environment currently resolves `mcp 1.28.1`; non-frozen installations must constrain the dependency to `mcp>=1.9,<2`. Before importing `FastMCP`, the runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions. This prevents an implicit major-version change from being mistaken for a working Agent surface.
+
+MCP server lifetime owns the durable execution fabric:
+
+```text
+FastMCP lifespan enter
+→ validate supported SDK before API import
+→ scheduler.start()
+→ serve fourteen constrained tools
+→ lifespan exit
+→ scheduler.stop()
+→ Worker and PoolManager cleanup
+```
+
+The MCP facade never exposes arbitrary Shell, Python, VBA, COM methods or raw Aspen Tree Paths. Lifecycle cleanup is software evidence only and cannot grant licensed Aspen physical or engineering certification.
+
 ## Evaluation transaction
 
 ```text
