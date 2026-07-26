@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
-      - name: Verify documentation, artifact, dashboard and Process IR contracts
+      - name: Verify documentation, durable CLI, artifact, dashboard and Process IR contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -88,6 +88,7 @@ jobs:
             tests/test_artifact_upload_governance.py \
             tests/test_test_dashboard.py \
             tests/test_readme_visual_assets.py \
+            tests/test_cli_durable_queue.py \
             tests/test_process_ir.py \
             tests/test_process_ir_edges.py \
             tests/test_process_ir_dashboard.py \
@@ -132,18 +133,38 @@ jobs:
         run: |
           set -euo pipefail
           uv run aspenops demo 2>&1 | tee var/ci/demo.log
-      - name: Verify README command paths
+      - name: Verify README command paths and durable queue lifecycle
         shell: bash
         run: |
           set -euo pipefail
           uv run aspenops --version 2>&1 | tee var/ci/cli-version.log
           uv run aspenops --help > var/ci/cli-help.log
           uv run aspenops scheduler --help > var/ci/readme-scheduler-help.log
+          uv run aspenops cancel --help > var/ci/readme-cancel-help.log
           uv run aspenops dry-run examples/batch-request.example.json \
             > var/ci/readme-dry-run.json
           uv run aspenops optimize examples/optimization-request.example.json \
             --output var/ci/readme-optimization.json \
             > var/ci/readme-optimization-cli.json
+          rm -rf var/ci/durable-smoke-state
+          submit_json="$(
+            ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
+              uv run aspenops submit examples/batch-request.example.json
+          )"
+          printf '%s\n' "$submit_json" > var/ci/readme-submit.json
+          job_id="$(
+            printf '%s' "$submit_json" |
+              python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
+          )"
+          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
+            uv run aspenops job "$job_id" > var/ci/readme-job-before-cancel.json
+          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
+            uv run aspenops cancel "$job_id" --grace-s 0 \
+            > var/ci/readme-cancel.json
+          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
+            uv run aspenops job "$job_id" > var/ci/readme-job-after-cancel.json
+          python -c \
+            'import json,pathlib; assert json.loads(pathlib.Path("var/ci/readme-job-after-cancel.json").read_text())["job"]["status"] == "cancelled"'
           uv run aspenops benchmark --points 4 --workers 1,2 \
             > var/ci/readme-benchmark.json
           uv run aspenops certify examples/batch-request.example.json \
@@ -201,6 +222,7 @@ jobs:
           /tmp/aspenops-wheel/bin/aspenops demo \
             | tee var/ci/wheel-demo.log
           /tmp/aspenops-wheel/bin/aspenops scheduler --help >/dev/null
+          /tmp/aspenops-wheel/bin/aspenops cancel --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops optimize --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops mcp --help >/dev/null
           /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
