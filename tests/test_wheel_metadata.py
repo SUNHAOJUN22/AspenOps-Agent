@@ -5,7 +5,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from scripts.check_wheel_metadata import inspect_wheel
+from aspenops_nexus.wheel_metadata import inspect_wheel
 
 
 def _wheel(
