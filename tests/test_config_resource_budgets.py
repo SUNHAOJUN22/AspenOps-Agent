@@ -112,6 +112,20 @@ def test_direct_settings_reject_invalid_float_budgets(
         Settings(**{field: value})  # type: ignore[arg-type]
 
 
+def test_direct_settings_accept_tiny_positive_timings() -> None:
+    settings = Settings(
+        timeout_s=1e-12,
+        startup_timeout_s=1e-12,
+        worker_max_age_s=1e-12,
+        scheduler_poll_s=1e-12,
+        pool_idle_timeout_s=1e-12,
+        job_lease_s=1e-12,
+        cancellation_grace_s=0.0,
+    )
+    assert settings.timeout_s == 1e-12
+    assert settings.cancellation_grace_s == 0.0
+
+
 @pytest.mark.parametrize(
     "name",
     [
