@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from zipfile import ZipFile
 
 import aspenops_nexus.mcp_server as mcp_server
 from aspenops_nexus.wheel_metadata import inspect_wheel
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
@@ -95,6 +100,63 @@ def test_built_wheel_metadata_parser_runs_on_every_software_gate(tmp_path: Path)
     report = inspect_wheel(dist_dir)
     assert report["ok"] is True
     assert report["wheel"] == wheel.name
+
+
+def test_lazy_cli_version_path_runs_without_heavy_control_plane_imports() -> None:
+    code = """
+import json
+import sys
+from aspenops_nexus import cli_bootstrap
+try:
+    cli_bootstrap.main(['--version'])
+except SystemExit as exc:
+    exit_code = exc.code
+else:
+    exit_code = None
+heavy = sorted(name for name in sys.modules if name in {
+    'aspenops_nexus.optimization',
+    'aspenops_nexus.pool',
+    'aspenops_nexus.pool_manager',
+    'aspenops_nexus.provenance',
+    'aspenops_nexus.scheduler',
+})
+print('__RESULT__' + json.dumps({'exit_code': exit_code, 'heavy': heavy}))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    marker = next(
+        line.removeprefix("__RESULT__")
+        for line in completed.stdout.splitlines()
+        if line.startswith("__RESULT__")
+    )
+    assert json.loads(marker) == {"exit_code": 0, "heavy": []}
+
+
+def test_operation_count_probe_runs_on_every_software_gate(tmp_path: Path) -> None:
+    output = tmp_path / "operation-counts.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/measure_operation_counts.py"),
+            "--output",
+            str(output),
+        ],
+        check=True,
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["schema"] == "aspenops.operation-counts/v1"
+    assert report["pool"]["cache_key_calls"] == 1
+    assert report["pool"]["solver_calls"] == 1
+    assert report["pool"]["result_serializations"] == 1
+    assert report["pool"]["same_batch_dedup_results"] == 99
+    assert report["pool"]["deep_result_isolation"] is True
+    assert report["cache"]["pending_hit_total_after_threshold"] == 0
+    assert report["pareto"]["dominance_calls"] == 0
 
 
 def test_mcp_lifespan_starts_and_stops_the_owned_scheduler() -> None:
