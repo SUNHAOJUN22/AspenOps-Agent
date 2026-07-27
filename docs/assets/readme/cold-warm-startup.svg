@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" role="img" aria-labelledby="startup-title startup-desc">
+  <title id="startup-title">AspenOps cold and warm CLI startup evidence</title>
+  <desc id="startup-desc">A comparison of lightweight bootstrap and full control-plane startup paths with separate wall-time, import-time, profiler, and deterministic module-boundary evidence.</desc>
+  <defs>
+    <linearGradient id="startup-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#081426"/>
+      <stop offset="1" stop-color="#1f2937"/>
+    </linearGradient>
+    <marker id="startup-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#67e8f9"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="660" rx="28" fill="url(#startup-bg)"/>
+  <g font-family="Arial, sans-serif">
+    <text x="62" y="70" fill="#f8fafc" font-size="34" font-weight="700">Cold and Warm Startup Evidence</text>
+    <text x="62" y="105" fill="#c4b5fd" font-size="17">Same interpreter, same machine, separate profiler processes, explicit boundaries.</text>
+
+    <rect x="65" y="145" width="470" height="190" rx="22" fill="#172554" stroke="#818cf8" stroke-width="2"/>
+    <text x="95" y="187" fill="#c7d2fe" font-size="24" font-weight="700">Lightweight Bootstrap</text>
+    <text x="95" y="226" fill="#e2e8f0" font-size="17">argparse + package version + resource paths</text>
+    <text x="95" y="258" fill="#e2e8f0" font-size="17">Handles version and all help paths</text>
+    <text x="95" y="290" fill="#a5f3fc" font-size="17">No Pool, Scheduler, Optimizer, Evidence, or MCP import</text>
+
+    <rect x="665" y="145" width="470" height="190" rx="22" fill="#3f1d2e" stroke="#fb7185" stroke-width="2"/>
+    <text x="695" y="187" fill="#fecdd3" font-size="24" font-weight="700">Full Control Plane</text>
+    <text x="695" y="226" fill="#e2e8f0" font-size="17">Imported only for an executed command</text>
+    <text x="695" y="258" fill="#e2e8f0" font-size="17">Settings, policy, scheduler, pool, optimization</text>
+    <text x="695" y="290" fill="#fda4af" font-size="17">Execution remains identical after delegation</text>
+
+    <path d="M535 240H657" stroke="#67e8f9" stroke-width="3" marker-end="url(#startup-arrow)"/>
+    <text x="596" y="224" fill="#67e8f9" font-size="14" text-anchor="middle">real command only</text>
+
+    <rect x="65" y="390" width="250" height="160" rx="20" fill="#0f2f3b" stroke="#22d3ee" stroke-width="2"/>
+    <text x="190" y="430" fill="#a5f3fc" font-size="21" font-weight="700" text-anchor="middle">Wall Time</text>
+    <text x="190" y="468" fill="#e2e8f0" font-size="16" text-anchor="middle">warmup + repeated trials</text>
+    <text x="190" y="497" fill="#e2e8f0" font-size="16" text-anchor="middle">median, P95, min, max, CV</text>
+    <text x="190" y="526" fill="#94a3b8" font-size="14" text-anchor="middle">shared-runner evidence</text>
+
+    <rect x="340" y="390" width="250" height="160" rx="20" fill="#1e293b" stroke="#a78bfa" stroke-width="2"/>
+    <text x="465" y="430" fill="#ddd6fe" font-size="21" font-weight="700" text-anchor="middle">Import Time</text>
+    <text x="465" y="468" fill="#e2e8f0" font-size="16" text-anchor="middle">Python -X importtime</text>
+    <text x="465" y="497" fill="#e2e8f0" font-size="16" text-anchor="middle">record count and self time</text>
+    <text x="465" y="526" fill="#94a3b8" font-size="14" text-anchor="middle">separate diagnostic process</text>
+
+    <rect x="615" y="390" width="250" height="160" rx="20" fill="#1c2e24" stroke="#34d399" stroke-width="2"/>
+    <text x="740" y="430" fill="#a7f3d0" font-size="21" font-weight="700" text-anchor="middle">Profiler Memory</text>
+    <text x="740" y="468" fill="#e2e8f0" font-size="16" text-anchor="middle">cProfile + tracemalloc</text>
+    <text x="740" y="497" fill="#e2e8f0" font-size="16" text-anchor="middle">RSS and allocation peak</text>
+    <text x="740" y="526" fill="#94a3b8" font-size="14" text-anchor="middle">diagnostic overhead labeled</text>
+
+    <rect x="890" y="390" width="245" height="160" rx="20" fill="#3b2f0a" stroke="#facc15" stroke-width="2"/>
+    <text x="1012" y="430" fill="#fef08a" font-size="21" font-weight="700" text-anchor="middle">Hard Contracts</text>
+    <text x="1012" y="468" fill="#e2e8f0" font-size="16" text-anchor="middle">heavy modules absent</text>
+    <text x="1012" y="497" fill="#e2e8f0" font-size="16" text-anchor="middle">parser surface identical</text>
+    <text x="1012" y="526" fill="#94a3b8" font-size="14" text-anchor="middle">low-noise automated gate</text>
+
+    <path d="M300 335L190 382" stroke="#67e8f9" stroke-width="2.5" marker-end="url(#startup-arrow)"/>
+    <path d="M410 335L465 382" stroke="#67e8f9" stroke-width="2.5" marker-end="url(#startup-arrow)"/>
+    <path d="M790 335L740 382" stroke="#67e8f9" stroke-width="2.5" marker-end="url(#startup-arrow)"/>
+    <path d="M900 335L1012 382" stroke="#67e8f9" stroke-width="2.5" marker-end="url(#startup-arrow)"/>
+
+    <rect x="200" y="595" width="800" height="38" rx="19" fill="#450a0a" stroke="#f87171"/>
+    <text x="600" y="620" fill="#fecaca" font-size="16" text-anchor="middle">Startup measurements do not represent model open, nonlinear solve, or engineering approval.</text>
+  </g>
+</svg>
