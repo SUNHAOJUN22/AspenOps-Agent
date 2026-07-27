@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -13,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import psutil
+
+_IMPORT_TIME = re.compile(r"^import time:\s+(\d+)\s+\|\s+(\d+)\s+\|\s+(.+?)\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +85,45 @@ def measure(scenario: Scenario, *, trials: int, warmups: int) -> StartupMeasurem
     )
 
 
+def import_profile(scenario: Scenario) -> dict[str, Any]:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "importtime",
+            "-m",
+            scenario.module,
+            *scenario.arguments,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"import profile {scenario.name} failed with {completed.returncode}: "
+            f"{completed.stderr[-1000:]}"
+        )
+    records: list[tuple[int, int, str]] = []
+    for line in completed.stderr.splitlines():
+        match = _IMPORT_TIME.match(line)
+        if match is None:
+            continue
+        records.append((int(match.group(1)), int(match.group(2)), match.group(3).strip()))
+    target_records = [item for item in records if item[2] == scenario.module]
+    return {
+        "scenario": scenario.name,
+        "module": scenario.module,
+        "record_count": len(records),
+        "total_self_time_us": sum(item[0] for item in records),
+        "target_cumulative_time_us": None if not target_records else target_records[-1][1],
+        "boundary": (
+            "Python -X importtime is a separate diagnostic process. Its profiler overhead is not "
+            "included in the normal startup wall-time samples."
+        ),
+    }
+
+
 def environment() -> dict[str, Any]:
     memory = psutil.virtual_memory()
     return {
@@ -144,6 +186,7 @@ def run_probe(*, trials: int, warmups: int) -> dict[str, Any]:
         ),
         "environment": environment(),
         "measurements": [asdict(item) for item in measurements],
+        "import_profiles": [import_profile(item) for item in scenarios[:2]],
         "comparisons": [
             comparison(measurements, "bootstrap_version", "full_cli_version"),
             comparison(measurements, "bootstrap_help", "full_cli_help"),
