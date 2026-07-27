@@ -4,10 +4,12 @@ import json
 import subprocess
 import sys
 from argparse import ArgumentParser
+from pathlib import Path
 from typing import Any
 
 from aspenops_nexus import cli, cli_bootstrap
 
+ROOT = Path(__file__).resolve().parents[1]
 HEAVY_MODULES = {
     "aspenops_nexus.batch",
     "aspenops_nexus.benchmark",
@@ -94,6 +96,36 @@ def test_bootstrap_parser_matches_full_cli_surface() -> None:
     assert bootstrap_commands.keys() == full_commands.keys()
     for name in bootstrap_commands:
         assert bootstrap_commands[name].format_help() == full_commands[name].format_help()
+
+
+def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Path) -> None:
+    output = tmp_path / "cli-startup.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/measure_cli_startup.py"),
+            "--output",
+            str(output),
+            "--trials",
+            "1",
+            "--warmups",
+            "0",
+        ],
+        check=True,
+    )
+
+    evidence = json.loads(output.read_text(encoding="utf-8"))
+    assert evidence["schema"] == "aspenops.cli-startup/v1"
+    assert evidence["kind"] == "portable-python-cli-startup"
+    assert "do not measure Aspen Plus/HYSYS" in evidence["boundary"]
+    assert len(evidence["measurements"]) == 6
+    assert len(evidence["comparisons"]) == 3
+    assert all(item["trial_count"] == 1 for item in evidence["measurements"])
+    assert all(item["median_s"] >= 0.0 for item in evidence["measurements"])
+    assert all(
+        item["classification"] == "MEASURED_SAME_ENVIRONMENT"
+        for item in evidence["comparisons"]
+    )
 
 
 def test_heavy_module_guard_is_complete() -> None:
