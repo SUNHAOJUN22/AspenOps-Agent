@@ -149,13 +149,16 @@ def test_operation_count_probe_runs_on_every_software_gate(tmp_path: Path) -> No
     )
     report = json.loads(output.read_text(encoding="utf-8"))
 
-    assert report["schema"] == "aspenops.operation-counts/v1"
+    assert report["schema"] == "aspenops.operation-counts/v2"
     assert report["pool"]["cache_key_calls"] == 1
     assert report["pool"]["solver_calls"] == 1
     assert report["pool"]["result_serializations"] == 1
     assert report["pool"]["same_batch_dedup_results"] == 99
     assert report["pool"]["deep_result_isolation"] is True
     assert report["cache"]["pending_hit_total_after_threshold"] == 0
+    assert report["memory_cache"]["json_decode_calls"] == 0
+    assert report["memory_cache"]["sqlite_connection_calls"] == 0
+    assert report["memory_cache"]["deep_result_isolation"] is True
     assert report["pareto"]["dominance_calls"] == 0
     assert report["memory"]["traced_peak_bytes"] >= 0
     assert report["profile"]["total_calls"] > 0
