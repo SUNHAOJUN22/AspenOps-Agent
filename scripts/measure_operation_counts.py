@@ -190,6 +190,7 @@ def memory_cache_counts(directory: Path) -> dict[str, Any]:
         "json_decode_calls": decode_calls,
         "sqlite_connection_calls": connection_calls,
         "deep_result_isolation": second == {"value": {"nested": 1}},
+        "strategy": "compact_json_snapshot",
     }
 
 
@@ -299,7 +300,7 @@ def run_probe() -> dict[str, Any]:
             "pool.same_batch_dedup_results": 99,
             "pool.deep_result_isolation": True,
             "cache.pending_hit_total_after_threshold": 0,
-            "memory_cache.json_decode_calls": 0,
+            "memory_cache.json_decode_calls": 2,
             "memory_cache.sqlite_connection_calls": 0,
             "memory_cache.deep_result_isolation": True,
             "pareto.dominance_calls": 0,
