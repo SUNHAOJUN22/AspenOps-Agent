@@ -13,6 +13,7 @@ from typing import Any
 
 import psutil
 
+import aspenops_nexus.cache as cache_module
 import aspenops_nexus.optimizer as optimizer
 import aspenops_nexus.pool as pool_module
 from aspenops_nexus.cache import ResultCache
@@ -156,6 +157,42 @@ def cache_counts(directory: Path) -> dict[str, Any]:
     }
 
 
+def memory_cache_counts(directory: Path) -> dict[str, Any]:
+    cache = ResultCache(directory / "memory-result-cache.sqlite3")
+    cache.put("hot", {"value": {"nested": 1}})
+    decode_calls = 0
+    connection_calls = 0
+    original_loads = cache_module.json.loads
+    original_connect = cache._connect
+
+    def counted_loads(value: str, *args: Any, **kwargs: Any) -> Any:
+        nonlocal decode_calls
+        decode_calls += 1
+        return original_loads(value, *args, **kwargs)
+
+    def counted_connect() -> Any:
+        nonlocal connection_calls
+        connection_calls += 1
+        return original_connect()
+
+    cache_module.json.loads = counted_loads
+    cache._connect = counted_connect  # type: ignore[method-assign]
+    try:
+        first = cache.get_many(["hot", "hot"])
+        first["hot"]["value"]["nested"] = 99
+        second = cache.get("hot")
+    finally:
+        cache_module.json.loads = original_loads
+        cache._connect = original_connect  # type: ignore[method-assign]
+
+    return {
+        "requested_hits": 3,
+        "json_decode_calls": decode_calls,
+        "sqlite_connection_calls": connection_calls,
+        "deep_result_isolation": second == {"value": {"nested": 1}},
+    }
+
+
 def pareto_counts() -> dict[str, Any]:
     point = ParetoPoint((1.0,), (1.0, 2.0), 0.0)
     calls = 0
@@ -228,13 +265,14 @@ def run_probe() -> dict[str, Any]:
         directory = Path(temporary)
         pool = pool_counts(directory)
         cache = cache_counts(directory)
+        memory_cache = memory_cache_counts(directory)
         pareto = pareto_counts()
     profiler.disable()
     traced_current, traced_peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     rss_after = int(process.memory_info().rss)
     return {
-        "schema": "aspenops.operation-counts/v1",
+        "schema": "aspenops.operation-counts/v2",
         "kind": "portable-deterministic-performance-contracts",
         "boundary": (
             "These are deterministic Python orchestration operation counts. They do not "
@@ -243,6 +281,7 @@ def run_probe() -> dict[str, Any]:
         "environment": environment(),
         "pool": pool,
         "cache": cache,
+        "memory_cache": memory_cache,
         "pareto": pareto,
         "memory": {
             "rss_before_bytes": rss_before,
@@ -260,6 +299,9 @@ def run_probe() -> dict[str, Any]:
             "pool.same_batch_dedup_results": 99,
             "pool.deep_result_isolation": True,
             "cache.pending_hit_total_after_threshold": 0,
+            "memory_cache.json_decode_calls": 0,
+            "memory_cache.sqlite_connection_calls": 0,
+            "memory_cache.deep_result_isolation": True,
             "pareto.dominance_calls": 0,
         },
     }
