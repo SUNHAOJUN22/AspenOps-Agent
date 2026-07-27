@@ -92,7 +92,7 @@ def list_recent_job_records(path: str | Path, limit: int = 20) -> list[dict[str,
 
     bounded_limit = max(1, min(limit, 200))
     database = Path(path)
-    with closing(_connect(database)) as connection:
+    with closing(_connect(database)) as connection, connection:
         _ensure_recent_index(database, connection)
         rows = connection.execute(
             f"SELECT {_SELECT_JOB_COLUMNS} FROM jobs "
@@ -107,7 +107,7 @@ def recent_jobs_query_plan(path: str | Path, limit: int = 20) -> list[str]:
 
     bounded_limit = max(1, min(limit, 200))
     database = Path(path)
-    with closing(_connect(database)) as connection:
+    with closing(_connect(database)) as connection, connection:
         _ensure_recent_index(database, connection)
         rows = connection.execute(
             f"EXPLAIN QUERY PLAN SELECT {_SELECT_JOB_COLUMNS} FROM jobs "
