@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → 统一流程意图 → 隔离执行 → 非线性求解 → 工程判定 → 可复现实验证据**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit](docs/performance-audit-2026-07-27.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V1](docs/performance-audit-2026-07-27.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -169,8 +169,6 @@ environment or Python API
 
 ![独立模拟有效性门](docs/assets/readme/validity-gates.svg)
 
-结果不是因为模拟器方法返回就自动有效。AspenOps 分别检查：
-
 ```text
 communication_ok
 AND engine_ok
@@ -181,7 +179,7 @@ AND balances_passed
 AND finite_json_evidence
 ```
 
-约束和衡算中的 `NaN`、正负 Infinity、非数字值以及派生算术溢出都会 fail closed，并写入结构化违规代码；结果和证据使用 JSON 安全值，`allow_nan=False`。Aspen Plus 与 HYSYS 的运行状态使用明确布尔、COM `-1/0/1` 或受支持字符串解析，不使用 `bool("False")` 这类 Python truthiness 猜测。
+约束和衡算中的 `NaN`、正负 Infinity、非数字值以及派生算术溢出都会 fail closed，并写入 `constraint_non_finite`、`balance_non_finite` 等结构化违规代码；结果和证据使用 JSON 安全值，`allow_nan=False`。Aspen Plus 与 HYSYS 的运行状态使用明确布尔、COM `-1/0/1` 或受支持字符串解析，不使用 `bool("False")` 这类 Python truthiness 猜测。
 
 ---
 
@@ -217,8 +215,6 @@ uv run python scripts/render_process_ir_dashboard.py \
 
 ![CLI、Python 与 MCP 统一入口](docs/assets/readme/cli-mcp-workflow.svg)
 
-三个入口复用同一 Settings、Policy、Scheduler、Worker 和 Evidence 实现，不创建平行模拟器驱动。
-
 | 入口 | 主要用途 | 安全边界 |
 |---|---|---|
 | CLI | 演示、诊断、批处理、调度、优化、认证与验证 | 参数化命令，无任意代码执行 |
@@ -252,13 +248,7 @@ mcp
 
 ![MCP 兼容性与 Scheduler 生命周期](docs/assets/readme/mcp-runtime-lifecycle.svg)
 
-项目元数据和构建后的 Wheel `Requires-Dist` 都要求：
-
-```text
-mcp>=1.9,<2
-```
-
-冻结环境锁定 `mcp 1.28.1`。运行时在导入 `FastMCP` 前验证 SDK；构建后的 Wheel METADATA 由标准库解析器重新验证，`<20` 不能冒充 `<2`。
+项目元数据和构建后的 Wheel `Requires-Dist` 都要求 `mcp>=1.9,<2`，冻结环境锁定 `mcp 1.28.1`。运行时在导入 `FastMCP` 前验证 SDK；构建后的 Wheel METADATA 由标准库解析器重新验证，`<20` 不能冒充 `<2`。
 
 ```text
 server startup → scheduler.start()
@@ -266,7 +256,7 @@ serve 14 constrained tools
 server shutdown → scheduler.stop() → Worker / PoolManager cleanup
 ```
 
-该生命周期只证明软件资源被治理，不代表真实 Aspen 模型已经获得工程认证。
+MCP 的 `list_recent_jobs` 不再调用兼容层的 N+1 `JobStore.list_recent()`；它使用一次受控连接和一次索引 SELECT 读取公开 job 字段，不读取 request body。该优化不修改创建、claim、heartbeat、retry、cancel、恢复或幂等提交事务。
 
 ---
 
@@ -325,8 +315,6 @@ uv run aspenops mcp
 
 ![约束优化闭环](docs/assets/readme/optimization-lifecycle.svg)
 
-优化器支持 continuous、integer、categorical 和 ordinal 变量，minimize/maximize 多目标及权重，并限制变量数、目标数、种群、代数和总评价次数。
-
 ```text
 validate mixed variables and objectives
 → enforce finite optimization budget
@@ -337,7 +325,7 @@ validate mixed variables and objectives
 → best candidate + Pareto evidence
 ```
 
-DE 仍保持每代一次批量评价和相同评价预算；候选索引抽样不再为每个个体构造完整列表。Pareto 计算先保持顺序地去重，并在可行点存在时先排除不可行点；全不可行时只保留最小 violation。Mock 结果标记为 `control-plane-only`；真实 Aspen 结果保持 `licensed-runtime-pending-engineering-review` 和 `PENDING_REAL_ASPEN_CERTIFICATION`，不把 Pareto 前沿当作工程批准。
+DE 仍保持每代一次批量评价和相同评价预算；候选索引抽样不再为每个个体构造完整列表。Pareto 计算先保持顺序地去重，并在可行点存在时先排除不可行点；全不可行时只保留最小 violation。Mock 结果标记为 `control-plane-only`；真实 Aspen 结果保持 `licensed-runtime-pending-engineering-review` 和 `PENDING_REAL_ASPEN_CERTIFICATION`。
 
 ---
 
@@ -389,8 +377,6 @@ validate
 
 ![缓存、批内去重与单航班](docs/assets/readme/cache-singleflight.svg)
 
-缓存键绑定运行时 schema、软件版本、backend、稳定运行时身份、模型 SHA-256、注册表 SHA-256 和物理请求。查找顺序为内存 LRU 与 SQLite WAL；损坏 JSON 会被删除并重新计算。
-
 ```text
 canonical physical identity
 → memory LRU / SQLite WAL lookup
@@ -400,7 +386,9 @@ canonical physical identity
 → computed / persistent_cache / inflight_singleflight provenance
 ```
 
-缓存 hit 阈值使用 O(1) 累计计数，批量键按 SQLite 参数预算迭代分块，持久化 JSON 使用紧凑编码，并在 schema 初始化后执行 `PRAGMA optimize`。同一个不可变请求对象在单个 batch 中复用 cache-key 计算；一个可缓存求解结果只生成一次规范字典。same-batch 与 singleflight 副本使用深拷贝保持嵌套结果隔离，不降低模型、注册表、运行时或物理请求身份强度。
+缓存键绑定运行时 schema、软件版本、backend、稳定运行时身份、模型 SHA-256、注册表 SHA-256 和物理请求。缓存 hit 阈值使用 O(1) 累计计数，批量键按 SQLite 参数预算迭代分块，持久化 JSON 使用紧凑编码，并在 schema 初始化后执行 `PRAGMA optimize`。
+
+同一个不可变请求对象在单个 batch 中复用 cache-key 计算；一个可缓存求解结果只生成一次规范字典。same-batch 与 singleflight 副本使用深拷贝保持嵌套结果隔离。内存 LRU 继续保存 compact JSON snapshot：同一次 `get_many` 对重复 key 只解码一次，内存命中不打开 SQLite，跨调用利用标准库 C JSON 解码获得独立嵌套对象。结构化对象加 `deepcopy` 的零解码候选经测量后已回滚。
 
 ---
 
@@ -417,7 +405,7 @@ source model
 → graceful close or verified recycle
 ```
 
-回收原因包括 timeout、crash、protocol error、tainted write、point budget、worker age、cancellation 和 lease ownership loss。回收只作用于 AspenOps 核验归属的 Worker 或其受监督后代；原模型不被覆盖，旧临时副本在清理时删除。
+回收原因包括 timeout、crash、protocol error、tainted write、point budget、worker age、cancellation 和 lease ownership loss。回收只作用于 AspenOps 核验归属的 Worker 或其受监督后代；原模型不被覆盖。
 
 ---
 
@@ -429,7 +417,7 @@ source model
 
 AspenOps 将性能结论分为两类：
 
-1. **低噪声硬合同**：cache-key 次数、solver 调用次数、规范序列化次数、dedup 数量、缓存 flush 状态和 Pareto 支配比较次数；
+1. **低噪声硬合同**：cache-key、solver、序列化、dedup、缓存 flush、JSON clone、SQLite connection/SELECT 和 Pareto dominance 次数；
 2. **环境敏感诊断**：wall time、median、P95、min/max、CV、Python `-X importtime`、cProfile、tracemalloc 与 RSS。
 
 ```bash
@@ -440,13 +428,49 @@ uv run python scripts/measure_cli_startup.py \
 
 uv run python scripts/measure_operation_counts.py \
   --output var/ci/operation-counts.json
+
+uv run python scripts/measure_job_store_queries.py \
+  --output var/ci/job-store-query-plan.json \
+  --records 1000 \
+  --limit 20
 ```
 
-CLI console script 先进入轻量 bootstrap。`--version`、顶层帮助和子命令帮助不会导入 Pool、Scheduler、优化器、认证、证据或 MCP；实际命令只委托一次给完整 CLI。`cli-startup.json` 使用同一解释器、同一机器比较 bootstrap 和 full CLI，并单独保存 import-time 诊断；`operation-counts.json` 保存 cProfile、tracemalloc、RSS 和确定性操作计数。
+`measure_cli_startup.py` 自动生成同目录三份证据：
 
-当前自动合同要求：100 个相同请求对象只计算 1 次 cache key、调用 1 次 solver、生成 1 次规范序列化并得到 99 个 `same_batch_dedup` 结果；1024 个缓存命中达到阈值后待刷总数为 0；1000 个完全重复 Pareto 点不执行支配比较。wall time 在共享 runner 上只作为证据，不使用过窄硬阈值。
+```text
+cli-startup.json
+operation-counts.json
+job-store-query-plan.json
+```
 
-历史 benchmark 文件仍是便携 Mock 编排的归档证据，不自动代表当前 HEAD。它们不证明 Aspen Plus/HYSYS 模型打开、非线性求解、收敛或工业工程性能。模型与 registry SHA-256 仍按内容计算；没有采用基于 mtime/size 的快捷跳过。Scheduler `list_recent()` 的 N+1 查询与复合索引迁移记录在性能审计中，未通过旁路实现改变租约恢复语义。
+当前确定性合同：
+
+```text
+100 个相同请求对象
+→ 1 次 cache key
+→ 1 次 solver
+→ 1 次规范序列化
+→ 99 个 same_batch_dedup
+
+1024 个缓存命中
+→ pending_hit_total == 0
+
+3 个内存命中，跨 2 次调用
+→ 2 次 compact JSON decode
+→ 0 次 SQLite connection
+→ deep nested isolation
+
+1000 个完全重复 Pareto 点
+→ 0 次 dominance
+
+1000 条耐久任务，limit 20
+→ 1 次 connection
+→ 1 次 SELECT
+→ idx_jobs_recent_created_job
+→ no USE TEMP B-TREE
+```
+
+wall time 在共享 runner 上只作为证据，不使用过窄硬阈值。历史 benchmark 文件仍是便携 Mock 编排的归档证据，不自动代表当前 HEAD，也不证明 Aspen Plus/HYSYS 求解速度。模型与 registry SHA-256 仍按内容计算，没有采用基于 mtime/size 的快捷跳过。详见 [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md)。
 
 ---
 
@@ -575,7 +599,7 @@ bounded ZIP structure
 → trusted-key verification
 ```
 
-未签名包只提供内部完整性检查；Ed25519 只有在公钥可信时才提供来源真实性。哈希、签名和软件 PASS 均不证明物性、动力学或流程模型工程上正确。
+未签名包只提供内部完整性检查；Ed25519 只有在公钥可信时才提供来源真实性。哈希、签名和软件 PASS 均不证明物性、动力学或流程模型工程上正确。将 readable member 与 canonical hash 合并为同一字节的候选尚无当前 HEAD 的 CPU/大小证据，因此保持 INCONCLUSIVE，未改变证据字节合同。
 
 ---
 
@@ -634,7 +658,8 @@ var/                     可复现基线、审计清单和本地运行状态
 | 结果出现 `constraint_non_finite` | 节点值、单位转换和派生溢出 | 不放宽限制；修复模型或量纲 |
 | 结果出现 `balance_non_finite` | 衡算项、系数、单位和残差 | 使用结构化 diagnostics 定位非有限项 |
 | 启动证据波动较大 | `coefficient_of_variation`、runner、Python 和 CPU | wall time 只作环境证据；依赖 import 与 operation-count 硬合同 |
-| operation-count 不匹配 | cache-key、solver、序列化、dedup 或 Pareto 逻辑 | 视为确定性性能回归，不用多跑几次掩盖 |
+| operation-count 不匹配 | cache-key、solver、序列化、dedup、SQL 或 Pareto 逻辑 | 视为确定性性能回归，不用多跑几次掩盖 |
+| recent-jobs 出现临时排序 | `job-store-query-plan.json` 与索引 | 必须使用 `idx_jobs_recent_created_job`，不得接受 `USE TEMP B-TREE` |
 | 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务 | 启动调度服务 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
 | 缓存结果异常 | cache key、模型/registry 哈希、损坏记录 | 损坏记录应被删除并重新计算 |
@@ -655,13 +680,15 @@ var/                     可复现基线、审计清单和本地运行状态
 - 环境与 Python API 统一的 fail-closed Settings 和路径策略；
 - 独立通信、引擎、收敛、约束、衡算和有限数值证据门；
 - Mock、Fake COM、Windows Job Object、耐久调度、取消、缓存、单航班、优化和 MCP；
-- CLI 轻量 bootstrap、低噪声 operation-count、import-time、cProfile 和内存性能证据；
+- CLI 轻量 bootstrap、低噪声 operation-count、import-time、cProfile、内存和 SQLite query-plan 证据；
+- MCP recent-jobs 单连接、单 SELECT 与持久索引读取；
 - MCP 1.x 依赖/Wheel/运行时兼容门与 FastMCP 生命周期资源清理；
 - 冻结 CI、dashboard、证据 bundle 和持证认证边界。
 
 ### 下一阶段
 
-- JobStore `list_recent()` 单查询行解码和复合索引迁移；
+- 将兼容 Python API `JobStore.list_recent()` 本身迁移到共享单查询 decoder；
+- 为 claim、cancellation deadline 和 events 访问模式建立独立 query-plan 证据后再决定复合索引；
 - IR → Mock 非执行计划编译器；
 - DWSIM 开源真实流程后端；
 - Text/Image → IR benchmark 与数据合同；
@@ -718,7 +745,8 @@ var/                     可复现基线、审计清单和本地运行状态
 - [External Agent Integration](docs/external-agent-integration.md)
 - [Windows Setup](docs/windows-setup.md)
 - [Performance](docs/performance.md)
-- [Performance Audit](docs/performance-audit-2026-07-27.md)
+- [Performance Audit V1](docs/performance-audit-2026-07-27.md)
+- [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md)
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
