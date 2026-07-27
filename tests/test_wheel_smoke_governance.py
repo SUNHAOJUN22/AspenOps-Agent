@@ -156,9 +156,10 @@ def test_operation_count_probe_runs_on_every_software_gate(tmp_path: Path) -> No
     assert report["pool"]["same_batch_dedup_results"] == 99
     assert report["pool"]["deep_result_isolation"] is True
     assert report["cache"]["pending_hit_total_after_threshold"] == 0
-    assert report["memory_cache"]["json_decode_calls"] == 0
+    assert report["memory_cache"]["json_decode_calls"] == 2
     assert report["memory_cache"]["sqlite_connection_calls"] == 0
     assert report["memory_cache"]["deep_result_isolation"] is True
+    assert report["memory_cache"]["strategy"] == "compact_json_snapshot"
     assert report["pareto"]["dominance_calls"] == 0
     assert report["memory"]["traced_peak_bytes"] >= 0
     assert report["profile"]["total_calls"] > 0
