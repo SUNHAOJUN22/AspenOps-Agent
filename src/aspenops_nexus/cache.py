@@ -6,6 +6,7 @@ import threading
 from collections import Counter, OrderedDict
 from collections.abc import Iterator
 from contextlib import closing
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,7 @@ class ResultCache:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._memory: OrderedDict[str, str] = OrderedDict()
+        self._memory: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._pending_hits: Counter[str] = Counter()
         self._pending_hit_total = 0
         with closing(self._connect()) as connection, connection:
@@ -48,8 +49,8 @@ class ResultCache:
         connection.execute("PRAGMA busy_timeout=30000")
         return connection
 
-    def _remember(self, key: str, encoded: str) -> None:
-        self._memory[key] = encoded
+    def _remember(self, key: str, value: dict[str, Any]) -> None:
+        self._memory[key] = deepcopy(value)
         self._memory.move_to_end(key)
         while len(self._memory) > _MEMORY_MAX_ENTRIES:
             self._memory.popitem(last=False)
@@ -94,7 +95,7 @@ class ResultCache:
             return {}
         counts = Counter(keys)
         unique_keys = list(counts)
-        encoded: dict[str, str] = {}
+        decoded: dict[str, dict[str, Any]] = {}
         with self._lock:
             missing: list[str] = []
             for key in unique_keys:
@@ -103,7 +104,9 @@ class ResultCache:
                     missing.append(key)
                 else:
                     self._memory.move_to_end(key)
-                    encoded[key] = memory_payload
+                    decoded[key] = deepcopy(memory_payload)
+
+            corrupt: list[str] = []
             if missing:
                 with closing(self._connect()) as connection:
                     for batch in _chunks(missing):
@@ -115,22 +118,17 @@ class ResultCache:
                         ).fetchall()
                         for row in rows:
                             key = str(row[0])
-                            payload = str(row[1])
-                            encoded[key] = payload
-                            self._remember(key, payload)
-
-            decoded: dict[str, dict[str, Any]] = {}
-            corrupt: list[str] = []
-            for key, payload in encoded.items():
-                try:
-                    value = json.loads(payload)
-                except json.JSONDecodeError:
-                    corrupt.append(key)
-                    continue
-                if not isinstance(value, dict):
-                    corrupt.append(key)
-                    continue
-                decoded[key] = {str(name): item for name, item in value.items()}
+                            try:
+                                value = json.loads(str(row[1]))
+                            except json.JSONDecodeError:
+                                corrupt.append(key)
+                                continue
+                            if not isinstance(value, dict):
+                                corrupt.append(key)
+                                continue
+                            normalized = {str(name): item for name, item in value.items()}
+                            decoded[key] = normalized
+                            self._remember(key, normalized)
 
             self._discard(corrupt)
             for key in decoded:
@@ -167,8 +165,8 @@ class ResultCache:
                 """,
                 rows,
             )
-            for key, encoded in encoded_payloads.items():
-                self._remember(key, encoded)
+            for key, payload in payloads.items():
+                self._remember(key, payload)
 
     def put(self, key: str, payload: dict[str, Any]) -> None:
         self.put_many({key: payload})
