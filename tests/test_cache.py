@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import json
 import sqlite3
 from pathlib import Path
 
@@ -46,6 +49,53 @@ def test_bulk_cache_chunks_queries_beyond_sqlite_parameter_limit(tmp_path: Path)
     assert loaded["key-0"] == {"index": 0}
     assert loaded["key-904"] == {"index": 904}
     assert reopened.stats() == {"entries": 905, "hits": 905}
+
+
+def test_hit_flush_threshold_uses_constant_time_total(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite3"
+    payloads = {f"key-{index}": {"index": index} for index in range(1024)}
+    cache = ResultCache(path)
+    cache.put_many(payloads)
+
+    assert cache.get_many(list(payloads)) == payloads
+    assert cache._pending_hit_total == 0
+    assert not cache._pending_hits
+    assert cache.stats() == {"entries": 1024, "hits": 1024}
+
+
+def test_pending_hit_total_tracks_discard_and_explicit_flush(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite3"
+    cache = ResultCache(path)
+    cache.put_many({"a": {"value": 1}, "b": {"value": 2}})
+
+    assert cache.get_many(["a", "a", "b"]) == {
+        "a": {"value": 1},
+        "b": {"value": 2},
+    }
+    assert cache._pending_hit_total == 3
+    cache._discard(["a"])
+    assert cache._pending_hit_total == 1
+    assert cache.stats() == {"entries": 1, "hits": 1}
+    assert cache._pending_hit_total == 0
+
+
+def test_cache_persists_compact_json(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite3"
+    cache = ResultCache(path)
+    payload = {"ok": True, "nested": {"value": 3}}
+    cache.put("a", payload)
+
+    with sqlite3.connect(path) as connection:
+        encoded = str(
+            connection.execute(
+                "SELECT payload FROM result_cache WHERE cache_key = ?",
+                ("a",),
+            ).fetchone()[0]
+        )
+
+    assert ": " not in encoded
+    assert ", " not in encoded
+    assert json.loads(encoded) == payload
 
 
 def test_corrupted_cache_entries_are_removed_without_poisoning_valid_hits(tmp_path: Path) -> None:
