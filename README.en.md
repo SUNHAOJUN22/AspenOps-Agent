@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → validated process intent → isolated execution → nonlinear solve → engineering decision → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit](docs/performance-audit-2026-07-27.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V1](docs/performance-audit-2026-07-27.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,7 +18,7 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses twenty-two original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
+> This README uses twenty-two original AI-generated SVG capability diagrams. They describe implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
 
 ---
 
@@ -40,7 +40,7 @@
 
 These figures come from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence.
 
-Public CI can validate the control plane, configuration and path policy, IPC, process isolation, scheduling, caching, optimization, numeric fail-closed behaviour, archives, interfaces, Process Intent, MCP compatibility, portable performance contracts and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
+Public CI can validate the control plane, configuration and path policy, IPC, process isolation, scheduling, caching, optimization, numeric fail-closed behaviour, archives, interfaces, Process Intent, MCP compatibility, portable performance contracts and documentation. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
 
 ---
 
@@ -55,7 +55,7 @@ AspenOps is not a wrapper that lets a model emit arbitrary COM scripts. It conne
 - communication, engine return, convergence, constraints, balances and human approval remain independent gates;
 - non-finite values, invalid Boolean protocols and non-serializable diagnostics cannot silently become valid evidence;
 - accepted results bind request, model, registry, commit and evidence hashes;
-- DWSIM, IDAES, Modelica/FMI and automatic flowsheet compilers remain `planned`; when unavailable, there is no adapter and execution fails closed.
+- DWSIM, IDAES, Modelica/FMI and automatic flowsheet compilers remain `planned`; unavailable execution fails closed.
 
 ---
 
@@ -91,7 +91,7 @@ python -m pip install "aspenops-nexus[agent]"
 python -m pip show mcp
 ```
 
-The valid range is:
+Valid range:
 
 ```text
 mcp>=1.9,<2
@@ -127,8 +127,8 @@ Rules:
 2. `..`, symlinks, Windows junctions and realpath escapes are rejected.
 3. `ASPENOPS_LICENSE_SLOTS` and `ASPENOPS_MAX_WORKERS` jointly bound concurrency.
 4. Duplicate `.env` variables, unbalanced quotes and potential secret echoing are rejected.
-5. Environment loading and direct Python `Settings(...)` construction share one fail-closed validation boundary.
-6. Unknown backend/mode values, truthy string booleans, non-finite numbers, zero/negative budgets and non-`Path` arguments are rejected during object creation.
+5. Environment loading and direct Python `Settings(...)` construction share one fail-closed boundary.
+6. Unknown backend/mode values, truthy string booleans, non-finite numbers, zero/negative budgets and non-`Path` arguments are rejected during construction.
 7. Private keys, tokens, licence secrets, customer model paths and production data do not belong in the repository.
 
 See [Windows Setup](docs/windows-setup.md).
@@ -169,8 +169,6 @@ Truthy strings such as `visible="false"` and `cache_failures="false"` are not ac
 
 ![Independent simulation validity gates](docs/assets/readme/validity-gates.svg)
 
-A simulator method returning does not make a result valid. AspenOps keeps these gates separate:
-
 ```text
 communication_ok
 AND engine_ok
@@ -181,7 +179,7 @@ AND balances_passed
 AND finite_json_evidence
 ```
 
-`NaN`, positive or negative Infinity, non-numeric constraint values and derived arithmetic overflow fail closed with structured violation codes. Results and bundles remain JSON-safe under `allow_nan=False`. Aspen Plus and HYSYS running state accepts explicit booleans, COM `-1/0/1` and supported strings; it never relies on `bool("False")` truthiness.
+`NaN`, positive or negative Infinity, non-numeric values and derived arithmetic overflow fail closed with `constraint_non_finite`, `balance_non_finite` and related structured codes. Results remain JSON-safe under `allow_nan=False`. Aspen Plus and HYSYS running state accepts explicit booleans, COM `-1/0/1` and supported strings; it never relies on `bool("False")` truthiness.
 
 ---
 
@@ -195,7 +193,7 @@ The simulator-neutral representation is:
 aspenops.flowsheet/v1
 ```
 
-It models components, property methods, equipment, ports, streams, parameters and safe metadata. It provides deterministic ordering, canonical JSON, SHA-256 graph identity, connection checks, cycle policy, quantity budgets, and rejection of `code`, `script`, `shell`, `python`, `vba`, `command` and raw Tree Paths.
+It models components, property methods, equipment, ports, streams, parameters and safe metadata. It provides deterministic ordering, canonical JSON, SHA-256 graph identity, connection checks, cycle policy and quantity budgets, and rejects `code`, `script`, `shell`, `python`, `vba`, `command` and raw Tree Paths.
 
 ```bash
 uv run python scripts/validate_process_ir.py \
@@ -216,8 +214,6 @@ uv run python scripts/render_process_ir_dashboard.py \
 ## CLI, Python and MCP
 
 ![Unified CLI, Python and MCP surface](docs/assets/readme/cli-mcp-workflow.svg)
-
-All three entry points reuse the same Settings, Policy, Scheduler, Worker and Evidence implementations.
 
 | Surface | Main use | Boundary |
 |---|---|---|
@@ -252,13 +248,7 @@ mcp
 
 ![MCP compatibility and Scheduler lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg)
 
-Project metadata and the built Wheel `Requires-Dist` both require:
-
-```text
-mcp>=1.9,<2
-```
-
-The frozen environment resolves `mcp 1.28.1`. Runtime checks the SDK before importing `FastMCP`; the built Wheel METADATA is parsed again so `<20` cannot masquerade as `<2`.
+Project metadata and built Wheel `Requires-Dist` require `mcp>=1.9,<2`; the frozen environment resolves `mcp 1.28.1`. Runtime validates the SDK before importing `FastMCP`, and built Wheel METADATA is parsed again so `<20` cannot masquerade as `<2`.
 
 ```text
 server startup → scheduler.start()
@@ -266,7 +256,7 @@ serve 14 constrained tools
 server shutdown → scheduler.stop() → Worker / PoolManager cleanup
 ```
 
-This lifecycle proves software resource ownership only. It does not certify a real Aspen model.
+MCP `list_recent_jobs` no longer calls the compatibility N+1 `JobStore.list_recent()` method. It uses one governed connection and one indexed SELECT over public job fields, without selecting request bodies. Creation, claim, heartbeat, retry, cancellation, recovery and idempotent result transactions remain unchanged.
 
 ---
 
@@ -325,8 +315,6 @@ uv run aspenops mcp
 
 ![Constrained optimization lifecycle](docs/assets/readme/optimization-lifecycle.svg)
 
-The optimizer supports continuous, integer, categorical and ordinal variables, weighted minimize/maximize objectives, and explicit variable, objective, population, generation and evaluation limits.
-
 ```text
 validate mixed variables and objectives
 → enforce finite optimization budget
@@ -337,7 +325,7 @@ validate mixed variables and objectives
 → best candidate + Pareto evidence
 ```
 
-DE still performs one batch evaluation per generation under the same evaluation budget. Candidate-index sampling no longer allocates a full exclusion list for every target. Pareto processing performs ordered deduplication first, excludes infeasible points when a feasible point exists, and retains only minimum-violation points when every point is infeasible. Mock output is `control-plane-only`. Real Aspen output remains `licensed-runtime-pending-engineering-review` and `PENDING_REAL_ASPEN_CERTIFICATION`; a Pareto front is not engineering approval.
+DE retains one batch evaluation per generation and the same evaluation budget while avoiding a full exclusion list for every target. Pareto calculation performs ordered exact deduplication, filters infeasible points when feasible points exist, and retains minimum violation when all points are infeasible. Mock output is `control-plane-only`; real Aspen output remains `licensed-runtime-pending-engineering-review` and `PENDING_REAL_ASPEN_CERTIFICATION`.
 
 ---
 
@@ -379,7 +367,7 @@ validate
 
 - expired leases with attempts remaining enter `retry_wait`;
 - exhausted attempts enter `dead_letter`;
-- a cancellation requested during recovery enters `cancelled`;
+- cancellation requested during recovery enters `cancelled`;
 - cancellation may terminate only the verified owned Worker;
 - final state and evidence commit atomically.
 
@@ -388,8 +376,6 @@ validate
 ## Cache, batch deduplication and singleflight
 
 ![Cache, batch deduplication and singleflight](docs/assets/readme/cache-singleflight.svg)
-
-The cache key binds runtime schema, package version, backend, stable runtime identity, model SHA-256, registry SHA-256 and physical request identity. Lookup uses a bounded memory LRU and SQLite WAL; corrupt JSON is discarded and recomputed.
 
 ```text
 canonical physical identity
@@ -400,7 +386,9 @@ canonical physical identity
 → computed / persistent_cache / inflight_singleflight provenance
 ```
 
-The cache flush threshold uses an O(1) running total, batch keys are iterated within the SQLite parameter budget, persistent JSON uses compact encoding, and schema initialization executes `PRAGMA optimize`. One immutable request object reuses cache-key computation inside a batch; one cacheable solve result produces one canonical dictionary. Same-batch and singleflight copies use deep cloning so nested results remain isolated. None of these changes weaken runtime, model, registry or physical-request identity.
+Cache identity binds runtime schema, package version, backend, stable runtime identity, model SHA-256, registry SHA-256 and physical request identity. Hit threshold accounting is O(1), key chunks respect the SQLite parameter budget, persistent JSON is compact, and bounded `PRAGMA optimize` runs after schema initialization.
+
+The same immutable request object reuses cache-key work inside one batch; one cacheable solve result produces one canonical dictionary. Same-batch and singleflight results use deep clones to preserve nested isolation. The memory LRU keeps compact JSON snapshots: duplicate keys in one `get_many` call decode once, memory hits open no SQLite connection, and C JSON decoding provides independent nested values across calls. A structured-object zero-decode candidate using generic `deepcopy` was measured and rolled back.
 
 ---
 
@@ -417,7 +405,7 @@ source model
 → graceful close or verified recycle
 ```
 
-Recycle reasons include timeout, crash, protocol error, tainted write, point budget, worker age, cancellation and lease ownership loss. Recycling applies only to an AspenOps-owned Worker or supervised descendant. The source model is never overwritten and private staged copies are removed during cleanup.
+Recycle reasons include timeout, crash, protocol error, tainted write, point budget, worker age, cancellation and lease ownership loss. Recycling applies only to an AspenOps-owned Worker or supervised descendant. The source model is never overwritten.
 
 ---
 
@@ -427,10 +415,10 @@ Recycle reasons include timeout, crash, protocol error, tainted write, point bud
 
 ![Cold and warm startup evidence](docs/assets/readme/cold-warm-startup.svg)
 
-AspenOps separates performance conclusions into two classes:
+AspenOps separates performance evidence into:
 
-1. **Low-noise hard contracts:** cache-key calls, solver calls, canonical serializations, deduplicated result count, cache-flush state and Pareto dominance calls.
-2. **Environment-sensitive diagnostics:** wall time, median, P95, min/max, coefficient of variation, Python `-X importtime`, cProfile, tracemalloc and RSS.
+1. **low-noise hard contracts**: cache-key, solver, serialization, dedup, cache flush, JSON clone, SQLite connection/SELECT and Pareto dominance counts;
+2. **environment-sensitive diagnostics**: wall time, median, P95, min/max, CV, Python `-X importtime`, cProfile, tracemalloc and RSS.
 
 ```bash
 uv run python scripts/measure_cli_startup.py \
@@ -440,13 +428,49 @@ uv run python scripts/measure_cli_startup.py \
 
 uv run python scripts/measure_operation_counts.py \
   --output var/ci/operation-counts.json
+
+uv run python scripts/measure_job_store_queries.py \
+  --output var/ci/job-store-query-plan.json \
+  --records 1000 \
+  --limit 20
 ```
 
-The CLI console script enters a lightweight bootstrap first. `--version`, top-level help and subcommand help do not import Pool, Scheduler, optimization, certification, evidence or MCP modules. An executed command delegates exactly once to the full CLI. `cli-startup.json` compares bootstrap and full CLI on the same interpreter and machine and stores a separate import-time profile. `operation-counts.json` stores cProfile, tracemalloc, RSS and deterministic operation counts.
+`measure_cli_startup.py` automatically emits three colocated artifacts:
 
-Current automated contracts require 100 references to the same request object to perform one cache-key computation, one solver call and one canonical serialization while producing 99 `same_batch_dedup` results. After 1024 cache hits reach the flush threshold, the pending-hit total must be zero. One thousand identical Pareto points must require zero dominance comparisons. Shared-runner wall time is evidence and never uses an artificially narrow hard threshold.
+```text
+cli-startup.json
+operation-counts.json
+job-store-query-plan.json
+```
 
-Historical benchmark files remain archived portable Mock orchestration evidence and are not an automatic claim about the current HEAD. They do not measure Aspen Plus/HYSYS model open, nonlinear solve, convergence or industrial engineering performance. Model and registry SHA-256 remain content-derived; no mtime/size shortcut was adopted. The JobStore `list_recent()` N+1 query and composite-index migration are recorded in the performance audit and were not implemented through a parallel state machine that could weaken lease recovery semantics.
+Current deterministic contracts:
+
+```text
+100 identical request references
+→ 1 cache key
+→ 1 solver call
+→ 1 canonical serialization
+→ 99 same_batch_dedup results
+
+1024 cache hits
+→ pending_hit_total == 0
+
+3 memory hits across 2 calls
+→ 2 compact JSON decodes
+→ 0 SQLite connections
+→ deep nested isolation
+
+1000 identical Pareto points
+→ 0 dominance calls
+
+1000 durable jobs, limit 20
+→ 1 connection
+→ 1 SELECT
+→ idx_jobs_recent_created_job
+→ no USE TEMP B-TREE
+```
+
+Shared-runner wall time remains evidence, not a narrow hard threshold. Historical benchmark files are archived portable Mock orchestration evidence and do not automatically represent the current HEAD or licensed Aspen solve speed. Model and registry SHA-256 remain content-derived; no mtime/size shortcut is used. See [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md).
 
 ---
 
@@ -489,8 +513,8 @@ Knowledge is read-only; Concept and Parameter output validated IR only; Executio
 | Backend | Current execution | IR compiler | Current boundary |
 |---|---|---|---|
 | Mock | available | planned | portable software evidence, not Aspen physics |
-| Aspen Plus | available on licensed Windows | planned | approved existing models and strict engine-running parsing |
-| HYSYS | available on licensed Windows | planned | project-owned Spreadsheet contract and strict solver-running parsing |
+| Aspen Plus | available on licensed Windows | planned | approved existing models; strict engine-running parsing |
+| HYSYS | available on licensed Windows | planned | approved existing models; strict solver-running parsing |
 | DWSIM | planned | planned | **not implemented, no adapter** |
 | IDAES | planned | planned | **not implemented, no adapter** |
 | Modelica/FMI | planned | planned | **not implemented, no adapter** |
@@ -508,7 +532,7 @@ Four authoritative workflows:
 | Workflow | Pinned environment | Purpose |
 |---|---|---|
 | `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, IR, configuration, cache, optimization, performance evidence and durable queue smoke |
-| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, configuration, path, low-noise performance contracts, IR and governance contracts |
+| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, configuration, path, low-noise performance, IR and governance contracts |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, two frozen environments and stable regression evidence |
 | `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR/performance software gate, evidence isolation and real COM |
 
@@ -575,7 +599,7 @@ bounded ZIP structure
 → trusted-key verification
 ```
 
-An unsigned bundle provides internal integrity only. Ed25519 provides origin authenticity only when the public key is trusted. Hashes, signatures and software PASS do not prove property-method, kinetic or flowsheet validity.
+An unsigned bundle provides internal integrity only. Ed25519 provides origin authenticity only when the public key is trusted. Hashes, signatures and software PASS do not prove property-method, kinetic or flowsheet validity. Reusing canonical hash bytes as archive members remains INCONCLUSIVE because current-HEAD CPU/size evidence does not yet justify changing the readable member-byte contract.
 
 ---
 
@@ -631,10 +655,11 @@ var/                     reproducible baselines, audit inventory and local state
 | MCP reports an incompatible SDK major | `python -m pip show mcp` | install `mcp>=1.9,<2`; do not bypass the gate |
 | Workers remain after MCP shutdown | lifespan, Scheduler stop and process ownership | shutdown must call `scheduler.stop()` |
 | a batch returns `ok=false` | communication, engine, convergence, constraints and balances | diagnose each gate; Run2 return is not convergence |
-| `constraint_non_finite` appears | node value, unit conversion and derived overflow | fix the model or dimensional scale; do not relax the gate |
-| `balance_non_finite` appears | terms, coefficients, units and residuals | use structured diagnostics to locate the invalid term |
-| startup evidence is noisy | coefficient of variation, runner, Python and CPU | use wall time as evidence; rely on import and operation-count hard contracts |
-| an operation count changes | cache key, solver, serialization, dedup or Pareto logic | treat it as a deterministic performance regression; do not hide it with retries |
+| `constraint_non_finite` appears | node value, unit conversion and derived overflow | fix the model or scale; do not relax the gate |
+| `balance_non_finite` appears | terms, coefficients, units and residuals | use structured diagnostics |
+| startup evidence is noisy | `coefficient_of_variation`, runner, Python and CPU | treat wall time as environment evidence; rely on import and operation-count contracts |
+| an operation count changes | cache-key, solver, serialization, dedup, SQL or Pareto path | treat it as a deterministic regression; do not hide it with reruns |
+| recent jobs use a temporary sort | `job-store-query-plan.json` and index inventory | require `idx_jobs_recent_created_job`; reject `USE TEMP B-TREE` |
 | a job remains `pending` | whether `aspenops scheduler` is running | start the durable service |
 | a background job remains running | lease, heartbeat, Worker PID and cancellation deadline | let Scheduler recover owned work; do not kill an unknown simulator |
 | cached output looks wrong | cache key, model/registry hashes and corrupt records | corrupt records are discarded and recomputed |
@@ -655,13 +680,15 @@ var/                     reproducible baselines, audit inventory and local state
 - one fail-closed Settings and path policy for environment and Python API construction;
 - independent communication, engine, convergence, constraint, balance and finite-evidence gates;
 - Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, cache, singleflight, optimization and MCP;
-- lightweight CLI bootstrap plus low-noise operation-count, import-time, cProfile and memory evidence;
+- lightweight CLI bootstrap plus operation-count, import-time, cProfile, memory and SQLite query-plan evidence;
+- MCP recent-jobs reads using one connection, one SELECT and a persistent ordering index;
 - MCP 1.x dependency/Wheel/runtime gates and FastMCP lifecycle cleanup;
 - frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
 
-- single-query JobStore `list_recent()` row decoding and composite-index migration;
+- migrate the compatibility Python `JobStore.list_recent()` method itself to the shared single-query decoder;
+- add query-plan evidence for claim, cancellation-deadline and event access patterns before adding more indexes;
 - IR → Mock non-executing plan compiler;
 - open-source DWSIM real-process backend;
 - Text/Image → IR benchmarks and data contracts;
@@ -718,7 +745,8 @@ The following twenty-two original, self-contained SVGs live in `docs/assets/read
 - [External Agent Integration](docs/external-agent-integration.md)
 - [Windows Setup](docs/windows-setup.md)
 - [Performance](docs/performance.md)
-- [Performance Audit](docs/performance-audit-2026-07-27.md)
+- [Performance Audit V1](docs/performance-audit-2026-07-27.md)
+- [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md)
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
