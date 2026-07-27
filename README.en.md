@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → validated process intent → isolated execution → nonlinear solve → engineering decision → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit](docs/performance-audit-2026-07-27.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,7 +18,7 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses twenty original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
+> This README uses twenty-two original AI-generated SVG capability diagrams. They represent implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
 
 ---
 
@@ -40,7 +40,7 @@
 
 These figures come from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence.
 
-Public CI can validate the control plane, configuration and path policy, IPC, process isolation, scheduling, caching, optimization, numeric fail-closed behaviour, archives, interfaces, Process Intent, MCP compatibility and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
+Public CI can validate the control plane, configuration and path policy, IPC, process isolation, scheduling, caching, optimization, numeric fail-closed behaviour, archives, interfaces, Process Intent, MCP compatibility, portable performance contracts and documentation contracts. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
 
 ---
 
@@ -181,7 +181,7 @@ AND balances_passed
 AND finite_json_evidence
 ```
 
-`NaN`, positive or negative Infinity, non-numeric constraint values and derived arithmetic overflow fail closed with structured violation codes. Results and bundles remain JSON-safe under `allow_nan=False`. HYSYS running state accepts explicit booleans, COM `-1/0/1` and supported strings; it never relies on `bool("False")` truthiness.
+`NaN`, positive or negative Infinity, non-numeric constraint values and derived arithmetic overflow fail closed with structured violation codes. Results and bundles remain JSON-safe under `allow_nan=False`. Aspen Plus and HYSYS running state accepts explicit booleans, COM `-1/0/1` and supported strings; it never relies on `bool("False")` truthiness.
 
 ---
 
@@ -337,7 +337,7 @@ validate mixed variables and objectives
 → best candidate + Pareto evidence
 ```
 
-Mock output is `control-plane-only`. Real Aspen output remains `licensed-runtime-pending-engineering-review` and `PENDING_REAL_ASPEN_CERTIFICATION`; a Pareto front is not engineering approval.
+DE still performs one batch evaluation per generation under the same evaluation budget. Candidate-index sampling no longer allocates a full exclusion list for every target. Pareto processing performs ordered deduplication first, excludes infeasible points when a feasible point exists, and retains only minimum-violation points when every point is infeasible. Mock output is `control-plane-only`. Real Aspen output remains `licensed-runtime-pending-engineering-review` and `PENDING_REAL_ASPEN_CERTIFICATION`; a Pareto front is not engineering approval.
 
 ---
 
@@ -400,7 +400,7 @@ canonical physical identity
 → computed / persistent_cache / inflight_singleflight provenance
 ```
 
-Only requests that satisfy cache policy are written. Followers can observe cancellation while waiting, and singleflight never weakens model, registry or request identity.
+The cache flush threshold uses an O(1) running total, batch keys are iterated within the SQLite parameter budget, persistent JSON uses compact encoding, and schema initialization executes `PRAGMA optimize`. One immutable request object reuses cache-key computation inside a batch; one cacheable solve result produces one canonical dictionary. Same-batch and singleflight copies use deep cloning so nested results remain isolated. None of these changes weaken runtime, model, registry or physical-request identity.
 
 ---
 
@@ -418,6 +418,35 @@ source model
 ```
 
 Recycle reasons include timeout, crash, protocol error, tainted write, point budget, worker age, cancellation and lease ownership loss. Recycling applies only to an AspenOps-owned Worker or supervised descendant. The source model is never overwritten and private staged copies are removed during cleanup.
+
+---
+
+## Performance engineering and evidence
+
+![Performance hotspot and evidence map](docs/assets/readme/performance-hotspot-map.svg)
+
+![Cold and warm startup evidence](docs/assets/readme/cold-warm-startup.svg)
+
+AspenOps separates performance conclusions into two classes:
+
+1. **Low-noise hard contracts:** cache-key calls, solver calls, canonical serializations, deduplicated result count, cache-flush state and Pareto dominance calls.
+2. **Environment-sensitive diagnostics:** wall time, median, P95, min/max, coefficient of variation, Python `-X importtime`, cProfile, tracemalloc and RSS.
+
+```bash
+uv run python scripts/measure_cli_startup.py \
+  --output var/ci/cli-startup.json \
+  --trials 7 \
+  --warmups 2
+
+uv run python scripts/measure_operation_counts.py \
+  --output var/ci/operation-counts.json
+```
+
+The CLI console script enters a lightweight bootstrap first. `--version`, top-level help and subcommand help do not import Pool, Scheduler, optimization, certification, evidence or MCP modules. An executed command delegates exactly once to the full CLI. `cli-startup.json` compares bootstrap and full CLI on the same interpreter and machine and stores a separate import-time profile. `operation-counts.json` stores cProfile, tracemalloc, RSS and deterministic operation counts.
+
+Current automated contracts require 100 references to the same request object to perform one cache-key computation, one solver call and one canonical serialization while producing 99 `same_batch_dedup` results. After 1024 cache hits reach the flush threshold, the pending-hit total must be zero. One thousand identical Pareto points must require zero dominance comparisons. Shared-runner wall time is evidence and never uses an artificially narrow hard threshold.
+
+Historical benchmark files remain archived portable Mock orchestration evidence and are not an automatic claim about the current HEAD. They do not measure Aspen Plus/HYSYS model open, nonlinear solve, convergence or industrial engineering performance. Model and registry SHA-256 remain content-derived; no mtime/size shortcut was adopted. The JobStore `list_recent()` N+1 query and composite-index migration are recorded in the performance audit and were not implemented through a parallel state machine that could weaken lease recovery semantics.
 
 ---
 
@@ -460,8 +489,8 @@ Knowledge is read-only; Concept and Parameter output validated IR only; Executio
 | Backend | Current execution | IR compiler | Current boundary |
 |---|---|---|---|
 | Mock | available | planned | portable software evidence, not Aspen physics |
-| Aspen Plus | available on licensed Windows | planned | executes approved existing models |
-| HYSYS | available on licensed Windows | planned | project-owned Spreadsheet contract and strict running-flag parsing |
+| Aspen Plus | available on licensed Windows | planned | approved existing models and strict engine-running parsing |
+| HYSYS | available on licensed Windows | planned | project-owned Spreadsheet contract and strict solver-running parsing |
 | DWSIM | planned | planned | **not implemented, no adapter** |
 | IDAES | planned | planned | **not implemented, no adapter** |
 | Modelica/FMI | planned | planned | **not implemented, no adapter** |
@@ -478,10 +507,10 @@ Four authoritative workflows:
 
 | Workflow | Pinned environment | Purpose |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, IR, configuration, cache, optimization, numeric evidence and durable queue smoke |
-| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, configuration, path, IR and governance contracts |
+| `ci.yml` | `ubuntu-24.04`; Python 3.11/3.12/3.13 | Ruff, format, strict mypy, six dependency audits, full tests, branch coverage, build, Wheel, Mock, MCP, IR, configuration, cache, optimization, performance evidence and durable queue smoke |
+| `windows-control-plane.yml` | `windows-2025`; Python 3.12 | Windows Job, IPC, Fake Aspen/HYSYS, PowerShell, configuration, path, low-noise performance contracts, IR and governance contracts |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`; Python 3.12 | trusted baseline/candidate, two frozen environments and stable regression evidence |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR software gate, evidence isolation and real COM |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → licensed Windows | main guard, SHA binding, Mock/IR/performance software gate, evidence isolation and real COM |
 
 Frozen dependency auditing covers Linux and Windows across Python 3.11, 3.12 and 3.13: six combinations. Hosted runners, third-party Actions and `uv 0.11.16` are pinned; permissions remain `contents: read`.
 
@@ -581,11 +610,11 @@ Real certification still requires licensed Windows, an available licence seat, a
 ```text
 .github/workflows/       four authoritative automation workflows
 docs/                    architecture, Windows, performance, certification and quality docs
-docs/assets/readme/      twenty test-governed README SVGs
+docs/assets/readme/      twenty-two test-governed README SVGs
 examples/                batch, optimization and Process Intent examples
-scripts/                 validators, dashboards, benchmarks and Windows setup
+scripts/                 validators, dashboards, benchmarks, performance probes and Windows setup
 src/aspenops_nexus/      control plane, backends, Workers, scheduler, cache, optimization, evidence and MCP
-tests/                   Linux, Windows, workflow, documentation and security contracts
+tests/                   Linux, Windows, workflow, documentation, security and performance contracts
 var/                     reproducible baselines, audit inventory and local state
 ```
 
@@ -604,6 +633,8 @@ var/                     reproducible baselines, audit inventory and local state
 | a batch returns `ok=false` | communication, engine, convergence, constraints and balances | diagnose each gate; Run2 return is not convergence |
 | `constraint_non_finite` appears | node value, unit conversion and derived overflow | fix the model or dimensional scale; do not relax the gate |
 | `balance_non_finite` appears | terms, coefficients, units and residuals | use structured diagnostics to locate the invalid term |
+| startup evidence is noisy | coefficient of variation, runner, Python and CPU | use wall time as evidence; rely on import and operation-count hard contracts |
+| an operation count changes | cache key, solver, serialization, dedup or Pareto logic | treat it as a deterministic performance regression; do not hide it with retries |
 | a job remains `pending` | whether `aspenops scheduler` is running | start the durable service |
 | a background job remains running | lease, heartbeat, Worker PID and cancellation deadline | let Scheduler recover owned work; do not kill an unknown simulator |
 | cached output looks wrong | cache key, model/registry hashes and corrupt records | corrupt records are discarded and recomputed |
@@ -624,11 +655,13 @@ var/                     reproducible baselines, audit inventory and local state
 - one fail-closed Settings and path policy for environment and Python API construction;
 - independent communication, engine, convergence, constraint, balance and finite-evidence gates;
 - Mock, Fake COM, Windows Job Object, durable scheduling, cancellation, cache, singleflight, optimization and MCP;
+- lightweight CLI bootstrap plus low-noise operation-count, import-time, cProfile and memory evidence;
 - MCP 1.x dependency/Wheel/runtime gates and FastMCP lifecycle cleanup;
 - frozen CI, dashboards, evidence bundles and licensed-certification boundaries.
 
 ### Next
 
+- single-query JobStore `list_recent()` row decoding and composite-index migration;
 - IR → Mock non-executing plan compiler;
 - open-source DWSIM real-process backend;
 - Text/Image → IR benchmarks and data contracts;
@@ -649,7 +682,7 @@ No capability moves from planned to available without **code + tests + evidence*
 
 ## AI-generated visual asset inventory
 
-The following twenty original, self-contained SVGs live in `docs/assets/readme/`:
+The following twenty-two original, self-contained SVGs live in `docs/assets/readme/`:
 
 1. `hero-architecture.svg`
 2. `policy-path-safety.svg`
@@ -665,12 +698,14 @@ The following twenty original, self-contained SVGs live in `docs/assets/readme/`
 12. `durable-path-portability.svg`
 13. `scheduler-lifecycle.svg`
 14. `cache-singleflight.svg`
-15. `industrial-scenarios.svg`
-16. `test-matrix.svg`
-17. `evidence-chain.svg`
-18. `evidence-integrity.svg`
-19. `licensed-certification.svg`
-20. `roadmap.svg`
+15. `performance-hotspot-map.svg`
+16. `cold-warm-startup.svg`
+17. `industrial-scenarios.svg`
+18. `test-matrix.svg`
+19. `evidence-chain.svg`
+20. `evidence-integrity.svg`
+21. `licensed-certification.svg`
+22. `roadmap.svg`
 
 `tests/test_readme_visual_assets.py` checks bilingual references, the exact inventory, XML, size, path safety, accessibility, renderer portability, scripts, events, remote resources, Data URIs, source-capability binding and integration with all three software gates.
 
@@ -683,6 +718,7 @@ The following twenty original, self-contained SVGs live in `docs/assets/readme/`
 - [External Agent Integration](docs/external-agent-integration.md)
 - [Windows Setup](docs/windows-setup.md)
 - [Performance](docs/performance.md)
+- [Performance Audit](docs/performance-audit-2026-07-27.md)
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
