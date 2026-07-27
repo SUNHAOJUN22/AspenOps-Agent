@@ -63,12 +63,18 @@ def test_recent_job_reader_uses_one_select_and_persistent_index(
     monkeypatch.setattr(job_queries, "_connect", traced_connect)
 
     assert len(list_recent_job_records(path, 20)) == 3
-    selects = [statement for statement in statements if statement.lstrip().upper().startswith("SELECT")]
+    selects = [
+        statement
+        for statement in statements
+        if statement.lstrip().upper().startswith("SELECT")
+    ]
     assert connection_calls == 1
     assert len(selects) == 1
 
     with sqlite3.connect(path) as connection:
-        indexes = {str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")}
+        indexes = {
+            str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")
+        }
     assert "idx_jobs_recent_created_job" in indexes
 
     plan = recent_jobs_query_plan(path)
