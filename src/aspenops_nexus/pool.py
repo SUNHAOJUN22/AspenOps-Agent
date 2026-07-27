@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import queue
-from copy import deepcopy
 import threading
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
