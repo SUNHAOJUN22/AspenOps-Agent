@@ -15,5 +15,11 @@ def sha256_file(path: str | Path) -> str:
 
 
 def canonical_hash(value: Any) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
