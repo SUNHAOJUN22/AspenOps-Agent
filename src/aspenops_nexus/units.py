@@ -78,7 +78,10 @@ def dimension(unit: str | None) -> str | None:
 def convert(value: float, source: str | None, target: str | None) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise UnitError("Unit conversion value must be finite numeric")
-    numeric = float(value)
+    try:
+        numeric = float(value)
+    except OverflowError as exc:
+        raise UnitError("Unit conversion value must be finite numeric") from exc
     if not math.isfinite(numeric):
         raise UnitError("Unit conversion value must be finite numeric")
     if source is None or target is None or source == target:

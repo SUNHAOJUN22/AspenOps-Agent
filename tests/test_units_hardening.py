@@ -16,3 +16,8 @@ def test_unit_conversion_rejects_nonfinite_and_boolean_values(value: object) -> 
 def test_unit_conversion_rejects_nonfinite_derived_result() -> None:
     with pytest.raises(UnitError, match="produced a non-finite value"):
         convert(1e308, "MW", "W")
+
+
+def test_unit_conversion_rejects_integer_too_large_for_float() -> None:
+    with pytest.raises(UnitError, match="finite numeric"):
+        convert(10**10000, "1", "1")
