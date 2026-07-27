@@ -45,6 +45,7 @@ def _write(tmp_path: Path, node: dict[str, Any], *, allow_nan: bool = True) -> P
         ({"paths": [1]}, "paths for node must contain non-empty strings"),
         ({"paths": [""]}, "paths for node must contain non-empty strings"),
         ({"locator": []}, "locator for node must be an object"),
+        ({"uppper": 10}, "contains unsupported fields: uppper"),
     ],
 )
 def test_registry_definition_is_fail_closed(
@@ -80,3 +81,43 @@ def test_registry_accepts_explicit_valid_definition_types(tmp_path: Path) -> Non
     assert resolved.integer is False
     assert resolved.lower == 0.0
     assert resolved.upper == 10.0
+
+
+def test_registry_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    path.write_text(
+        r'{"nodes":{"node":{"access":"read","access":"write",'
+        r'"paths":["\\Data\\Input\\VALUE"]}}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistryError, match="Duplicate registry JSON key: access"):
+        NodeRegistry(path)
+
+
+@pytest.mark.parametrize(
+    "identifiers",
+    [{"stream": 1}, {1: "FEED"}],
+)
+def test_registry_resolve_rejects_nonstring_identifier_api_values(
+    tmp_path: Path,
+    identifiers: dict[object, object],
+) -> None:
+    registry = NodeRegistry(
+        _write(
+            tmp_path,
+            _node(identifiers=["stream"], paths=[r"\Data\Streams\{stream}\VALUE"]),
+        )
+    )
+    with pytest.raises(RegistryError, match="Identifier names and values must be strings"):
+        registry.resolve("node", identifiers)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_registry_write_rejects_nonfinite_direct_api_values(
+    tmp_path: Path,
+    value: float,
+) -> None:
+    registry = NodeRegistry(_write(tmp_path, _node()))
+    node = registry.resolve("node", {})
+    with pytest.raises(RegistryError, match="finite numeric value"):
+        registry.validate_write(node, value, "1")

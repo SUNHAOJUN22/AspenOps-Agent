@@ -21,3 +21,17 @@ def test_unit_conversion_rejects_nonfinite_derived_result() -> None:
 def test_unit_conversion_rejects_integer_too_large_for_float() -> None:
     with pytest.raises(UnitError, match="finite numeric"):
         convert(10**10000, "1", "1")
+
+
+def test_unit_conversion_rejects_unknown_equal_units() -> None:
+    with pytest.raises(UnitError, match="Unsupported unit conversion"):
+        convert(1.0, "bogus", "bogus")
+
+
+@pytest.mark.parametrize(("source", "target"), [([], "1"), ("1", [])])
+def test_unit_conversion_rejects_nonstring_unit_names(
+    source: object,
+    target: object,
+) -> None:
+    with pytest.raises(UnitError, match="unit must be a string or null"):
+        convert(1.0, source, target)  # type: ignore[arg-type]

@@ -19,6 +19,30 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_. -]{1,128}$")
 _IDENTIFIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _CONVERGENCE_OPERATORS = {"<", "<=", ">", ">=", "=="}
 _SUPPORTED_NODE_BACKENDS = {"mock", "aspen_plus", "hysys", "any"}
+_NODE_FIELDS = {
+    "access",
+    "backend",
+    "description",
+    "identifiers",
+    "integer",
+    "locator",
+    "lower",
+    "paths",
+    "quantity",
+    "role",
+    "unit",
+    "upper",
+    "verification",
+}
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RegistryError(f"Duplicate registry JSON key: {key}")
+        result[key] = value
+    return result
 
 
 def _reject_nonfinite_json_constant(value: str) -> Any:
@@ -143,7 +167,11 @@ class NodeRegistry:
         raw = self.path.read_bytes()
         self.sha256 = hashlib.sha256(raw).hexdigest()
         try:
-            data = json.loads(raw, parse_constant=_reject_nonfinite_json_constant)
+            data = json.loads(
+                raw,
+                parse_constant=_reject_nonfinite_json_constant,
+                object_pairs_hook=_unique_json_object,
+            )
         except json.JSONDecodeError as exc:
             raise RegistryError(f"Invalid registry JSON: {exc}") from exc
         if not isinstance(data, dict):
@@ -165,6 +193,11 @@ class NodeRegistry:
 
     @staticmethod
     def _validate_definition(key: str, node: dict[str, Any]) -> None:
+        unknown = sorted(set(node) - _NODE_FIELDS)
+        if unknown:
+            raise RegistryError(
+                f"Registry node {key} contains unsupported fields: {', '.join(unknown)}"
+            )
         access = node.get("access", "read")
         if not isinstance(access, str) or access not in {"read", "write", "readwrite"}:
             raise RegistryError(f"Invalid access for {key}: {access}")
@@ -270,7 +303,11 @@ class NodeRegistry:
             node = self._nodes[key]
         except KeyError as exc:
             raise RegistryError(f"Unknown semantic key: {key}") from exc
-        normalized = {str(k): str(v) for k, v in identifiers.items()}
+        normalized: dict[str, str] = {}
+        for name, value in identifiers.items():
+            if not isinstance(name, str) or not isinstance(value, str):
+                raise RegistryError("Identifier names and values must be strings")
+            normalized[name] = value
         self._validate_identifiers(normalized)
         required = tuple(str(x) for x in node.get("identifiers", []))
         missing = [name for name in required if name not in normalized]
@@ -338,7 +375,18 @@ class NodeRegistry:
                 value_type = type(value).__name__
                 raise RegistryError(f"Numeric variable {node.key} cannot receive {value_type}")
             return value
-        numeric = convert(float(value), unit, node.native_unit)
+        try:
+            raw_numeric = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RegistryError(f"{node.key} requires a finite numeric value") from exc
+        if not math.isfinite(raw_numeric):
+            raise RegistryError(f"{node.key} requires a finite numeric value")
+        try:
+            numeric = convert(raw_numeric, unit, node.native_unit)
+        except UnitError as exc:
+            raise RegistryError(str(exc)) from exc
+        if not math.isfinite(numeric):
+            raise RegistryError(f"{node.key} conversion produced a non-finite value")
         if node.integer:
             rounded = round(numeric)
             if abs(numeric - rounded) > 1e-9:

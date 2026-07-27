@@ -84,10 +84,16 @@ def convert(value: float, source: str | None, target: str | None) -> float:
         raise UnitError("Unit conversion value must be finite numeric") from exc
     if not math.isfinite(numeric):
         raise UnitError("Unit conversion value must be finite numeric")
-    if source is None or target is None or source == target:
+    if source is not None and not isinstance(source, str):
+        raise UnitError("Source unit must be a string or null")
+    if target is not None and not isinstance(target, str):
+        raise UnitError("Target unit must be a string or null")
+    if source is None or target is None:
         return numeric
     if source not in _UNITS or target not in _UNITS:
         raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
+    if source == target:
+        return numeric
     src = _UNITS[source]
     dst = _UNITS[target]
     if src.dimension != dst.dimension:
