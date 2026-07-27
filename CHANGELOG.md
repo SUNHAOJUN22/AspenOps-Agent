@@ -28,15 +28,22 @@
 - reused cache-key computation for repeated references to the same immutable request object and reduced one cacheable solve to one canonical result serialization while preserving deep result isolation;
 - removed one population-sized exclusion-list allocation per differential-evolution target and reduced Pareto work through ordered exact deduplication and feasibility filtering without changing evaluation budgets;
 - added same-environment CLI startup evidence, Python `-X importtime`, cProfile, tracemalloc, RSS and deterministic operation-count artifacts;
-- added hard performance contracts for cache-key calls, solver calls, serialization calls, same-batch deduplication, cache flush state and Pareto dominance calls across Linux, public Windows and pre-licensed-COM gates;
+- added hard performance contracts for cache-key calls, solver calls, serialization calls, same-batch deduplication, cache flush state, compact-JSON clone counts and Pareto dominance calls across Linux, public Windows and pre-licensed-COM gates;
+- routed the MCP `list_recent_jobs` product surface through one bounded SQLite connection and one indexed SELECT of public job fields, without changing request creation, lease, recovery, cancellation or commit transactions;
+- added `idx_jobs_recent_created_job`, a shared recent-job row decoder, explicit index commit, bounded `PRAGMA optimize`, and deterministic `EXPLAIN QUERY PLAN` evidence;
+- added `job-store-query-plan.json` with 1000-record, one-connection, one-SELECT, indexed-order and no-temporary-sort contracts to existing performance artifacts and all three software gates;
+- implemented and then rolled back a structured-object ResultCache memory LRU after representative measurement showed generic `deepcopy()` could be slower than C `json.loads`; the retained compact-JSON strategy keeps zero SQLite memory hits and deep isolation;
+- kept request/result evidence-member byte reuse inconclusive because it would change readable archive members without current-HEAD CPU and size evidence;
+- kept Python 3.14 qualification, replacement SQLite bindings, global bytecode compilation and CI cache pruning deferred until their Windows/Wheel/COM or same-environment trade-offs are measured;
+- retained uv `0.11.16`, MCP stable v1 with `<2`, and the current lockfile rather than refreshing dependencies for version-number reasons alone;
 - replaced stale benchmark-report branch wording with real commit identity or an explicit artifact label;
-- added a formal evidence-locked performance audit with implemented, rejected and deferred optimization decisions;
+- added formal evidence-locked performance audits with retained, rolled-back, rejected, deferred and inconclusive decisions;
 - rebuilt the bilingual README as a complete installation, configuration, validity, workflow, scheduling, caching, optimization, performance, Worker-ownership, evidence-integrity, industrial-use and troubleshooting guide;
 - expanded the governed visual system to twenty-two original, self-contained and repository-local SVG capability diagrams, including validity gates, Worker ownership/recycling, evidence integrity/authenticity, performance hotspots and startup evidence;
-- bound every added diagram to real implementation markers and retained exact inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
+- bound every added diagram and performance claim to real implementation markers and retained exact inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
 - retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities;
-- deferred JobStore N+1/query-index migration, global bytecode compilation and CI cache pruning until their transaction or install-time trade-offs can be measured without weakening later quality steps;
+- deferred migration of the compatibility Python `JobStore.list_recent()` method and further claim/cancellation/event indexes until their legacy-call and query-plan contracts are complete;
 - rejected mtime/size digest shortcuts, unmeasured shared memory, default Worker inflation and new heavy numerical dependencies because they would weaken identity or lack current workload evidence.
 
 ## 2.0.0 - 2026-07-18
