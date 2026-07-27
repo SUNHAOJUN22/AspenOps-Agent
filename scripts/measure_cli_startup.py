@@ -160,6 +160,20 @@ def run_probe(*, trials: int, warmups: int) -> dict[str, Any]:
     }
 
 
+def write_operation_counts(startup_output: Path) -> Path:
+    output = startup_output.with_name("operation-counts.json")
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("measure_operation_counts.py")),
+            "--output",
+            str(output),
+        ],
+        check=True,
+    )
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
@@ -169,7 +183,9 @@ def main() -> None:
 
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
+    operation_output = write_operation_counts(output)
     result = run_probe(trials=args.trials, warmups=args.warmups)
+    result["operation_counts_artifact"] = operation_output.name
     output.write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",
