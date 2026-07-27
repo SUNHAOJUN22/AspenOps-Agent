@@ -10,6 +10,7 @@ from .batch import dry_run_document, run_batch_document
 from .config import Settings
 from .doctor import diagnose
 from .durable_request import pin_durable_request_paths
+from .job_queries import list_recent_job_records
 from .policy import Policy
 from .provenance import verify_run_bundle
 from .registry import NodeRegistry
@@ -201,7 +202,7 @@ class AspenOpsTools:
 
     def list_recent_jobs(self, limit: int = 20) -> dict[str, Any]:
         """List recent durable jobs without exposing request bodies or proprietary model data."""
-        return {"jobs": self.scheduler.store.list_recent(limit)}
+        return {"jobs": list_recent_job_records(self.scheduler.store.path, limit)}
 
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         """Cancel pending work or enforce a deadline on an active isolated worker call."""
