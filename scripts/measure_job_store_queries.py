@@ -69,7 +69,6 @@ def run_probe(*, records: int = 1000, limit: int = 20) -> dict[str, Any]:
         statements: list[str] = []
         connection_calls = 0
         original_connect = job_queries._connect
-        job_queries._indexed_paths.discard(path.resolve())
 
         def traced_connect(database: Path) -> sqlite3.Connection:
             nonlocal connection_calls

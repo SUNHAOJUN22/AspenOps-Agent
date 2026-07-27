@@ -29,6 +29,18 @@ def _seed_jobs(path: Path) -> tuple[JobStore, list[str]]:
     return store, job_ids
 
 
+def _indexes(path: Path) -> set[str]:
+    with sqlite3.connect(path) as connection:
+        return {
+            str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")
+        }
+
+
+def _remove_sqlite_files(path: Path) -> None:
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{path}{suffix}").unlink(missing_ok=True)
+
+
 def test_recent_job_reader_matches_job_store_records_and_order(tmp_path: Path) -> None:
     path = tmp_path / "jobs.sqlite3"
     store, job_ids = _seed_jobs(path)
@@ -51,7 +63,6 @@ def test_recent_job_reader_uses_one_select_and_persistent_index(
     statements: list[str] = []
     connection_calls = 0
     original_connect = job_queries._connect
-    job_queries._indexed_paths.discard(path.resolve())
 
     def traced_connect(database: Path) -> sqlite3.Connection:
         nonlocal connection_calls
@@ -70,16 +81,29 @@ def test_recent_job_reader_uses_one_select_and_persistent_index(
     ]
     assert connection_calls == 1
     assert len(selects) == 1
-
-    with sqlite3.connect(path) as connection:
-        indexes = {
-            str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")
-        }
-    assert "idx_jobs_recent_created_job" in indexes
+    assert "idx_jobs_recent_created_job" in _indexes(path)
 
     plan = recent_jobs_query_plan(path)
     assert any("idx_jobs_recent_created_job" in detail for detail in plan)
     assert all("USE TEMP B-TREE" not in detail.upper() for detail in plan)
+
+
+def test_recent_job_reader_recreates_index_after_same_path_database_replacement(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "jobs.sqlite3"
+    _, first_job_ids = _seed_jobs(path)
+    assert list_recent_job_records(path, 20)
+    assert "idx_jobs_recent_created_job" in _indexes(path)
+
+    _remove_sqlite_files(path)
+    _, replacement_job_ids = _seed_jobs(path)
+    assert not set(first_job_ids) & set(replacement_job_ids)
+    assert "idx_jobs_recent_created_job" not in _indexes(path)
+
+    records = list_recent_job_records(path, 20)
+    assert {str(record["job_id"]) for record in records} == set(replacement_job_ids)
+    assert "idx_jobs_recent_created_job" in _indexes(path)
 
 
 def test_mcp_recent_jobs_does_not_call_legacy_n_plus_one_reader(tmp_path: Path) -> None:

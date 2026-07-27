@@ -33,7 +33,6 @@ _JOB_COLUMNS = (
 )
 _SELECT_JOB_COLUMNS = ",".join(_JOB_COLUMNS)
 _RECENT_INDEX = "idx_jobs_recent_created_job"
-_indexed_paths: set[Path] = set()
 _index_lock = threading.Lock()
 
 
@@ -43,12 +42,18 @@ def _connect(path: Path) -> sqlite3.Connection:
     return connection
 
 
-def _ensure_recent_index(path: Path, connection: sqlite3.Connection) -> None:
-    resolved = path.resolve()
-    if resolved in _indexed_paths:
+def _has_recent_index(connection: sqlite3.Connection) -> bool:
+    return any(
+        str(row[1]) == _RECENT_INDEX
+        for row in connection.execute("PRAGMA index_list('jobs')")
+    )
+
+
+def _ensure_recent_index(connection: sqlite3.Connection) -> None:
+    if _has_recent_index(connection):
         return
     with _index_lock:
-        if resolved in _indexed_paths:
+        if _has_recent_index(connection):
             return
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS {_RECENT_INDEX} "
@@ -56,7 +61,6 @@ def _ensure_recent_index(path: Path, connection: sqlite3.Connection) -> None:
         )
         connection.execute("PRAGMA optimize")
         connection.commit()
-        _indexed_paths.add(resolved)
 
 
 def _decode_job_row(row: tuple[Any, ...]) -> dict[str, Any]:
@@ -94,7 +98,7 @@ def list_recent_job_records(path: str | Path, limit: int = 20) -> list[dict[str,
     bounded_limit = max(1, min(limit, 200))
     database = Path(path)
     with closing(_connect(database)) as connection, connection:
-        _ensure_recent_index(database, connection)
+        _ensure_recent_index(connection)
         rows = connection.execute(
             f"SELECT {_SELECT_JOB_COLUMNS} FROM jobs "
             "ORDER BY created_at DESC, job_id DESC LIMIT ?",
@@ -109,7 +113,7 @@ def recent_jobs_query_plan(path: str | Path, limit: int = 20) -> list[str]:
     bounded_limit = max(1, min(limit, 200))
     database = Path(path)
     with closing(_connect(database)) as connection, connection:
-        _ensure_recent_index(database, connection)
+        _ensure_recent_index(connection)
         rows = connection.execute(
             f"EXPLAIN QUERY PLAN SELECT {_SELECT_JOB_COLUMNS} FROM jobs "
             "ORDER BY created_at DESC, job_id DESC LIMIT ?",
