@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 
@@ -75,8 +76,13 @@ def dimension(unit: str | None) -> str | None:
 
 
 def convert(value: float, source: str | None, target: str | None) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise UnitError("Unit conversion value must be finite numeric")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise UnitError("Unit conversion value must be finite numeric")
     if source is None or target is None or source == target:
-        return value
+        return numeric
     if source not in _UNITS or target not in _UNITS:
         raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
     src = _UNITS[source]
@@ -85,4 +91,7 @@ def convert(value: float, source: str | None, target: str | None) -> float:
         raise UnitError(
             f"Incompatible units: {source!r} ({src.dimension}) and {target!r} ({dst.dimension})"
         )
-    return dst.from_base(src.to_base(value))
+    converted = dst.from_base(src.to_base(numeric))
+    if not math.isfinite(converted):
+        raise UnitError("Unit conversion produced a non-finite value")
+    return converted
