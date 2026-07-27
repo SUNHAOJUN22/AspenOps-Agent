@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .units import convert, dimension
+from .units import UnitError, convert, dimension
 
 
 class RegistryError(ValueError):
@@ -16,7 +16,22 @@ class RegistryError(ValueError):
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_. -]{1,128}$")
+_IDENTIFIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _CONVERGENCE_OPERATORS = {"<", "<=", ">", ">=", "=="}
+_SUPPORTED_NODE_BACKENDS = {"mock", "aspen_plus", "hysys", "any"}
+
+
+def _reject_nonfinite_json_constant(value: str) -> Any:
+    raise RegistryError(f"Registry JSON contains unsupported constant: {value}")
+
+
+def _finite_bound(value: Any, *, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise RegistryError(f"{label} must be finite numeric")
+    number = float(value)
+    if not math.isfinite(number):
+        raise RegistryError(f"{label} must be finite numeric")
+    return number
 
 
 def _convergence_marker(value: Any, *, label: str) -> tuple[str, Any]:
@@ -128,7 +143,7 @@ class NodeRegistry:
         raw = self.path.read_bytes()
         self.sha256 = hashlib.sha256(raw).hexdigest()
         try:
-            data = json.loads(raw)
+            data = json.loads(raw, parse_constant=_reject_nonfinite_json_constant)
         except json.JSONDecodeError as exc:
             raise RegistryError(f"Invalid registry JSON: {exc}") from exc
         if not isinstance(data, dict):
@@ -150,33 +165,69 @@ class NodeRegistry:
 
     @staticmethod
     def _validate_definition(key: str, node: dict[str, Any]) -> None:
-        access = str(node.get("access", "read"))
-        if access not in {"read", "write", "readwrite"}:
+        access = node.get("access", "read")
+        if not isinstance(access, str) or access not in {"read", "write", "readwrite"}:
             raise RegistryError(f"Invalid access for {key}: {access}")
-        role = str(node.get("role", "variable"))
-        if role not in {"variable", "convergence"}:
+        role = node.get("role", "variable")
+        if not isinstance(role, str) or role not in {"variable", "convergence"}:
             raise RegistryError(f"Invalid role for {key}: {role}")
+        backend = node.get("backend", "aspen_plus")
+        if not isinstance(backend, str) or backend not in _SUPPORTED_NODE_BACKENDS:
+            raise RegistryError(f"Invalid backend for {key}: {backend}")
+
+        identifiers = node.get("identifiers", [])
+        if not isinstance(identifiers, list):
+            raise RegistryError(f"identifiers for {key} must be a list")
+        normalized_identifiers: list[str] = []
+        for raw_identifier in identifiers:
+            if not isinstance(raw_identifier, str) or _IDENTIFIER_NAME_RE.fullmatch(
+                raw_identifier
+            ) is None:
+                raise RegistryError(f"Unsafe identifier name for {key}: {raw_identifier!r}")
+            normalized_identifiers.append(raw_identifier)
+        if len(set(normalized_identifiers)) != len(normalized_identifiers):
+            raise RegistryError(f"identifiers for {key} must contain unique names")
+
         if role == "convergence" and access not in {"read", "readwrite"}:
             raise RegistryError(f"Convergence node {key} must be readable")
-        if role == "convergence" and node.get("identifiers", []):
+        if role == "convergence" and normalized_identifiers:
             raise RegistryError(f"Convergence node {key} cannot require identifiers")
+
         unit = node.get("unit")
         if unit is not None:
-            dimension(str(unit))
-        lower = node.get("lower")
-        upper = node.get("upper")
-        if lower is not None and upper is not None and float(lower) > float(upper):
+            if not isinstance(unit, str) or not unit:
+                raise RegistryError(f"unit for {key} must be a non-empty string or null")
+            try:
+                dimension(unit)
+            except UnitError as exc:
+                raise RegistryError(f"Invalid unit for {key}: {unit!r}") from exc
+
+        integer = node.get("integer", False)
+        if not isinstance(integer, bool):
+            raise RegistryError(f"integer for {key} must be a boolean")
+
+        lower_raw = node.get("lower")
+        upper_raw = node.get("upper")
+        lower = None if lower_raw is None else _finite_bound(lower_raw, label=f"lower for {key}")
+        upper = None if upper_raw is None else _finite_bound(upper_raw, label=f"upper for {key}")
+        if lower is not None and upper is not None and lower > upper:
             raise RegistryError(f"Lower bound exceeds upper bound for {key}")
+
         paths = node.get("paths", [])
+        if not isinstance(paths, list):
+            raise RegistryError(f"paths for {key} must be a list")
+        if any(not isinstance(path, str) or not path for path in paths):
+            raise RegistryError(f"paths for {key} must contain non-empty strings")
+
         locator = node.get("locator", {})
+        if not isinstance(locator, dict):
+            raise RegistryError(f"locator for {key} must be an object")
+        if any(not isinstance(name, str) or not name for name in locator):
+            raise RegistryError(f"locator keys for {key} must be non-empty strings")
         if not paths and not locator:
             raise RegistryError(f"Node {key} requires at least one path or locator")
-        if paths and not isinstance(paths, list):
-            raise RegistryError(f"paths for {key} must be a list")
-        if locator and not isinstance(locator, dict):
-            raise RegistryError(f"locator for {key} must be an object")
         if role == "convergence":
-            _validate_convergence_locator(key, dict(locator))
+            _validate_convergence_locator(key, locator)
 
     def keys(self) -> list[str]:
         return sorted(self._nodes)
@@ -194,7 +245,7 @@ class NodeRegistry:
                     "identifiers": node.get("identifiers", []),
                     "lower": node.get("lower"),
                     "upper": node.get("upper"),
-                    "integer": bool(node.get("integer", False)),
+                    "integer": node.get("integer", False),
                     "backend": node.get("backend", "aspen_plus"),
                     "role": node.get("role", "variable"),
                     "verification": node.get("verification", "project-required"),
@@ -206,7 +257,9 @@ class NodeRegistry:
     @staticmethod
     def _validate_identifiers(identifiers: dict[str, str]) -> None:
         for name, value in identifiers.items():
-            if not name or not _IDENTIFIER_RE.fullmatch(value):
+            unsafe_name = _IDENTIFIER_NAME_RE.fullmatch(name) is None
+            unsafe_value = _IDENTIFIER_RE.fullmatch(value) is None
+            if unsafe_name or unsafe_value:
                 raise RegistryError(
                     f"Unsafe identifier {name!r}={value!r}; path separators and template syntax "
                     "are not allowed"
@@ -232,8 +285,9 @@ class NodeRegistry:
                 str(k): (str(v).format(**normalized) if isinstance(v, str) else v)
                 for k, v in dict(node.get("locator", {})).items()
             }
-        except KeyError as exc:
-            raise RegistryError(f"Unresolved identifier {exc.args[0]!r} for {key}") from exc
+        except (KeyError, ValueError) as exc:
+            detail = exc.args[0] if isinstance(exc, KeyError) else str(exc)
+            raise RegistryError(f"Unresolved identifier {detail!r} for {key}") from exc
         return ResolvedNode(
             key=key,
             access=str(node.get("access", "read")),
