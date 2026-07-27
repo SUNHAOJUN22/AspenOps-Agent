@@ -55,6 +55,7 @@ def _ensure_recent_index(path: Path, connection: sqlite3.Connection) -> None:
             "ON jobs(created_at DESC, job_id DESC)"
         )
         connection.execute("PRAGMA optimize")
+        connection.commit()
         _indexed_paths.add(resolved)
 
 
