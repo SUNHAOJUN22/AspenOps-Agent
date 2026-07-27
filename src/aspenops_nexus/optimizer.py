@@ -154,12 +154,10 @@ def differential_evolution_batch(
         trial_vectors: list[tuple[float, ...]] = []
         for index, target in enumerate(population):
             sampled = rng.sample(range(population_size - 1), 3)
-            a_index, b_index, c_index = (
-                item if item < index else item + 1 for item in sampled
-            )
-            a = population[a_index].x
-            b = population[b_index].x
-            c = population[c_index].x
+            peer_indices = [item if item < index else item + 1 for item in sampled]
+            a = population[peer_indices[0]].x
+            b = population[peer_indices[1]].x
+            c = population[peer_indices[2]].x
             forced = rng.randrange(len(bounds))
             trial_values: list[float] = []
             for dimension, (lower, upper) in enumerate(bounds):
