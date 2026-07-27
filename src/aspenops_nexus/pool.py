@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+from copy import deepcopy
 import threading
 import time
 from collections.abc import Callable
@@ -25,7 +26,7 @@ from .worker import (
 @dataclass(slots=True)
 class _InflightEvaluation:
     event: threading.Event
-    payload: dict[str, Any] | None = None
+    result: EvaluationResult | None = None
     error: BaseException | None = None
 
 
@@ -286,9 +287,9 @@ class CasePool:
                 return self._cancelled_result(request_hash)
         if flight.error is not None:
             raise RuntimeError("Singleflight leader failed") from flight.error
-        if flight.payload is None:
+        if flight.result is None:
             raise RuntimeError("Singleflight completed without a result")
-        result = EvaluationResult.from_dict(flight.payload)
+        result = deepcopy(flight.result)
         result.cache_source = "inflight_singleflight"
         result.cache_hit = True
         return result
@@ -304,7 +305,7 @@ class CasePool:
         if request.reinitialize:
             cached = self.cache.get(request_hash)
             if cached is not None:
-                result = EvaluationResult.from_dict(cached)
+                result = EvaluationResult.from_dict(deepcopy(cached))
                 result.cache_source = "persistent_cache"
                 result.cache_hit = True
                 result.request_hash = request_hash
@@ -322,7 +323,7 @@ class CasePool:
         try:
             with self._operation_lock:
                 result = self._evaluate_many_locked([request], cancel_check=cancel_check)[0]
-            flight.payload = result.to_dict()
+            flight.result = deepcopy(result)
             return result
         except BaseException as exc:
             flight.error = exc
@@ -363,7 +364,7 @@ class CasePool:
         for index, (key, request) in enumerate(keyed_requests):
             cached = cached_payloads.get(key) if request.reinitialize else None
             if cached is not None:
-                result = EvaluationResult.from_dict(cached)
+                result = EvaluationResult.from_dict(deepcopy(cached))
                 result.cache_source = "persistent_cache"
                 result.cache_hit = True
                 result.request_hash = key
@@ -425,17 +426,14 @@ class CasePool:
 
                     result.request_hash = key
                     cacheable = self._cacheable(request, result)
-                    payload = result.to_dict() if cacheable or len(indexes) > 1 else None
+                    payload = result.to_dict() if cacheable else None
                     with result_lock:
                         if cacheable:
                             assert payload is not None
                             cache_payloads[key] = payload
                         for ordinal, index in enumerate(indexes):
-                            if ordinal == 0:
-                                clone = result
-                            else:
-                                assert payload is not None
-                                clone = EvaluationResult.from_dict(payload)
+                            clone = result if ordinal == 0 else deepcopy(result)
+                            if ordinal > 0:
                                 clone.cache_source = "same_batch_dedup"
                                 clone.cache_hit = True
                             output[index] = clone
