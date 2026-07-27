@@ -137,12 +137,26 @@ def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Pa
     assert "do not measure Aspen Plus/HYSYS" in evidence["boundary"]
     assert len(evidence["measurements"]) == 6
     assert len(evidence["comparisons"]) == 3
+    assert len(evidence["import_profiles"]) == 2
     assert all(item["trial_count"] == 1 for item in evidence["measurements"])
     assert all(item["median_s"] >= 0.0 for item in evidence["measurements"])
+    assert all(item["record_count"] > 0 for item in evidence["import_profiles"])
+    assert all(item["total_self_time_us"] > 0 for item in evidence["import_profiles"])
     assert all(
         item["classification"] == "MEASURED_SAME_ENVIRONMENT"
         for item in evidence["comparisons"]
     )
+
+    operation_path = output.with_name(evidence["operation_counts_artifact"])
+    operation = json.loads(operation_path.read_text(encoding="utf-8"))
+    assert operation["schema"] == "aspenops.operation-counts/v1"
+    assert operation["pool"]["cache_key_calls"] == 1
+    assert operation["pool"]["solver_calls"] == 1
+    assert operation["pool"]["result_serializations"] == 1
+    assert operation["memory"]["traced_peak_bytes"] >= 0
+    assert operation["profile"]["total_calls"] > 0
+    assert operation["profile"]["top_cumulative_functions"]
+    assert "profiler overhead" in operation["profile"]["boundary"]
 
 
 def test_heavy_module_guard_is_complete() -> None:
