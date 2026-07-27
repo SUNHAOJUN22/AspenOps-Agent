@@ -153,9 +153,10 @@ def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Pa
     assert operation["pool"]["cache_key_calls"] == 1
     assert operation["pool"]["solver_calls"] == 1
     assert operation["pool"]["result_serializations"] == 1
-    assert operation["memory_cache"]["json_decode_calls"] == 0
+    assert operation["memory_cache"]["json_decode_calls"] == 2
     assert operation["memory_cache"]["sqlite_connection_calls"] == 0
     assert operation["memory_cache"]["deep_result_isolation"] is True
+    assert operation["memory_cache"]["strategy"] == "compact_json_snapshot"
     assert operation["memory"]["traced_peak_bytes"] >= 0
     assert operation["profile"]["total_calls"] > 0
     assert operation["profile"]["top_cumulative_functions"]
