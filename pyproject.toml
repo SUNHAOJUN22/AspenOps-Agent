@@ -38,7 +38,7 @@ dev = [
 ]
 
 [project.scripts]
-aspenops = "aspenops_nexus.cli:main"
+aspenops = "aspenops_nexus.cli_bootstrap:main"
 aspenops-mcp = "aspenops_nexus.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
