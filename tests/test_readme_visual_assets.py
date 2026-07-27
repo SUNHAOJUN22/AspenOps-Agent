@@ -13,6 +13,7 @@ EXPECTED = {
     "backend-capabilities.svg",
     "cache-singleflight.svg",
     "cli-mcp-workflow.svg",
+    "cold-warm-startup.svg",
     "com-isolation.svg",
     "durable-path-portability.svg",
     "evidence-chain.svg",
@@ -22,6 +23,7 @@ EXPECTED = {
     "licensed-certification.svg",
     "mcp-runtime-lifecycle.svg",
     "optimization-lifecycle.svg",
+    "performance-hotspot-map.svg",
     "policy-path-safety.svg",
     "process-intent-ir.svg",
     "roadmap.svg",
@@ -65,6 +67,7 @@ README_CONTRACTS = {
         "## 调度与恢复",
         "## 缓存、批内去重与单航班",
         "## Worker 所有权与回收",
+        "## 性能工程与证据",
         "## 工业应用场景",
         "## 证据包完整性与真实性",
         "## 项目结构",
@@ -75,13 +78,17 @@ README_CONTRACTS = {
         "uv run aspenops doctor --probe",
         "uv run aspenops run-batch",
         "uv run aspenops scheduler",
-        "JOB_ID=(".replace("(", "$("),
+        "JOB_ID=$( ".strip(),
         "uv run aspenops submit",
         "uv run aspenops job",
         "uv run aspenops cancel",
         "uv run aspenops optimize examples/optimization-request.example.json",
         "uv run aspenops verify-bundle",
         "uv run aspenops mcp",
+        "scripts/measure_cli_startup.py",
+        "scripts/measure_operation_counts.py",
+        "cli-startup.json",
+        "operation-counts.json",
         "paths_pinned",
         "submission_cwd",
         "retry_wait",
@@ -103,6 +110,7 @@ README_CONTRACTS = {
         "## Scheduling and recovery",
         "## Cache, batch deduplication and singleflight",
         "## Worker ownership and recycling",
+        "## Performance engineering and evidence",
         "## Industrial use cases",
         "## Evidence bundle integrity and authenticity",
         "## Repository structure",
@@ -113,13 +121,17 @@ README_CONTRACTS = {
         "uv run aspenops doctor --probe",
         "uv run aspenops run-batch",
         "uv run aspenops scheduler",
-        "JOB_ID=(".replace("(", "$("),
+        "JOB_ID=$( ".strip(),
         "uv run aspenops submit",
         "uv run aspenops job",
         "uv run aspenops cancel",
         "uv run aspenops optimize examples/optimization-request.example.json",
         "uv run aspenops verify-bundle",
         "uv run aspenops mcp",
+        "scripts/measure_cli_startup.py",
+        "scripts/measure_operation_counts.py",
+        "cli-startup.json",
+        "operation-counts.json",
         "paths_pinned",
         "submission_cwd",
         "retry_wait",
@@ -146,7 +158,7 @@ def test_readme_visual_asset_inventory_is_complete_and_referenced() -> None:
         text = readme.read_text(encoding="utf-8")
         assert "AI" in text
         assert set(IMAGE_LINK.findall(text)) == expected_paths
-        assert "twenty" in text.casefold() or "二十" in text
+        assert "twenty-two" in text.casefold() or "二十二" in text
 
 
 def test_readme_svgs_are_self_contained_safe_accessible_and_portable() -> None:
@@ -199,13 +211,20 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     )
     factory = (ROOT / "src/aspenops_nexus/backends/factory.py").read_text(encoding="utf-8")
     hysys = (ROOT / "src/aspenops_nexus/backends/hysys.py").read_text(encoding="utf-8")
+    cli_bootstrap = (ROOT / "src/aspenops_nexus/cli_bootstrap.py").read_text(encoding="utf-8")
     optimization = (ROOT / "src/aspenops_nexus/optimization.py").read_text(encoding="utf-8")
+    optimizer = (ROOT / "src/aspenops_nexus/optimizer.py").read_text(encoding="utf-8")
     pool = (ROOT / "src/aspenops_nexus/pool.py").read_text(encoding="utf-8")
     worker = (ROOT / "src/aspenops_nexus/worker.py").read_text(encoding="utf-8")
     windows_job = (ROOT / "src/aspenops_nexus/windows_job.py").read_text(encoding="utf-8")
     cache = (ROOT / "src/aspenops_nexus/cache.py").read_text(encoding="utf-8")
     provenance = (ROOT / "src/aspenops_nexus/provenance.py").read_text(encoding="utf-8")
     archive = (ROOT / "src/aspenops_nexus/archive_safety.py").read_text(encoding="utf-8")
+    startup_probe = (ROOT / "scripts/measure_cli_startup.py").read_text(encoding="utf-8")
+    operation_probe = (ROOT / "scripts/measure_operation_counts.py").read_text(
+        encoding="utf-8"
+    )
+    compare = (ROOT / "scripts/compare_benchmarks.py").read_text(encoding="utf-8")
 
     policy_visual = (ASSET_DIR / "policy-path-safety.svg").read_text(encoding="utf-8")
     validity_visual = (ASSET_DIR / "validity-gates.svg").read_text(encoding="utf-8")
@@ -217,6 +236,10 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
         encoding="utf-8"
     )
     evidence_visual = (ASSET_DIR / "evidence-integrity.svg").read_text(encoding="utf-8")
+    hotspot_visual = (ASSET_DIR / "performance-hotspot-map.svg").read_text(
+        encoding="utf-8"
+    )
+    startup_visual = (ASSET_DIR / "cold-warm-startup.svg").read_text(encoding="utf-8")
 
     for marker in ("_SUPPORTED_BACKENDS", "_require_bool", "allowed_roots"):
         assert marker in config
@@ -268,6 +291,24 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
         assert marker in archive
     for marker in ("Manifest Binding", "Archive Safety", "Ed25519 Signed"):
         assert marker in evidence_visual
+
+    for marker in ("_handled_without_control_plane", "from .cli import main as full_main"):
+        assert marker in cli_bootstrap
+    for marker in ("_pending_hit_total", "PRAGMA optimize", 'separators=(",", ":")'):
+        assert marker in cache
+    for marker in ("_key_requests", "deepcopy", "result.to_dict() if cacheable"):
+        assert marker in pool
+    for marker in ("dict.fromkeys(points)", "range(population_size - 1)"):
+        assert marker in optimizer
+    for marker in ("-X", "importtime", "MEASURED_SAME_ENVIRONMENT"):
+        assert marker in startup_probe
+    for marker in ("cProfile", "tracemalloc", "cache_key_calls"):
+        assert marker in operation_probe
+    assert "cli-startup.json" in compare
+    for marker in ("CLI Startup", "Cache Path", "Deterministic Evidence"):
+        assert marker in hotspot_visual
+    for marker in ("Lightweight Bootstrap", "Import Time", "Hard Contracts"):
+        assert marker in startup_visual
 
 
 def test_readmes_keep_operational_product_surface_complete() -> None:
