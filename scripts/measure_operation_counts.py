@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import cProfile
 import json
 import os
 import platform
+import pstats
 import tempfile
+import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -185,35 +189,83 @@ def environment() -> dict[str, Any]:
     }
 
 
+def profile_summary(profile: cProfile.Profile, limit: int = 20) -> dict[str, Any]:
+    stats = pstats.Stats(profile)
+    rows: list[dict[str, Any]] = []
+    for (filename, line, function), values in stats.stats.items():
+        primitive_calls, total_calls, total_time, cumulative_time, _ = values
+        rows.append(
+            {
+                "file": Path(filename).name,
+                "line": int(line),
+                "function": function,
+                "primitive_calls": int(primitive_calls),
+                "total_calls": int(total_calls),
+                "total_time_s": float(total_time),
+                "cumulative_time_s": float(cumulative_time),
+            }
+        )
+    rows.sort(key=lambda item: (-item["cumulative_time_s"], -item["total_time_s"]))
+    return {
+        "total_calls": int(stats.total_calls),
+        "primitive_calls": int(stats.prim_calls),
+        "total_profiled_time_s": float(stats.total_tt),
+        "top_cumulative_functions": rows[:limit],
+        "boundary": (
+            "cProfile is a diagnostic run with profiler overhead. Operation counts are the hard "
+            "performance contracts and are interpreted separately from profiled wall time."
+        ),
+    }
+
+
 def run_probe() -> dict[str, Any]:
+    process = psutil.Process()
+    rss_before = int(process.memory_info().rss)
+    profiler = cProfile.Profile()
+    tracemalloc.start(10)
+    profiler.enable()
     with tempfile.TemporaryDirectory(prefix="aspenops-operation-counts-") as temporary:
         directory = Path(temporary)
-        return {
-            "schema": "aspenops.operation-counts/v1",
-            "kind": "portable-deterministic-performance-contracts",
-            "boundary": (
-                "These are deterministic Python orchestration operation counts. They do not "
-                "measure licensed Aspen Plus/HYSYS solve performance."
-            ),
-            "environment": environment(),
-            "pool": pool_counts(directory),
-            "cache": cache_counts(directory),
-            "pareto": pareto_counts(),
-            "expected": {
-                "pool.cache_key_calls": 1,
-                "pool.solver_calls": 1,
-                "pool.result_serializations": 1,
-                "pool.same_batch_dedup_results": 99,
-                "pool.deep_result_isolation": True,
-                "cache.pending_hit_total_after_threshold": 0,
-                "pareto.dominance_calls": 0,
-            },
-        }
+        pool = pool_counts(directory)
+        cache = cache_counts(directory)
+        pareto = pareto_counts()
+    profiler.disable()
+    traced_current, traced_peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    rss_after = int(process.memory_info().rss)
+    return {
+        "schema": "aspenops.operation-counts/v1",
+        "kind": "portable-deterministic-performance-contracts",
+        "boundary": (
+            "These are deterministic Python orchestration operation counts. They do not "
+            "measure licensed Aspen Plus/HYSYS solve performance."
+        ),
+        "environment": environment(),
+        "pool": pool,
+        "cache": cache,
+        "pareto": pareto,
+        "memory": {
+            "rss_before_bytes": rss_before,
+            "rss_after_bytes": rss_after,
+            "rss_delta_bytes": rss_after - rss_before,
+            "traced_current_bytes": int(traced_current),
+            "traced_peak_bytes": int(traced_peak),
+            "tracemalloc_frames": 10,
+        },
+        "profile": profile_summary(profiler),
+        "expected": {
+            "pool.cache_key_calls": 1,
+            "pool.solver_calls": 1,
+            "pool.result_serializations": 1,
+            "pool.same_batch_dedup_results": 99,
+            "pool.deep_result_isolation": True,
+            "cache.pending_hit_total_after_threshold": 0,
+            "pareto.dominance_calls": 0,
+        },
+    }
 
 
 def main() -> None:
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
