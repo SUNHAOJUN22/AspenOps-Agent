@@ -157,6 +157,10 @@ def test_operation_count_probe_runs_on_every_software_gate(tmp_path: Path) -> No
     assert report["pool"]["deep_result_isolation"] is True
     assert report["cache"]["pending_hit_total_after_threshold"] == 0
     assert report["pareto"]["dominance_calls"] == 0
+    assert report["memory"]["traced_peak_bytes"] >= 0
+    assert report["profile"]["total_calls"] > 0
+    assert report["profile"]["top_cumulative_functions"]
+    assert "profiler overhead" in report["profile"]["boundary"]
 
 
 def test_mcp_lifespan_starts_and_stops_the_owned_scheduler() -> None:
