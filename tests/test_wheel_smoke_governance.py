@@ -166,6 +166,33 @@ def test_operation_count_probe_runs_on_every_software_gate(tmp_path: Path) -> No
     assert "profiler overhead" in report["profile"]["boundary"]
 
 
+def test_job_store_query_plan_runs_on_every_software_gate(tmp_path: Path) -> None:
+    output = tmp_path / "job-store-query-plan.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/measure_job_store_queries.py"),
+            "--output",
+            str(output),
+            "--records",
+            "1000",
+            "--limit",
+            "20",
+        ],
+        check=True,
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+
+    assert report["schema"] == "aspenops.job-store-query-plan/v1"
+    assert report["records"] == 1000
+    assert report["returned_records"] == 20
+    assert report["connection_calls"] == 1
+    assert report["select_statements"] == 1
+    assert "idx_jobs_recent_created_job" in report["indexes"]
+    assert any("idx_jobs_recent_created_job" in detail for detail in report["query_plan"])
+    assert all("USE TEMP B-TREE" not in detail.upper() for detail in report["query_plan"])
+
+
 def test_mcp_lifespan_starts_and_stops_the_owned_scheduler() -> None:
     events: list[str] = []
 
