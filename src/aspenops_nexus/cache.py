@@ -4,6 +4,7 @@ import json
 import sqlite3
 import threading
 from collections import Counter, OrderedDict
+from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,9 @@ _MEMORY_MAX_ENTRIES = 4096
 _HIT_FLUSH_THRESHOLD = 1024
 
 
-def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> list[list[str]]:
-    return [values[index : index + size] for index in range(0, len(values), size)]
+def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> Iterator[list[str]]:
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
 
 
 class ResultCache:
@@ -24,6 +26,7 @@ class ResultCache:
         self._lock = threading.RLock()
         self._memory: OrderedDict[str, str] = OrderedDict()
         self._pending_hits: Counter[str] = Counter()
+        self._pending_hit_total = 0
         with closing(self._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=NORMAL")
@@ -38,6 +41,7 @@ class ResultCache:
                 )
                 """
             )
+            connection.execute("PRAGMA optimize")
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30)
@@ -62,9 +66,10 @@ class ResultCache:
             [(count, key) for key, count in self._pending_hits.items()],
         )
         self._pending_hits.clear()
+        self._pending_hit_total = 0
 
     def _flush_hits_if_needed(self) -> None:
-        if sum(self._pending_hits.values()) < _HIT_FLUSH_THRESHOLD:
+        if self._pending_hit_total < _HIT_FLUSH_THRESHOLD:
             return
         with closing(self._connect()) as connection, connection:
             self._flush_hits(connection)
@@ -81,7 +86,8 @@ class ResultCache:
                 )
         for key in keys:
             self._memory.pop(key, None)
-            self._pending_hits.pop(key, None)
+            self._pending_hit_total -= self._pending_hits.pop(key, 0)
+        self._pending_hit_total = max(0, self._pending_hit_total)
 
     def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
         if not keys:
@@ -127,7 +133,10 @@ class ResultCache:
                 decoded[key] = {str(name): item for name, item in value.items()}
 
             self._discard(corrupt)
-            self._pending_hits.update({key: counts[key] for key in decoded})
+            for key in decoded:
+                count = counts[key]
+                self._pending_hits[key] += count
+                self._pending_hit_total += count
             self._flush_hits_if_needed()
             return decoded
 
@@ -138,7 +147,13 @@ class ResultCache:
         if not payloads:
             return
         encoded_payloads = {
-            key: json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False)
+            key: json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
             for key, payload in payloads.items()
         }
         rows = list(encoded_payloads.items())
