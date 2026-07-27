@@ -6,6 +6,7 @@ import os
 import platform
 import sqlite3
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,18 +19,21 @@ from aspenops_nexus.scheduler import JobStore
 
 def _seed(path: Path, count: int) -> None:
     JobStore(path)
-    rows = [
-        (
-            f"job-{index:06d}",
-            f"hash-{index:06d}",
-            "pending",
-            json.dumps({"ordinal": index}, separators=(",", ":")),
-            3,
-            f"2026-07-27T00:{index // 60:02d}:{index % 60:02d}+00:00",
-            f"2026-07-27T00:{index // 60:02d}:{index % 60:02d}+00:00",
+    origin = datetime(2026, 7, 27, tzinfo=UTC)
+    rows = []
+    for index in range(count):
+        created_at = (origin + timedelta(seconds=index)).isoformat()
+        rows.append(
+            (
+                f"job-{index:06d}",
+                f"hash-{index:06d}",
+                "pending",
+                json.dumps({"ordinal": index}, separators=(",", ":")),
+                3,
+                created_at,
+                created_at,
+            )
         )
-        for index in range(count)
-    ]
     with sqlite3.connect(path) as connection:
         connection.executemany(
             """
