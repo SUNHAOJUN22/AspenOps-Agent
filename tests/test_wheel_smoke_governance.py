@@ -50,6 +50,9 @@ def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     agent_requirements = project["project"]["optional-dependencies"]["agent"]
     assert agent_requirements == ["mcp>=1.9,<2"]
+    assert project["project"]["scripts"]["aspenops"] == (
+        "aspenops_nexus.cli_bootstrap:main"
+    )
 
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     packages = lock.get("package", [])
@@ -62,7 +65,7 @@ def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
     assert (major, minor, patch) >= (1, 9, 0)
 
     server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
-    assert 'SUPPORTED_MCP_MAJOR = 1' in server
+    assert "SUPPORTED_MCP_MAJOR = 1" in server
     assert 'MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"' in server
     assert "_require_supported_mcp_sdk" in server
     assert "_scheduler_lifespan" in server
