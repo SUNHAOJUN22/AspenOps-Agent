@@ -7,6 +7,8 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from aspenops_nexus import cli, cli_bootstrap
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +98,21 @@ def test_bootstrap_parser_matches_full_cli_surface() -> None:
     assert bootstrap_commands.keys() == full_commands.keys()
     for name in bootstrap_commands:
         assert bootstrap_commands[name].format_help() == full_commands[name].format_help()
+
+
+def test_executed_commands_delegate_without_bootstrap_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def forbidden_parser() -> ArgumentParser:
+        raise AssertionError("executed commands must not be parsed by the bootstrap")
+
+    monkeypatch.setattr(cli_bootstrap, "build_parser", forbidden_parser)
+    monkeypatch.setattr(cli, "main", lambda arguments: calls.append(arguments))
+
+    cli_bootstrap.main(["job", "job-1"])
+    assert calls == [["job", "job-1"]]
 
 
 def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Path) -> None:
