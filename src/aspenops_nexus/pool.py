@@ -25,7 +25,7 @@ from .worker import (
 @dataclass(slots=True)
 class _InflightEvaluation:
     event: threading.Event
-    result: EvaluationResult | None = None
+    payload: dict[str, Any] | None = None
     error: BaseException | None = None
 
 
@@ -225,6 +225,25 @@ class CasePool:
         }
         return canonical_hash(identity)
 
+    def _key_requests(
+        self,
+        requests: list[EvaluationRequest],
+    ) -> list[tuple[str, EvaluationRequest]]:
+        """Reuse cache-key work when the same immutable request object repeats in a batch."""
+
+        by_identity: dict[int, tuple[EvaluationRequest, str]] = {}
+        keyed: list[tuple[str, EvaluationRequest]] = []
+        for request in requests:
+            identity = id(request)
+            existing = by_identity.get(identity)
+            if existing is not None and existing[0] is request:
+                key = existing[1]
+            else:
+                key = self.cache_key(request)
+                by_identity[identity] = (request, key)
+            keyed.append((key, request))
+        return keyed
+
     def _cacheable(self, request: EvaluationRequest, result: EvaluationResult) -> bool:
         if not request.reinitialize:
             return False
@@ -267,9 +286,9 @@ class CasePool:
                 return self._cancelled_result(request_hash)
         if flight.error is not None:
             raise RuntimeError("Singleflight leader failed") from flight.error
-        if flight.result is None:
+        if flight.payload is None:
             raise RuntimeError("Singleflight completed without a result")
-        result = EvaluationResult.from_dict(flight.result.to_dict())
+        result = EvaluationResult.from_dict(flight.payload)
         result.cache_source = "inflight_singleflight"
         result.cache_hit = True
         return result
@@ -303,7 +322,7 @@ class CasePool:
         try:
             with self._operation_lock:
                 result = self._evaluate_many_locked([request], cancel_check=cancel_check)[0]
-            flight.result = EvaluationResult.from_dict(result.to_dict())
+            flight.payload = result.to_dict()
             return result
         except BaseException as exc:
             flight.error = exc
@@ -335,7 +354,7 @@ class CasePool:
     ) -> list[EvaluationResult]:
         if not self._handles:
             self.start()
-        keyed_requests = [(self.cache_key(request), request) for request in requests]
+        keyed_requests = self._key_requests(requests)
         cached_payloads = self.cache.get_many(
             [key for key, request in keyed_requests if request.reinitialize]
         )
@@ -405,12 +424,18 @@ class CasePool:
                         )
 
                     result.request_hash = key
+                    cacheable = self._cacheable(request, result)
+                    payload = result.to_dict() if cacheable or len(indexes) > 1 else None
                     with result_lock:
-                        if self._cacheable(request, result):
-                            cache_payloads[key] = result.to_dict()
+                        if cacheable:
+                            assert payload is not None
+                            cache_payloads[key] = payload
                         for ordinal, index in enumerate(indexes):
-                            clone = EvaluationResult.from_dict(result.to_dict())
-                            if ordinal > 0:
+                            if ordinal == 0:
+                                clone = result
+                            else:
+                                assert payload is not None
+                                clone = EvaluationResult.from_dict(payload)
                                 clone.cache_source = "same_batch_dedup"
                                 clone.cache_hit = True
                             output[index] = clone
