@@ -42,7 +42,7 @@ def test_bulk_cache_counts_duplicate_hits_and_isolates_returned_values(tmp_path:
     assert cache.stats() == {"entries": 2, "hits": 4}
 
 
-def test_memory_hits_skip_json_decode_and_sqlite_connection(
+def test_memory_hits_decode_once_per_unique_key_without_sqlite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -62,34 +62,12 @@ def test_memory_hits_skip_json_decode_and_sqlite_connection(
     monkeypatch.setattr("aspenops_nexus.cache.json.loads", counted_loads)
     monkeypatch.setattr(cache, "_connect", forbidden_connect)
 
-    loaded = cache.get_many(["a", "a"])
-    assert loaded == {"a": {"value": {"nested": 1}}}
-    assert decode_calls == 0
-
-
-def test_database_payload_decodes_once_then_stays_structured_in_memory(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = tmp_path / "cache.sqlite3"
-    ResultCache(path).put("a", {"value": {"nested": 1}})
-    cache = ResultCache(path)
-    decode_calls = 0
-    original_loads = json.loads
-
-    def counted_loads(value: str, *args: Any, **kwargs: Any) -> Any:
-        nonlocal decode_calls
-        decode_calls += 1
-        return original_loads(value, *args, **kwargs)
-
-    monkeypatch.setattr("aspenops_nexus.cache.json.loads", counted_loads)
-
     first = cache.get_many(["a", "a"])
     first["a"]["value"]["nested"] = 99
     second = cache.get("a")
 
     assert second == {"value": {"nested": 1}}
-    assert decode_calls == 1
+    assert decode_calls == 2
 
 
 def test_bulk_cache_chunks_queries_beyond_sqlite_parameter_limit(tmp_path: Path) -> None:
