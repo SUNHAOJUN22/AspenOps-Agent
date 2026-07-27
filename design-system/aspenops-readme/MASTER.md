@@ -1,67 +1,129 @@
 # AspenOps README Visual Design System
 
-## Product and audience
+## Source of truth
 
-- Product: industrial developer tool and deterministic simulation control plane.
-- Audience: process engineers, scientific Python developers, platform engineers, auditors, and AI-agent integrators.
-- Usage context: GitHub README, technical documentation, code review, and qualification evidence.
+- Visual system version: `3`
+- UI/UX Pro Max upstream revision: `43e8d4a5b0f0cd1fd5ef2c1fe05eefd0de3a256e`
+- Chinese guide revision: `dd17b017d130d3ba0e84a44f9ac96ee3e50ffc21`
+- Product match: `Developer Tool / IDE`
+- Supporting matches: `Analytics Dashboard`, `Design System / Component Library`, `Cybersecurity Platform`
+- Delivery surface: GitHub README and technical documentation SVGs
+
+This file is the global source of truth. Page-specific diagram rules live in
+`pages/readme-visuals.md`.
+
+## Product reasoning
+
+The upstream product catalogue maps Developer Tool / IDE to:
+
+- Dark Mode (OLED) + Minimalism
+- Flat Design + Bento Box Grid
+- Minimal & Direct + Documentation
+- Real-Time Monitor + Terminal
+- dark syntax-theme colors with blue focus
+- fast performance, keyboard clarity, and high information density
+
+AspenOps adds industrial constraints: simulator ownership, fail-closed policy,
+licensed-runtime boundaries, convergence evidence, and qualified human review.
 
 ## Design dials
 
-- Variance: 4/10 — consistent enterprise diagrams with limited layout variation.
-- Motion: 1/10 — static SVG only; no animation or decorative motion.
-- Density: 8/10 — compact technical information with 8px-grid spacing.
+| Dial | Value | Rationale |
+|---|---:|---|
+| Variance | 5/10 | varied information structures inside one coherent system |
+| Motion | 1/10 | static README SVGs; no decorative animation |
+| Density | 8/10 | developer-tool and monitoring density with readable grouping |
 
-## Pattern
+## Pattern and style
 
-- Enterprise Bento + Swiss technical diagram.
-- Each asset uses one semantic message, a strong title hierarchy, bounded cards, and explicit flow direction.
-- Functional states are encoded by label, shape, and color; color is never the only carrier of meaning.
+- Primary style: Dark Mode (OLED) + Minimalism
+- Supporting style: Flat Design + Bento Box Grid
+- Structural influence: Swiss Modernism 2.0
+- Trust layer: Accessible & Ethical
+- Dashboard language: Real-Time Monitor + Terminal
+- Illustration language: 1.5–2px outline geometry, no emoji, no raster imagery
+- Every asset presents one dominant message and one explicit boundary statement
 
-## Style tokens
+## Semantic tokens
 
-| Token | Value | Use |
+| Token | Value | Meaning |
 |---|---|---|
-| Background | `#07111F` | deep technical canvas |
-| Surface | `#102036`, `#142944` | cards and emphasis layers |
-| Border | `#2A405F`, `#3B567A` | structure and grouping |
-| Text | `#F8FAFC` | titles and primary labels |
-| Muted text | `#A7B5C8`, `#71829A` | descriptions and metadata |
-| Primary | `#38BDF8` | governed flow and active states |
-| Secondary | `#818CF8` | isolated execution and orchestration |
-| Success | `#34D399` | accepted, verified, available |
-| Warning | `#FBBF24` | pending, licensed, bounded risk |
-| Danger | `#FB7185` | rejected, cancelled, fail-closed |
+| `canvas` | `#050A12` | OLED technical background |
+| `surface` | `#0D1524` | standard card |
+| `surface-raised` | `#121E30` | highlighted card |
+| `surface-strong` | `#17243A` | nested or selected region |
+| `border` | `#23344E` | default separation |
+| `border-strong` | `#334A6B` | active grouping |
+| `text` | `#F8FAFC` | primary text |
+| `text-muted` | `#A7B7CA` | body and metadata |
+| `text-dim` | `#71849B` | tertiary labels |
+| `focus-blue` | `#60A5FA` | governed path and primary focus |
+| `signal-cyan` | `#22D3EE` | protocol and measurement |
+| `process-teal` | `#2DD4BF` | data movement and durable state |
+| `success` | `#22C55E` | accepted, verified, available |
+| `warning` | `#F59E0B` | pending, licensed, bounded risk |
+| `danger` | `#F43F5E` | rejected, cancelled, fail closed |
+| `orchestration` | `#A78BFA` | Worker, scheduler, and isolated execution |
+
+Color never carries state alone; labels, position, borders, and shapes repeat the meaning.
 
 ## Typography
 
-- UI: Inter/system sans fallback; 12–28px inside a 1200×560 viewBox.
-- Code/status: JetBrains Mono/SFMono/Consolas fallback.
-- No remote font imports and no embedded font files.
+- Canvas: `1440 × 720`
+- Title: 32px / 700
+- Section label: 16px / 700
+- Body: 14px / 500
+- Metadata: 12px / 600
+- Code and status: 13px / 600 monospace
+- Sans fallback: `Inter`, `Segoe UI`, `Arial`, `sans-serif`
+- Mono fallback: `JetBrains Mono`, `Consolas`, `monospace`
+- Use explicit `font-family`, `font-size`, and `font-weight`; do not use the SVG
+  `font` shorthand because renderers may interpret numeric weights inconsistently.
 
-## Effects
+## Layout
 
-- Strong title hierarchy, 1px borders, 10–16px radii, and restrained accent bars.
-- No heavy blur, image filters, animation, or external assets.
+- 8px spacing rhythm
+- 52px outer gutter
+- 14–24px component gaps
+- 12–16px card radius; 28px canvas radius
+- Bento panels for independent capability groups
+- Arrows only for real causal or lifecycle direction
+- Tables for capability matrices
+- State-machine geometry for scheduler transitions
+- Stair-step ladder only for certification maturity
 
-## Accessibility and delivery rules
+## Accessibility and portability
 
-- Every SVG has `role="img"`, one `<title>`, one `<desc>`, and `aria-labelledby`.
-- High-contrast text; body labels are never below 12px in the fixed viewBox.
-- No emoji icons; diagrams use native SVG geometry.
-- No CJK text inside SVG so GitHub rendering does not depend on local CJK fonts.
-- No `<script>`, `<foreignObject>`, `<image>`, event handlers, remote URLs, or Data URIs.
-- Exact asset inventory and README references remain test governed.
+- One `<title>` and one `<desc>` per SVG
+- `role="img"` and `aria-labelledby="title desc"`
+- Foreground/background contrast targets WCAG AA
+- No CJK text inside SVG assets
+- No `<script>`, `<foreignObject>`, `<image>`, event handler, remote URL, Data URI,
+  remote font import, or embedded font
+- No color-only state encoding
+- Static layout; reduced-motion is inherently respected
+- Fixed viewBox reserves space and prevents README layout shift
 
 ## Anti-patterns
 
-- Generic AI purple/pink gradient branding.
-- Mixing flat, skeuomorphic, glass, and clay styles without hierarchy.
-- Decorative charts with no implementation contract.
-- Color-only status encoding.
-- Dense paragraph blocks inside diagrams.
-- Claims that Mock, signatures, or CI equal licensed engineering certification.
+- generic AI purple/pink gradients
+- glass blur used as decoration
+- mixed icon families or stroke widths
+- tiny metadata that cannot survive README scaling
+- dense paragraphs inside diagrams
+- decorative charts without implemented evidence
+- claims that Mock, CI, hashes, or signatures equal licensed engineering approval
+- raw simulator tree paths or unrestricted code shown as supported public interfaces
 
-## Source methodology
+## Governance
 
-This system applies the UI/UX Pro Max workflow: analyze product and audience, generate a master design system first, tune variance/motion/density, then validate accessibility, interaction clarity, performance, responsive rendering, typography, color, and data-display consistency.
+Each SVG includes:
+
+```text
+data-design-system="ui-ux-pro-max"
+data-visual-version="3"
+```
+
+The existing visual-asset test governs the exact 22-file inventory, README references,
+XML, accessibility metadata, CJK independence, resource safety, implementation markers,
+and workflow inclusion.
