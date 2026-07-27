@@ -87,8 +87,11 @@ README_CONTRACTS = {
         "uv run aspenops mcp",
         "scripts/measure_cli_startup.py",
         "scripts/measure_operation_counts.py",
+        "scripts/measure_job_store_queries.py",
         "cli-startup.json",
         "operation-counts.json",
+        "job-store-query-plan.json",
+        "Performance Audit V2",
         "paths_pinned",
         "submission_cwd",
         "retry_wait",
@@ -130,8 +133,11 @@ README_CONTRACTS = {
         "uv run aspenops mcp",
         "scripts/measure_cli_startup.py",
         "scripts/measure_operation_counts.py",
+        "scripts/measure_job_store_queries.py",
         "cli-startup.json",
         "operation-counts.json",
+        "job-store-query-plan.json",
+        "Performance Audit V2",
         "paths_pinned",
         "submission_cwd",
         "retry_wait",
@@ -218,10 +224,14 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     worker = (ROOT / "src/aspenops_nexus/worker.py").read_text(encoding="utf-8")
     windows_job = (ROOT / "src/aspenops_nexus/windows_job.py").read_text(encoding="utf-8")
     cache = (ROOT / "src/aspenops_nexus/cache.py").read_text(encoding="utf-8")
+    job_queries = (ROOT / "src/aspenops_nexus/job_queries.py").read_text(encoding="utf-8")
     provenance = (ROOT / "src/aspenops_nexus/provenance.py").read_text(encoding="utf-8")
     archive = (ROOT / "src/aspenops_nexus/archive_safety.py").read_text(encoding="utf-8")
     startup_probe = (ROOT / "scripts/measure_cli_startup.py").read_text(encoding="utf-8")
     operation_probe = (ROOT / "scripts/measure_operation_counts.py").read_text(
+        encoding="utf-8"
+    )
+    job_query_probe = (ROOT / "scripts/measure_job_store_queries.py").read_text(
         encoding="utf-8"
     )
     compare = (ROOT / "scripts/compare_benchmarks.py").read_text(encoding="utf-8")
@@ -302,8 +312,18 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
         assert marker in optimizer
     for marker in ("-X", "importtime", "MEASURED_SAME_ENVIRONMENT"):
         assert marker in startup_probe
-    for marker in ("cProfile", "tracemalloc", "cache_key_calls"):
+    for marker in ("cProfile", "tracemalloc", "cache_key_calls", "compact_json_snapshot"):
         assert marker in operation_probe
+    for marker in (
+        "idx_jobs_recent_created_job",
+        "ORDER BY created_at DESC, job_id DESC",
+        "EXPLAIN QUERY PLAN",
+    ):
+        assert marker in job_queries
+    for marker in ("select_statements", "connection_calls", "sqlite_version"):
+        assert marker in job_query_probe
+    for marker in ("operation-counts.json", "job-store-query-plan.json"):
+        assert marker in startup_probe
     assert "cli-startup.json" in compare
     for marker in ("CLI Startup", "Cache Path", "Deterministic Evidence"):
         assert marker in hotspot_visual
