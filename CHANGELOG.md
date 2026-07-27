@@ -23,11 +23,21 @@
 - rejected non-numeric, non-finite and derived-overflow constraint or balance evidence, sanitized backend diagnostics to JSON-safe values and preserved `allow_nan=False` evidence writing;
 - made the numeric/protocol smoke execute in Linux, public Windows and the pre-licensed-COM software gate;
 - made run-bundle `all_ok` use literal Boolean semantics, recomputed it during verification and rejected invalid or multiline Ed25519 key IDs before writing;
-- rebuilt the bilingual README as a complete installation, configuration, validity, workflow, scheduling, caching, optimization, Worker-ownership, evidence-integrity, industrial-use and troubleshooting guide;
-- expanded the governed visual system to twenty original, self-contained and repository-local SVG capability diagrams, including validity gates, Worker ownership/recycling and evidence integrity/authenticity;
+- routed the installed `aspenops` command through a lightweight bootstrap so version and help paths avoid execution-control-plane imports while real commands delegate once to the full CLI;
+- made cache hit-threshold accounting O(1), yielded SQLite key batches lazily, stored compact JSON and executed bounded `PRAGMA optimize` without changing WAL or transaction durability;
+- reused cache-key computation for repeated references to the same immutable request object and reduced one cacheable solve to one canonical result serialization while preserving deep result isolation;
+- removed one population-sized exclusion-list allocation per differential-evolution target and reduced Pareto work through ordered exact deduplication and feasibility filtering without changing evaluation budgets;
+- added same-environment CLI startup evidence, Python `-X importtime`, cProfile, tracemalloc, RSS and deterministic operation-count artifacts;
+- added hard performance contracts for cache-key calls, solver calls, serialization calls, same-batch deduplication, cache flush state and Pareto dominance calls across Linux, public Windows and pre-licensed-COM gates;
+- replaced stale benchmark-report branch wording with real commit identity or an explicit artifact label;
+- added a formal evidence-locked performance audit with implemented, rejected and deferred optimization decisions;
+- rebuilt the bilingual README as a complete installation, configuration, validity, workflow, scheduling, caching, optimization, performance, Worker-ownership, evidence-integrity, industrial-use and troubleshooting guide;
+- expanded the governed visual system to twenty-two original, self-contained and repository-local SVG capability diagrams, including validity gates, Worker ownership/recycling, evidence integrity/authenticity, performance hotspots and startup evidence;
 - bound every added diagram to real implementation markers and retained exact inventory, accessibility, renderer-portability and resource-safety contracts in Linux, Windows and pre-licensed-COM quality gates;
 - documented external process-Agent architecture patterns without copying third-party code or proprietary prompts;
-- retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities.
+- retained DWSIM, IDAES, Modelica and automatic Aspen/HYSYS flowsheet compilers as planned, not implemented, capabilities;
+- deferred JobStore N+1/query-index migration, global bytecode compilation and CI cache pruning until their transaction or install-time trade-offs can be measured without weakening later quality steps;
+- rejected mtime/size digest shortcuts, unmeasured shared memory, default Worker inflation and new heavy numerical dependencies because they would weaken identity or lack current workload evidence.
 
 ## 2.0.0 - 2026-07-18
 
