@@ -62,13 +62,25 @@ def dominates(a: ParetoPoint, b: ParetoPoint) -> bool:
 
 
 def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
-    output: list[ParetoPoint] = []
-    for candidate in points:
-        if any(dominates(existing, candidate) for existing in points if existing is not candidate):
-            continue
-        if candidate not in output:
-            output.append(candidate)
-    return tuple(output)
+    """Return the ordered unique nondominated front with cheap feasibility filtering."""
+
+    unique = tuple(dict.fromkeys(points))
+    if not unique:
+        return ()
+    feasible = tuple(point for point in unique if point.feasible)
+    if not feasible:
+        minimum_violation = min(point.violation for point in unique)
+        return tuple(point for point in unique if point.violation == minimum_violation)
+
+    return tuple(
+        candidate
+        for candidate in feasible
+        if not any(
+            dominates(existing, candidate)
+            for existing in feasible
+            if existing is not candidate
+        )
+    )
 
 
 def _validate_parameters(
@@ -141,8 +153,10 @@ def differential_evolution_batch(
     for generation in range(1, allowed_generations + 1):
         trial_vectors: list[tuple[float, ...]] = []
         for index, target in enumerate(population):
-            candidates = [item for item in range(population_size) if item != index]
-            a_index, b_index, c_index = rng.sample(candidates, 3)
+            sampled = rng.sample(range(population_size - 1), 3)
+            a_index, b_index, c_index = (
+                item if item < index else item + 1 for item in sampled
+            )
             a = population[a_index].x
             b = population[b_index].x
             c = population[c_index].x
