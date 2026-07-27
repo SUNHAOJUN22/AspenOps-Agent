@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → 统一流程意图 → 隔离执行 → 非线性求解 → 工程判定 → 可复现实验证据**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit](docs/performance-audit-2026-07-27.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,7 +18,7 @@
 
 ![AspenOps 总体架构](docs/assets/readme/hero-architecture.svg)
 
-> 本 README 使用二十张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试、签名材料、版本检查或哈希完整性包装成真实 Aspen 工程认证。
+> 本 README 使用二十二张为 AspenOps 原创生成的 AI SVG 功能图。图像只表达仓库中已实现的合同和明确标注的 planned 路线，不把 Mock、Fake COM、软件测试、便携性能、签名材料、版本检查或哈希完整性包装成真实 Aspen 工程认证。
 
 ---
 
@@ -40,7 +40,7 @@
 
 上述数字来自已检查的 JUnit、coverage JSON 和日志，**不是对任意后续提交的自动声明**。顶部徽章反映当前 `main` push 工作流；历史数字不能替代当前提交的新 Actions 证据。
 
-公共 CI 能证明控制平面、配置与路径策略、IPC、进程隔离、调度、缓存、优化、数值 fail-closed、归档、接口、Process Intent、MCP 兼容性和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
+公共 CI 能证明控制平面、配置与路径策略、IPC、进程隔离、调度、缓存、优化、数值 fail-closed、归档、接口、Process Intent、MCP 兼容性、便携性能合同和文档合同；它不能证明商业 Aspen 安装、许可证、物性方法、反应模型或工程模型已经合格。
 
 ---
 
@@ -181,7 +181,7 @@ AND balances_passed
 AND finite_json_evidence
 ```
 
-约束和衡算中的 `NaN`、正负 Infinity、非数字值以及派生算术溢出都会 fail closed，并写入结构化违规代码；结果和证据使用 JSON 安全值，`allow_nan=False`。HYSYS 的运行状态使用明确布尔、COM `-1/0/1` 或受支持字符串解析，不使用 `bool("False")` 这类 Python truthiness 猜测。
+约束和衡算中的 `NaN`、正负 Infinity、非数字值以及派生算术溢出都会 fail closed，并写入结构化违规代码；结果和证据使用 JSON 安全值，`allow_nan=False`。Aspen Plus 与 HYSYS 的运行状态使用明确布尔、COM `-1/0/1` 或受支持字符串解析，不使用 `bool("False")` 这类 Python truthiness 猜测。
 
 ---
 
@@ -337,7 +337,7 @@ validate mixed variables and objectives
 → best candidate + Pareto evidence
 ```
 
-Mock 结果标记为 `control-plane-only`；真实 Aspen 结果保持 `licensed-runtime-pending-engineering-review` 和 `PENDING_REAL_ASPEN_CERTIFICATION`，不把 Pareto 前沿当作工程批准。
+DE 仍保持每代一次批量评价和相同评价预算；候选索引抽样不再为每个个体构造完整列表。Pareto 计算先保持顺序地去重，并在可行点存在时先排除不可行点；全不可行时只保留最小 violation。Mock 结果标记为 `control-plane-only`；真实 Aspen 结果保持 `licensed-runtime-pending-engineering-review` 和 `PENDING_REAL_ASPEN_CERTIFICATION`，不把 Pareto 前沿当作工程批准。
 
 ---
 
@@ -400,7 +400,7 @@ canonical physical identity
 → computed / persistent_cache / inflight_singleflight provenance
 ```
 
-只有满足缓存策略的重新初始化请求才会写入；并发 follower 可在等待期间响应取消，单航班不会改变模型、注册表或请求身份。
+缓存 hit 阈值使用 O(1) 累计计数，批量键按 SQLite 参数预算迭代分块，持久化 JSON 使用紧凑编码，并在 schema 初始化后执行 `PRAGMA optimize`。同一个不可变请求对象在单个 batch 中复用 cache-key 计算；一个可缓存求解结果只生成一次规范字典。same-batch 与 singleflight 副本使用深拷贝保持嵌套结果隔离，不降低模型、注册表、运行时或物理请求身份强度。
 
 ---
 
@@ -418,6 +418,35 @@ source model
 ```
 
 回收原因包括 timeout、crash、protocol error、tainted write、point budget、worker age、cancellation 和 lease ownership loss。回收只作用于 AspenOps 核验归属的 Worker 或其受监督后代；原模型不被覆盖，旧临时副本在清理时删除。
+
+---
+
+## 性能工程与证据
+
+![性能热点与证据地图](docs/assets/readme/performance-hotspot-map.svg)
+
+![冷启动与热启动证据](docs/assets/readme/cold-warm-startup.svg)
+
+AspenOps 将性能结论分为两类：
+
+1. **低噪声硬合同**：cache-key 次数、solver 调用次数、规范序列化次数、dedup 数量、缓存 flush 状态和 Pareto 支配比较次数；
+2. **环境敏感诊断**：wall time、median、P95、min/max、CV、Python `-X importtime`、cProfile、tracemalloc 与 RSS。
+
+```bash
+uv run python scripts/measure_cli_startup.py \
+  --output var/ci/cli-startup.json \
+  --trials 7 \
+  --warmups 2
+
+uv run python scripts/measure_operation_counts.py \
+  --output var/ci/operation-counts.json
+```
+
+CLI console script 先进入轻量 bootstrap。`--version`、顶层帮助和子命令帮助不会导入 Pool、Scheduler、优化器、认证、证据或 MCP；实际命令只委托一次给完整 CLI。`cli-startup.json` 使用同一解释器、同一机器比较 bootstrap 和 full CLI，并单独保存 import-time 诊断；`operation-counts.json` 保存 cProfile、tracemalloc、RSS 和确定性操作计数。
+
+当前自动合同要求：100 个相同请求对象只计算 1 次 cache key、调用 1 次 solver、生成 1 次规范序列化并得到 99 个 `same_batch_dedup` 结果；1024 个缓存命中达到阈值后待刷总数为 0；1000 个完全重复 Pareto 点不执行支配比较。wall time 在共享 runner 上只作为证据，不使用过窄硬阈值。
+
+历史 benchmark 文件仍是便携 Mock 编排的归档证据，不自动代表当前 HEAD。它们不证明 Aspen Plus/HYSYS 模型打开、非线性求解、收敛或工业工程性能。模型与 registry SHA-256 仍按内容计算；没有采用基于 mtime/size 的快捷跳过。Scheduler `list_recent()` 的 N+1 查询与复合索引迁移记录在性能审计中，未通过旁路实现改变租约恢复语义。
 
 ---
 
@@ -460,7 +489,7 @@ Knowledge 只读；Concept 与 Parameter 只能输出验证后的 IR；Execution
 | 后端 | 当前执行 | IR 自动建模编译器 | 当前边界 |
 |---|---|---|---|
 | Mock | available | planned | 跨平台软件测试，不代表 Aspen 物理 |
-| Aspen Plus | available，持证 Windows | planned | 运行既有获批模型 |
+| Aspen Plus | available，持证 Windows | planned | 运行既有获批模型；严格解析 engine running flag |
 | HYSYS | available，持证 Windows | planned | 运行既有获批模型；严格解析 solver running flag |
 | DWSIM | planned | planned | **未实现，无 adapter** |
 | IDAES | planned | planned | **未实现，无 adapter** |
@@ -478,10 +507,10 @@ Knowledge 只读；Concept 与 Parameter 只能输出验证后的 IR；Execution
 
 | 工作流 | 固定环境 | 作用 |
 |---|---|---|
-| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、IR、配置、缓存、优化、数值证据和耐久队列 smoke |
-| `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell、配置、路径、IR 和治理合同 |
+| `ci.yml` | `ubuntu-24.04`；Python 3.11/3.12/3.13 | Ruff、格式、strict mypy、六组合依赖审计、全量测试、分支覆盖率、构建、Wheel、Mock、MCP、IR、配置、缓存、优化、性能证据和耐久队列 smoke |
+| `windows-control-plane.yml` | `windows-2025`；Python 3.12 | Windows Job、IPC、Fake Aspen/HYSYS、PowerShell、配置、路径、性能低噪声合同、IR 和治理合同 |
 | `generate-performance-evidence.yml` | `ubuntu-24.04`；Python 3.12 | 受信 baseline/candidate、双冻结环境和稳定回归证据 |
-| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 主干守卫、SHA 绑定、Mock/IR 软件门、证据隔离和真实 COM |
+| `licensed-aspen-certification.yml` | `ubuntu-24.04` guard → 持证 Windows | 主干守卫、SHA 绑定、Mock/IR/性能软件门、证据隔离和真实 COM |
 
 冻结依赖审计覆盖 `Linux 与 Windows × Python 3.11、3.12、3.13`，即六组合。托管 runner、第三方 Actions 和 `uv 0.11.16` 固定版本；权限保持 `contents: read`。
 
@@ -581,11 +610,11 @@ PENDING_REAL_ASPEN_CERTIFICATION
 ```text
 .github/workflows/       四个权威自动化工作流
 docs/                    架构、Windows、性能、认证与质量文档
-docs/assets/readme/      二十张受测试治理的 README SVG
+docs/assets/readme/      二十二张受测试治理的 README SVG
 examples/                批处理、优化与 Process Intent 示例
-scripts/                 校验器、dashboard、benchmark 与 Windows 设置
+scripts/                 校验器、dashboard、benchmark、性能探针与 Windows 设置
 src/aspenops_nexus/      控制平面、后端、Worker、调度、缓存、优化、证据与 MCP
-tests/                   Linux、Windows、工作流、文档和安全合同测试
+tests/                   Linux、Windows、工作流、文档、安全和性能合同测试
 var/                     可复现基线、审计清单和本地运行状态
 ```
 
@@ -604,6 +633,8 @@ var/                     可复现基线、审计清单和本地运行状态
 | 批处理返回 `ok=false` | communication、engine、converged、constraints、balances | 分别修复，不把 Run2 返回当作收敛 |
 | 结果出现 `constraint_non_finite` | 节点值、单位转换和派生溢出 | 不放宽限制；修复模型或量纲 |
 | 结果出现 `balance_non_finite` | 衡算项、系数、单位和残差 | 使用结构化 diagnostics 定位非有限项 |
+| 启动证据波动较大 | `coefficient_of_variation`、runner、Python 和 CPU | wall time 只作环境证据；依赖 import 与 operation-count 硬合同 |
+| operation-count 不匹配 | cache-key、solver、序列化、dedup 或 Pareto 逻辑 | 视为确定性性能回归，不用多跑几次掩盖 |
 | 任务一直是 `pending` | 是否有 `aspenops scheduler` 常驻服务 | 启动调度服务 |
 | 后台任务停留在 running | lease、heartbeat、Worker PID、取消期限 | 让调度器回收过期租约，不手工杀不明 Aspen 进程 |
 | 缓存结果异常 | cache key、模型/registry 哈希、损坏记录 | 损坏记录应被删除并重新计算 |
@@ -624,11 +655,13 @@ var/                     可复现基线、审计清单和本地运行状态
 - 环境与 Python API 统一的 fail-closed Settings 和路径策略；
 - 独立通信、引擎、收敛、约束、衡算和有限数值证据门；
 - Mock、Fake COM、Windows Job Object、耐久调度、取消、缓存、单航班、优化和 MCP；
+- CLI 轻量 bootstrap、低噪声 operation-count、import-time、cProfile 和内存性能证据；
 - MCP 1.x 依赖/Wheel/运行时兼容门与 FastMCP 生命周期资源清理；
 - 冻结 CI、dashboard、证据 bundle 和持证认证边界。
 
 ### 下一阶段
 
+- JobStore `list_recent()` 单查询行解码和复合索引迁移；
 - IR → Mock 非执行计划编译器；
 - DWSIM 开源真实流程后端；
 - Text/Image → IR benchmark 与数据合同；
@@ -649,7 +682,7 @@ var/                     可复现基线、审计清单和本地运行状态
 
 ## AI 生成视觉资产清单
 
-以下二十张原创、自包含 SVG 存放在 `docs/assets/readme/`：
+以下二十二张原创、自包含 SVG 存放在 `docs/assets/readme/`：
 
 1. `hero-architecture.svg`
 2. `policy-path-safety.svg`
@@ -665,12 +698,14 @@ var/                     可复现基线、审计清单和本地运行状态
 12. `durable-path-portability.svg`
 13. `scheduler-lifecycle.svg`
 14. `cache-singleflight.svg`
-15. `industrial-scenarios.svg`
-16. `test-matrix.svg`
-17. `evidence-chain.svg`
-18. `evidence-integrity.svg`
-19. `licensed-certification.svg`
-20. `roadmap.svg`
+15. `performance-hotspot-map.svg`
+16. `cold-warm-startup.svg`
+17. `industrial-scenarios.svg`
+18. `test-matrix.svg`
+19. `evidence-chain.svg`
+20. `evidence-integrity.svg`
+21. `licensed-certification.svg`
+22. `roadmap.svg`
 
 `tests/test_readme_visual_assets.py` 检查双语引用、完整清单、XML、大小、路径、无障碍、渲染可移植性、脚本、事件、远程资源、Data URI、源码能力绑定和三道工作流接入。
 
@@ -683,6 +718,7 @@ var/                     可复现基线、审计清单和本地运行状态
 - [External Agent Integration](docs/external-agent-integration.md)
 - [Windows Setup](docs/windows-setup.md)
 - [Performance](docs/performance.md)
+- [Performance Audit](docs/performance-audit-2026-07-27.md)
 - [Certification](docs/certification.md)
 - [Test Audit](docs/automated-test-audit-2026-07-22.md)
 - [Quality Report](docs/quality-report.md)
