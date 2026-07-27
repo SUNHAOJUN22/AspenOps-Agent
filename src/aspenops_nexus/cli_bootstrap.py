@@ -7,6 +7,28 @@ from pathlib import Path
 
 from . import __version__
 
+_COMMANDS = frozenset(
+    {
+        "benchmark",
+        "cancel",
+        "certification-preflight",
+        "certify",
+        "certify-licensed",
+        "demo",
+        "doctor",
+        "dry-run",
+        "job",
+        "mcp",
+        "optimize",
+        "run-batch",
+        "scheduler",
+        "submit",
+        "verify-bundle",
+        "verify-licensed-bundle",
+    }
+)
+_HELP_FLAGS = frozenset({"-h", "--help"})
+
 
 def _resource_path(name: str) -> Path:
     resource = files("aspenops_nexus.data").joinpath(name)
@@ -103,11 +125,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handled_without_control_plane(arguments: list[str]) -> bool:
+    if not arguments or arguments[0] in {*_HELP_FLAGS, "--version"}:
+        return True
+    if arguments[0] not in _COMMANDS:
+        return False
+    for argument in arguments[1:]:
+        if argument == "--":
+            return False
+        if argument in _HELP_FLAGS:
+            return True
+    return False
+
+
 def main(argv: list[str] | None = None) -> None:
     """Handle help/version cheaply, then delegate real execution to the full CLI."""
 
     arguments = sys.argv[1:] if argv is None else argv
-    build_parser().parse_args(arguments)
+    if _handled_without_control_plane(arguments):
+        build_parser().parse_args(arguments)
+        return
 
     from .cli import main as full_main
 
