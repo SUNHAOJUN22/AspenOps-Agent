@@ -149,14 +149,28 @@ def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Pa
 
     operation_path = output.with_name(evidence["operation_counts_artifact"])
     operation = json.loads(operation_path.read_text(encoding="utf-8"))
-    assert operation["schema"] == "aspenops.operation-counts/v1"
+    assert operation["schema"] == "aspenops.operation-counts/v2"
     assert operation["pool"]["cache_key_calls"] == 1
     assert operation["pool"]["solver_calls"] == 1
     assert operation["pool"]["result_serializations"] == 1
+    assert operation["memory_cache"]["json_decode_calls"] == 0
+    assert operation["memory_cache"]["sqlite_connection_calls"] == 0
+    assert operation["memory_cache"]["deep_result_isolation"] is True
     assert operation["memory"]["traced_peak_bytes"] >= 0
     assert operation["profile"]["total_calls"] > 0
     assert operation["profile"]["top_cumulative_functions"]
     assert "profiler overhead" in operation["profile"]["boundary"]
+
+    query_path = output.with_name(evidence["job_store_query_plan_artifact"])
+    query = json.loads(query_path.read_text(encoding="utf-8"))
+    assert query["schema"] == "aspenops.job-store-query-plan/v1"
+    assert query["records"] == 1000
+    assert query["returned_records"] == 20
+    assert query["connection_calls"] == 1
+    assert query["select_statements"] == 1
+    assert "idx_jobs_recent_created_job" in query["indexes"]
+    assert any("idx_jobs_recent_created_job" in detail for detail in query["query_plan"])
+    assert all("USE TEMP B-TREE" not in detail.upper() for detail in query["query_plan"])
 
 
 def test_heavy_module_guard_is_complete() -> None:
