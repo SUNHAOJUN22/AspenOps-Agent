@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +90,38 @@ def is_stable_regression(
     )
 
 
+def _revision(document: dict[str, Any], fallback: str) -> str:
+    direct = document.get("git_commit") or document.get("revision")
+    if isinstance(direct, str) and direct:
+        return direct
+    environment = document.get("environment")
+    if isinstance(environment, dict):
+        nested = environment.get("git_commit")
+        if isinstance(nested, str) and nested:
+            return nested
+    return fallback
+
+
+def _write_cli_startup_evidence(after_doc: Path) -> Path:
+    output = after_doc.resolve().with_name("cli-startup.json")
+    trials = os.getenv("ASPENOPS_CLI_STARTUP_TRIALS", "7")
+    warmups = os.getenv("ASPENOPS_CLI_STARTUP_WARMUPS", "2")
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("measure_cli_startup.py")),
+            "--output",
+            str(output),
+            "--trials",
+            trials,
+            "--warmups",
+            warmups,
+        ],
+        check=True,
+    )
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", required=True)
@@ -104,7 +139,7 @@ def main() -> None:
     baseline_lines = [
         "# Portable performance baseline",
         "",
-        "Baseline revision: `main`.",
+        f"Baseline revision: `{_revision(baseline, 'baseline artifact')}`.",
         "",
         baseline["boundary"],
         "",
@@ -123,9 +158,9 @@ def main() -> None:
         )
 
     after_lines = [
-        "# Portable performance after AspenOps v2 changes",
+        "# Portable performance candidate",
         "",
-        "Candidate revision: `agent/aspenops-v2-reliability-performance`.",
+        f"Candidate revision: `{_revision(after, 'candidate artifact')}`.",
         "",
         after["boundary"],
         "",
@@ -172,6 +207,7 @@ def main() -> None:
             f"{stability} | {assessment} |"
         )
 
+    startup_output = _write_cli_startup_evidence(Path(args.after_doc))
     after_lines.extend(
         [
             "",
@@ -192,6 +228,14 @@ def main() -> None:
             "### Noise-sensitive observations",
             "",
             *(noise_sensitive or ["None."]),
+            "",
+            "## CLI startup evidence",
+            "",
+            f"Machine-readable same-environment startup evidence: `{startup_output.name}`.",
+            "",
+            "The startup probe compares the lightweight bootstrap with the full CLI import path. "
+            "Shared-runner wall time is evidence, not a narrow hard gate; module-import boundaries "
+            "are enforced separately by deterministic tests.",
             "",
             "## Persistent sequential-job execution",
             "",
