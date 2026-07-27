@@ -4,6 +4,8 @@
 
 Aspen Automation is a stateful COM interface around a proprietary nonlinear solver. The runtime must therefore preserve COM apartment ownership, simulator lifecycle, model identity, license limits and engineering evidence. AspenOps treats these as first-class invariants rather than incidental implementation details.
 
+Performance is subordinate to correctness. An optimization is retained only when it preserves identity, isolation, durability, evidence and certification boundaries and is covered by either deterministic operation-count contracts or same-environment measurements.
+
 ## Control plane and data plane
 
 The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, optimization, provenance and certification. The data plane consists of spawned workers. Each worker owns:
@@ -53,11 +55,11 @@ Human / text / image / search Agent
 
 The graph declares components, property package, units, typed ports, streams and finite scalar parameters. Unknown fields, executable metadata keys, raw Tree Paths, invalid references and unsafe connection structures fail closed.
 
-Process understanding is therefore separated from simulator execution. A concept, parameter or repair Agent may produce only validated Process Intent IR. It cannot directly own COM, write arbitrary Python/VBA/Shell or call unrestricted simulator methods.
+Process understanding is separated from simulator execution. A concept, parameter or repair Agent may produce only validated Process Intent IR. It cannot directly own COM, write arbitrary Python/VBA/Shell or call unrestricted simulator methods.
 
 ## Compiler boundary
 
-Backend execution and automatic flowsheet compilation are independent capabilities. Aspen Plus and HYSYS execution already exist for approved models on licensed Windows, but their IR compilers are still planned. DWSIM, IDAES and Modelica/FMI are declared roadmap backends only; no adapter is claimed until a compiler conformance suite and execution tests exist.
+Backend execution and automatic flowsheet compilation are independent capabilities. Aspen Plus and HYSYS execution already exist for approved models on licensed Windows, but their IR compilers are still planned. DWSIM, IDAES and Modelica/FMI are roadmap backends only; no adapter is claimed until a compiler conformance suite and execution tests exist.
 
 ```text
 IR valid
@@ -79,7 +81,24 @@ Knowledge
 → Convergence, balance and human-review gate
 ```
 
-Every stage has a declared responsibility and permitted output. Simulator feedback may propose bounded IR edits, but it cannot silently rewrite the execution policy or self-grant engineering approval.
+Every stage has a declared responsibility and permitted output. Simulator feedback may propose bounded IR edits, but it cannot silently rewrite execution policy or self-grant engineering approval.
+
+## Lightweight CLI boundary
+
+The installed `aspenops` entry point targets `cli_bootstrap.py`, not the full execution module. The bootstrap contains only the public argparse surface, package version and package-resource path resolution.
+
+```text
+aspenops --version / --help / command --help
+→ lightweight bootstrap
+→ exit without Pool, Scheduler, Optimizer, Evidence or MCP imports
+
+executed command
+→ lightweight dispatch check
+→ one import of full cli.py
+→ one parse and normal execution
+```
+
+The bootstrap and full parser help output are tested for exact equality. Real commands are not parsed twice. This improves common cold-start paths without creating a second command implementation or weakening any execution gate.
 
 ## MCP compatibility and ownership
 
@@ -113,7 +132,7 @@ RECEIVED
 
 A batched transaction is sent over one duplex pipe message with a correlation ID. The worker validates and executes the complete point. The parent process enforces the hard deadline. If the worker does not respond, only that Worker is terminated and later replaced.
 
-The backend run protocol is typed rather than truthy. `engine_returned` and `converged` must be actual Boolean fields, and `convergence_state` must be a non-empty string. HYSYS solver-running properties are normalized from explicit booleans, COM `-1/0/1` and bounded known strings. Unknown values become `None`, which preserves an unknown convergence state instead of guessing.
+The backend run protocol is typed rather than truthy. `engine_returned` and `converged` must be actual Boolean fields, and `convergence_state` must be a non-empty string. Aspen Plus and HYSYS running properties are normalized from explicit booleans, COM `-1/0/1` and bounded known strings. Unknown values become `None`, which preserves an unknown convergence state instead of guessing.
 
 ## Worker ownership and recycling
 
@@ -138,7 +157,7 @@ The registry is both an API schema and a capability boundary. A semantic node de
 
 The registry hash participates in cache identity. Changing a path, bound, unit or meaning invalidates cached results.
 
-## Cache identity, deduplication and singleflight
+## Cache identity, accounting, deduplication and singleflight
 
 One cache key binds:
 
@@ -150,14 +169,24 @@ runtime schema and AspenOps version
 + physical request identity
 ```
 
-`ResultCache` combines a bounded memory LRU with SQLite WAL persistence. Invalid JSON or non-object payloads are discarded rather than returned. Hit counters are batched, and bulk reads/writes remain under the SQLite parameter budget.
+`ResultCache` combines a bounded memory LRU with SQLite WAL persistence. Invalid JSON or non-object payloads are discarded rather than returned. Bulk reads/writes remain under the SQLite parameter budget.
 
-`CasePool` provides two additional duplicate-work controls:
+Performance changes preserve the same identity and transaction model:
 
-- identical points inside one batch collapse to one task and receive cloned results marked `same_batch_dedup`;
-- concurrent identical single-point calls share one `_InflightEvaluation`; one leader executes while cancellable followers wait and receive `inflight_singleflight` provenance.
+- `_pending_hit_total` makes flush-threshold checks O(1) instead of rescanning all pending keys;
+- SQLite key batches are yielded instead of preallocated;
+- JSON storage uses compact separators but remains deterministic and `allow_nan=False`;
+- `PRAGMA optimize` runs after schema initialization while WAL and `synchronous=NORMAL` remain intact.
 
-Persistent cache and singleflight reduce solver work without weakening runtime, model, registry or request identity. Failed or warm-start results enter cache only when explicit cache policy allows them.
+`CasePool` provides duplicate-work controls:
+
+- exact repeated references to the same immutable request object reuse one cache-key computation inside a batch;
+- physically equivalent but distinct request objects are still independently canonicalized and converge to the same content key;
+- identical points inside one batch collapse to one task and receive deeply isolated results marked `same_batch_dedup`;
+- concurrent identical single-point calls share one `_InflightEvaluation`; one leader executes while cancellable followers wait and receive `inflight_singleflight` provenance;
+- one cacheable solve creates one canonical result dictionary; duplicate result objects use deep cloning rather than repeated dataclass serialization.
+
+Persistent cache and singleflight reduce solver work without weakening runtime, model, registry or request identity. Failed or warm-start results enter cache only when explicit cache policy allows them. Model and registry SHA-256 remain byte-derived; mtime/size shortcuts are rejected.
 
 ## Budgeted constrained optimization
 
@@ -178,7 +207,53 @@ validated OptimizationProblem
 → best candidate and Pareto evidence
 ```
 
-Checkpoints use a temporary file followed by `os.replace`. Cancellation returns a terminal optimization document rather than silently accepting a partial best point. Mock output is qualified as control-plane evidence only; real backend output remains pending licensed runtime and human engineering review.
+DE still performs one batch evaluation per generation and keeps the same evaluation budget. Index selection samples `range(population_size - 1)` and maps around the target index, avoiding one population-sized exclusion list per target.
+
+Pareto processing performs ordered exact deduplication before dominance work. If a feasible point exists, infeasible points cannot enter the front and are removed before pairwise comparison. If every point is infeasible, only minimum-violation points remain. Pairwise objective comparisons are therefore limited to feasible unique points while Deb feasibility ordering is preserved.
+
+Checkpoints use a temporary file followed by `os.replace`. Cancellation returns a terminal optimization document rather than silently accepting a partial best point. Mock output is control-plane evidence only; real backend output remains pending licensed runtime and human engineering review.
+
+## Performance evidence architecture
+
+Performance qualification has two channels.
+
+### Deterministic operation contracts
+
+`scripts/measure_operation_counts.py` records low-noise counts:
+
+```text
+100 repeated request references
+→ 1 cache-key computation
+→ 1 solver call
+→ 1 canonical serialization
+→ 99 same_batch_dedup results
+→ deep nested isolation
+
+1024 cache hits
+→ threshold flush
+→ pending_hit_total == 0
+
+1000 identical Pareto points
+→ exact dedup
+→ dominance_calls == 0
+```
+
+These counts are hard regression contracts and are executed through tests already included in Linux, public Windows and pre-licensed-COM software gates.
+
+### Environment-sensitive diagnostics
+
+`scripts/measure_cli_startup.py` records warmups, repeated trials, median, P95, min/max, coefficient of variation and same-environment bootstrap/full-CLI comparisons. A separate `-X importtime` process records import diagnostics without contaminating normal startup samples.
+
+The operation-count probe separately records cProfile, tracemalloc and RSS. Profiler overhead is explicitly labelled; wall time on shared runners is evidence rather than a narrow hard gate.
+
+The quality benchmark step produces:
+
+```text
+var/ci/cli-startup.json
+var/ci/operation-counts.json
+```
+
+Both carry environment and commit identity. Neither is licensed Aspen solve evidence.
 
 ## Runtime compatibility
 
@@ -202,7 +277,7 @@ finite JSON evidence
 
 `ok` is the conjunction of communication, engine return, convergence and feasibility. Feasibility includes constraints, material/energy balances and evidence-quality failures.
 
-Finite inputs are not sufficient: multiplication, summation, residual subtraction and normalization can overflow. AspenOps therefore checks both observed and derived values. Non-finite required outputs are replaced by JSON `null` with a reason label. Non-finite or non-numeric constraints emit `constraint_non_finite` or `constraint_non_numeric` plus `constraint_failed`. Non-finite balance terms or derived residuals emit `balance_non_finite` plus `balance_failed`.
+Finite inputs are not sufficient: multiplication, summation, residual subtraction and normalization can overflow. AspenOps checks observed and derived values. Non-finite required outputs become JSON `null` with a reason label. Non-finite or non-numeric constraints emit `constraint_non_finite` or `constraint_non_numeric` plus `constraint_failed`. Non-finite balance terms or derived residuals emit `balance_non_finite` plus `balance_failed`.
 
 Backend diagnostics and runtime identity are recursively normalized to JSON-safe values. A required conversion is recorded as `backend_diagnostics_not_json_safe` and makes the result infeasible. This keeps `allow_nan=False` evidence writing reliable without pretending sanitized diagnostics are trustworthy.
 
@@ -232,10 +307,12 @@ Recovery follows the actual state machine:
 - active work after the final attempt → `dead_letter`;
 - completed results remain bound to an idempotent commit token and evidence bundle.
 
+`JobStore.list_recent()` currently performs an ID query followed by one `get()` per job. A single-query row decoder plus composite-index migration is a documented P1 improvement, but it is not implemented through a parallel subclass or monkeypatch because lease, recovery, cancellation and event semantics must remain singular and transactional.
+
 ## Evidence integrity and authenticity
 
 Evidence bundles use bounded ZIP processing and JSON serialization with `allow_nan=False`. `request.json`, `results.json` and `environment.json` are declared in the manifest with exact byte size and SHA-256. The manifest additionally binds request, results, model and registry hashes plus runtime schema and AspenOps version.
 
 Verification rejects missing, extra, reserved, malformed or oversized members before trusting content. Member declarations are validated before each digest and size is recomputed. Archive path, compression and total-size limits are enforced by `ArchiveLimits` and `validate_archive()`.
 
-Unsigned bundles provide internal integrity checks only. A signed v2 bundle uses Ed25519 over canonical manifest bytes and records a bounded key ID. Authenticity exists only when verification uses the expected trusted public key. Integrity, authenticity, licensed runtime execution and human engineering acceptance remain four separate levels of evidence.
+Unsigned bundles provide internal integrity checks only. A signed v2 bundle uses Ed25519 over canonical manifest bytes and records a bounded key ID. Authenticity exists only when verification uses the expected trusted public key. Integrity, authenticity, licensed runtime execution and human engineering acceptance remain separate levels of evidence.
