@@ -2,13 +2,13 @@
 
 ## Design objective
 
-Aspen Automation is a stateful COM interface around a proprietary nonlinear solver. The runtime must therefore preserve COM apartment ownership, simulator lifecycle, model identity, license limits and engineering evidence. AspenOps treats these as first-class invariants rather than incidental implementation details.
+Aspen Automation is a stateful COM interface around a proprietary nonlinear solver. The runtime must preserve COM apartment ownership, simulator lifecycle, model identity, licence limits and engineering evidence. AspenOps treats these as first-class invariants rather than incidental implementation details.
 
-Performance is subordinate to correctness. An optimization is retained only when it preserves identity, isolation, durability, evidence and certification boundaries and is covered by either deterministic operation-count contracts or same-environment measurements.
+Performance is subordinate to correctness. An optimization is retained only when it preserves identity, isolation, durability, evidence and certification boundaries and is covered by deterministic operation-count contracts or same-environment measurements. A candidate that appears simpler or reports a lower counter may still be rolled back when representative measurement shows worse execution cost.
 
 ## Control plane and data plane
 
-The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, optimization, provenance and certification. The data plane consists of spawned workers. Each worker owns:
+The control plane performs policy, schema validation, semantic resolution, unit conversion, queueing, caching, optimization, provenance and certification. The data plane consists of spawned Workers. Each Worker owns:
 
 - one OS process;
 - one COM STA;
@@ -21,7 +21,7 @@ No COM proxy crosses a process boundary.
 
 ## Configuration and path-policy boundary
 
-Environment variables and direct Python `Settings(...)` construction enter the same fail-closed validation boundary. A configuration object is not valid merely because it can be instantiated by Python. Construction rejects:
+Environment variables and direct Python `Settings(...)` construction enter the same fail-closed validation boundary. Construction rejects:
 
 - unsupported backends or operating modes;
 - string or numeric values pretending to be Boolean flags;
@@ -43,7 +43,7 @@ environment / Python API
 
 ## Simulator-neutral intent plane
 
-The Process Intent plane sits above the existing control plane. It accepts a constrained graph rather than executable simulator code:
+The Process Intent plane accepts a constrained graph rather than executable simulator code:
 
 ```text
 Human / text / image / search Agent
@@ -59,7 +59,7 @@ Process understanding is separated from simulator execution. A concept, paramete
 
 ## Compiler boundary
 
-Backend execution and automatic flowsheet compilation are independent capabilities. Aspen Plus and HYSYS execution already exist for approved models on licensed Windows, but their IR compilers are still planned. DWSIM, IDAES and Modelica/FMI are roadmap backends only; no adapter is claimed until a compiler conformance suite and execution tests exist.
+Backend execution and automatic flowsheet compilation are independent capabilities. Aspen Plus and HYSYS execution exist for approved models on licensed Windows, but their IR compilers remain planned. DWSIM, IDAES and Modelica/FMI are roadmap backends only; no adapter is claimed until a compiler conformance suite and execution tests exist.
 
 ```text
 IR valid
@@ -68,7 +68,7 @@ AND backend execution available
 AND policy approved
 ```
 
-Only then may an IR-driven model construction request enter the execution control plane.
+Only then may an IR-driven model-construction request enter the execution control plane.
 
 ## Bounded Agent pipeline
 
@@ -102,7 +102,7 @@ The bootstrap and full parser help output are tested for exact equality. Real co
 
 ## MCP compatibility and ownership
 
-AspenOps 2.0 uses the MCP Python SDK 1.x API. Project and built-Wheel metadata constrain the `agent` extra to `mcp>=1.9,<2`; the frozen environment currently resolves `mcp 1.28.1`. CI inspects the actual Wheel `Requires-Dist` entry after `uv build`. Before importing `FastMCP`, the runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions.
+AspenOps 2.0 uses the MCP Python SDK 1.x API. Project and built-Wheel metadata constrain the `agent` extra to `mcp>=1.9,<2`; the frozen environment resolves `mcp 1.28.1`. CI inspects the actual Wheel `Requires-Dist` entry after `uv build`. Before importing `FastMCP`, runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions.
 
 MCP server lifetime owns the durable execution fabric:
 
@@ -130,9 +130,9 @@ RECEIVED
   → VERIFIED | FAILED
 ```
 
-A batched transaction is sent over one duplex pipe message with a correlation ID. The worker validates and executes the complete point. The parent process enforces the hard deadline. If the worker does not respond, only that Worker is terminated and later replaced.
+A batched transaction is sent over one duplex pipe message with a correlation ID. The Worker validates and executes the complete point. The parent process enforces the hard deadline. If the Worker does not respond, only that Worker is terminated and later replaced.
 
-The backend run protocol is typed rather than truthy. `engine_returned` and `converged` must be actual Boolean fields, and `convergence_state` must be a non-empty string. Aspen Plus and HYSYS running properties are normalized from explicit booleans, COM `-1/0/1` and bounded known strings. Unknown values become `None`, which preserves an unknown convergence state instead of guessing.
+The backend run protocol is typed rather than truthy. `engine_returned` and `converged` must be actual Boolean fields, and `convergence_state` must be a non-empty string. Aspen Plus and HYSYS running properties are normalized from explicit booleans, COM `-1/0/1` and bounded known strings. Unknown values become `None`, preserving an unknown state instead of guessing.
 
 ## Worker ownership and recycling
 
@@ -169,16 +169,20 @@ runtime schema and AspenOps version
 + physical request identity
 ```
 
-`ResultCache` combines a bounded memory LRU with SQLite WAL persistence. Invalid JSON or non-object payloads are discarded rather than returned. Bulk reads/writes remain under the SQLite parameter budget.
+`ResultCache` combines a bounded memory LRU with SQLite WAL persistence. Invalid JSON or non-object payloads are discarded rather than returned. Bulk reads and writes remain under the SQLite parameter budget.
 
-Performance changes preserve the same identity and transaction model:
+Retained performance changes preserve the same identity and transaction model:
 
 - `_pending_hit_total` makes flush-threshold checks O(1) instead of rescanning all pending keys;
 - SQLite key batches are yielded instead of preallocated;
 - JSON storage uses compact separators but remains deterministic and `allow_nan=False`;
-- `PRAGMA optimize` runs after schema initialization while WAL and `synchronous=NORMAL` remain intact.
+- `PRAGMA optimize` runs after schema initialization while WAL and `synchronous=NORMAL` remain intact;
+- the memory LRU retains compact JSON snapshots, so duplicate keys in one `get_many` call decode once and memory hits open no SQLite connection;
+- independent values across calls are produced by the standard-library C JSON decoder.
 
-`CasePool` provides duplicate-work controls:
+A structured-object LRU using generic `deepcopy()` was implemented as a candidate and then rolled back after representative same-interpreter measurement showed that zero decode count did not imply lower execution cost.
+
+`CasePool` provides additional duplicate-work controls:
 
 - exact repeated references to the same immutable request object reuse one cache-key computation inside a batch;
 - physically equivalent but distinct request objects are still independently canonicalized and converge to the same content key;
@@ -207,9 +211,9 @@ validated OptimizationProblem
 → best candidate and Pareto evidence
 ```
 
-DE still performs one batch evaluation per generation and keeps the same evaluation budget. Index selection samples `range(population_size - 1)` and maps around the target index, avoiding one population-sized exclusion list per target.
+DE performs one batch evaluation per generation and keeps the same evaluation budget. Index selection samples `range(population_size - 1)` and maps around the target index, avoiding one population-sized exclusion list per target.
 
-Pareto processing performs ordered exact deduplication before dominance work. If a feasible point exists, infeasible points cannot enter the front and are removed before pairwise comparison. If every point is infeasible, only minimum-violation points remain. Pairwise objective comparisons are therefore limited to feasible unique points while Deb feasibility ordering is preserved.
+Pareto processing performs ordered exact deduplication before dominance work. If a feasible point exists, infeasible points are removed before pairwise comparison. If every point is infeasible, only minimum-violation points remain. Pairwise objective comparisons are limited to feasible unique points while Deb feasibility ordering is preserved.
 
 Checkpoints use a temporary file followed by `os.replace`. Cancellation returns a terminal optimization document rather than silently accepting a partial best point. Mock output is control-plane evidence only; real backend output remains pending licensed runtime and human engineering review.
 
@@ -219,7 +223,7 @@ Performance qualification has two channels.
 
 ### Deterministic operation contracts
 
-`scripts/measure_operation_counts.py` records low-noise counts:
+`scripts/measure_operation_counts.py` records:
 
 ```text
 100 repeated request references
@@ -233,12 +237,28 @@ Performance qualification has two channels.
 → threshold flush
 → pending_hit_total == 0
 
+3 memory hits across 2 calls
+→ 2 compact-JSON decodes
+→ 0 SQLite connections
+→ deep nested isolation
+
 1000 identical Pareto points
 → exact dedup
 → dominance_calls == 0
 ```
 
-These counts are hard regression contracts and are executed through tests already included in Linux, public Windows and pre-licensed-COM software gates.
+`scripts/measure_job_store_queries.py` separately records:
+
+```text
+1000 durable jobs, recent limit 20
+→ 1 SQLite connection
+→ 1 SELECT
+→ 20 returned records
+→ idx_jobs_recent_created_job used
+→ no USE TEMP B-TREE
+```
+
+These counts are hard regression contracts and are executed through tests included in Linux, public Windows and pre-licensed-COM software gates.
 
 ### Environment-sensitive diagnostics
 
@@ -251,9 +271,10 @@ The quality benchmark step produces:
 ```text
 var/ci/cli-startup.json
 var/ci/operation-counts.json
+var/ci/job-store-query-plan.json
 ```
 
-Both carry environment and commit identity. Neither is licensed Aspen solve evidence.
+All three carry environment and commit identity. None is licensed Aspen solve evidence.
 
 ## Runtime compatibility
 
@@ -283,9 +304,9 @@ Backend diagnostics and runtime identity are recursively normalized to JSON-safe
 
 Process-IR benchmark evidence adds independent topology, compiler availability, execution-attempted, convergence, material/energy closure, repair-iteration and human-intervention fields. A skipped or unavailable backend cannot declare convergence.
 
-## Persistence
+## Persistence and read-query boundary
 
-`JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI has explicit responsibilities:
+`JobStore` uses SQLite WAL for durable request, lease, event and result state. The CLI responsibilities remain:
 
 ```text
 submit     → validate, pin paths and create a pending durable record
@@ -294,7 +315,7 @@ job        → read durable state only
 cancel     → request cancellation and set the owned-worker grace deadline
 ```
 
-A short-lived submission process and a long-lived scheduler may have different working directories. `pin_durable_request_paths()` resolves relative `model_path` and `registry_path` values against the submission working directory, stores absolute paths, and records `submission_cwd`. CLI and MCP durable submission surfaces call this shared helper before entering the Scheduler. The CLI response exposes `paths_pinned=true`.
+A short-lived submission process and a long-lived scheduler may have different working directories. `pin_durable_request_paths()` resolves relative `model_path` and `registry_path` values against the submission working directory, stores absolute paths and records `submission_cwd`. CLI and MCP durable submission surfaces call this shared helper before entering the Scheduler. The CLI response exposes `paths_pinned=true`.
 
 Direct Python callers that invoke `BackgroundScheduler.submit()` should supply absolute paths or call `pin_durable_request_paths()` first. Real backends still reapply allowed-root and realpath policy.
 
@@ -307,7 +328,18 @@ Recovery follows the actual state machine:
 - active work after the final attempt → `dead_letter`;
 - completed results remain bound to an idempotent commit token and evidence bundle.
 
-`JobStore.list_recent()` currently performs an ID query followed by one `get()` per job. A single-query row decoder plus composite-index migration is a documented P1 improvement, but it is not implemented through a parallel subclass or monkeypatch because lease, recovery, cancellation and event semantics must remain singular and transactional.
+The compatibility Python method `JobStore.list_recent()` still retains its historical ID-plus-`get()` implementation. The product-facing MCP `list_recent_jobs` surface uses `job_queries.list_recent_job_records()` instead:
+
+```text
+bounded limit
+→ one connection
+→ lazily committed idx_jobs_recent_created_job
+→ one SELECT of public job fields
+→ ORDER BY created_at DESC, job_id DESC
+→ shared row decoder
+```
+
+Request bodies are not selected. Index creation is idempotent, explicitly committed and followed by bounded `PRAGMA optimize`. This read optimization does not alter creation, claim, heartbeat, retry, cancellation, recovery, event or idempotent commit transactions. Migrating the compatibility method itself remains a future consolidation step after the same query-plan and legacy-call tests are applied to that API.
 
 ## Evidence integrity and authenticity
 
@@ -316,3 +348,5 @@ Evidence bundles use bounded ZIP processing and JSON serialization with `allow_n
 Verification rejects missing, extra, reserved, malformed or oversized members before trusting content. Member declarations are validated before each digest and size is recomputed. Archive path, compression and total-size limits are enforced by `ArchiveLimits` and `validate_archive()`.
 
 Unsigned bundles provide internal integrity checks only. A signed v2 bundle uses Ed25519 over canonical manifest bytes and records a bounded key ID. Authenticity exists only when verification uses the expected trusted public key. Integrity, authenticity, licensed runtime execution and human engineering acceptance remain separate levels of evidence.
+
+A candidate to reuse canonical request/result hash bytes as archive members remains INCONCLUSIVE: it could remove repeated serialization, but it would change the readable member-byte representation and lacks current-HEAD CPU and archive-size evidence.
