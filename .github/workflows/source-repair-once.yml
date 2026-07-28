@@ -35,53 +35,46 @@ jobs:
 
           test_path = Path("tests/test_ci_closure_gates.py")
           test_text = test_path.read_text(encoding="utf-8")
-          old_imports = '''import hashlib
-          import json
-          import tomllib
-          from pathlib import Path
-
-          from scripts.run_test_order_gate import _random_order, _reverse_order
-          '''
-          new_imports = '''import hashlib
-          import json
-          import runpy
-          import tomllib
-          from pathlib import Path
-          '''
-          if old_imports not in test_text:
-              raise SystemExit("closure-gate import block did not match expected source")
-          test_text = test_text.replace(old_imports, new_imports, 1)
-          old_test = '''def test_order_helpers_are_deterministic_and_non_mutating() -> None:
-              original = ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
-
-              assert _reverse_order(original) == list(reversed(original))
-              assert _random_order(original, 20260728) == _random_order(original, 20260728)
-              assert sorted(_random_order(original, 20260728)) == sorted(original)
-              assert original == ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
-          '''
-          new_test = '''def test_order_helpers_are_deterministic_and_non_mutating() -> None:
-              namespace = runpy.run_path(str(ORDER_GATE))
-              reverse_order = namespace["_reverse_order"]
-              random_order = namespace["_random_order"]
-              original = ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
-
-              assert reverse_order(original) == list(reversed(original))
-              assert random_order(original, 20260728) == random_order(original, 20260728)
-              assert sorted(random_order(original, 20260728)) == sorted(original)
-              assert original == ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
-          '''
+          old_import = "from scripts.run_test_order_gate import _random_order, _reverse_order\n"
+          if old_import not in test_text:
+              raise SystemExit("closure-gate script import did not match expected source")
+          test_text = test_text.replace("import json\n", "import json\nimport runpy\n", 1)
+          test_text = test_text.replace(old_import, "", 1)
+          old_test = (
+              "def test_order_helpers_are_deterministic_and_non_mutating() -> None:\n"
+              "    original = [\"a::test_one\", \"b::test_two\", \"c::test_three\", \"d::test_four\"]\n"
+              "\n"
+              "    assert _reverse_order(original) == list(reversed(original))\n"
+              "    assert _random_order(original, 20260728) == _random_order(original, 20260728)\n"
+              "    assert sorted(_random_order(original, 20260728)) == sorted(original)\n"
+              "    assert original == [\"a::test_one\", \"b::test_two\", \"c::test_three\", \"d::test_four\"]\n"
+          )
+          new_test = (
+              "def test_order_helpers_are_deterministic_and_non_mutating() -> None:\n"
+              "    namespace = runpy.run_path(str(ORDER_GATE))\n"
+              "    reverse_order = namespace[\"_reverse_order\"]\n"
+              "    random_order = namespace[\"_random_order\"]\n"
+              "    original = [\"a::test_one\", \"b::test_two\", \"c::test_three\", \"d::test_four\"]\n"
+              "\n"
+              "    assert reverse_order(original) == list(reversed(original))\n"
+              "    assert random_order(original, 20260728) == random_order(original, 20260728)\n"
+              "    assert sorted(random_order(original, 20260728)) == sorted(original)\n"
+              "    assert original == [\"a::test_one\", \"b::test_two\", \"c::test_three\", \"d::test_four\"]\n"
+          )
           if old_test not in test_text:
               raise SystemExit("closure-gate helper test did not match expected source")
           test_path.write_text(test_text.replace(old_test, new_test, 1), encoding="utf-8")
 
           validation_path = Path("src/aspenops_nexus/process_ir_validation.py")
           validation_text = validation_path.read_text(encoding="utf-8")
-          old_validation = '''            port = port_map.get((endpoint.unit, endpoint.port))
-              if port is None:
-          '''
-          new_validation = '''            endpoint_port = port_map.get((endpoint.unit, endpoint.port))
-              if endpoint_port is None:
-          '''
+          old_validation = (
+              "            port = port_map.get((endpoint.unit, endpoint.port))\n"
+              "            if port is None:\n"
+          )
+          new_validation = (
+              "            endpoint_port = port_map.get((endpoint.unit, endpoint.port))\n"
+              "            if endpoint_port is None:\n"
+          )
           if old_validation not in validation_text:
               raise SystemExit("endpoint port lookup did not match expected source")
           validation_text = validation_text.replace(old_validation, new_validation, 1)
