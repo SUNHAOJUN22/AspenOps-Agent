@@ -67,7 +67,7 @@
       "=========================== short test summary info ============================",
       "ERROR tests/test_ci_closure_gates.py",
       "!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!",
-      "8 warnings, 1 error in 2.79s"
+      "8 warnings, 1 error in 2.66s"
     ],
     "pytest-312": [
       "",
@@ -119,7 +119,7 @@
       "=========================== short test summary info ============================",
       "ERROR tests/test_ci_closure_gates.py",
       "!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!",
-      "8 warnings, 1 error in 3.33s"
+      "8 warnings, 1 error in 3.05s"
     ],
     "pytest-313": [
       "",
@@ -171,7 +171,7 @@
       "=========================== short test summary info ============================",
       "ERROR tests/test_ci_closure_gates.py",
       "!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!",
-      "8 warnings, 1 error in 2.82s"
+      "8 warnings, 1 error in 2.61s"
     ],
     "ruff": [
       "I001 [*] Import block is un-sorted or un-formatted",
@@ -369,13 +369,13 @@
   "overall": "FAIL",
   "platform": "linux",
   "python_runtime": "3.12.3",
-  "qualified_tree_sha256": "d3caff5f3e873d9f6a7ad5c341daa4cd3710ea6054d10855b80391df61b420f4",
+  "qualified_tree_sha256": "c9411996e6bfa895afbb12a4b0a0d3f61a3fa9fffc2a7c4f2a4529c182651f09",
   "run_attempt": "1",
-  "run_id": "30323805128",
+  "run_id": "30323884569",
   "runner_arch": "X64",
   "runner_os": "Linux",
   "schema": "aspenops.closure-evidence/v1",
-  "source_sha": "3e266d779dbefdee840732f601d3b844db39b3de",
+  "source_sha": "d1c457e4aae2807045b89ed185531c403ff9af8b",
   "uv_version": "uv 0.11.16 (x86_64-unknown-linux-gnu)",
   "workflow_removed_during_qualification": true
 }
