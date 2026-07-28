@@ -1,0 +1,184 @@
+# One-time Linux qualification for the final tree. Deletes itself only after all gates pass.
+name: Linux qualification once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-linux-qualification-once
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run complete Linux qualification
+        shell: bash
+        env:
+          UV_PREVIEW_FEATURES: json-output
+        run: |
+          set -euo pipefail
+          evidence_dir="var/linux-qualification"
+          saved_evidence="${RUNNER_TEMP}/linux-qualification-evidence.json"
+          rm -rf "$evidence_dir" /tmp/aspenops-final-wheel "$saved_evidence"
+          mkdir -p "$evidence_dir"
+          status_file="$evidence_dir/status.tsv"
+          : > "$status_file"
+          rm .github/workflows/linux-qualification-once.yml
+          failed=0
+
+          run_gate() {
+            local name="$1"
+            shift
+            set +e
+            "$@" > "$evidence_dir/${name}.log" 2>&1
+            local code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$status_file"
+            if [[ "$code" -ne 0 ]]; then failed=1; fi
+          }
+
+          run_gate lock-check uv lock --check
+          run_gate sync uv sync --frozen --extra dev --extra agent --extra signing
+          run_gate dependency-audit bash -lc '
+            set -euo pipefail
+            for platform in linux windows; do
+              for version in 3.11 3.12 3.13; do
+                uv audit --frozen --python-platform "$platform" --python-version "$version" \
+                  --output-format json > "var/linux-qualification/audit-${platform}-py${version}.json"
+                python -m json.tool "var/linux-qualification/audit-${platform}-py${version}.json" >/dev/null
+              done
+            done
+          '
+          run_gate ruff uv run ruff check .
+          run_gate ruff-format uv run ruff format --check .
+          run_gate mypy uv run mypy src
+          run_gate bandit bash -lc '
+            set -euo pipefail
+            uv tool run --isolated --from "bandit==1.9.4" bandit \
+              --recursive src scripts --severity-level high --confidence-level high \
+              --format json --output var/linux-qualification/bandit.json
+            python -m json.tool var/linux-qualification/bandit.json >/dev/null
+          '
+          run_gate pytest uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus --cov-branch --cov-report=term-missing \
+            --cov-report=json:var/linux-qualification/coverage.json \
+            --junitxml=var/linux-qualification/junit.xml --durations=20 --cov-fail-under=94.5
+          run_gate order uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 --output-dir var/linux-qualification/order
+          run_gate process-ir uv run python scripts/validate_process_ir.py \
+            examples/process-intent.example.json \
+            --canonical-output var/linux-qualification/process-intent-canonical.json \
+            --report-output var/linux-qualification/process-intent-report.json
+          run_gate mcp uv run python scripts/check_mcp.py
+          run_gate build uv build
+          run_gate demo uv run aspenops demo
+          run_gate wheel-smoke bash -lc '
+            set -euo pipefail
+            uv export --frozen --extra agent --no-default-groups --no-emit-project \
+              --format requirements.txt --output-file var/linux-qualification/runtime-requirements.txt
+            uv venv --python 3.12 /tmp/aspenops-final-wheel
+            uv pip sync --python /tmp/aspenops-final-wheel/bin/python --require-hashes \
+              var/linux-qualification/runtime-requirements.txt
+            uv pip install --python /tmp/aspenops-final-wheel/bin/python --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-final-wheel/bin/python
+            /tmp/aspenops-final-wheel/bin/aspenops --version
+            /tmp/aspenops-final-wheel/bin/aspenops demo
+            /tmp/aspenops-final-wheel/bin/aspenops mcp --help >/dev/null
+          '
+
+          EVIDENCE_DIR="$evidence_dir" SAVED_EVIDENCE="$saved_evidence" python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import platform
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence_dir = Path(os.environ["EVIDENCE_DIR"])
+          statuses = {}
+          for line in (evidence_dir / "status.tsv").read_text(encoding="utf-8").splitlines():
+              name, code = line.split("\t")
+              statuses[name] = int(code)
+
+          failure_tail = {}
+          for name, code in statuses.items():
+              if code == 0:
+                  continue
+              path = evidence_dir / f"{name}.log"
+              if path.exists():
+                  failure_tail[name] = path.read_text(
+                      encoding="utf-8", errors="replace"
+                  ).splitlines()[-160:]
+
+          junit = {}
+          junit_path = evidence_dir / "junit.xml"
+          if junit_path.exists():
+              root = ET.parse(junit_path).getroot()
+              suite = root if "tests" in root.attrib else root.find("testsuite")
+              if suite is not None:
+                  junit = {
+                      "tests": int(suite.attrib.get("tests", 0)),
+                      "failures": int(suite.attrib.get("failures", 0)),
+                      "errors": int(suite.attrib.get("errors", 0)),
+                      "skipped": int(suite.attrib.get("skipped", 0)),
+                      "time_seconds": float(suite.attrib.get("time", 0.0)),
+                  }
+
+          coverage = None
+          coverage_path = evidence_dir / "coverage.json"
+          if coverage_path.exists():
+              coverage = json.loads(coverage_path.read_text(encoding="utf-8"))["totals"][
+                  "percent_covered"
+              ]
+
+          payload = {
+              "schema": "aspenops.linux-qualification/v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "python_runtime": platform.python_version(),
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "gate_status": statuses,
+              "junit": junit,
+              "branch_coverage_percent": coverage,
+              "failure_tail": failure_tail,
+              "overall": "PASS" if statuses and all(code == 0 for code in statuses.values()) else "FAIL",
+          }
+          rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+          Path("docs/linux-qualification-evidence.json").write_text(rendered, encoding="utf-8")
+          Path(os.environ["SAVED_EVIDENCE"]).write_text(rendered, encoding="utf-8")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ "$failed" -ne 0 ]]; then
+            git restore --source=HEAD --staged --worktree .
+            cp "$saved_evidence" docs/linux-qualification-evidence.json
+            git add docs/linux-qualification-evidence.json
+            git commit -m "test: record Linux qualification blocker"
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          git add -A
+          git commit -m "test: record passing Linux qualification"
+          git push origin HEAD:main
