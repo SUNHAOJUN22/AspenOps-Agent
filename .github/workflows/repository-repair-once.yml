@@ -97,6 +97,19 @@ jobs:
                   raise SystemExit(f"expected source missing in {path}: {old[:100]!r}")
               target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+          def append_after_paragraph(path: str, marker: str, addition: str, sentinel: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if sentinel in text:
+                  return
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f"README paragraph marker missing in {path}: {marker!r}")
+              end = text.find("\n\n", start)
+              if end < 0:
+                  raise SystemExit(f"README paragraph end missing in {path}: {marker!r}")
+              target.write_text(text[:end] + "\n\n" + addition + text[end:], encoding="utf-8")
+
           replace_once(
               "src/aspenops_nexus/evaluation.py",
               "    if isinstance(raw, bool | str):\n"
@@ -111,13 +124,11 @@ jobs:
               "    target_unit = unit or node.native_unit\n"
               "    return convert(numeric, node.native_unit, target_unit)\n",
           )
-
           replace_once(
               "src/aspenops_nexus/cli.py",
               '    optimize.add_argument("--output")\n',
               '    optimize.add_argument("--output", default="var/optimization-result.json")\n',
           )
-
           replace_once(
               "src/aspenops_nexus/registry.py",
               '    raise RegistryError(f"Registry JSON contains unsupported constant: {value}")\n',
@@ -126,7 +137,6 @@ jobs:
               '        f"unsupported constant: {value}"\n'
               '    )\n',
           )
-
           replace_once(
               "scripts/run_test_order_gate.py",
               '    command = [sys.executable, "-m", "pytest", "--collect-only", "-q", *pytest_args]\n',
@@ -141,13 +151,11 @@ jobs:
               '        *pytest_args,\n'
               '    ]\n',
           )
-
           replace_once(
               "tests/test_ci_closure_gates.py",
               '    assert "--collect-only" in script\n',
               '    assert "--collect-only" in script\n    assert "addopts=" in script\n',
           )
-
           replace_once(
               "tests/test_batch_resource_limits.py",
               "        Settings(state_dir=tmp_path, allowed_roots=(ROOT,)),\n",
@@ -157,7 +165,6 @@ jobs:
               "            allowed_roots=(ROOT, tmp_path.resolve()),\n"
               "        ),\n",
           )
-
           replace_once(
               "tests/test_certification_v2.py",
               '        Settings(backend="aspen_plus", state_dir=tmp_path),\n',
@@ -176,7 +183,6 @@ jobs:
               '            state_dir=(tmp_path / "state").resolve(),\n'
               '        ),\n',
           )
-
           replace_once(
               "tests/test_optimization_validation_complete.py",
               '        Settings(state_dir=tmp_path, backend="hysys"),\n',
@@ -186,7 +192,6 @@ jobs:
               '            state_dir=(tmp_path / "state").resolve(),\n'
               '        ),\n',
           )
-
           replace_once(
               "scripts/measure_job_store_queries.py",
               "import argparse\nimport json\n",
@@ -203,33 +208,22 @@ jobs:
               "        with closing(sqlite3.connect(path)) as connection, connection:\n            indexes = sorted(\n                str(row[1]) for row in connection.execute(\"PRAGMA index_list('jobs')\")\n            )\n",
           )
 
-          chinese_marker = (
-              "artifact 名称同时包含 `github.run_id` 与 `github.run_attempt`。当前 job 证据写入 "
-              "`$RUNNER_TEMP`，上传通过 `${{ runner.temp }}` 读取，并统一使用 "
-              "`if-no-files-found: error`。缺失 JUnit 或提前失败显示 `INCOMPLETE`；出现 "
-              "failure/error 显示 `FAIL`。"
-          )
-          chinese_addition = (
-              chinese_marker
-              + "\n\n测试可视化由 `scripts/render_test_dashboard.py` 生成，正式制品包括 "
+          append_after_paragraph(
+              "README.md",
+              "artifact 名称同时包含",
+              "测试可视化由 `scripts/render_test_dashboard.py` 生成，正式制品包括 "
               "`test-dashboard-quality.html`、`test-dashboard-windows.html` 和 "
-              "`test-dashboard-licensed.html`。"
+              "`test-dashboard-licensed.html`。",
+              "test-dashboard-licensed.html",
           )
-          replace_once("README.md", chinese_marker, chinese_addition)
-
-          english_marker = (
-              "Artifact names include both `github.run_id` and `github.run_attempt`. Current-job evidence "
-              "is written under `$RUNNER_TEMP` and uploaded through `${{ runner.temp }}` with "
-              "`if-no-files-found: error`. Missing JUnit or early termination reports `INCOMPLETE`; a "
-              "failure or error reports `FAIL`."
-          )
-          english_addition = (
-              english_marker
-              + "\n\nTest visualization is generated by `scripts/render_test_dashboard.py`; governed outputs "
+          append_after_paragraph(
+              "README.en.md",
+              "Artifact names include both",
+              "Test visualization is generated by `scripts/render_test_dashboard.py`; governed outputs "
               "include `test-dashboard-quality.html`, `test-dashboard-windows.html` and "
-              "`test-dashboard-licensed.html`."
+              "`test-dashboard-licensed.html`.",
+              "test-dashboard-licensed.html",
           )
-          replace_once("README.en.md", english_marker, english_addition)
 
           audit_path = Path("docs/automated-test-audit-2026-07-22.md")
           audit = audit_path.read_text(encoding="utf-8")
