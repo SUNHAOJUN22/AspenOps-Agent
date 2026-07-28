@@ -85,7 +85,7 @@ jobs:
           set -euo pipefail
           bandit_status=0
           uv tool run --isolated --from 'bandit==1.9.4' bandit \
-            --recursive src \
+            --recursive src scripts \
             --severity-level high \
             --confidence-level high \
             --format json \
