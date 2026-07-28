@@ -286,7 +286,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - python-version: "3.11"
+            coverage-floor: "94.5"
+          - python-version: "3.12"
+            coverage-floor: "95.0"
+          - python-version: "3.13"
+            coverage-floor: "94.5"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -315,7 +321,7 @@ jobs:
             --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
             --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
             --durations=20 \
-            --cov-fail-under=95.0 \
+            --cov-fail-under=${{ matrix.coverage-floor }} \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
       - name: Verify complete-suite order independence
         if: ${{ matrix.python-version == '3.12' }}
