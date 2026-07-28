@@ -35,7 +35,7 @@ jobs:
       - name: Qualify P0 and close the transaction
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: 5b7a04bb8c42b10297a29e15dfe2910caa1fcd08
           QUALIFIED_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
