@@ -20,6 +20,8 @@ Python 3.12 additionally collects every pytest node ID and reruns the complete s
 
 The Bandit step reports only high-severity, high-confidence findings, writes machine-readable JSON, validates that JSON and fails with the original Bandit exit code. It is exact-version isolated and never uses `--exit-zero`.
 
+Frozen dependency metadata is also closed: `pyproject.toml` and `uv.lock` both record `mcp>=1.9,<2`. [`lock-sync-evidence.json`](lock-sync-evidence.json) records a real `uv 0.11.16` `uv lock --check` pass and binds SHA-256 digests for both files; a regression test fails if either digest or requirement drifts.
+
 `windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It validates PowerShell AST/helper behavior, dotenv safety, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
 ## Workflow governance
