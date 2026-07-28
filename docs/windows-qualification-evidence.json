@@ -2,18 +2,13 @@
   "failure_tail": {},
   "gate_status": {
     "build": 0,
-    "cli-help": 0,
-    "cli-version": 0,
-    "doctor": 0,
-    "format": 0,
+    "cli": 0,
     "job-query-probe": 0,
     "lock-check": 0,
     "mypy": 0,
-    "powershell-parse": 0,
     "process-ir": 0,
     "pytest": 0,
     "ruff": 0,
-    "ruff-fix": 0,
     "ruff-format": 0,
     "sync": 0
   },
@@ -22,15 +17,15 @@
     "failures": 0,
     "skipped": 0,
     "tests": 793,
-    "time_seconds": 40.745
+    "time_seconds": 99.897
   },
   "overall": "PASS",
   "python_runtime": "3.12.10",
   "run_attempt": "1",
-  "run_id": "30330803943",
+  "run_id": "30331235298",
   "runner_arch": "X64",
   "runner_os": "Windows",
   "schema": "aspenops.windows-qualification/v1",
-  "source_sha": "c937d9f76673efb1c0a66e1b49e952ec012a4c8f",
+  "source_sha": "610b7359883d5af3447e048928de536688fa5619",
   "uv_version": "uv 0.11.16 (135a36367 2026-05-21 x86_64-pc-windows-msvc)"
 }
