@@ -114,10 +114,9 @@ jobs:
 
           replace_once(
               "src/aspenops_nexus/batch.py",
-              "    if settings.backend != backend_name:\n"
-              "        raise ValueError(\n"
-              "            \"Real simulator request backend must match ASPENOPS_BACKEND \"\n"
-              "            f\"({backend_name!r} != {settings.backend!r})\"\n"
+              "    if backend_name != settings.backend:\n"
+              "        raise PolicyError(\n"
+              "            \"Real simulator request backend must match ASPENOPS_BACKEND\"\n"
               "        )\n",
               "",
           )
