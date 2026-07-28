@@ -24,6 +24,7 @@ def test_ci_has_fail_closed_exact_bandit_gate() -> None:
     assert "Bandit security analysis" in text
     assert "bandit==1.9.4" in text
     assert "--isolated" in text
+    assert "--recursive src scripts" in text
     assert "--severity-level high" in text
     assert "--confidence-level high" in text
     assert "--format json" in text
