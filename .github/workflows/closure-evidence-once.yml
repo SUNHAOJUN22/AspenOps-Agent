@@ -135,6 +135,16 @@ jobs:
               name, code = line.split("\t")
               statuses[name] = int(code)
 
+          failure_tail = {}
+          for name, code in statuses.items():
+              if code == 0:
+                  continue
+              log_path = evidence_dir / f"{name}.log"
+              if log_path.exists():
+                  failure_tail[name] = log_path.read_text(
+                      encoding="utf-8", errors="replace"
+                  ).splitlines()[-120:]
+
           coverage = {}
           tests = {}
           for version in ("3.11", "3.12", "3.13"):
@@ -183,6 +193,7 @@ jobs:
               "python_runtime": platform.python_version(),
               "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
               "gate_status": statuses,
+              "failure_tail": failure_tail,
               "coverage_percent": coverage,
               "junit": tests,
               "overall": "PASS" if statuses and all(code == 0 for code in statuses.values()) else "FAIL",
@@ -352,6 +363,16 @@ jobs:
               name, code = line.split("\t")
               statuses[name] = int(code)
 
+          failure_tail = {}
+          for name, code in statuses.items():
+              if code == 0:
+                  continue
+              log_path = evidence_dir / f"{name}.log"
+              if log_path.exists():
+                  failure_tail[name] = log_path.read_text(
+                      encoding="utf-8-sig", errors="replace"
+                  ).splitlines()[-120:]
+
           tests = {}
           junit = evidence_dir / "junit-windows.xml"
           if junit.exists():
@@ -397,6 +418,7 @@ jobs:
               "python_runtime": platform.python_version(),
               "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
               "gate_status": statuses,
+              "failure_tail": failure_tail,
               "junit": tests,
               "overall": "PASS" if statuses and all(code == 0 for code in statuses.values()) else "FAIL",
           }
