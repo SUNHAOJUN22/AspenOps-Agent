@@ -40,7 +40,7 @@ def _write_wheel(
         ("other>=1.9,<2; extra == 'agent'", "unexpected package name"),
         ("mcp>=1.9; extra == 'agent'", "must constrain"),
         ("mcp>=1.9,<2", "scoped to the agent extra"),
-        ("mcp>=1.9,<2; extra == 'other'", "scoped to the agent extra"),
+        ("mcp>=1.9,<2; extra == 'other'", "not enabled by the agent extra"),
     ],
 )
 def test_mcp_requirement_contract_rejects_every_boundary(
