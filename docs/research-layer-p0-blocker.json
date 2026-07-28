@@ -1,0 +1,96 @@
+{
+  "schema": "aspenops.research-platform-p0-dispatch-blocker/v1",
+  "phase": "P0",
+  "decision": "INCOMPLETE",
+  "blocker_code": "RUNNER_DISPATCH_NOT_OBSERVED",
+  "generated_at": "2026-07-28T15:45:00Z",
+  "qualification_base_sha": "5b7a04bb8c42b10297a29e15dfe2910caa1fcd08",
+  "last_staging_sha": "ccc74bb498e8d5b96c3c8db4aa41b6ab5972c2eb",
+  "p0_implementation_retained": false,
+  "runtime_core_changed": false,
+  "new_branch_created": false,
+  "aspen_execution_performed": false,
+  "parameter_estimation_performed": false,
+  "dynamic_modeling_performed": false,
+  "machine_learning_performed": false,
+  "prior_hosted_qualification": {
+    "run_id": "30370965579",
+    "qualified_sha": "153a6ca82865ec4bbe5b28a684e5e96012978c9a",
+    "focused_tests": {
+      "tests": 58,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "full_tests": {
+      "tests": 867,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "branch_coverage_percent": 95.73077760836419,
+    "passed_gates": [
+      "bandit",
+      "build",
+      "compileall",
+      "demo",
+      "focused-tests",
+      "mcp",
+      "mypy",
+      "p0-contract",
+      "process-ir",
+      "source-audit",
+      "sync",
+      "wheel-metadata"
+    ],
+    "failed_gates": [
+      "ruff",
+      "ruff-format",
+      "full-pytest",
+      "order"
+    ],
+    "known_failures": [
+      "One pre-existing Wheel metadata edge test expected wording that did not match the production contract.",
+      "Ruff reported formatting-only findings in P0 qualification helpers and existing quality-audit files.",
+      "The order gate inherited the same single Wheel test failure."
+    ]
+  },
+  "repairs_prepared_but_not_requalified": [
+    "Aligned the stale Wheel metadata test expectation with the production error contract.",
+    "Prepared deterministic Ruff fixes and formatting for the P0 source, helpers, and affected quality files.",
+    "Preserved strict MyPy narrowing and the source-reproduction and unresolved-critical-assumption Claim gates.",
+    "Preserved two complete examples, including an EPDM STRUCTURE_ONLY example with no parameter estimation or Validation."
+  ],
+  "dispatch_attempts_without_observed_run": [
+    {
+      "type": "push",
+      "sha": "e5bb5dfbf7c61f60d410c6f657a75f9cb6da0e79"
+    },
+    {
+      "type": "push",
+      "sha": "8c233959d0c29d8eb27eb5d166c29dca05fbbedf"
+    },
+    {
+      "type": "push",
+      "sha": "87b5af38f90cea71fc37cb9202f679e55c74a8b3"
+    },
+    {
+      "type": "push",
+      "sha": "7c91799d6b0acd63c201badc332a881aba14c164"
+    },
+    {
+      "type": "issues.opened",
+      "issue": 29
+    },
+    {
+      "type": "issues.opened",
+      "issue": 30
+    }
+  ],
+  "required_to_close": [
+    "Obtain a fresh runner execution for the repaired P0 tree.",
+    "Pass Ruff, Ruff format, strict MyPy, all focused and full pytest suites, at least 95.0 percent branch-aware coverage, reverse and seeded-random order gates, Bandit, compileall, Process IR, MCP, build, Wheel metadata, and demo gates.",
+    "Generate current-SHA-bound P0 test, coverage, CLOSED_LOOP_VALIDATION, and P0_PHASE_RESULT artifacts."
+  ],
+  "boundary": "No fresh GitHub Actions run was observed after the repaired staging and multiple push and issue dispatch attempts. Missing current evidence is not a pass, so the P0 implementation was removed and only this blocker is retained."
+}
