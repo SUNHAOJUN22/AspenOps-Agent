@@ -10,8 +10,10 @@
 | `lock-check` | PASS | 0 |
 | `sync-312` | PASS | 0 |
 | `dependency-audit` | PASS | 0 |
-| `ruff` | FAIL | 1 |
-| `ruff-format` | FAIL | 1 |
+| `ruff-fix` | PASS | 0 |
+| `format-fix` | PASS | 0 |
+| `ruff` | PASS | 0 |
+| `ruff-format` | PASS | 0 |
 | `mypy` | FAIL | 1 |
 | `compileall` | PASS | 0 |
 | `source-audit` | PASS | 0 |

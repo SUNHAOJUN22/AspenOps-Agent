@@ -2,12 +2,21 @@
   "blocker_code": "QUALIFICATION_GATE_FAILED",
   "boundary": "P0 was removed because at least one hard gate failed.",
   "decision": "FAIL",
+  "failure_tail": {
+    "mypy": [
+      "src/aspenops_nexus/research_graph_runs.py:133: error: Incompatible types in assignment (expression has type \"Calibration | None\", variable has type \"Calibration\")  [assignment]",
+      "src/aspenops_nexus/research_graph_claims.py:49: error: Incompatible types in assignment (expression has type \"Assumption | None\", variable has type \"Validation | None\")  [assignment]",
+      "src/aspenops_nexus/research_graph_claims.py:59: error: Argument 1 to \"append\" of \"list\" has incompatible type \"Validation\"; expected \"Assumption\"  [arg-type]",
+      "Found 3 errors in 2 files (checked 59 source files)"
+    ]
+  },
   "gate_status": {
     "bandit": 0,
     "build": 0,
     "compileall": 0,
     "demo": 0,
     "dependency-audit": 0,
+    "format-fix": 0,
     "full-311": 0,
     "full-312": 0,
     "full-313": 0,
@@ -18,8 +27,9 @@
     "p0-contract": 0,
     "process-ir": 0,
     "restore-312": 0,
-    "ruff": 1,
-    "ruff-format": 1,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "ruff-format": 0,
     "source-audit": 0,
     "sync-312": 0,
     "wheel-metadata": 0,

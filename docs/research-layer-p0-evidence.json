@@ -2,10 +2,10 @@
   "aspen_execution_performed": false,
   "boundary": "P0 validates immutable research manifests and scientific evidence relationships only. It does not open Aspen, estimate parameters, run dynamic studies, or train machine-learning models.",
   "branch_coverage_percent": {
-    "3.11": 95.71241544839624,
-    "3.12": 95.71241544839624,
-    "3.13": 95.71241544839624,
-    "p0": 98.86858137510879
+    "3.11": 95.73382544507164,
+    "3.12": 95.73382544507164,
+    "3.13": 95.73382544507164,
+    "p0": 98.9057239057239
   },
   "complete_example_count": 2,
   "dynamic_modeling_performed": false,
@@ -15,21 +15,21 @@
       "failures": 0,
       "skipped": 0,
       "tests": 877,
-      "time_seconds": 19.644
+      "time_seconds": 20.124
     },
     "3.12": {
       "errors": 0,
       "failures": 0,
       "skipped": 0,
       "tests": 877,
-      "time_seconds": 21.643
+      "time_seconds": 22.28
     },
     "3.13": {
       "errors": 0,
       "failures": 0,
       "skipped": 0,
       "tests": 877,
-      "time_seconds": 18.485
+      "time_seconds": 18.708
     }
   },
   "gate_status": {
@@ -38,6 +38,7 @@
     "compileall": 0,
     "demo": 0,
     "dependency-audit": 0,
+    "format-fix": 0,
     "full-311": 0,
     "full-312": 0,
     "full-313": 0,
@@ -48,8 +49,9 @@
     "p0-contract": 0,
     "process-ir": 0,
     "restore-312": 0,
-    "ruff": 1,
-    "ruff-format": 1,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "ruff-format": 0,
     "source-audit": 0,
     "sync-312": 0,
     "wheel-metadata": 0,
@@ -62,14 +64,14 @@
     "failures": 0,
     "skipped": 0,
     "tests": 68,
-    "time_seconds": 1.219
+    "time_seconds": 1.253
   },
   "parameter_estimation_performed": false,
   "phase": "P0",
   "python_runtime": "3.12.3",
   "qualified_source_sha": "28abeb1f5a79e4e4e1cbe859b7762f24710769e5",
   "run_attempt": "1",
-  "run_id": "30385991780",
+  "run_id": "30386531148",
   "runner_arch": "X64",
   "runner_os": "Linux",
   "runtime_core_changed": false,
