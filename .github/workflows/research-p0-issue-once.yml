@@ -1,0 +1,31 @@
+name: Research P0 Issue Dispatch Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-research-p0-issue-once
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: github.event.issue.title == 'ASPENOPS_RESEARCH_PLATFORM_P0_GOVERNANCE_LAYER_V1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Qualify P0 and close the repository transaction
+        shell: bash
+        run: bash .github/p0-qualify/run.sh
