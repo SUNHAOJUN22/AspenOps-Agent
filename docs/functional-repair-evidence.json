@@ -1,11 +1,11 @@
 {
   "exit_code": 1,
   "log_tail": [
-    "Settings direct-construction real-backend block not found"
+    "expected patch source missing in src/aspenops_nexus/batch.py: '    if settings.backend != backend_name:\\n        raise ValueError(\\n            \"'"
   ],
   "overall": "FAIL",
   "run_attempt": "1",
-  "run_id": "30324687384",
+  "run_id": "30324752941",
   "schema": "aspenops.functional-repair/v1",
-  "source_sha": "75d2d53add0380de5c097dce424f333d84d797e2"
+  "source_sha": "157695808cb4eaeaeb545d242b052d9b850b8175"
 }
