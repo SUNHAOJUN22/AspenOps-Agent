@@ -1,0 +1,36 @@
+{
+  "checked_out_sha": "94839240a830ab76f2cb1456eafee868b4d1a6f3",
+  "gate_status": {
+    "bootstrap-library": 0,
+    "cli-help": 0,
+    "cli-version": 0,
+    "doctor": 0,
+    "lock-check": 0,
+    "mypy": 1,
+    "powershell-parse": 0,
+    "process-ir": 0,
+    "pytest-windows": 2,
+    "ruff": 1,
+    "ruff-format": 1,
+    "sync": 0
+  },
+  "junit": {
+    "errors": 1,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "linux_job_result": "failure",
+  "overall": "FAIL",
+  "platform": "windows",
+  "python_runtime": "3.12.10",
+  "qualified_tree_sha256": "038dd0e59a11d95c7b7625883ebeb5d3f564b7c4e4ebc851cd925428698e191d",
+  "run_attempt": "1",
+  "run_id": "30323409662",
+  "runner_arch": "X64",
+  "runner_os": "Windows",
+  "schema": "aspenops.closure-evidence/v1",
+  "source_sha": "ecfffe721bf786658f45d0bed3f9996dfbf98d12",
+  "uv_version": "uv 0.11.16 (135a36367 2026-05-21 x86_64-pc-windows-msvc)",
+  "workflow_removed_during_qualification": true
+}
