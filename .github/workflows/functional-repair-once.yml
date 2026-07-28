@@ -112,13 +112,15 @@ jobs:
               raise SystemExit("Settings direct-construction block end not found")
           config_path.write_text(config_text[:start] + config_text[end:], encoding="utf-8")
 
-          replace_once(
-              "src/aspenops_nexus/batch.py",
-              "    if backend_name != settings.backend:\n"
-              "        raise PolicyError(\n"
-              "            \"Real simulator request backend must match ASPENOPS_BACKEND\"\n"
-              "        )\n",
-              "",
+          batch_path = Path("src/aspenops_nexus/batch.py")
+          batch_text = batch_path.read_text(encoding="utf-8")
+          batch_start = batch_text.find("    if backend_name != settings.backend:\n")
+          batch_end = batch_text.find("    if not settings.allowed_roots:\n", batch_start)
+          if batch_start < 0 or batch_end < 0:
+              raise SystemExit("real-backend mismatch policy block not found")
+          batch_path.write_text(
+              batch_text[:batch_start] + batch_text[batch_end:],
+              encoding="utf-8",
           )
 
           replace_once(
