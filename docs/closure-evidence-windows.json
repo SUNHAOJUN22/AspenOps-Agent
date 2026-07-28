@@ -1,5 +1,5 @@
 {
-  "checked_out_sha": "2c08a0e86214c74abaf953f612da6c7f32da4abc",
+  "checked_out_sha": "59450a695e970c77edf059655f86ac9f9f776c4b",
   "failure_tail": {
     "mypy": [
       "src\\aspenops_nexus\\process_ir_validation.py:267: error: Incompatible types in assignment (expression has type \"PortSpec | None\", variable has type \"PortSpec\")  [assignment]",
@@ -55,7 +55,7 @@
       "=========================== short test summary info ===========================",
       "ERROR tests/test_ci_closure_gates.py",
       "!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!",
-      "8 warnings, 1 error in 2.16s"
+      "8 warnings, 1 error in 1.83s"
     ],
     "ruff": [
       "I001 [*] Import block is un-sorted or un-formatted",
@@ -232,13 +232,13 @@
   "overall": "FAIL",
   "platform": "windows",
   "python_runtime": "3.12.10",
-  "qualified_tree_sha256": "038dd0e59a11d95c7b7625883ebeb5d3f564b7c4e4ebc851cd925428698e191d",
+  "qualified_tree_sha256": "43f3ad434c1d9e82a4b7f9376dd64985d7e8ea2c19ec176e78f78c15d174f069",
   "run_attempt": "1",
-  "run_id": "30323642664",
+  "run_id": "30323805128",
   "runner_arch": "X64",
   "runner_os": "Windows",
   "schema": "aspenops.closure-evidence/v1",
-  "source_sha": "5b31d0e7cf906f00c6dd5c7e937f62e61563342c",
+  "source_sha": "3e266d779dbefdee840732f601d3b844db39b3de",
   "uv_version": "uv 0.11.16 (135a36367 2026-05-21 x86_64-pc-windows-msvc)",
   "workflow_removed_during_qualification": true
 }
