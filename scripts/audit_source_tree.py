@@ -26,6 +26,12 @@ _SUBPROCESS_CALLS = {
     "subprocess.check_output",
     "subprocess.run",
 }
+_BROAD_EXCEPTIONS = {
+    "Exception",
+    "BaseException",
+    "builtins.Exception",
+    "builtins.BaseException",
+}
 
 
 def _call_name(node: ast.expr | None) -> str:
@@ -91,7 +97,7 @@ def audit_tree(root: Path) -> dict[str, Any]:
                 totals["classes"] += 1
             elif isinstance(node, ast.ExceptHandler):
                 caught = _call_name(node.type)
-                if caught in {"Exception", "BaseException", "builtins.Exception", "builtins.BaseException"}:
+                if caught in _BROAD_EXCEPTIONS:
                     advisory.append(
                         {
                             "kind": "broad_exception_handler",
@@ -112,9 +118,14 @@ def audit_tree(root: Path) -> dict[str, Any]:
                         }
                     )
                 if name in _SUBPROCESS_CALLS:
-                    shell_keywords = [item for item in node.keywords if item.arg == "shell"]
+                    shell_keywords = [
+                        item for item in node.keywords if item.arg == "shell"
+                    ]
                     for keyword in shell_keywords:
-                        safe_false = isinstance(keyword.value, ast.Constant) and keyword.value.value is False
+                        safe_false = (
+                            isinstance(keyword.value, ast.Constant)
+                            and keyword.value.value is False
+                        )
                         if not safe_false:
                             forbidden.append(
                                 {
@@ -137,7 +148,9 @@ def audit_tree(root: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Audit AspenOps Python source for unsafe constructs")
+    parser = argparse.ArgumentParser(
+        description="Audit AspenOps Python source for unsafe constructs"
+    )
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
