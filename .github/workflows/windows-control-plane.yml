@@ -171,6 +171,14 @@ jobs:
           uv run mypy src *>&1 |
             Tee-Object -FilePath var/ci/mypy.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile and audit Python sources
+        shell: pwsh
+        run: |
+          uv run python -m compileall -q src scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run python scripts/audit_source_tree.py `
+            --output var/ci/source-tree-audit.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Process, scheduler, archive, backend, certification, IR, and workflow contracts
         shell: pwsh
         run: |
@@ -206,6 +214,8 @@ jobs:
             tests/test_licensed_certification_workflow.py `
             tests/test_workflow_governance.py `
             tests/test_wheel_smoke_governance.py `
+            tests/test_wheel_metadata_edges.py `
+            tests/test_source_tree_audit.py `
             --junitxml=var/ci/windows-contracts.xml `
             --durations=20 *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
