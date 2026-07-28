@@ -2,7 +2,7 @@
 
 ## Scope
 
-This report records automated-test, workflow-trust, runtime-policy, dependency-audit, Windows-bootstrap, performance-evidence, licensed-evidence and documentation hardening applied directly to `main`. It does not certify Aspen physics or approve an engineering model.
+This report records automated-test, workflow-trust, runtime-policy, dependency-audit, security-analysis, test-order-isolation, Windows-bootstrap, performance-evidence, licensed-evidence and documentation hardening applied directly to `main`. It does not certify Aspen physics or approve an engineering model.
 
 Historical detail is retained in [`automated-test-audit-2026-07-22.md`](automated-test-audit-2026-07-22.md).
 
@@ -14,7 +14,11 @@ Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are 
 
 ## Public gates
 
-`ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
+`ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, exact isolated Bandit `1.9.4` analysis over `src` and `scripts`, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
+
+Python 3.12 additionally collects every pytest node ID and reruns the complete suite twice: once in reverse order and once in deterministic random order with seed `20260728`. Both runs emit their exact order, JUnit XML and logs. Collection failure, duplicate node IDs, an empty collection or either failing rerun closes the gate.
+
+The Bandit step reports only high-severity, high-confidence findings, writes machine-readable JSON, validates that JSON and fails with the original Bandit exit code. It is exact-version isolated and never uses `--exit-zero`.
 
 `windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It validates PowerShell AST/helper behavior, dotenv safety, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
 
@@ -26,6 +30,8 @@ Automated tests lock:
 - pinned runners, Actions and uv;
 - read-only permissions and frozen dependency installation;
 - complete dependency-audit evidence;
+- exact Bandit version, scope, severity/confidence thresholds, JSON evidence and fail-closed behavior;
+- complete reverse and seeded-random suite reruns on Python 3.12;
 - explicit failed guards for non-main manual dispatches;
 - performance evidence isolated in runner temporary storage;
 - `expected_head_sha == GITHUB_SHA` for real certification;
@@ -35,6 +41,12 @@ Automated tests lock:
 - run-attempt-scoped runner-temp and external evidence directories;
 - Mock JUnit, licensed evidence and `job_status` written only to runner temp;
 - run-attempt-qualified artifact names and `if-no-files-found: error`.
+
+## README visual governance
+
+Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual now exposes the Bandit `1.9.4` gate, reverse and seeded-random full-suite reruns, the 94.5% branch-coverage floor and the rule that missing current evidence is not a pass.
+
+The visual suite remains bound to implemented source markers and is checked for exact inventory, local paths, XML validity, a fixed `1440 × 720` view box, titles/descriptions, safe elements and attributes, portable fonts, size limits and absence of scripts, event handlers, remote resources and data URIs.
 
 ## Performance evidence
 
@@ -70,6 +82,8 @@ These controls prevent old-code rollback, checkout-failure contamination, backen
 
 Documentation tests verify version/title consistency, safe links, frozen instructions, six audits, explicit guard failure behavior, `GITHUB_SHA` binding, pre-checkout runner-temp artifacts, per-attempt licensed evidence, certification boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
 
+The closure-gate tests additionally bind the exact Bandit command and full-suite order script into `ci.yml`, preventing later documentation-only claims or silent removal of either gate.
+
 ## Evidence boundary
 
-The 563-test portable and 104-test Windows figures remain the inspected baseline. Targeted checks supplement—but do not replace—a fresh complete Actions artifact. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
+The 563-test portable and 104-test Windows figures remain the inspected archived baseline. The new security and order gates are current source contracts, but they are not called green until a fresh hosted run for the exact current `main` SHA publishes complete artifacts. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
