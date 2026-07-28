@@ -1,11 +1,11 @@
 {
   "exit_code": 1,
   "log_tail": [
-    "expected patch source missing in src/aspenops_nexus/batch.py: '    if settings.backend != backend_name:\\n        raise ValueError(\\n            \"'"
+    "expected patch source missing in src/aspenops_nexus/batch.py: '    if backend_name != settings.backend:\\n        raise PolicyError(\\n            '"
   ],
   "overall": "FAIL",
   "run_attempt": "1",
-  "run_id": "30324752941",
+  "run_id": "30324821867",
   "schema": "aspenops.functional-repair/v1",
-  "source_sha": "157695808cb4eaeaeb545d242b052d9b850b8175"
+  "source_sha": "05e87ace8ce2409ff31246a66497adbfe165cbe5"
 }
