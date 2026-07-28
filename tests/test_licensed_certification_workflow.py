@@ -139,10 +139,10 @@ def test_external_evidence_is_isolated_per_run_attempt() -> None:
         "New-Item -ItemType Directory -Force $evidenceDir"
     )
     assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in block
-    assert "$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
-    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
-    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
-    assert "$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
+    assert r"$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
 
 
 def test_workflow_cannot_self_grant_real_certification() -> None:

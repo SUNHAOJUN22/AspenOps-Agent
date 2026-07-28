@@ -13,7 +13,16 @@ class OrderGateError(RuntimeError):
 
 
 def _collect_node_ids(pytest_args: Sequence[str]) -> list[str]:
-    command = [sys.executable, "-m", "pytest", "--collect-only", "-q", *pytest_args]
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "--collect-only",
+        "-q",
+        *pytest_args,
+    ]
     completed = subprocess.run(
         command,
         check=False,

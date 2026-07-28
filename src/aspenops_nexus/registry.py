@@ -46,7 +46,10 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _reject_nonfinite_json_constant(value: str) -> Any:
-    raise RegistryError(f"Registry JSON contains unsupported constant: {value}")
+    raise RegistryError(
+        "Registry JSON convergence threshold and numeric bounds must be finite numeric; "
+        f"unsupported constant: {value}"
+    )
 
 
 def _finite_bound(value: Any, *, label: str) -> float:

@@ -556,6 +556,8 @@ uv run aspenops demo
 
 artifact 名称同时包含 `github.run_id` 与 `github.run_attempt`。当前 job 证据写入 `$RUNNER_TEMP`，上传通过 `${{ runner.temp }}` 读取，并统一使用 `if-no-files-found: error`。缺失 JUnit 或提前失败显示 `INCOMPLETE`；出现 failure/error 显示 `FAIL`。
 
+测试可视化由 `scripts/render_test_dashboard.py` 生成，正式制品包括 `test-dashboard-quality.html`、`test-dashboard-windows.html` 和 `test-dashboard-licensed.html`。
+
 ---
 
 ## 可复现实验证据

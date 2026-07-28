@@ -431,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
     optimize.add_argument("request")
-    optimize.add_argument("--output")
+    optimize.add_argument("--output", default="var/optimization-result.json")
     optimize.set_defaults(func=command_optimize)
 
     certify = sub.add_parser(

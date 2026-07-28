@@ -237,10 +237,10 @@ def test_licensed_external_evidence_is_run_attempt_isolated_and_serialized() -> 
         "New-Item -ItemType Directory -Force $evidenceDir"
     )
     assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in block
-    assert "$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
-    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
-    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
-    assert "$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
+    assert r"$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
+    assert r"$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
 
 
 def test_licensed_artifacts_are_precheckout_clean_and_runner_temp_scoped() -> None:

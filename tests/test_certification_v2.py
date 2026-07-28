@@ -89,7 +89,11 @@ def test_real_backend_is_blocked_before_open_without_approved_tolerances(
     monkeypatch.setattr(certification, "run_batch_document", unexpected_run)
     report = certify_batch_document(
         minimal_request(tmp_path, backend="aspen_plus"),
-        Settings(backend="aspen_plus", state_dir=tmp_path),
+        Settings(
+            backend="aspen_plus",
+            allowed_roots=(tmp_path.resolve(),),
+            state_dir=(tmp_path / "state").resolve(),
+        ),
         repeats=3,
         abs_tol=abs_tol,
         rel_tol=rel_tol,
@@ -184,7 +188,11 @@ def test_real_repeatability_pass_remains_pending_certification(
     )
     report = certify_batch_document(
         minimal_request(tmp_path, backend="hysys"),
-        Settings(backend="hysys", state_dir=tmp_path),
+        Settings(
+            backend="hysys",
+            allowed_roots=(tmp_path.resolve(),),
+            state_dir=(tmp_path / "state").resolve(),
+        ),
         repeats=3,
         abs_tol=1e-6,
         rel_tol=1e-6,

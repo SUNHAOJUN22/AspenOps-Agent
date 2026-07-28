@@ -415,7 +415,11 @@ def test_cancelled_nonmock_optimization_keeps_certification_boundary(tmp_path: P
     document["backend"] = "hysys"
     result = optimization_module.run_optimization_document(
         document,
-        Settings(state_dir=tmp_path, backend="hysys"),
+        Settings(
+            backend="hysys",
+            allowed_roots=(tmp_path.resolve(),),
+            state_dir=(tmp_path / "state").resolve(),
+        ),
         cancel_check=lambda: True,
     )
     assert result["status"] == "cancelled"

@@ -6,6 +6,7 @@ import os
 import platform
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,7 @@ def _seed(path: Path, count: int) -> None:
                 created_at,
             )
         )
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.executemany(
             """
             INSERT INTO jobs(
@@ -87,7 +88,7 @@ def run_probe(*, records: int = 1000, limit: int = 20) -> dict[str, Any]:
             statement for statement in statements if statement.lstrip().upper().startswith("SELECT")
         ]
         plan = recent_jobs_query_plan(path, limit)
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection, connection:
             indexes = sorted(str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')"))
 
     return {

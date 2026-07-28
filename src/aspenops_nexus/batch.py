@@ -149,10 +149,10 @@ def expand_batch_document(
 def _validate_real_backend_policy(backend_name: str, settings: Settings) -> None:
     if backend_name == "mock":
         return
-    if backend_name != settings.backend:
-        raise PolicyError("Real simulator request backend must match ASPENOPS_BACKEND")
     if not settings.allowed_roots:
         raise PolicyError("Real simulator requests require ASPENOPS_ALLOWED_ROOTS")
+    if backend_name != settings.backend:
+        raise PolicyError("Real simulator request backend must match ASPENOPS_BACKEND")
 
     root_paths = tuple(root.expanduser() for root in settings.allowed_roots)
     if any(not root.is_absolute() for root in root_paths):

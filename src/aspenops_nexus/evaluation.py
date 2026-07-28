@@ -15,8 +15,11 @@ from .units import convert
 def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
     if isinstance(raw, bool | str):
         return raw
+    numeric = float(raw)
+    if not math.isfinite(numeric):
+        return numeric
     target_unit = unit or node.native_unit
-    return convert(float(raw), node.native_unit, target_unit)
+    return convert(numeric, node.native_unit, target_unit)
 
 
 def _finite(value: Any) -> bool:

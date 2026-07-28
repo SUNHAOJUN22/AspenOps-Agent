@@ -51,6 +51,7 @@ def test_ci_runs_complete_reverse_and_seeded_random_order_gate() -> None:
     assert "--seed 20260728" in workflow
     assert "--output-dir var/ci" in workflow
     assert "--collect-only" in script
+    assert "addopts=" in script
     assert "error::ResourceWarning" in script
     assert 'label="reverse"' in script
     assert 'label=f"random-{args.seed}"' in script

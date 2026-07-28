@@ -100,3 +100,5 @@ Documentation tests check package/version/title consistency, safe links, frozen 
 Targeted validation reconstructs current workflow and governance files in an isolated directory, parses YAML, compiles Python, checks line length, validates Bash blocks and runs focused contract tests. These checks supplement, but do not replace, a fresh complete Actions artifact.
 
 Public automation cannot instantiate proprietary Aspen servers. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
+
+Manual real-certification and performance dispatch guards require the exact Git ref `refs/heads/main`; non-main refs fail closed.

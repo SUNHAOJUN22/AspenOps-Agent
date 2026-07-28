@@ -296,8 +296,17 @@ def certify_batch_document(
     run_hashes: list[str] = []
     temp_roots: list[Path] = []
     try:
+        temporary_parent: Path | None = None
+        if backend != "mock":
+            temporary_parent = settings.state_dir
+            temporary_parent.mkdir(parents=True, exist_ok=True)
         for repeat_index in range(repeat_count):
-            state_dir = Path(tempfile.mkdtemp(prefix=f"aspenops-cert-{repeat_index}-"))
+            state_dir = Path(
+                tempfile.mkdtemp(
+                    prefix=f"aspenops-cert-{repeat_index}-",
+                    dir=temporary_parent,
+                )
+            )
             temp_roots.append(state_dir)
             isolated = replace(
                 settings,

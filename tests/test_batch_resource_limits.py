@@ -123,7 +123,11 @@ def test_real_simulator_requires_explicit_allowed_roots(tmp_path: Path) -> None:
 
     validation = dry_run_document(
         request,
-        Settings(state_dir=tmp_path, allowed_roots=(ROOT,)),
+        Settings(
+            backend="aspen_plus",
+            state_dir=tmp_path.resolve(),
+            allowed_roots=(ROOT, tmp_path.resolve()),
+        ),
     )
     assert validation["ok"] is True
 
