@@ -1,0 +1,161 @@
+# One-time patcher for permanent deep-audit contracts.
+name: Deep audit patch once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+      - name: Patch and validate permanent contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          finish() {
+            local status=$?
+            trap - EXIT
+            set +e
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [[ "$status" -ne 0 ]]; then
+              git restore --source=HEAD --staged --worktree . >/dev/null 2>&1 || true
+              rm -f .github/workflows/deep-audit-patch-once.yml
+              printf '{"schema":"aspenops.deep-audit-patch/v1","overall":"FAIL","source_sha":"%s"}\n' "$GITHUB_SHA" > docs/deep-audit-patch.json
+              git add -A
+              git commit -m "test: record deep audit patch blocker"
+              git push origin HEAD:main
+              exit "$status"
+            fi
+            rm -f docs/deep-audit-patch.json docs/deep-audit-linux.json
+            git add -A
+            git commit -m "ci: enforce source audit and 95 percent coverage"
+            git push origin HEAD:main
+          }
+          trap finish EXIT
+
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          rm .github/workflows/deep-audit-patch-once.yml
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"missing patch marker in {path}: {old[:80]!r}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+          replace_once(
+              ".github/workflows/ci.yml",
+              "      - name: Bandit security analysis\n",
+              "      - name: Compile Python sources\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run python -m compileall -q src scripts\n"
+              "      - name: Audit Python source tree\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run python scripts/audit_source_tree.py \\\n"
+              "            --output var/ci/source-tree-audit.json\n"
+              "      - name: Bandit security analysis\n",
+          )
+          ci = Path(".github/workflows/ci.yml")
+          ci.write_text(
+              ci.read_text(encoding="utf-8").replace(
+                  "--cov-fail-under=94.5", "--cov-fail-under=95.0"
+              ),
+              encoding="utf-8",
+          )
+
+          replace_once(
+              ".github/workflows/windows-control-plane.yml",
+              "      - name: Process, scheduler, archive, backend, certification, IR, and workflow contracts\n",
+              "      - name: Compile and audit Python sources\n"
+              "        shell: pwsh\n"
+              "        run: |\n"
+              "          uv run python -m compileall -q src scripts\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "          uv run python scripts/audit_source_tree.py `\n"
+              "            --output var/ci/source-tree-audit.json\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "      - name: Process, scheduler, archive, backend, certification, IR, and workflow contracts\n",
+          )
+          replace_once(
+              ".github/workflows/windows-control-plane.yml",
+              "            tests/test_wheel_smoke_governance.py `\n",
+              "            tests/test_wheel_smoke_governance.py `\n"
+              "            tests/test_wheel_metadata_edges.py `\n"
+              "            tests/test_source_tree_audit.py `\n",
+          )
+
+          for path in ("README.md", "README.en.md", "AGENTS.md", "CONTRIBUTING.md"):
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              text = text.replace("--cov-fail-under=94.5", "--cov-fail-under=95.0")
+              text = text.replace("| 覆盖率门槛 | 94.5% |", "| 覆盖率门槛 | 95.0% |")
+              text = text.replace("| Coverage floor | 94.5% |", "| Coverage floor | 95.0% |")
+              target.write_text(text, encoding="utf-8")
+
+          quality = Path("docs/quality-report.md")
+          quality.write_text(
+              quality.read_text(encoding="utf-8").replace(
+                  "the 94.5% branch-coverage floor",
+                  "the 95.0% branch-coverage floor",
+              ),
+              encoding="utf-8",
+          )
+          visual = Path("docs/assets/readme/test-matrix.svg")
+          visual.write_text(
+              visual.read_text(encoding="utf-8").replace(
+                  "BRANCH COVERAGE 94.5%", "BRANCH COVERAGE 95.0%"
+              ),
+              encoding="utf-8",
+          )
+          contracts = Path("tests/test_documentation_contracts.py")
+          contracts.write_text(
+              contracts.read_text(encoding="utf-8").replace(
+                  'assert "--cov-fail-under=94.5" in text',
+                  'assert "--cov-fail-under=95.0" in text',
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          uv run ruff check . --fix
+          uv run ruff format .
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py --output var/source-tree-audit.json
+          uv run pytest -W error::ResourceWarning \
+            tests/test_source_tree_audit.py \
+            tests/test_wheel_metadata_edges.py \
+            tests/test_documentation_contracts.py \
+            tests/test_workflow_governance.py \
+            tests/test_readme_visual_assets.py
+          git diff --check
