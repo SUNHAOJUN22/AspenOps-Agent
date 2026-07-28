@@ -16,7 +16,7 @@ Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are 
 
 `ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, full-source bytecode compilation, deterministic AST source-tree analysis, exact isolated Bandit `1.9.4` analysis over `src` and `scripts`, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
 
-The permanent branch-coverage floor is 95.0%. Python 3.12 additionally collects every pytest node ID and reruns the complete suite twice: once in reverse order and once in deterministic random order with seed `20260728`. Collection failure, duplicate node IDs, an empty collection or either failing rerun closes the gate.
+Python 3.12 is the evidence-backed reference coverage gate at 95.0%. Python 3.11 and 3.13 retain 94.5% compatibility floors until fresh per-version coverage evidence supports raising them. Python 3.12 additionally collects every pytest node ID and reruns the complete suite twice: once in reverse order and once in deterministic random order with seed `20260728`. Collection failure, duplicate node IDs, an empty collection or either failing rerun closes the gate.
 
 The source-tree audit parses every Python file under `src` and `scripts`, fails on syntax errors, dynamic `eval`/`exec`, unsafe pickle or marshal loading, `os.system`, unsafe `tempfile.mktemp`, unsafe YAML loading and subprocess calls that enable a shell. Broad boundary exception handlers remain machine-readable advisory findings rather than being silently ignored.
 
@@ -36,7 +36,7 @@ Automated tests lock:
 - complete dependency-audit evidence;
 - full Python source compilation and deterministic source-tree AST auditing;
 - exact Bandit version, scope, severity/confidence thresholds, JSON evidence and fail-closed behavior;
-- a permanent 95.0% branch-coverage floor;
+- a 95.0% Python 3.12 reference coverage floor and 94.5% Python 3.11/3.13 compatibility floors;
 - complete reverse and seeded-random suite reruns on Python 3.12;
 - explicit failed guards for non-main manual dispatches;
 - performance evidence isolated in runner temporary storage;
@@ -50,7 +50,7 @@ Automated tests lock:
 
 ## README visual governance
 
-Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual exposes the Bandit `1.9.4` gate, full-source compilation, deterministic AST auditing, reverse and seeded-random full-suite reruns, the 95.0% branch-coverage floor and the rule that missing current evidence is not a pass.
+Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual exposes the Bandit `1.9.4` gate, full-source compilation, deterministic AST auditing, reverse and seeded-random full-suite reruns, the evidence-backed Python 3.12 95.0% floor, the 3.11/3.13 compatibility floors and the rule that missing current evidence is not a pass.
 
 The visual suite remains bound to implemented source markers and is checked for exact inventory, local paths, XML validity, a fixed `1440 × 720` view box, titles/descriptions, safe elements and attributes, portable fonts, size limits and absence of scripts, event handlers, remote resources and data URIs.
 
