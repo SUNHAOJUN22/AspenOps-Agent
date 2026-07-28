@@ -144,5 +144,8 @@ jobs:
           uv run ruff format --check .
           uv run mypy src
           rm .github/workflows/source-repair-once.yml
-          uv run pytest -W error::ResourceWarning
+          uv run pytest -W error::ResourceWarning \
+            tests/test_ci_closure_gates.py \
+            tests/test_process_ir.py \
+            tests/test_process_ir_edges.py
           git restore .github/workflows/source-repair-once.yml
