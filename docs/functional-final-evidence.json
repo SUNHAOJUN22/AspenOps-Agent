@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "log_tail": [
+    "expected patch source missing in src/aspenops_nexus/certification.py: '        if engineering_approved is not True:\\n            missing_engineering.app'"
+  ],
+  "overall": "FAIL",
+  "run_attempt": "1",
+  "run_id": "30325803238",
+  "schema": "aspenops.functional-final/v1",
+  "source_sha": "bc88f175b8ac5c6533c4f867519facb1951894f1"
+}
