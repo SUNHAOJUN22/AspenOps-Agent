@@ -1,0 +1,173 @@
+# One-time Windows qualification. Deletes itself only after every Windows gate passes.
+name: Windows qualification once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-windows-qualification-once
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run complete Windows qualification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidenceDir = "var/windows-qualification"
+          Remove-Item -LiteralPath $evidenceDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $evidenceDir | Out-Null
+          $statusPath = Join-Path $evidenceDir "status.tsv"
+          Set-Content -LiteralPath $statusPath -Value "" -NoNewline
+          Remove-Item -LiteralPath .github/workflows/windows-qualification-once.yml -Force
+          $script:failed = 0
+
+          function Invoke-Gate {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [Parameter(Mandatory = $true)][scriptblock]$Command
+            )
+            $logPath = Join-Path $evidenceDir "$Name.log"
+            $code = 0
+            try {
+              & $Command *>&1 | Out-File -LiteralPath $logPath -Encoding utf8
+              if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
+            } catch {
+              $_ | Out-String | Out-File -LiteralPath $logPath -Encoding utf8 -Append
+              $code = 1
+            }
+            Add-Content -LiteralPath $statusPath -Value "$Name`t$code"
+            if ($code -ne 0) { $script:failed = 1 }
+          }
+
+          Invoke-Gate "lock-check" { uv lock --check }
+          Invoke-Gate "sync" { uv sync --frozen --extra dev --extra windows --extra agent --extra signing }
+          Invoke-Gate "ruff" { uv run ruff check . }
+          Invoke-Gate "ruff-format" { uv run ruff format --check . }
+          Invoke-Gate "mypy" { uv run mypy src }
+          Invoke-Gate "powershell-parse" {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath scripts/setup_windows.ps1),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) { throw "PowerShell parser found errors" }
+          }
+          Invoke-Gate "pytest" {
+            uv run pytest -W error::ResourceWarning `
+              --junitxml=var/windows-qualification/junit.xml `
+              --durations=20
+          }
+          Invoke-Gate "job-query-probe" {
+            uv run python scripts/measure_job_store_queries.py `
+              --output var/windows-qualification/job-store-query-plan.json `
+              --records 1000 `
+              --limit 20
+          }
+          Invoke-Gate "process-ir" {
+            uv run python scripts/validate_process_ir.py `
+              examples/process-intent.example.json `
+              --canonical-output var/windows-qualification/process-intent-canonical.json `
+              --report-output var/windows-qualification/process-intent-report.json
+          }
+          Invoke-Gate "build" { uv build }
+          Invoke-Gate "cli-version" { uv run aspenops --version }
+          Invoke-Gate "cli-help" { uv run aspenops --help }
+          Invoke-Gate "doctor" { uv run aspenops doctor }
+
+          $env:EVIDENCE_DIR = $evidenceDir
+          $env:FAILED = [string]$script:failed
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          import platform
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence_dir = Path(os.environ["EVIDENCE_DIR"])
+          statuses = {}
+          for line in (evidence_dir / "status.tsv").read_text(encoding="utf-8-sig").splitlines():
+              if not line.strip():
+                  continue
+              name, code = line.split("\t")
+              statuses[name] = int(code)
+
+          failure_tail = {}
+          for name, code in statuses.items():
+              if code == 0:
+                  continue
+              path = evidence_dir / f"{name}.log"
+              if path.exists():
+                  failure_tail[name] = path.read_text(
+                      encoding="utf-8-sig", errors="replace"
+                  ).splitlines()[-160:]
+
+          junit = {}
+          junit_path = evidence_dir / "junit.xml"
+          if junit_path.exists():
+              root = ET.parse(junit_path).getroot()
+              suite = root if "tests" in root.attrib else root.find("testsuite")
+              if suite is not None:
+                  junit = {
+                      "tests": int(suite.attrib.get("tests", 0)),
+                      "failures": int(suite.attrib.get("failures", 0)),
+                      "errors": int(suite.attrib.get("errors", 0)),
+                      "skipped": int(suite.attrib.get("skipped", 0)),
+                      "time_seconds": float(suite.attrib.get("time", 0.0)),
+                  }
+
+          payload = {
+              "schema": "aspenops.windows-qualification/v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "python_runtime": platform.python_version(),
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "gate_status": statuses,
+              "junit": junit,
+              "failure_tail": failure_tail,
+              "overall": "PASS" if statuses and all(code == 0 for code in statuses.values()) else "FAIL",
+          }
+          Path("docs/windows-qualification-evidence.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          '@ | uv run python -
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ($script:failed -ne 0) {
+            git restore --source=HEAD --staged --worktree .
+            git add docs/windows-qualification-evidence.json
+            git commit -m "test: record Windows qualification blocker"
+            git push origin HEAD:main
+            exit 1
+          }
+
+          Remove-Item -LiteralPath docs/repository-repair-evidence.json -Force -ErrorAction SilentlyContinue
+          git add -A
+          git commit -m "test: record passing Windows qualification"
+          git push origin HEAD:main
