@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: aspenops-source-repair-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -30,6 +30,54 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p var
+          log_path="var/source-repair.log"
+          : > "$log_path"
+          exec > >(tee -a "$log_path") 2>&1
+
+          cleanup() {
+            local status=$?
+            trap - EXIT
+            set +e
+            if [[ -f .github/workflows/source-repair-once.yml ]]; then
+              git restore .github/workflows/source-repair-once.yml >/dev/null 2>&1 || true
+            fi
+            if [[ "$status" -ne 0 ]]; then
+              git restore --source=HEAD --staged --worktree . >/dev/null 2>&1 || true
+            fi
+            STATUS="$status" python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          log_path = Path("var/source-repair.log")
+          tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-160:]
+          status = int(os.environ["STATUS"])
+          payload = {
+              "schema": "aspenops.source-repair/v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "overall": "PASS" if status == 0 else "FAIL",
+              "exit_code": status,
+              "log_tail": tail,
+          }
+          Path("docs/source-repair-evidence.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            git add -A
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix: close typing collection and formatting failures"
+            git push origin HEAD:main
+            exit "$status"
+          }
+          trap cleanup EXIT
+
           python - <<'PY'
           from pathlib import Path
 
@@ -87,6 +135,7 @@ jobs:
               encoding="utf-8",
           )
           PY
+
           uv lock --check
           uv sync --frozen --extra dev --extra agent --extra signing
           uv run ruff check . --fix
@@ -97,8 +146,3 @@ jobs:
           rm .github/workflows/source-repair-once.yml
           uv run pytest -W error::ResourceWarning
           git restore .github/workflows/source-repair-once.yml
-          git add -A
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix: close typing collection and formatting failures"
-          git push origin HEAD:main
