@@ -79,6 +79,24 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
+      - name: Bandit security analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          bandit_status=0
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/ci/bandit.json \
+            2> var/ci/bandit.log || bandit_status=$?
+          python -m json.tool var/ci/bandit.json >/dev/null
+          if [[ "$bandit_status" -ne 0 ]]; then
+            cat var/ci/bandit.log >&2
+            python -m json.tool var/ci/bandit.json >&2
+            exit "$bandit_status"
+          fi
       - name: Verify documentation, durable CLI, artifact, dashboard and Process IR contracts
         shell: bash
         run: |
@@ -286,6 +304,15 @@ jobs:
             --durations=20 \
             --cov-fail-under=94.5 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
+      - name: Verify complete-suite order independence
+        if: ${{ matrix.python-version == '3.12' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir var/ci \
+            2>&1 | tee var/ci/test-order-gate.log
       - name: Render Python test dashboard
         if: always()
         shell: bash
