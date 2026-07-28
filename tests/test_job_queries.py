@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ from aspenops_nexus.scheduler import JobStore
 def _seed_jobs(path: Path) -> tuple[JobStore, list[str]]:
     store = JobStore(path)
     job_ids = [store.create({"ordinal": index}) for index in range(3)]
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         for index, job_id in enumerate(job_ids):
             connection.execute(
                 "UPDATE jobs SET created_at=?, updated_at=? WHERE job_id=?",
@@ -30,7 +31,7 @@ def _seed_jobs(path: Path) -> tuple[JobStore, list[str]]:
 
 
 def _indexes(path: Path) -> set[str]:
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         return {str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")}
 
 
