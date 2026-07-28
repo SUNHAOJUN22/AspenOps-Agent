@@ -1,0 +1,32 @@
+{
+  "blocker_code": "QUALIFICATION_GATE_FAILED",
+  "boundary": "P0 was removed because at least one hard gate failed.",
+  "decision": "FAIL",
+  "gate_status": {
+    "bandit": 0,
+    "build": 0,
+    "compileall": 0,
+    "demo": 0,
+    "dependency-audit": 0,
+    "full-311": 0,
+    "full-312": 0,
+    "full-313": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 1,
+    "order-312": 0,
+    "p0-contract": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 1,
+    "ruff-format": 1,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "p0_implementation_retained": false,
+  "phase": "P0",
+  "runtime_core_changed": false,
+  "schema": "aspenops.research-platform-p0-blocker/v1"
+}

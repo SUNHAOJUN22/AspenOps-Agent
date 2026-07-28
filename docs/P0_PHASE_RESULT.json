@@ -1,0 +1,76 @@
+{
+  "boundary": "P0 validates immutable research manifests and scientific evidence relationships only. It does not open Aspen, estimate parameters, run dynamic studies, or train machine-learning models.",
+  "branch_coverage_percent": {
+    "3.11": 95.71241544839624,
+    "3.12": 95.71241544839624,
+    "3.13": 95.71241544839624,
+    "p0": 98.86858137510879
+  },
+  "decision": "FAIL",
+  "deliverables": {
+    "closed_loop_validation": false,
+    "complete_examples": 2,
+    "coverage_report": false,
+    "object_relationship_diagram": true,
+    "qualification_state_machine": true,
+    "schemas": 9,
+    "source": false,
+    "test_report": false
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time_seconds": 19.644
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time_seconds": 21.643
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time_seconds": 18.485
+    }
+  },
+  "hard_gates": {
+    "bandit": 0,
+    "build": 0,
+    "compileall": 0,
+    "demo": 0,
+    "dependency-audit": 0,
+    "full-311": 0,
+    "full-312": 0,
+    "full-313": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 1,
+    "order-312": 0,
+    "p0-contract": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 1,
+    "ruff-format": 1,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "p0_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 68,
+    "time_seconds": 1.219
+  },
+  "phase": "P0",
+  "qualified_source_sha": "28abeb1f5a79e4e4e1cbe859b7762f24710769e5",
+  "schema": "aspenops.research-platform-p0-result/v1"
+}

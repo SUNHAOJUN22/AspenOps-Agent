@@ -22,9 +22,7 @@ def test_repository_source_tree_has_no_forbidden_constructs() -> None:
     json.dumps(report, allow_nan=False)
 
 
-def test_audit_detects_dynamic_execution_deserialization_and_shell(
-    tmp_path: Path,
-) -> None:
+def test_audit_detects_dynamic_execution_deserialization_and_shell(tmp_path: Path) -> None:
     source = tmp_path / "src"
     source.mkdir()
     (source / "unsafe.py").write_text(
