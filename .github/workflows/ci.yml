@@ -79,6 +79,17 @@ jobs:
         run: |
           set -euo pipefail
           uv run mypy src 2>&1 | tee var/ci/mypy.log
+      - name: Compile Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python -m compileall -q src scripts
+      - name: Audit Python source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/audit_source_tree.py \
+            --output var/ci/source-tree-audit.json
       - name: Bandit security analysis
         shell: bash
         run: |
@@ -110,6 +121,8 @@ jobs:
             tests/test_process_ir.py \
             tests/test_process_ir_edges.py \
             tests/test_process_ir_dashboard.py \
+            tests/test_source_tree_audit.py \
+            tests/test_wheel_metadata_edges.py \
             --junitxml=var/ci/documentation-contracts.xml \
             2>&1 | tee var/ci/documentation-contracts.log
       - name: Render quality test dashboard
@@ -302,7 +315,7 @@ jobs:
             --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
             --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
             --durations=20 \
-            --cov-fail-under=94.5 \
+            --cov-fail-under=95.0 \
             2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
       - name: Verify complete-suite order independence
         if: ${{ matrix.python-version == '3.12' }}
