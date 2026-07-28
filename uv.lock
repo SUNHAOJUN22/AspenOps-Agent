@@ -66,7 +66,7 @@ requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2" },
     { name = "cryptography", marker = "extra == 'dev'", specifier = ">=45" },
     { name = "cryptography", marker = "extra == 'signing'", specifier = ">=45" },
-    { name = "mcp", marker = "extra == 'agent'", specifier = ">=1.9" },
+    { name = "mcp", marker = "extra == 'agent'", specifier = ">=1.9,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },

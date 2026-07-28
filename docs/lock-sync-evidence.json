@@ -1,0 +1,9 @@
+{
+  "lock_check": "PASS",
+  "mcp_requirement": "mcp>=1.9,<2",
+  "pyproject_sha256": "78fb19f7ea34abdc7f43518bf07d721ba3928048e97d58159d3c5cd9168300c1",
+  "schema": "aspenops.lock-sync/v1",
+  "source_sha": "5f18b40c48a71362d889f2817d6f1abe29bfa942",
+  "uv_lock_sha256": "3e70786ebc33d17c990f76fd1c68ef8b8de0b397c54ccbe5b0bd403bee3dbdd3",
+  "uv_version": "uv 0.11.16 (x86_64-unknown-linux-gnu)"
+}
