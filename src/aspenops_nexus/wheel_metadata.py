@@ -25,8 +25,10 @@ def _validate_mcp_requirement(requirement: str) -> None:
         raise RuntimeError("Built Wheel must constrain the MCP Python SDK to mcp>=1.9,<2")
 
     compact_marker = marker.replace(" ", "").casefold()
-    if not separator or compact_marker not in {"extra=='agent'", 'extra=="agent"'}:
+    if not separator:
         raise RuntimeError("MCP requirement must remain scoped to the agent extra")
+    if compact_marker not in {"extra=='agent'", 'extra=="agent"'}:
+        raise RuntimeError("MCP requirement is not enabled by the agent extra")
 
 
 def inspect_wheel(dist_dir: Path) -> dict[str, Any]:
@@ -78,7 +80,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
-
     report = inspect_wheel(args.dist_dir)
     payload = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False)
     if args.output is not None:
