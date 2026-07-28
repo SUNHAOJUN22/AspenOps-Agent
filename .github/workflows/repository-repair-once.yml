@@ -125,6 +125,33 @@ jobs:
               "    return convert(numeric, node.native_unit, target_unit)\n",
           )
           replace_once(
+              "src/aspenops_nexus/batch.py",
+              "    if backend_name != settings.backend:\n"
+              "        raise PolicyError(\"Real simulator request backend must match ASPENOPS_BACKEND\")\n"
+              "    if not settings.allowed_roots:\n"
+              "        raise PolicyError(\"Real simulator requests require ASPENOPS_ALLOWED_ROOTS\")\n",
+              "    if not settings.allowed_roots:\n"
+              "        raise PolicyError(\"Real simulator requests require ASPENOPS_ALLOWED_ROOTS\")\n"
+              "    if backend_name != settings.backend:\n"
+              "        raise PolicyError(\"Real simulator request backend must match ASPENOPS_BACKEND\")\n",
+          )
+          replace_once(
+              "src/aspenops_nexus/certification.py",
+              "        for repeat_index in range(repeat_count):\n"
+              "            state_dir = Path(tempfile.mkdtemp(prefix=f\"aspenops-cert-{repeat_index}-\"))\n",
+              "        temporary_parent: Path | None = None\n"
+              "        if backend != \"mock\":\n"
+              "            temporary_parent = settings.state_dir\n"
+              "            temporary_parent.mkdir(parents=True, exist_ok=True)\n"
+              "        for repeat_index in range(repeat_count):\n"
+              "            state_dir = Path(\n"
+              "                tempfile.mkdtemp(\n"
+              "                    prefix=f\"aspenops-cert-{repeat_index}-\",\n"
+              "                    dir=temporary_parent,\n"
+              "                )\n"
+              "            )\n",
+          )
+          replace_once(
               "src/aspenops_nexus/cli.py",
               '    optimize.add_argument("--output")\n',
               '    optimize.add_argument("--output", default="var/optimization-result.json")\n',
