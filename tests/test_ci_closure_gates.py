@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import tomllib
 from pathlib import Path
 
 from scripts.run_test_order_gate import _random_order, _reverse_order
@@ -7,6 +10,9 @@ from scripts.run_test_order_gate import _random_order, _reverse_order
 ROOT = Path(__file__).resolve().parents[1]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 ORDER_GATE = ROOT / "scripts" / "run_test_order_gate.py"
+PYPROJECT = ROOT / "pyproject.toml"
+UV_LOCK = ROOT / "uv.lock"
+LOCK_EVIDENCE = ROOT / "docs" / "lock-sync-evidence.json"
 
 
 def test_order_helpers_are_deterministic_and_non_mutating() -> None:
@@ -46,3 +52,20 @@ def test_ci_runs_complete_reverse_and_seeded_random_order_gate() -> None:
     assert "error::ResourceWarning" in script
     assert 'label="reverse"' in script
     assert 'label=f"random-{args.seed}"' in script
+
+
+def test_frozen_mcp_boundary_and_lock_evidence_are_current() -> None:
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    agent_requirements = project["project"]["optional-dependencies"]["agent"]
+    requirement = next(item for item in agent_requirements if item.startswith("mcp"))
+    lock_text = UV_LOCK.read_text(encoding="utf-8")
+    evidence = json.loads(LOCK_EVIDENCE.read_text(encoding="utf-8"))
+
+    assert requirement == "mcp>=1.9,<2"
+    assert 'name = "mcp", marker = "extra == \'agent\'", specifier = ">=1.9,<2"' in lock_text
+    assert evidence["schema"] == "aspenops.lock-sync/v1"
+    assert evidence["lock_check"] == "PASS"
+    assert evidence["mcp_requirement"] == requirement
+    assert evidence["uv_version"].startswith("uv 0.11.16 ")
+    assert evidence["pyproject_sha256"] == hashlib.sha256(PYPROJECT.read_bytes()).hexdigest()
+    assert evidence["uv_lock_sha256"] == hashlib.sha256(UV_LOCK.read_bytes()).hexdigest()
