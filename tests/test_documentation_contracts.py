@@ -125,7 +125,10 @@ def test_operational_guides_require_frozen_quality_gates() -> None:
         assert "uv run ruff check ." in text
         assert "uv run ruff format --check ." in text
         assert "uv run mypy src" in text
-        assert "--cov-fail-under=94.5" in text
+        assert "uv run python -m compileall -q src scripts" in text
+        assert "uv run python scripts/audit_source_tree.py" in text
+        assert "--cov-fail-under=95.0" in text
+        assert "--cov-fail-under=94.5" not in text
 
 
 def test_docs_describe_six_audits_and_runner_temp_evidence() -> None:
