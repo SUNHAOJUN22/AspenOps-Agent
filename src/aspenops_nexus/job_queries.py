@@ -44,8 +44,7 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 def _has_recent_index(connection: sqlite3.Connection) -> bool:
     return any(
-        str(row[1]) == _RECENT_INDEX
-        for row in connection.execute("PRAGMA index_list('jobs')")
+        str(row[1]) == _RECENT_INDEX for row in connection.execute("PRAGMA index_list('jobs')")
     )
 
 
@@ -56,8 +55,7 @@ def _ensure_recent_index(connection: sqlite3.Connection) -> None:
         if _has_recent_index(connection):
             return
         connection.execute(
-            f"CREATE INDEX IF NOT EXISTS {_RECENT_INDEX} "
-            "ON jobs(created_at DESC, job_id DESC)"
+            f"CREATE INDEX IF NOT EXISTS {_RECENT_INDEX} ON jobs(created_at DESC, job_id DESC)"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()
@@ -100,8 +98,7 @@ def list_recent_job_records(path: str | Path, limit: int = 20) -> list[dict[str,
     with closing(_connect(database)) as connection, connection:
         _ensure_recent_index(connection)
         rows = connection.execute(
-            f"SELECT {_SELECT_JOB_COLUMNS} FROM jobs "
-            "ORDER BY created_at DESC, job_id DESC LIMIT ?",
+            f"SELECT {_SELECT_JOB_COLUMNS} FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT ?",
             (bounded_limit,),
         ).fetchall()
     return [_decode_job_row(tuple(row)) for row in rows]

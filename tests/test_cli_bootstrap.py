@@ -143,8 +143,7 @@ def test_cli_startup_probe_writes_bounded_machine_readable_evidence(tmp_path: Pa
     assert all(item["record_count"] > 0 for item in evidence["import_profiles"])
     assert all(item["total_self_time_us"] > 0 for item in evidence["import_profiles"])
     assert all(
-        item["classification"] == "MEASURED_SAME_ENVIRONMENT"
-        for item in evidence["comparisons"]
+        item["classification"] == "MEASURED_SAME_ENVIRONMENT" for item in evidence["comparisons"]
     )
 
     operation_path = output.with_name(evidence["operation_counts_artifact"])

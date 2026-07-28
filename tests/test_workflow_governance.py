@@ -71,9 +71,7 @@ def test_actions_runners_and_uv_are_immutable() -> None:
     for name in WORKFLOWS:
         text = workflow_text(name)
         uses_lines = [
-            line
-            for line in text.splitlines()
-            if line.strip().startswith(("uses:", "- uses:"))
+            line for line in text.splitlines() if line.strip().startswith(("uses:", "- uses:"))
         ]
         assert uses_lines, f"{name} has no external action declarations"
         assert all(PINNED_ACTION.fullmatch(line) for line in uses_lines)
@@ -206,12 +204,12 @@ def test_licensed_paths_are_canonicalized_before_real_execution() -> None:
     assert "EXECUTION_APPROVED: ${{ inputs.approve_real_execution }}" in workflow
     assert "plan_path must be one non-empty line" in workflow
     assert "plan_path must be repository-relative" in workflow
-    assert '$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()' in workflow
+    assert "$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()" in workflow
     assert "expected_head_sha must equal the dispatched main GITHUB_SHA" in workflow
     assert 'git rev-parse --verify --end-of-options "$workflowSha^{commit}"' in workflow
     assert "git merge-base --is-ancestor $workflowSha origin/main" in workflow
     assert "git checkout --detach $workflowSha" in workflow
-    assert 'git checkout --detach $expected' not in workflow
+    assert "git checkout --detach $expected" not in workflow
     assert "python scripts/validate_licensed_paths.py" in workflow
     assert '"PLAN_PATH=$($resolved.plan_path)"' in workflow
     assert '"ASPENOPS_STATE_DIR=$($resolved.state_dir)"' in workflow
@@ -239,10 +237,10 @@ def test_licensed_external_evidence_is_run_attempt_isolated_and_serialized() -> 
         "New-Item -ItemType Directory -Force $evidenceDir"
     )
     assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in block
-    assert '$env:LICENSED_EVIDENCE_DIR\preflight.json' in text
-    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json' in text
-    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip' in text
-    assert '$env:ASPENOPS_STATE_DIR\licensed-certification' not in text
+    assert "$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
+    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
+    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
+    assert "$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
 
 
 def test_licensed_artifacts_are_precheckout_clean_and_runner_temp_scoped() -> None:
@@ -262,8 +260,7 @@ def test_licensed_artifacts_are_precheckout_clean_and_runner_temp_scoped() -> No
 
     assert prepare < checkout < regression < staging < outcome < upload
     artifact_assignment = (
-        '$artifactName = "aspenops-licensed-artifact-'
-        '$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"'
+        '$artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"'
     )
     assert text.count(artifact_assignment) == 4
     assert "Remove-Item -LiteralPath $artifactDir -Recurse -Force" in prepare_block
@@ -289,8 +286,7 @@ def test_licensed_artifacts_are_precheckout_clean_and_runner_temp_scoped() -> No
     assert "job_status=$env:JOB_STATUS" in outcome_block
     assert "run-metadata.txt" in outcome_block
     artifact_name = (
-        "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
+        "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     artifact_path = (
         "path: ${{ runner.temp }}/aspenops-licensed-artifact-"

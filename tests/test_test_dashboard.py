@@ -4,7 +4,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 SCRIPT = Path("scripts/render_test_dashboard.py")
 
 
@@ -73,7 +72,7 @@ def test_dashboard_outputs_are_self_contained(tmp_path: Path) -> None:
     )
 
     assert "<!doctype html>" in page
-    assert "data-target=\"summary\"" in page
+    assert 'data-target="summary"' in page
     assert "Evidence boundary" in page
     assert "fetch(" not in page
     assert "http://" not in page

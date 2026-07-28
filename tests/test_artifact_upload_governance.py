@@ -54,16 +54,10 @@ def test_matrix_and_specialized_artifact_names_remain_distinct() -> None:
         "${{ github.run_id }}-${{ github.run_attempt }}"
     )
     windows_name = (
-        "windows-control-plane-diagnostics-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
+        "windows-control-plane-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}"
     )
-    performance_name = (
-        "performance-evidence-${{ github.run_id }}-${{ github.run_attempt }}"
-    )
-    licensed_name = (
-        "licensed-${{ inputs.backend }}-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
-    )
+    performance_name = "performance-evidence-${{ github.run_id }}-${{ github.run_attempt }}"
+    licensed_name = "licensed-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}"
 
     assert quality in portable
     assert python in portable

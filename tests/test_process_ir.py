@@ -40,9 +40,7 @@ def valid_document() -> dict:
                     {"id": "in", "direction": "in"},
                     {"id": "out", "direction": "out"},
                 ],
-                "parameters": [
-                    {"name": "outlet_temperature", "value": 80.0, "unit": "C"}
-                ],
+                "parameters": [{"name": "outlet_temperature", "value": 80.0, "unit": "C"}],
             },
             {
                 "id": "PRODUCT",
@@ -160,9 +158,7 @@ def test_port_direction_and_required_connectivity_are_enforced() -> None:
 
 def test_self_connection_duplicate_connection_and_fanout_are_rejected() -> None:
     document = valid_document()
-    document["units"][1]["ports"].append(
-        {"id": "in2", "direction": "in", "required": False}
-    )
+    document["units"][1]["ports"].append({"id": "in2", "direction": "in", "required": False})
     document["streams"].append(
         {
             "id": "S3",

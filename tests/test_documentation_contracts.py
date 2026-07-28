@@ -93,15 +93,11 @@ def test_package_and_documentation_versions_match() -> None:
     assert _read(ROOT / "docs" / "architecture.md").startswith(
         f"# AspenOps {major_minor} Architecture"
     )
-    assert _read(ROOT / "AGENTS.md").startswith(
-        f"# AspenOps {major_minor} Agent Contract"
-    )
+    assert _read(ROOT / "AGENTS.md").startswith(f"# AspenOps {major_minor} Agent Contract")
     assert _read(ROOT / "CLAUDE.md").startswith(
         f"# Claude Code operating contract for AspenOps {major_minor}"
     )
-    assert _read(ROOT / "CONTRIBUTING.md").startswith(
-        f"# Contributing to AspenOps {major_minor}"
-    )
+    assert _read(ROOT / "CONTRIBUTING.md").startswith(f"# Contributing to AspenOps {major_minor}")
 
 
 def test_current_guidance_has_no_stale_toolchain_or_product_names() -> None:

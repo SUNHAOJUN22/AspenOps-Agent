@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import runpy
 import tomllib
 from pathlib import Path
-
-from scripts.run_test_order_gate import _random_order, _reverse_order
 
 ROOT = Path(__file__).resolve().parents[1]
 CI = ROOT / ".github" / "workflows" / "ci.yml"
@@ -16,11 +15,14 @@ LOCK_EVIDENCE = ROOT / "docs" / "lock-sync-evidence.json"
 
 
 def test_order_helpers_are_deterministic_and_non_mutating() -> None:
+    namespace = runpy.run_path(str(ORDER_GATE))
+    reverse_order = namespace["_reverse_order"]
+    random_order = namespace["_random_order"]
     original = ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
 
-    assert _reverse_order(original) == list(reversed(original))
-    assert _random_order(original, 20260728) == _random_order(original, 20260728)
-    assert sorted(_random_order(original, 20260728)) == sorted(original)
+    assert reverse_order(original) == list(reversed(original))
+    assert random_order(original, 20260728) == random_order(original, 20260728)
+    assert sorted(random_order(original, 20260728)) == sorted(original)
     assert original == ["a::test_one", "b::test_two", "c::test_three", "d::test_four"]
 
 

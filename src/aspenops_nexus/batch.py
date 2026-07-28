@@ -165,9 +165,7 @@ def _validate_real_backend_policy(backend_name: str, settings: Settings) -> None
     state_dir = state_path.resolve()
     roots = tuple(root.resolve() for root in root_paths)
     if not any(state_dir == root or root in state_dir.parents for root in roots):
-        raise PolicyError(
-            "Real simulator state directory must be inside ASPENOPS_ALLOWED_ROOTS"
-        )
+        raise PolicyError("Real simulator state directory must be inside ASPENOPS_ALLOWED_ROOTS")
 
 
 def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _PreparedBatch:

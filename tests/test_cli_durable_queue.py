@@ -45,9 +45,7 @@ def test_durable_request_paths_are_pinned_to_submission_directory(tmp_path: Path
     )
 
     assert normalized["model_path"] == str((submission_cwd / "models/case.json").resolve())
-    assert normalized["registry_path"] == str(
-        (submission_cwd / "registries/nodes.json").resolve()
-    )
+    assert normalized["registry_path"] == str((submission_cwd / "registries/nodes.json").resolve())
     assert normalized["metadata"] == {
         "case": "portable",
         "submission_cwd": str(submission_cwd.resolve()),
@@ -112,9 +110,7 @@ def test_submit_persists_pinned_paths_and_reports_identity(
 
     assert cli.command_submit(Namespace(request=str(request_path))) == 0
     assert validated == persisted
-    assert persisted[0]["model_path"] == str(
-        (submission_cwd / "models/case.json").resolve()
-    )
+    assert persisted[0]["model_path"] == str((submission_cwd / "models/case.json").resolve())
     assert persisted[0]["registry_path"] == str(
         (submission_cwd / "registries/nodes.json").resolve()
     )
@@ -157,9 +153,7 @@ def test_persisted_request_is_independent_of_scheduler_working_directory(
     job_id, request = claimed
     assert job_id == printed[-1]["job_id"]
     assert request["model_path"] == str((submitter / "models/case.json").resolve())
-    assert request["registry_path"] == str(
-        (submitter / "registries/nodes.json").resolve()
-    )
+    assert request["registry_path"] == str((submitter / "registries/nodes.json").resolve())
     assert request["metadata"]["submission_cwd"] == str(submitter.resolve())
 
 

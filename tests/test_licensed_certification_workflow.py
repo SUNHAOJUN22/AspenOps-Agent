@@ -8,9 +8,7 @@ UPLOAD_ARTIFACT_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
 
 
 def workflow_text() -> str:
-    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(
-        encoding="utf-8"
-    )
+    return Path(".github/workflows/licensed-aspen-certification.yml").read_text(encoding="utf-8")
 
 
 def test_workflow_has_explicit_main_ref_guard_before_self_hosted_job() -> None:
@@ -48,7 +46,7 @@ def test_approved_sha_is_bound_to_dispatched_workflow_revision() -> None:
     assert "ref: ${{ inputs.expected_head_sha }}" not in text
     assert "persist-credentials: false" in text
     assert artifact_prep < checkout < trust < setup
-    assert '$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()' in text
+    assert "$workflowSha = $env:GITHUB_SHA.Trim().ToLowerInvariant()" in text
     assert "expected_head_sha must equal the dispatched main GITHUB_SHA" in text
     assert "Initial checkout does not match the dispatched workflow revision" in text
     assert 'git rev-parse --verify --end-of-options "$workflowSha^{commit}"' in text
@@ -117,9 +115,7 @@ def test_software_gates_precede_real_execution_and_upload() -> None:
     positions = [text.index(marker) for marker in ordered]
     assert positions == sorted(positions)
     assert "uv lock --check" in text
-    sync_command = (
-        "uv sync --frozen --extra dev --extra windows --extra agent --extra signing"
-    )
+    sync_command = "uv sync --frozen --extra dev --extra windows --extra agent --extra signing"
     assert sync_command in text
     assert "ASPENOPS_BACKEND: mock" in text
     mock_state = r"ASPENOPS_STATE_DIR: ${{ github.workspace }}\var\licensed-regression"
@@ -143,10 +139,10 @@ def test_external_evidence_is_isolated_per_run_attempt() -> None:
         "New-Item -ItemType Directory -Force $evidenceDir"
     )
     assert '"LICENSED_EVIDENCE_DIR=$evidenceDir"' in block
-    assert '$env:LICENSED_EVIDENCE_DIR\preflight.json' in text
-    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json' in text
-    assert '$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip' in text
-    assert '$env:ASPENOPS_STATE_DIR\licensed-certification' not in text
+    assert "$env:LICENSED_EVIDENCE_DIR\preflight.json" in text
+    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-report.json" in text
+    assert "$env:LICENSED_EVIDENCE_DIR\licensed-certification-bundle.zip" in text
+    assert "$env:ASPENOPS_STATE_DIR\licensed-certification" not in text
 
 
 def test_workflow_cannot_self_grant_real_certification() -> None:
@@ -173,8 +169,7 @@ def test_artifacts_are_precheckout_clean_validated_and_runner_temp_scoped() -> N
 
     assert prepare < checkout < regression < staging < outcome < upload
     artifact_assignment = (
-        '$artifactName = "aspenops-licensed-artifact-'
-        '$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"'
+        '$artifactName = "aspenops-licensed-artifact-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"'
     )
     assert text.count(artifact_assignment) == 4
     assert "Remove-Item -LiteralPath $artifactDir -Recurse -Force" in prepare_block
@@ -200,8 +195,7 @@ def test_artifacts_are_precheckout_clean_validated_and_runner_temp_scoped() -> N
     assert "job_status=$env:JOB_STATUS" in outcome_block
     assert "run-metadata.txt" in outcome_block
     artifact_name = (
-        "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
+        "name: licensed-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     artifact_path = (
         "path: ${{ runner.temp }}/aspenops-licensed-artifact-"

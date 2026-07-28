@@ -31,9 +31,7 @@ def _seed_jobs(path: Path) -> tuple[JobStore, list[str]]:
 
 def _indexes(path: Path) -> set[str]:
     with sqlite3.connect(path) as connection:
-        return {
-            str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")
-        }
+        return {str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")}
 
 
 def _remove_sqlite_files(path: Path) -> None:
@@ -75,9 +73,7 @@ def test_recent_job_reader_uses_one_select_and_persistent_index(
 
     assert len(list_recent_job_records(path, 20)) == 3
     selects = [
-        statement
-        for statement in statements
-        if statement.lstrip().upper().startswith("SELECT")
+        statement for statement in statements if statement.lstrip().upper().startswith("SELECT")
     ]
     assert connection_calls == 1
     assert len(selects) == 1

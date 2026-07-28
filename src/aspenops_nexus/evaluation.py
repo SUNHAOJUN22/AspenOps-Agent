@@ -210,8 +210,7 @@ def evaluate(
                         "tolerance": compiled_constraint.spec.tolerance,
                         "violation": None,
                         "unit": (
-                            compiled_constraint.spec.unit
-                            or compiled_constraint.node.native_unit
+                            compiled_constraint.spec.unit or compiled_constraint.node.native_unit
                         ),
                         "passed": False,
                         "failure": "non_numeric",
@@ -233,8 +232,7 @@ def evaluate(
                         "tolerance": compiled_constraint.spec.tolerance,
                         "violation": None,
                         "unit": (
-                            compiled_constraint.spec.unit
-                            or compiled_constraint.node.native_unit
+                            compiled_constraint.spec.unit or compiled_constraint.node.native_unit
                         ),
                         "passed": False,
                         "failure": "non_finite",
@@ -257,8 +255,7 @@ def evaluate(
                         "tolerance": compiled_constraint.spec.tolerance,
                         "violation": None,
                         "unit": (
-                            compiled_constraint.spec.unit
-                            or compiled_constraint.node.native_unit
+                            compiled_constraint.spec.unit or compiled_constraint.node.native_unit
                         ),
                         "passed": False,
                         "failure": "derived_overflow",
@@ -278,9 +275,7 @@ def evaluate(
                     "limit": compiled_constraint.spec.value,
                     "tolerance": compiled_constraint.spec.tolerance,
                     "violation": violation,
-                    "unit": (
-                        compiled_constraint.spec.unit or compiled_constraint.node.native_unit
-                    ),
+                    "unit": (compiled_constraint.spec.unit or compiled_constraint.node.native_unit),
                     "passed": passed,
                 }
             )

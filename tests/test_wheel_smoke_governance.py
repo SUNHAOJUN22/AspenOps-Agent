@@ -16,9 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
-    export_block = text[
-        text.index("uv export --frozen") : text.index("uv venv --python 3.12")
-    ]
+    export_block = text[text.index("uv export --frozen") : text.index("uv venv --python 3.12")]
 
     assert "--extra agent" in export_block
     assert "--no-default-groups" in export_block
@@ -39,7 +37,7 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
     assert "tests/test_cli_durable_queue.py" in text
     assert "uv run aspenops submit examples/batch-request.example.json" in text
     assert 'data["paths_pinned"] is True' in text
-    assert "uv run aspenops cancel \"$job_id\" --grace-s 0" in text
+    assert 'uv run aspenops cancel "$job_id" --grace-s 0' in text
     assert "uv run aspenops optimize examples/optimization-request.example.json" in text
     assert "/tmp/aspenops-wheel/bin/pip install dist/*.whl" not in text
 
@@ -55,9 +53,7 @@ def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     agent_requirements = project["project"]["optional-dependencies"]["agent"]
     assert agent_requirements == ["mcp>=1.9,<2"]
-    assert project["project"]["scripts"]["aspenops"] == (
-        "aspenops_nexus.cli_bootstrap:main"
-    )
+    assert project["project"]["scripts"]["aspenops"] == ("aspenops_nexus.cli_bootstrap:main")
 
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     packages = lock.get("package", [])

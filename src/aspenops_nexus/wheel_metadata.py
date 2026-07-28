@@ -20,15 +20,9 @@ def _validate_mcp_requirement(requirement: str) -> None:
     if not compact_requirement.startswith("mcp"):
         raise RuntimeError("MCP Requires-Dist entry has an unexpected package name")
 
-    specifiers = {
-        item
-        for item in compact_requirement.removeprefix("mcp").split(",")
-        if item
-    }
+    specifiers = {item for item in compact_requirement.removeprefix("mcp").split(",") if item}
     if not _REQUIRED_SPECIFIERS.issubset(specifiers):
-        raise RuntimeError(
-            "Built Wheel must constrain the MCP Python SDK to mcp>=1.9,<2"
-        )
+        raise RuntimeError("Built Wheel must constrain the MCP Python SDK to mcp>=1.9,<2")
 
     compact_marker = marker.replace(" ", "").casefold()
     if not separator or compact_marker not in {"extra=='agent'", 'extra=="agent"'}:
@@ -46,21 +40,17 @@ def inspect_wheel(dist_dir: Path) -> dict[str, Any]:
     wheel = wheels[0]
     with ZipFile(wheel) as archive:
         metadata_names = [
-            name
-            for name in archive.namelist()
-            if name.endswith(".dist-info/METADATA")
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
         ]
         if len(metadata_names) != 1:
             raise RuntimeError(
-                f"Expected exactly one METADATA member in {wheel.name}, "
-                f"found {len(metadata_names)}"
+                f"Expected exactly one METADATA member in {wheel.name}, found {len(metadata_names)}"
             )
         metadata_name = metadata_names[0]
         metadata_info = archive.getinfo(metadata_name)
         if metadata_info.file_size > _MAX_METADATA_BYTES:
             raise RuntimeError(
-                f"Wheel METADATA exceeds {_MAX_METADATA_BYTES} bytes: "
-                f"{metadata_info.file_size}"
+                f"Wheel METADATA exceeds {_MAX_METADATA_BYTES} bytes: {metadata_info.file_size}"
             )
         message = BytesParser(policy=default).parsebytes(archive.read(metadata_name))
 

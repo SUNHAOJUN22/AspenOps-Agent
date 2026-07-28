@@ -39,9 +39,7 @@ def test_valid_licensed_paths_are_canonicalized(tmp_path: Path) -> None:
     plan = workspace / "plan.json"
     plan.write_text("{}", encoding="utf-8")
 
-    result = load_gate().validate_paths(
-        environment(workspace, allowed, plan, allowed / "state")
-    )
+    result = load_gate().validate_paths(environment(workspace, allowed, plan, allowed / "state"))
 
     assert result == {
         "plan_path": str(plan.resolve()),
@@ -117,9 +115,7 @@ def test_allowed_root_must_be_an_existing_directory(tmp_path: Path) -> None:
         ValueError,
         match="ALLOWED_ROOTS entry must be an existing directory",
     ):
-        load_gate().validate_paths(
-            environment(workspace, root_file, plan, tmp_path / "state")
-        )
+        load_gate().validate_paths(environment(workspace, root_file, plan, tmp_path / "state"))
 
 
 def test_existing_state_target_must_be_a_directory(tmp_path: Path) -> None:
@@ -133,9 +129,7 @@ def test_existing_state_target_must_be_a_directory(tmp_path: Path) -> None:
     state_file.write_text("not-a-directory", encoding="utf-8")
 
     with pytest.raises(ValueError, match="STATE_DIR must identify a directory"):
-        load_gate().validate_paths(
-            environment(workspace, allowed, plan, state_file)
-        )
+        load_gate().validate_paths(environment(workspace, allowed, plan, state_file))
 
 
 def test_plan_symlink_cannot_escape_the_workspace(tmp_path: Path) -> None:
@@ -152,9 +146,7 @@ def test_plan_symlink_cannot_escape_the_workspace(tmp_path: Path) -> None:
         pytest.skip(f"symlink unavailable: {exc}")
 
     with pytest.raises(ValueError, match="PLAN_PATH resolves outside"):
-        load_gate().validate_paths(
-            environment(workspace, allowed, link, allowed / "state")
-        )
+        load_gate().validate_paths(environment(workspace, allowed, link, allowed / "state"))
 
 
 def test_state_symlink_parent_cannot_escape_allowed_roots(tmp_path: Path) -> None:
@@ -173,6 +165,4 @@ def test_state_symlink_parent_cannot_escape_allowed_roots(tmp_path: Path) -> Non
         pytest.skip(f"symlink unavailable: {exc}")
 
     with pytest.raises(ValueError, match="STATE_DIR resolves outside"):
-        load_gate().validate_paths(
-            environment(workspace, allowed, plan, link / "state")
-        )
+        load_gate().validate_paths(environment(workspace, allowed, plan, link / "state"))

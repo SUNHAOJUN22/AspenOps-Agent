@@ -266,12 +266,8 @@ def render_svg(data: dict[str, Any]) -> str:
     status = "VALID" if valid else "INVALID"
     status_color = "#15803d" if valid else "#b91c1c"
     counts = data["counts"]
-    execution_available = sum(
-        item["execution"] == "available" for item in data["backends"]
-    )
-    compilers_available = sum(
-        item["ir_compiler"] == "available" for item in data["backends"]
-    )
+    execution_available = sum(item["execution"] == "available" for item in data["backends"])
+    compilers_available = sum(item["ir_compiler"] == "available" for item in data["backends"])
     values = [
         ("Components", counts["components"]),
         ("Units", counts["units"]),

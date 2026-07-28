@@ -24,9 +24,7 @@ def _collect_node_ids(pytest_args: Sequence[str]) -> list[str]:
     )
     if completed.returncode != 0:
         raise OrderGateError(
-            "pytest collection failed:\n"
-            f"stdout:\n{completed.stdout}\n"
-            f"stderr:\n{completed.stderr}"
+            f"pytest collection failed:\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
 
     node_ids = [line.strip() for line in completed.stdout.splitlines() if "::" in line]
@@ -81,8 +79,7 @@ def _run_order(
         )
     if completed.returncode != 0:
         raise OrderGateError(
-            f"{label} test-order run failed with exit code {completed.returncode}; "
-            f"see {log_path}"
+            f"{label} test-order run failed with exit code {completed.returncode}; see {log_path}"
         )
 
 
@@ -123,8 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         pytest_args=pytest_args,
     )
     print(
-        f"Order-independence gate passed for {len(node_ids)} tests "
-        f"(reverse and seed={args.seed})."
+        f"Order-independence gate passed for {len(node_ids)} tests (reverse and seed={args.seed})."
     )
     return 0
 

@@ -228,27 +228,17 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     provenance = (ROOT / "src/aspenops_nexus/provenance.py").read_text(encoding="utf-8")
     archive = (ROOT / "src/aspenops_nexus/archive_safety.py").read_text(encoding="utf-8")
     startup_probe = (ROOT / "scripts/measure_cli_startup.py").read_text(encoding="utf-8")
-    operation_probe = (ROOT / "scripts/measure_operation_counts.py").read_text(
-        encoding="utf-8"
-    )
-    job_query_probe = (ROOT / "scripts/measure_job_store_queries.py").read_text(
-        encoding="utf-8"
-    )
+    operation_probe = (ROOT / "scripts/measure_operation_counts.py").read_text(encoding="utf-8")
+    job_query_probe = (ROOT / "scripts/measure_job_store_queries.py").read_text(encoding="utf-8")
     compare = (ROOT / "scripts/compare_benchmarks.py").read_text(encoding="utf-8")
 
     policy_visual = (ASSET_DIR / "policy-path-safety.svg").read_text(encoding="utf-8")
     validity_visual = (ASSET_DIR / "validity-gates.svg").read_text(encoding="utf-8")
-    optimization_visual = (ASSET_DIR / "optimization-lifecycle.svg").read_text(
-        encoding="utf-8"
-    )
+    optimization_visual = (ASSET_DIR / "optimization-lifecycle.svg").read_text(encoding="utf-8")
     cache_visual = (ASSET_DIR / "cache-singleflight.svg").read_text(encoding="utf-8")
-    worker_visual = (ASSET_DIR / "worker-ownership-recycle.svg").read_text(
-        encoding="utf-8"
-    )
+    worker_visual = (ASSET_DIR / "worker-ownership-recycle.svg").read_text(encoding="utf-8")
     evidence_visual = (ASSET_DIR / "evidence-integrity.svg").read_text(encoding="utf-8")
-    hotspot_visual = (ASSET_DIR / "performance-hotspot-map.svg").read_text(
-        encoding="utf-8"
-    )
+    hotspot_visual = (ASSET_DIR / "performance-hotspot-map.svg").read_text(encoding="utf-8")
     startup_visual = (ASSET_DIR / "cold-warm-startup.svg").read_text(encoding="utf-8")
 
     for marker in ("_SUPPORTED_BACKENDS", "_require_bool", "allowed_roots"):

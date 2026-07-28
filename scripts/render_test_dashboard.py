@@ -5,9 +5,9 @@ import html
 import json
 import math
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -207,12 +207,8 @@ def render_html(
             _metric("Coverage", _fmt_percent(coverage.percent), "When available"),
         ]
     )
-    bars = _bar("Pass rate", summary.pass_rate) + _bar(
-        "Coverage", coverage.percent or 0.0
-    )
-    evidence = "".join(
-        f"<li><code>{html.escape(path.name)}</code></li>" for path in files
-    )
+    bars = _bar("Pass rate", summary.pass_rate) + _bar("Coverage", coverage.percent or 0.0)
+    evidence = "".join(f"<li><code>{html.escape(path.name)}</code></li>" for path in files)
     evidence = evidence or "<li>No matching evidence files were supplied.</li>"
     status, status_color = _status(summary)
     summary_detail = (

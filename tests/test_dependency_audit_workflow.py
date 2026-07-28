@@ -15,7 +15,7 @@ def test_dependency_audit_collects_every_target_before_failing() -> None:
     assert "audit_failed=0" in text
     assert "if ! uv audit --frozen" in text
     assert '> "$output" 2> "$error_log"' in text
-    assert "if ! python -m json.tool \"$output\" >/dev/null" in text
+    assert 'if ! python -m json.tool "$output" >/dev/null' in text
     assert "audit_failed=1" in text
     assert "One or more locked dependency audits failed" in text
     assert text.index("for platform in linux windows; do") < text.index(

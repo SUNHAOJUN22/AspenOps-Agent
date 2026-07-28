@@ -76,9 +76,7 @@ def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
         candidate
         for candidate in feasible
         if not any(
-            dominates(existing, candidate)
-            for existing in feasible
-            if existing is not candidate
+            dominates(existing, candidate) for existing in feasible if existing is not candidate
         )
     )
 

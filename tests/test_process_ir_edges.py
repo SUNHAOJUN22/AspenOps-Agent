@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from aspenops_nexus import process_ir
-from aspenops_nexus import simulation_agents
+from aspenops_nexus import process_ir, simulation_agents
 from aspenops_nexus.process_ir import (
     ComponentSpec,
     Endpoint,
@@ -47,9 +46,7 @@ def valid_document() -> dict:
                     {"id": "in", "direction": "in"},
                     {"id": "out", "direction": "out"},
                 ],
-                "parameters": [
-                    {"name": "outlet_temperature", "value": 80.0, "unit": "C"}
-                ],
+                "parameters": [{"name": "outlet_temperature", "value": 80.0, "unit": "C"}],
             },
             {
                 "id": "PRODUCT",
@@ -184,12 +181,8 @@ def test_resource_limits_ports_and_duplicate_components(monkeypatch: pytest.Monk
     monkeypatch.setattr(process_ir, "MAX_PORTS_PER_UNIT", 1)
     monkeypatch.setattr(process_ir, "MAX_PARAMETERS_PER_ENTITY", 0)
     document = valid_document()
-    document["units"][0]["ports"].append(
-        {"id": "extra", "direction": "out", "required": False}
-    )
-    document["units"][1]["ports"].append(
-        {"id": "in", "direction": "in", "required": False}
-    )
+    document["units"][0]["ports"].append({"id": "extra", "direction": "out", "required": False})
+    document["units"][1]["ports"].append({"id": "in", "direction": "in", "required": False})
     document["streams"][0]["parameters"] = [{"name": "flow", "value": 1}]
     document["streams"][0]["components"].append("WATER")
     report = validate_process_intent(ProcessIntent.from_dict(document))

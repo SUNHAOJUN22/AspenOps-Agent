@@ -44,9 +44,9 @@ def test_cli_output_path_must_stay_inside_allowed_roots(tmp_path: Path) -> None:
     active = settings(tmp_path)
     allowed = active.allowed_roots[0]
 
-    assert _controlled_path(allowed / "results.json", active) == (
-        allowed / "results.json"
-    ).resolve()
+    assert (
+        _controlled_path(allowed / "results.json", active) == (allowed / "results.json").resolve()
+    )
 
     with pytest.raises(PolicyError, match="outside ASPENOPS_ALLOWED_ROOTS"):
         _controlled_path(tmp_path / "outside.json", active)

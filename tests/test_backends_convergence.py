@@ -179,7 +179,7 @@ def test_aspen_backend_fails_closed_without_success_evidence(monkeypatch: Any) -
 
 def test_factory_aspen_running_state_does_not_use_string_truthiness() -> None:
     backend = create_backend("aspen_plus")
-    running = getattr(backend, "_engine_running")
+    running = backend._engine_running
     assert running(SimpleNamespace(IsRunning="False")) is False
     assert running(SimpleNamespace(IsRunning="TRUE")) is True
     assert running(SimpleNamespace(IsRunning=-1)) is True

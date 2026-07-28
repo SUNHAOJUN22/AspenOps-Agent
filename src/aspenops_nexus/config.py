@@ -5,7 +5,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _SUPPORTED_BACKENDS = {"mock", "aspen_plus", "hysys"}
 _SUPPORTED_MODES = {"readonly", "default", "enhanced"}
 
@@ -180,9 +179,7 @@ class Settings:
             raise ValueError("Real backends require ASPENOPS_ALLOWED_ROOTS")
         if backend != "mock":
             relative_roots = [
-                value
-                for value in root_values
-                if not Path(value).expanduser().is_absolute()
+                value for value in root_values if not Path(value).expanduser().is_absolute()
             ]
             if relative_roots:
                 raise ValueError("Every ASPENOPS_ALLOWED_ROOTS entry must be absolute")

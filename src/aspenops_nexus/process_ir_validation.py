@@ -206,9 +206,7 @@ def validate_process_intent(
                         f"Duplicate port id on unit {unit.id}: {port_id}",
                     )
                 )
-        issues.extend(
-            _duplicate_names(unit.parameters, path=f"units[{unit_index}].parameters")
-        )
+        issues.extend(_duplicate_names(unit.parameters, path=f"units[{unit_index}].parameters"))
 
     endpoint_connections: dict[tuple[str, str, str], list[str]] = defaultdict(list)
     connection_pairs: dict[tuple[str, str, str, str], list[int]] = defaultdict(list)
@@ -264,8 +262,8 @@ def validate_process_intent(
                     )
                 )
                 continue
-            port = port_map.get((endpoint.unit, endpoint.port))
-            if port is None:
+            endpoint_port = port_map.get((endpoint.unit, endpoint.port))
+            if endpoint_port is None:
                 issues.append(
                     ValidationIssue(
                         "error",
@@ -277,7 +275,7 @@ def validate_process_intent(
                     )
                 )
                 continue
-            if port.direction != expected_direction:
+            if endpoint_port.direction != expected_direction:
                 issues.append(
                     ValidationIssue(
                         "error",

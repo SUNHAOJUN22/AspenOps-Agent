@@ -84,15 +84,11 @@ def run_probe(*, records: int = 1000, limit: int = 20) -> dict[str, Any]:
             job_queries._connect = original_connect
 
         selects = [
-            statement
-            for statement in statements
-            if statement.lstrip().upper().startswith("SELECT")
+            statement for statement in statements if statement.lstrip().upper().startswith("SELECT")
         ]
         plan = recent_jobs_query_plan(path, limit)
         with sqlite3.connect(path) as connection:
-            indexes = sorted(
-                str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')")
-            )
+            indexes = sorted(str(row[1]) for row in connection.execute("PRAGMA index_list('jobs')"))
 
     return {
         "schema": "aspenops.job-store-query-plan/v1",

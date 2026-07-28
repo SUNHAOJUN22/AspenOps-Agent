@@ -213,9 +213,10 @@ class NodeRegistry:
             raise RegistryError(f"identifiers for {key} must be a list")
         normalized_identifiers: list[str] = []
         for raw_identifier in identifiers:
-            if not isinstance(raw_identifier, str) or _IDENTIFIER_NAME_RE.fullmatch(
-                raw_identifier
-            ) is None:
+            if (
+                not isinstance(raw_identifier, str)
+                or _IDENTIFIER_NAME_RE.fullmatch(raw_identifier) is None
+            ):
                 raise RegistryError(f"Unsafe identifier name for {key}: {raw_identifier!r}")
             normalized_identifiers.append(raw_identifier)
         if len(set(normalized_identifiers)) != len(normalized_identifiers):

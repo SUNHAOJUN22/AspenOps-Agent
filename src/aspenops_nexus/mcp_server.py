@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from importlib.metadata import PackageNotFoundError, version as distribution_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import Any
 
@@ -59,9 +60,7 @@ def _require_supported_mcp_sdk() -> str:
     try:
         installed = distribution_version("mcp")
     except PackageNotFoundError as exc:
-        raise RuntimeError(
-            "Install the 'agent' extra: uv sync --frozen --extra agent"
-        ) from exc
+        raise RuntimeError("Install the 'agent' extra: uv sync --frozen --extra agent") from exc
 
     major_text = installed.split(".", 1)[0]
     try:
