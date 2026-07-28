@@ -74,7 +74,7 @@ def test_audit_cli_writes_machine_readable_failure(tmp_path: Path) -> None:
     assert report["forbidden_findings"][0]["kind"] == "dynamic_exec"
 
 
-def test_ci_persists_compile_audit_and_95_percent_floor() -> None:
+def test_ci_persists_compile_audit_and_evidence_based_coverage_floors() -> None:
     linux = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     windows = (ROOT / ".github" / "workflows" / "windows-control-plane.yml").read_text(
         encoding="utf-8"
@@ -83,5 +83,6 @@ def test_ci_persists_compile_audit_and_95_percent_floor() -> None:
     for workflow in (linux, windows):
         assert "python -m compileall -q src scripts" in workflow
         assert "scripts/audit_source_tree.py" in workflow
-    assert "--cov-fail-under=95.0" in linux
-    assert "--cov-fail-under=94.5" not in linux
+    assert 'coverage-floor: "95.0"' in linux
+    assert linux.count('coverage-floor: "94.5"') == 2
+    assert "--cov-fail-under=${{ matrix.coverage-floor }}" in linux
