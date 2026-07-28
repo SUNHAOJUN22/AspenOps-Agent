@@ -1,0 +1,220 @@
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+
+import pytest
+
+from aspenops_nexus import research
+from aspenops_nexus.research import (
+    ArtifactRef,
+    Assumption,
+    Calibration,
+    Dataset,
+    ObjectRef,
+    Parameter,
+    ResearchIssue,
+    ResearchStudyDocument,
+    ResearchValidationError,
+    ResearchValidationReport,
+    SourceRef,
+    Study,
+    Target,
+    Validation,
+    validate_research_document,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+EXAMPLE = ROOT / "examples" / "research-study.example.json"
+
+
+def _document() -> dict[str, object]:
+    value = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
+
+
+def _first(document: dict[str, object], key: str) -> dict[str, object]:
+    values = document[key]
+    assert isinstance(values, list) and values
+    value = values[0]
+    assert isinstance(value, dict)
+    return value
+
+
+def _codes(document: dict[str, object]) -> set[str]:
+    return {item.code for item in validate_research_document(document).issues}
+
+
+@pytest.mark.parametrize(
+    ("call", "message"),
+    [
+        (lambda: research._mapping([], "value"), "must be an object"),
+        (lambda: research._sequence({}, "value"), "must be an array"),
+        (lambda: research._text(1, "value"), "must be a string"),
+        (lambda: research._text("  ", "value"), "non-empty string"),
+        (lambda: research._text("x\ny", "value"), "safe text line"),
+        (lambda: research._boolean("true", "value"), "must be a boolean"),
+        (lambda: research._finite_number(True, "value"), "finite number"),
+        (lambda: research._finite_number(float("inf"), "value"), "finite number"),
+        (lambda: research._scalar(None, "value"), "finite scalar"),
+        (lambda: research._enum("bad", {"good"}, "value"), "must be one of"),
+        (lambda: research._reject_unknown({"bad": 1}, {"good"}, "value"), "unsupported fields"),
+        (lambda: research._safe_json(float("nan"), "value"), "non-finite"),
+        (lambda: research._safe_json({1, 2}, "value"), "non-JSON"),
+        (lambda: research._strings([], "value", nonempty=True), "at least one"),
+        (lambda: research._strings(["x", "x"], "value"), "duplicates"),
+        (lambda: research._id("wrong.prefix", "study", "value"), "study. prefix"),
+        (lambda: research._optional_sha256("bad", "value"), "SHA-256"),
+    ],
+)
+def test_low_level_rejections(call: object, message: str) -> None:
+    with pytest.raises(ResearchValidationError, match=message):
+        call()  # type: ignore[operator]
+
+
+def test_safe_json_depth_and_scalar_success_paths() -> None:
+    nested: object = "end"
+    for _ in range(research.MAX_JSON_DEPTH + 2):
+        nested = [nested]
+    with pytest.raises(ResearchValidationError, match="nesting depth"):
+        research._safe_json(nested, "nested")
+
+    assert research._scalar(True, "value") is True
+    assert research._scalar("value", "value") == "value"
+    assert research._scalar(3, "value") == 3
+    assert research._scalar(3.5, "value") == 3.5
+
+
+def test_artifact_and_source_optional_serialization_and_rejections() -> None:
+    with pytest.raises(ResearchValidationError, match="mutable web URL"):
+        ArtifactRef.from_dict({"uri": "https://example.invalid/file", "sha256": "a" * 64})
+    with pytest.raises(ResearchValidationError, match="sha256 is required"):
+        ArtifactRef.from_dict({"uri": "artifact:no-hash", "sha256": None})
+
+    artifact = ArtifactRef.from_dict(
+        {
+            "uri": "artifact:test/value.json",
+            "sha256": "a" * 64,
+            "media_type": "application/json",
+            "producer": {"type": "calibration", "id": "calibration.test"},
+        }
+    )
+    assert artifact.to_dict()["media_type"] == "application/json"
+    assert artifact.to_dict()["producer"] == {
+        "type": "calibration",
+        "id": "calibration.test",
+    }
+
+    source = SourceRef.from_dict(
+        {
+            "source_id": "source.test",
+            "kind": "literature",
+            "citation": "Citation",
+            "locator": "p. 1",
+            "sha256": "b" * 64,
+        },
+        label="source",
+    )
+    assert source.to_dict()["locator"] == "p. 1"
+    assert source.to_dict()["sha256"] == "b" * 64
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: research._refs([], "refs", nonempty=True),
+        lambda: research._refs(
+            [
+                {"type": "dataset", "id": "dataset.one"},
+                {"type": "dataset", "id": "dataset.one"},
+            ],
+            "refs",
+        ),
+        lambda: research._sources([], "sources", nonempty=True),
+        lambda: research._sources(
+            [
+                {"source_id": "source.one", "kind": "model", "citation": "one"},
+                {"source_id": "source.one", "kind": "model", "citation": "two"},
+            ],
+            "sources",
+        ),
+    ],
+)
+def test_reference_collection_contracts(call: object) -> None:
+    with pytest.raises(ResearchValidationError):
+        call()  # type: ignore[operator]
+
+
+def test_semantic_and_dataset_structural_edges() -> None:
+    with pytest.raises(ResearchValidationError, match="Registry key"):
+        research.DatasetVariable.from_dict(
+            {
+                "name": "bad",
+                "semantic_key": "\\Data\\bad",
+                "unit": "1",
+                "data_type": "number",
+                "role": "target",
+                "missing_policy": "reject",
+            },
+            label="variable",
+        )
+
+    dataset = _first(_document(), "datasets")
+    no_variables = copy.deepcopy(dataset)
+    no_variables["variables"] = []
+    with pytest.raises(ResearchValidationError, match="must not be empty"):
+        Dataset.from_dict(no_variables)
+
+    duplicate_variables = copy.deepcopy(dataset)
+    variables = duplicate_variables["variables"]
+    assert isinstance(variables, list)
+    variables.append(copy.deepcopy(variables[0]))
+    with pytest.raises(ResearchValidationError, match="variable names must be unique"):
+        Dataset.from_dict(duplicate_variables)
+
+    missing_identity = copy.deepcopy(dataset)
+    missing_identity["record_identity"] = ["undeclared"]
+    with pytest.raises(ResearchValidationError, match="undeclared variables"):
+        Dataset.from_dict(missing_identity)
+
+
+def test_target_transform_and_access_edges() -> None:
+    target = _first(_document(), "targets")
+
+    no_transform = copy.deepcopy(target)
+    no_transform["transform"] = None
+    assert Target.from_dict(no_transform).transform is None
+
+    declared_transform = copy.deepcopy(target)
+    declared_transform["transform"] = {"name": "declared", "version": 1}
+    assert Target.from_dict(declared_transform).transform == {
+        "name": "declared",
+        "version": 1,
+    }
+
+    wrong_access = copy.deepcopy(target)
+    binding = wrong_access["semantic_binding"]
+    assert isinstance(binding, dict)
+    binding["access"] = "write"
+    with pytest.raises(ResearchValidationError, match="access must be read"):
+        Target.from_dict(wrong_access)
+
+
+def test_parameter_structural_edges() -> None:
+    parameter = _first(_document(), "parameters")
+
+    wrong_access = copy.deepcopy(parameter)
+    binding = wrong_access["semantic_binding"]
+    assert isinstance(binding, dict)
+    binding["access"] = "read"
+    with pytest.raises(ResearchValidationError, match="access must be write"):
+        Parameter.from_dict(wrong_access)
+
+    invalid_bounds = copy.deepcopy(parameter)
+    invalid_bounds["bounds"] = {"lower": 2.0, "upper": 1.0}
+    with pytest.raises(ResearchValidationError, match="lower < upper"):
+        Parameter.from_dict(invalid_bounds)
+
+    missing_bounds = copy.deepcopy(parameter)
