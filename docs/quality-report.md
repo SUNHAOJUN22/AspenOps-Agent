@@ -2,27 +2,29 @@
 
 ## Scope
 
-This report records automated-test, workflow-trust, runtime-policy, dependency-audit, security-analysis, test-order-isolation, Windows-bootstrap, performance-evidence, licensed-evidence and documentation hardening applied directly to `main`. It does not certify Aspen physics or approve an engineering model.
+This report records automated-test, workflow-trust, runtime-policy, dependency-audit, security-analysis, source-tree-audit, test-order-isolation, Windows-bootstrap, performance-evidence, licensed-evidence and documentation hardening applied directly to `main`. It does not certify Aspen physics or approve an engineering model.
 
 Historical detail is retained in [`automated-test-audit-2026-07-22.md`](automated-test-audit-2026-07-22.md).
 
 ## Verified archived baseline
 
-Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13 plus quality/build/smoke. Python 3.12 recorded 563 passed with combined branch-aware coverage 94.9719800747198% against a 94.5% floor.
+Portable Actions run `29814739487`, at SHA `670e9523e915af309f16d959150cfadcd84219a6`, passed Python 3.11, 3.12 and 3.13 plus quality/build/smoke. Python 3.12 recorded 563 passed with combined branch-aware coverage 94.9719800747198% against the then-current 94.5% floor.
 
 Public Windows run `29814739334` recorded 104 passed in 2.06 seconds. These are archived validated baselines, not fresh current-head results.
 
 ## Public gates
 
-`ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, exact isolated Bandit `1.9.4` analysis over `src` and `scripts`, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
+`ci.yml` uses `ubuntu-24.04`, immutable Actions and `uv 0.11.16`. It enforces frozen dependencies, six Linux/Windows/Python audits, Ruff/format/mypy, full-source bytecode compilation, deterministic AST source-tree analysis, exact isolated Bandit `1.9.4` analysis over `src` and `scripts`, documentation contracts, source/Wheel build, Mock/README/MCP smoke and the full Python matrix.
 
-Python 3.12 additionally collects every pytest node ID and reruns the complete suite twice: once in reverse order and once in deterministic random order with seed `20260728`. Both runs emit their exact order, JUnit XML and logs. Collection failure, duplicate node IDs, an empty collection or either failing rerun closes the gate.
+The permanent branch-coverage floor is 95.0%. Python 3.12 additionally collects every pytest node ID and reruns the complete suite twice: once in reverse order and once in deterministic random order with seed `20260728`. Collection failure, duplicate node IDs, an empty collection or either failing rerun closes the gate.
+
+The source-tree audit parses every Python file under `src` and `scripts`, fails on syntax errors, dynamic `eval`/`exec`, unsafe pickle or marshal loading, `os.system`, unsafe `tempfile.mktemp`, unsafe YAML loading and subprocess calls that enable a shell. Broad boundary exception handlers remain machine-readable advisory findings rather than being silently ignored.
 
 The Bandit step reports only high-severity, high-confidence findings, writes machine-readable JSON, validates that JSON and fails with the original Bandit exit code. It is exact-version isolated and never uses `--exit-zero`.
 
-Frozen dependency metadata is also closed: `pyproject.toml` and `uv.lock` both record `mcp>=1.9,<2`. [`lock-sync-evidence.json`](lock-sync-evidence.json) records a real `uv 0.11.16` `uv lock --check` pass and binds SHA-256 digests for both files; a regression test fails if either digest or requirement drifts.
+Frozen dependency metadata is also closed: `pyproject.toml` and `uv.lock` both record `mcp>=1.9,<2`. [`lock-sync-evidence.json`](lock-sync-evidence.json) records a real `uv 0.11.16` `uv lock --check` pass and binds normalized SHA-256 digests for both files; a regression test fails if either digest or requirement drifts.
 
-`windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It validates PowerShell AST/helper behavior, dotenv safety, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, documentation, CLI and Doctor.
+`windows-control-plane.yml` uses `windows-2025`, Python 3.12 and `uv 0.11.16`. It validates PowerShell AST/helper behavior, dotenv safety, full Python source compilation, the same source-tree audit, Job Objects, IPC/recovery, Fake Aspen Plus/HYSYS, archives, paths, Wheel metadata edges, documentation, CLI and Doctor.
 
 ## Workflow governance
 
@@ -32,7 +34,9 @@ Automated tests lock:
 - pinned runners, Actions and uv;
 - read-only permissions and frozen dependency installation;
 - complete dependency-audit evidence;
+- full Python source compilation and deterministic source-tree AST auditing;
 - exact Bandit version, scope, severity/confidence thresholds, JSON evidence and fail-closed behavior;
+- a permanent 95.0% branch-coverage floor;
 - complete reverse and seeded-random suite reruns on Python 3.12;
 - explicit failed guards for non-main manual dispatches;
 - performance evidence isolated in runner temporary storage;
@@ -46,9 +50,13 @@ Automated tests lock:
 
 ## README visual governance
 
-Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual now exposes the Bandit `1.9.4` gate, reverse and seeded-random full-suite reruns, the 94.5% branch-coverage floor and the rule that missing current evidence is not a pass.
+Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual exposes the Bandit `1.9.4` gate, full-source compilation, deterministic AST auditing, reverse and seeded-random full-suite reruns, the 95.0% branch-coverage floor and the rule that missing current evidence is not a pass.
 
 The visual suite remains bound to implemented source markers and is checked for exact inventory, local paths, XML validity, a fixed `1440 × 720` view box, titles/descriptions, safe elements and attributes, portable fonts, size limits and absence of scripts, event handlers, remote resources and data URIs.
+
+## Distribution boundary testing
+
+The built Wheel must contain exactly one bounded `METADATA` member and exactly one MCP requirement scoped to the `agent` extra. Regression tests cover missing or duplicate Wheels, missing or duplicate metadata, oversized metadata, incorrect package names, missing version bounds, incorrect extra markers and CLI report persistence. The isolated Wheel smoke continues to use hashed locked runtime dependencies, offline project installation and `pip check`.
 
 ## Performance evidence
 
@@ -84,8 +92,8 @@ These controls prevent old-code rollback, checkout-failure contamination, backen
 
 Documentation tests verify version/title consistency, safe links, frozen instructions, six audits, explicit guard failure behavior, `GITHUB_SHA` binding, pre-checkout runner-temp artifacts, per-attempt licensed evidence, certification boundaries, and absence of ChatGPT-internal citation or sandbox-link markup.
 
-The closure-gate tests additionally bind the exact Bandit command and full-suite order script into `ci.yml`, preventing later documentation-only claims or silent removal of either gate.
+The closure-gate tests additionally bind the exact Bandit command, source-tree audit and full-suite order script into `ci.yml`, preventing later documentation-only claims or silent removal of those gates.
 
 ## Evidence boundary
 
-The 563-test portable and 104-test Windows figures remain the inspected archived baseline. The new security and order gates are current source contracts, but they are not called green until a fresh hosted run for the exact current `main` SHA publishes complete artifacts. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
+The committed Linux and Windows qualification JSON files record the last completed cross-platform full-suite result. New permanent gates are not called green merely because their source is committed: the exact current `main` SHA must complete the hosted Linux and Windows workflows and publish current artifacts. Real certification still requires licensed Windows, an approved model, verified semantics, signing material and human engineering review.
