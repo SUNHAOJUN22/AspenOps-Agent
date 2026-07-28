@@ -1,0 +1,559 @@
+# One-time main-only qualification for permanent source and distribution gates.
+name: Deep audit qualify once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-deep-audit-qualify-once
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Patch permanent gates and qualify Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="var/deep-audit-linux"
+          log_path="$evidence_dir/qualification.log"
+          saved_evidence="$RUNNER_TEMP/deep-audit-linux.json"
+          rm -rf "$evidence_dir" /tmp/aspenops-deep-audit-wheel
+          mkdir -p "$evidence_dir"
+          : > "$log_path"
+          exec > >(tee -a "$log_path") 2>&1
+
+          finish() {
+            local status=$?
+            trap - EXIT
+            set +e
+            STATUS="$status" EVIDENCE_DIR="$evidence_dir" SAVED_EVIDENCE="$saved_evidence" python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import platform
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          directory = Path(os.environ["EVIDENCE_DIR"])
+          junit = {}
+          junit_path = directory / "junit.xml"
+          if junit_path.exists():
+              root = ET.parse(junit_path).getroot()
+              suite = root if "tests" in root.attrib else root.find("testsuite")
+              if suite is not None:
+                  junit = {
+                      "tests": int(suite.attrib.get("tests", 0)),
+                      "failures": int(suite.attrib.get("failures", 0)),
+                      "errors": int(suite.attrib.get("errors", 0)),
+                      "skipped": int(suite.attrib.get("skipped", 0)),
+                      "time_seconds": float(suite.attrib.get("time", 0.0)),
+                  }
+          coverage = None
+          coverage_path = directory / "coverage.json"
+          if coverage_path.exists():
+              coverage = json.loads(coverage_path.read_text(encoding="utf-8"))["totals"][
+                  "percent_covered"
+              ]
+          audit = {}
+          audit_path = directory / "source-tree-audit.json"
+          if audit_path.exists():
+              audit = json.loads(audit_path.read_text(encoding="utf-8"))
+          status = int(os.environ["STATUS"])
+          log = directory / "qualification.log"
+          payload = {
+              "schema": "aspenops.deep-audit/v1",
+              "platform": "linux",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "python_runtime": platform.python_version(),
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "coverage_floor_percent": 95.0,
+              "branch_coverage_percent": coverage,
+              "junit": junit,
+              "source_tree_audit": audit,
+              "overall": "PASS" if status == 0 else "FAIL",
+              "failure_tail": []
+              if status == 0
+              else log.read_text(encoding="utf-8", errors="replace").splitlines()[-240:],
+          }
+          Path(os.environ["SAVED_EVIDENCE"]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [[ "$status" -ne 0 ]]; then
+              git restore --source=HEAD --staged --worktree . >/dev/null 2>&1 || true
+              rm -f .github/workflows/deep-audit-qualify-once.yml
+              cp "$saved_evidence" docs/deep-audit-linux.json
+              git add -A
+              git commit -m "test: record permanent deep audit blocker"
+              git push origin HEAD:main
+              exit "$status"
+            fi
+            cp "$saved_evidence" docs/deep-audit-linux.json
+            rm -f docs/repository-repair-evidence.json
+            git add -A
+            git commit -m "test: enforce permanent deep source quality gates"
+            git push origin HEAD:main
+          }
+          trap finish EXIT
+
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          rm .github/workflows/deep-audit-qualify-once.yml
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"expected source missing in {path}: {old[:100]!r}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+          replace_once(
+              ".github/workflows/ci.yml",
+              "      - name: Strict mypy\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run mypy src 2>&1 | tee var/ci/mypy.log\n"
+              "      - name: Bandit security analysis\n",
+              "      - name: Strict mypy\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run mypy src 2>&1 | tee var/ci/mypy.log\n"
+              "      - name: Compile Python sources\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run python -m compileall -q src scripts\n"
+              "      - name: Audit Python source tree\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          uv run python scripts/audit_source_tree.py \\\n"
+              "            --output var/ci/source-tree-audit.json\n"
+              "      - name: Bandit security analysis\n",
+          )
+          ci = Path(".github/workflows/ci.yml")
+          ci.write_text(
+              ci.read_text(encoding="utf-8").replace(
+                  "--cov-fail-under=94.5", "--cov-fail-under=95.0"
+              ),
+              encoding="utf-8",
+          )
+
+          replace_once(
+              ".github/workflows/windows-control-plane.yml",
+              "      - name: Strict mypy\n"
+              "        shell: pwsh\n"
+              "        run: |\n"
+              "          uv run mypy src *>&1 |\n"
+              "            Tee-Object -FilePath var/ci/mypy.log\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "      - name: Process, scheduler, archive, backend, certification, IR, and workflow contracts\n",
+              "      - name: Strict mypy\n"
+              "        shell: pwsh\n"
+              "        run: |\n"
+              "          uv run mypy src *>&1 |\n"
+              "            Tee-Object -FilePath var/ci/mypy.log\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "      - name: Compile and audit Python sources\n"
+              "        shell: pwsh\n"
+              "        run: |\n"
+              "          uv run python -m compileall -q src scripts\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "          uv run python scripts/audit_source_tree.py `\n"
+              "            --output var/ci/source-tree-audit.json\n"
+              "          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+              "      - name: Process, scheduler, archive, backend, certification, IR, and workflow contracts\n",
+          )
+          replace_once(
+              ".github/workflows/windows-control-plane.yml",
+              "            tests/test_wheel_smoke_governance.py `\n"
+              "            --junitxml=var/ci/windows-contracts.xml `\n",
+              "            tests/test_wheel_smoke_governance.py `\n"
+              "            tests/test_wheel_metadata_edges.py `\n"
+              "            tests/test_source_tree_audit.py `\n"
+              "            --junitxml=var/ci/windows-contracts.xml `\n",
+          )
+
+          for path in ("README.md", "README.en.md", "AGENTS.md", "CONTRIBUTING.md"):
+              target = Path(path)
+              target.write_text(
+                  target.read_text(encoding="utf-8").replace(
+                      "--cov-fail-under=94.5", "--cov-fail-under=95.0"
+                  ),
+                  encoding="utf-8",
+              )
+          for path in ("README.md", "README.en.md"):
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              text = text.replace("| 覆盖率门槛 | 94.5% |", "| 覆盖率门槛 | 95.0% |")
+              text = text.replace("| Coverage floor | 94.5% |", "| Coverage floor | 95.0% |")
+              target.write_text(text, encoding="utf-8")
+
+          quality = Path("docs/quality-report.md")
+          quality.write_text(
+              quality.read_text(encoding="utf-8").replace(
+                  "the 94.5% branch-coverage floor",
+                  "the 95.0% branch-coverage floor",
+              ),
+              encoding="utf-8",
+          )
+          visual = Path("docs/assets/readme/test-matrix.svg")
+          visual.write_text(
+              visual.read_text(encoding="utf-8").replace(
+                  "BRANCH COVERAGE 94.5%", "BRANCH COVERAGE 95.0%"
+              ),
+              encoding="utf-8",
+          )
+          contracts = Path("tests/test_documentation_contracts.py")
+          contracts.write_text(
+              contracts.read_text(encoding="utf-8").replace(
+                  'assert "--cov-fail-under=94.5" in text',
+                  'assert "--cov-fail-under=95.0" in text',
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          uv run ruff check . --fix
+          uv run ruff format .
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py \
+            --output "$evidence_dir/source-tree-audit.json"
+
+          for platform in linux windows; do
+            for version in 3.11 3.12 3.13; do
+              uv audit --frozen \
+                --python-platform "$platform" \
+                --python-version "$version" \
+                --output-format json \
+                > "$evidence_dir/dependency-audit-${platform}-py${version}.json"
+              python -m json.tool "$evidence_dir/dependency-audit-${platform}-py${version}.json" >/dev/null
+            done
+          done
+
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:"$evidence_dir/coverage.json" \
+            --junitxml="$evidence_dir/junit.xml" \
+            --durations=20 \
+            --cov-fail-under=95.0
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 --output-dir "$evidence_dir/order"
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output "$evidence_dir/bandit.json"
+          python -m json.tool "$evidence_dir/bandit.json" >/dev/null
+          uv build
+          uv run python scripts/check_wheel_metadata.py \
+            --dist-dir dist --output "$evidence_dir/wheel-metadata.json"
+          uv export --frozen --extra agent --no-default-groups --no-emit-project \
+            --format requirements.txt --output-file "$evidence_dir/runtime-requirements.txt"
+          uv venv --python 3.12 /tmp/aspenops-deep-audit-wheel
+          uv pip sync --python /tmp/aspenops-deep-audit-wheel/bin/python \
+            --require-hashes "$evidence_dir/runtime-requirements.txt"
+          uv pip install --python /tmp/aspenops-deep-audit-wheel/bin/python \
+            --offline --no-deps dist/*.whl
+          uv pip check --python /tmp/aspenops-deep-audit-wheel/bin/python
+          /tmp/aspenops-deep-audit-wheel/bin/aspenops --version
+          /tmp/aspenops-deep-audit-wheel/bin/aspenops demo
+
+          EVIDENCE_DIR="$evidence_dir" python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          directory = Path(os.environ["EVIDENCE_DIR"])
+          coverage = json.loads((directory / "coverage.json").read_text(encoding="utf-8"))[
+              "totals"
+          ]["percent_covered"]
+          root = ET.parse(directory / "junit.xml").getroot()
+          suite = root if "tests" in root.attrib else root.find("testsuite")
+          tests = int(suite.attrib.get("tests", 0)) if suite is not None else 0
+          run_id = os.environ["GITHUB_RUN_ID"]
+          source_sha = os.environ["GITHUB_SHA"]
+
+          def upsert_row(path: str, label: str, value: str, after: str) -> None:
+              target = Path(path)
+              lines = target.read_text(encoding="utf-8").splitlines()
+              row = f"| {label} | {value} |"
+              for index, line in enumerate(lines):
+                  if line.startswith(f"| {label} |"):
+                      lines[index] = row
+                      break
+              else:
+                  index = next(i for i, line in enumerate(lines) if line.startswith(after))
+                  lines.insert(index + 1, row)
+              target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          upsert_row(
+              "README.md",
+              "最新 Linux 深度资格证据",
+              f"Actions run `{run_id}`，{tests} passed，0 failed，分支覆盖率 {coverage:.6f}%，源 SHA `{source_sha}`",
+              "| 公共测试矩阵 |",
+          )
+          upsert_row(
+              "README.en.md",
+              "Latest Linux deep qualification",
+              f"Actions run `{run_id}`; {tests} passed, 0 failed; branch coverage {coverage:.6f}%; source SHA `{source_sha}`",
+              "| Public test matrix |",
+          )
+          quality = Path("docs/quality-report.md")
+          text = quality.read_text(encoding="utf-8")
+          marker = "## Current deep qualification"
+          section = (
+              f"{marker}\n\nHosted Linux run `{run_id}` at source SHA `{source_sha}` recorded "
+              f"{tests} passed, zero failures/errors/skips and {coverage:.6f}% branch-aware coverage "
+              "against the permanent 95.0% floor. It also compiled every Python source, ran the "
+              "source-tree AST audit, six frozen dependency audits, exact Bandit 1.9.4 high/high "
+              "analysis, reverse and seeded-random full-suite reruns, build, Wheel metadata "
+              "validation and isolated Wheel installation.\n"
+          )
+          if marker in text:
+              start = text.index(marker)
+              end = text.find("\n## ", start + len(marker))
+              if end < 0:
+                  text = text[:start].rstrip() + "\n\n" + section
+              else:
+                  text = text[:start].rstrip() + "\n\n" + section + "\n" + text[end + 1 :]
+          else:
+              insert = text.index("\n## Public gates")
+              text = text[:insert].rstrip() + "\n\n" + section + text[insert:]
+          quality.write_text(text, encoding="utf-8")
+          PY
+
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest -W error::ResourceWarning \
+            tests/test_documentation_contracts.py \
+            tests/test_readme_visual_assets.py \
+            tests/test_source_tree_audit.py
+          git diff --check
+
+  windows:
+    needs: linux
+    if: ${{ needs.linux.result == 'success' }}
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Qualify permanent gates on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $directory = "var/deep-audit-windows"
+          Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $directory | Out-Null
+          $statusPath = Join-Path $directory "status.tsv"
+          Set-Content -LiteralPath $statusPath -Value "" -NoNewline
+          $script:failed = 0
+
+          function Invoke-Gate {
+            param([string]$Name, [scriptblock]$Command)
+            $logPath = Join-Path $directory "$Name.log"
+            $code = 0
+            try {
+              & $Command *>&1 | Out-File -LiteralPath $logPath -Encoding utf8
+              if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
+            } catch {
+              $_ | Out-String | Out-File -LiteralPath $logPath -Encoding utf8 -Append
+              $code = 1
+            }
+            Add-Content -LiteralPath $statusPath -Value "$Name`t$code"
+            if ($code -ne 0) { $script:failed = 1 }
+          }
+
+          Invoke-Gate "lock-check" { uv lock --check }
+          Invoke-Gate "sync" { uv sync --frozen --extra dev --extra windows --extra agent --extra signing }
+          Invoke-Gate "ruff" { uv run ruff check . }
+          Invoke-Gate "ruff-format" { uv run ruff format --check . }
+          Invoke-Gate "mypy" { uv run mypy src }
+          Invoke-Gate "compileall" { uv run python -m compileall -q src scripts }
+          Invoke-Gate "source-audit" {
+            uv run python scripts/audit_source_tree.py --output var/deep-audit-windows/source-tree-audit.json
+          }
+          Invoke-Gate "pytest" {
+            uv run pytest -W error::ResourceWarning `
+              --junitxml=var/deep-audit-windows/junit.xml `
+              --durations=20
+          }
+          Invoke-Gate "build" { uv build }
+          Invoke-Gate "wheel-metadata" {
+            uv run python scripts/check_wheel_metadata.py `
+              --dist-dir dist `
+              --output var/deep-audit-windows/wheel-metadata.json
+          }
+          Invoke-Gate "cli" {
+            uv run aspenops --version
+            uv run aspenops --help *> $null
+            uv run aspenops doctor *> $null
+          }
+
+          $env:EVIDENCE_DIR = $directory
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          import platform
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          directory = Path(os.environ["EVIDENCE_DIR"])
+          statuses = {}
+          for line in (directory / "status.tsv").read_text(encoding="utf-8-sig").splitlines():
+              if line.strip():
+                  name, code = line.split("\t")
+                  statuses[name] = int(code)
+          junit = {}
+          path = directory / "junit.xml"
+          if path.exists():
+              root = ET.parse(path).getroot()
+              suite = root if "tests" in root.attrib else root.find("testsuite")
+              if suite is not None:
+                  junit = {
+                      "tests": int(suite.attrib.get("tests", 0)),
+                      "failures": int(suite.attrib.get("failures", 0)),
+                      "errors": int(suite.attrib.get("errors", 0)),
+                      "skipped": int(suite.attrib.get("skipped", 0)),
+                      "time_seconds": float(suite.attrib.get("time", 0.0)),
+                  }
+          failure_tail = {}
+          for name, code in statuses.items():
+              if code:
+                  log = directory / f"{name}.log"
+                  failure_tail[name] = log.read_text(
+                      encoding="utf-8-sig", errors="replace"
+                  ).splitlines()[-160:]
+          payload = {
+              "schema": "aspenops.deep-audit/v1",
+              "platform": "windows",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "python_runtime": platform.python_version(),
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "junit": junit,
+              "gate_status": statuses,
+              "overall": "PASS" if statuses and all(code == 0 for code in statuses.values()) else "FAIL",
+              "failure_tail": failure_tail,
+          }
+          Path("docs/deep-audit-windows.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          '@ | uv run python -
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/deep-audit-windows.json
+          if ($script:failed -ne 0) {
+            git commit -m "test: record Windows permanent deep audit blocker"
+            git push origin HEAD:main
+            exit 1
+          }
+
+          $env:DEEP_AUDIT_RUN_ID = $env:GITHUB_RUN_ID
+          $env:DEEP_AUDIT_SOURCE_SHA = $env:GITHUB_SHA
+          @'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = json.loads(Path("docs/deep-audit-windows.json").read_text(encoding="utf-8"))
+          tests = evidence["junit"]["tests"]
+          run_id = os.environ["DEEP_AUDIT_RUN_ID"]
+          source_sha = os.environ["DEEP_AUDIT_SOURCE_SHA"]
+
+          def upsert_row(path: str, label: str, value: str, after: str) -> None:
+              target = Path(path)
+              lines = target.read_text(encoding="utf-8").splitlines()
+              row = f"| {label} | {value} |"
+              for index, line in enumerate(lines):
+                  if line.startswith(f"| {label} |"):
+                      lines[index] = row
+                      break
+              else:
+                  index = next(i for i, line in enumerate(lines) if line.startswith(after))
+                  lines.insert(index + 1, row)
+              target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          upsert_row(
+              "README.md",
+              "最新 Windows 深度资格证据",
+              f"Actions run `{run_id}`，{tests} passed，0 failed，源 SHA `{source_sha}`",
+              "| 最新 Linux 深度资格证据 |",
+          )
+          upsert_row(
+              "README.en.md",
+              "Latest Windows deep qualification",
+              f"Actions run `{run_id}`; {tests} passed, 0 failed; source SHA `{source_sha}`",
+              "| Latest Linux deep qualification |",
+          )
+          PY
+          uv run pytest -W error::ResourceWarning `
+            tests/test_documentation_contracts.py `
+            tests/test_readme_visual_assets.py `
+            tests/test_source_tree_audit.py
+          git add -A
+          git commit -m "test: record passing permanent Windows deep audit"
+          git push origin HEAD:main
