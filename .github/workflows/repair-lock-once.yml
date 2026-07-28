@@ -1,0 +1,75 @@
+# One-time main-only lock synchronization. Remove after docs/lock-sync-evidence.json is committed.
+name: Repair lock once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-lock-repair-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Rebuild and verify frozen lock metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          uv lock
+          uv lock --check
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          pyproject = Path("pyproject.toml")
+          lockfile = Path("uv.lock")
+          project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+          agent_requirements = project["project"]["optional-dependencies"]["agent"]
+          requirement = next(item for item in agent_requirements if item.startswith("mcp"))
+          if requirement != "mcp>=1.9,<2":
+              raise SystemExit(f"unexpected MCP requirement: {requirement}")
+          lock_text = lockfile.read_text(encoding="utf-8")
+          if 'name = "mcp"' not in lock_text or '<2' not in lock_text:
+              raise SystemExit("uv.lock does not preserve the MCP <2 boundary")
+          evidence = {
+              "schema": "aspenops.lock-sync/v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "mcp_requirement": requirement,
+              "lock_check": "PASS",
+              "pyproject_sha256": hashlib.sha256(pyproject.read_bytes()).hexdigest(),
+              "uv_lock_sha256": hashlib.sha256(lockfile.read_bytes()).hexdigest(),
+          }
+          Path("docs/lock-sync-evidence.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git add uv.lock docs/lock-sync-evidence.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build: synchronize frozen MCP boundary"
+          git push origin HEAD:main
