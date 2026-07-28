@@ -1,11 +1,11 @@
 {
   "exit_code": 1,
   "log_tail": [
-    "expected patch source missing in src/aspenops_nexus/evaluation.py: '    if isinstance(raw, (int, float)) and not isinstance(raw, bool):\\n        retu'"
+    "Settings direct-construction real-backend block not found"
   ],
   "overall": "FAIL",
   "run_attempt": "1",
-  "run_id": "30324591623",
+  "run_id": "30324687384",
   "schema": "aspenops.functional-repair/v1",
-  "source_sha": "258b7b4fa37bb1ef5a83741325f69d5a0a0c06db"
+  "source_sha": "75d2d53add0380de5c097dce424f333d84d797e2"
 }
