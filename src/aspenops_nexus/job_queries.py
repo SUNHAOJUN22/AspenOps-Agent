@@ -43,9 +43,8 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 
 def _has_recent_index(connection: sqlite3.Connection) -> bool:
-    return any(
-        str(row[1]) == _RECENT_INDEX for row in connection.execute("PRAGMA index_list('jobs')")
-    )
+    with closing(connection.execute("PRAGMA index_list('jobs')")) as cursor:
+        return any(str(row[1]) == _RECENT_INDEX for row in cursor)
 
 
 def _ensure_recent_index(connection: sqlite3.Connection) -> None:
