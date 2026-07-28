@@ -1,0 +1,309 @@
+# One-time main-only repository repair. Deletes itself only after all Linux gates pass.
+name: Repository repair once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-repository-repair-once
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply analyzed fixes and require complete Linux closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/repair
+          log_path="var/repair/repository-repair.log"
+          : > "$log_path"
+          exec > >(tee -a "$log_path") 2>&1
+
+          finish() {
+            local status=$?
+            trap - EXIT
+            set +e
+            if [[ "$status" -ne 0 ]]; then
+              git restore --source=HEAD --staged --worktree . >/dev/null 2>&1 || true
+              STATUS="$status" python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          log = Path("var/repair/repository-repair.log")
+          payload = {
+              "schema": "aspenops.repository-repair/v1",
+              "source_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "exit_code": int(os.environ["STATUS"]),
+              "overall": "FAIL",
+              "log_tail": log.read_text(encoding="utf-8", errors="replace").splitlines()[-300:],
+          }
+          Path("docs/repository-repair-evidence.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+              git add docs/repository-repair-evidence.json
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "test: record repository repair blocker"
+              git push origin HEAD:main
+              exit "$status"
+            fi
+
+            rm -f docs/repository-repair-evidence.json
+            git add -A
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix: close repository test and quality regressions"
+            git push origin HEAD:main
+          }
+          trap finish EXIT
+
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"expected source missing in {path}: {old[:100]!r}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "src/aspenops_nexus/evaluation.py",
+              "    if isinstance(raw, bool | str):\n"
+              "        return raw\n"
+              "    target_unit = unit or node.native_unit\n"
+              "    return convert(float(raw), node.native_unit, target_unit)\n",
+              "    if isinstance(raw, bool | str):\n"
+              "        return raw\n"
+              "    numeric = float(raw)\n"
+              "    if not math.isfinite(numeric):\n"
+              "        return numeric\n"
+              "    target_unit = unit or node.native_unit\n"
+              "    return convert(numeric, node.native_unit, target_unit)\n",
+          )
+
+          replace_once(
+              "src/aspenops_nexus/cli.py",
+              '    optimize.add_argument("--output")\n',
+              '    optimize.add_argument("--output", default="var/optimization-result.json")\n',
+          )
+
+          replace_once(
+              "src/aspenops_nexus/registry.py",
+              '    raise RegistryError(f"Registry JSON contains unsupported constant: {value}")\n',
+              '    raise RegistryError(\n'
+              '        "Registry JSON convergence threshold and numeric bounds must be finite numeric; "\n'
+              '        f"unsupported constant: {value}"\n'
+              '    )\n',
+          )
+
+          replace_once(
+              "scripts/run_test_order_gate.py",
+              '    command = [sys.executable, "-m", "pytest", "--collect-only", "-q", *pytest_args]\n',
+              '    command = [\n'
+              '        sys.executable,\n'
+              '        "-m",\n'
+              '        "pytest",\n'
+              '        "-o",\n'
+              '        "addopts=",\n'
+              '        "--collect-only",\n'
+              '        "-q",\n'
+              '        *pytest_args,\n'
+              '    ]\n',
+          )
+
+          replace_once(
+              "tests/test_ci_closure_gates.py",
+              '    assert "--collect-only" in script\n',
+              '    assert "--collect-only" in script\n    assert "addopts=" in script\n',
+          )
+
+          replace_once(
+              "tests/test_batch_resource_limits.py",
+              "        Settings(state_dir=tmp_path, allowed_roots=(ROOT,)),\n",
+              "        Settings(\n"
+              "            backend=\"aspen_plus\",\n"
+              "            state_dir=tmp_path.resolve(),\n"
+              "            allowed_roots=(ROOT, tmp_path.resolve()),\n"
+              "        ),\n",
+          )
+
+          replace_once(
+              "tests/test_certification_v2.py",
+              '        Settings(backend="aspen_plus", state_dir=tmp_path),\n',
+              '        Settings(\n'
+              '            backend="aspen_plus",\n'
+              '            allowed_roots=(tmp_path.resolve(),),\n'
+              '            state_dir=(tmp_path / "state").resolve(),\n'
+              '        ),\n',
+          )
+          replace_once(
+              "tests/test_certification_v2.py",
+              '        Settings(backend="hysys", state_dir=tmp_path),\n',
+              '        Settings(\n'
+              '            backend="hysys",\n'
+              '            allowed_roots=(tmp_path.resolve(),),\n'
+              '            state_dir=(tmp_path / "state").resolve(),\n'
+              '        ),\n',
+          )
+
+          replace_once(
+              "tests/test_optimization_validation_complete.py",
+              '        Settings(state_dir=tmp_path, backend="hysys"),\n',
+              '        Settings(\n'
+              '            backend="hysys",\n'
+              '            allowed_roots=(tmp_path.resolve(),),\n'
+              '            state_dir=(tmp_path / "state").resolve(),\n'
+              '        ),\n',
+          )
+
+          replace_once(
+              "scripts/measure_job_store_queries.py",
+              "import argparse\nimport json\n",
+              "import argparse\nimport json\nfrom contextlib import closing\n",
+          )
+          replace_once(
+              "scripts/measure_job_store_queries.py",
+              "    with sqlite3.connect(path) as connection:\n        connection.executemany(\n",
+              "    with closing(sqlite3.connect(path)) as connection, connection:\n        connection.executemany(\n",
+          )
+          replace_once(
+              "scripts/measure_job_store_queries.py",
+              "        with sqlite3.connect(path) as connection:\n            indexes = sorted(str(row[1]) for row in connection.execute(\"PRAGMA index_list('jobs')\"))\n",
+              "        with closing(sqlite3.connect(path)) as connection, connection:\n            indexes = sorted(\n                str(row[1]) for row in connection.execute(\"PRAGMA index_list('jobs')\")\n            )\n",
+          )
+
+          chinese_marker = (
+              "artifact 名称同时包含 `github.run_id` 与 `github.run_attempt`。当前 job 证据写入 "
+              "`$RUNNER_TEMP`，上传通过 `${{ runner.temp }}` 读取，并统一使用 "
+              "`if-no-files-found: error`。缺失 JUnit 或提前失败显示 `INCOMPLETE`；出现 "
+              "failure/error 显示 `FAIL`。"
+          )
+          chinese_addition = (
+              chinese_marker
+              + "\n\n测试可视化由 `scripts/render_test_dashboard.py` 生成，正式制品包括 "
+              "`test-dashboard-quality.html`、`test-dashboard-windows.html` 和 "
+              "`test-dashboard-licensed.html`。"
+          )
+          replace_once("README.md", chinese_marker, chinese_addition)
+
+          english_marker = (
+              "Artifact names include both `github.run_id` and `github.run_attempt`. Current-job evidence "
+              "is written under `$RUNNER_TEMP` and uploaded through `${{ runner.temp }}` with "
+              "`if-no-files-found: error`. Missing JUnit or early termination reports `INCOMPLETE`; a "
+              "failure or error reports `FAIL`."
+          )
+          english_addition = (
+              english_marker
+              + "\n\nTest visualization is generated by `scripts/render_test_dashboard.py`; governed outputs "
+              "include `test-dashboard-quality.html`, `test-dashboard-windows.html` and "
+              "`test-dashboard-licensed.html`."
+          )
+          replace_once("README.en.md", english_marker, english_addition)
+
+          audit_path = Path("docs/automated-test-audit-2026-07-22.md")
+          audit = audit_path.read_text(encoding="utf-8")
+          if "refs/heads/main" not in audit:
+              audit_path.write_text(
+                  audit.rstrip()
+                  + "\n\nManual real-certification and performance dispatch guards require the exact Git ref "
+                  + "`refs/heads/main`; non-main refs fail closed.\n",
+                  encoding="utf-8",
+              )
+
+          for path in (
+              "tests/test_licensed_certification_workflow.py",
+              "tests/test_workflow_governance.py",
+          ):
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              for value in (
+                  "$env:LICENSED_EVIDENCE_DIR\\preflight.json",
+                  "$env:LICENSED_EVIDENCE_DIR\\licensed-certification-report.json",
+                  "$env:LICENSED_EVIDENCE_DIR\\licensed-certification-bundle.zip",
+                  "$env:ASPENOPS_STATE_DIR\\licensed-certification",
+              ):
+                  text = text.replace(f'"{value}"', f'r"{value}"')
+                  text = text.replace(f"'{value}'", f"r'{value}'")
+              target.write_text(text, encoding="utf-8")
+          PY
+
+          uv run ruff check . --fix
+          uv run ruff format .
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          pyproject = Path("pyproject.toml")
+          lock = Path("uv.lock")
+          project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+          requirement = next(
+              item
+              for item in project["project"]["optional-dependencies"]["agent"]
+              if item.startswith("mcp")
+          )
+          payload = {
+              "schema": "aspenops.lock-sync/v1",
+              "lock_check": "PASS",
+              "mcp_requirement": requirement,
+              "pyproject_sha256": hashlib.sha256(pyproject.read_bytes()).hexdigest(),
+              "uv_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+              "uv_version": subprocess.check_output(["uv", "--version"], text=True).strip(),
+              "source_sha": "repository-repair-once",
+          }
+          Path("docs/lock-sync-evidence.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          rm .github/workflows/repository-repair-once.yml
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus --cov-branch --cov-report=term-missing \
+            --cov-report=json:var/repair/coverage.json \
+            --junitxml=var/repair/junit.xml --durations=20 --cov-fail-under=94.5
+          uv run python scripts/run_test_order_gate.py --seed 20260728 --output-dir var/repair/order
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts --severity-level high --confidence-level high \
+            --format json --output var/repair/bandit.json
+          python -m json.tool var/repair/bandit.json >/dev/null
+          uv build
