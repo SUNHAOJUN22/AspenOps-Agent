@@ -52,18 +52,21 @@ uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
+uv run python -m compileall -q src scripts
+uv run python scripts/audit_source_tree.py
 uv run pytest -W error::ResourceWarning \
   --cov=aspenops_nexus \
   --cov-branch \
-  --cov-fail-under=94.5
+  --cov-fail-under=95.0
 uv build
 uv run python scripts/check_mcp.py
+uv run python scripts/check_wheel_metadata.py --dist-dir dist
 uv run python scripts/validate_process_ir.py \
   examples/process-intent.example.json
 uv run aspenops --version
 uv run aspenops demo
 ```
 
-On Windows, include `--extra windows`. The authoritative CI additionally audits the frozen lock for Linux and Windows across Python 3.11, 3.12 and 3.13.
+On Windows, include `--extra windows`. The authoritative CI additionally audits the frozen lock for Linux and Windows across Python 3.11, 3.12 and 3.13, runs exact Bandit `1.9.4` high/high analysis, and reruns the complete Python 3.12 suite in reverse and seeded-random order.
 
 Real Aspen certification remains `PENDING_REAL_ASPEN_CERTIFICATION` until the protected licensed self-hosted Windows workflow produces complete signed evidence and a human engineer accepts the scoped result.
