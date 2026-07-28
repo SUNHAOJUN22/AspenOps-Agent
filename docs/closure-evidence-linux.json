@@ -1,0 +1,57 @@
+{
+  "coverage_percent": {},
+  "gate_status": {
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "demo": 0,
+    "dependency-audit": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 1,
+    "order-312": 1,
+    "process-ir": 0,
+    "pytest-311": 2,
+    "pytest-312": 2,
+    "pytest-313": 2,
+    "ruff": 1,
+    "ruff-format": 1,
+    "sync-311": 0,
+    "sync-312": 0,
+    "sync-312-final": 0,
+    "sync-313": 0,
+    "wheel-smoke": 0
+  },
+  "junit": {
+    "3.11": {
+      "errors": 1,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 1
+    },
+    "3.12": {
+      "errors": 1,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 1
+    },
+    "3.13": {
+      "errors": 1,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 1
+    }
+  },
+  "overall": "FAIL",
+  "platform": "linux",
+  "python_runtime": "3.12.3",
+  "qualified_tree_sha256": "d0c5a16e7cd6c7e0bf2c229c5ee85a558703bf6b5572addb01783f969f0a5192",
+  "run_attempt": "1",
+  "run_id": "30323409662",
+  "runner_arch": "X64",
+  "runner_os": "Linux",
+  "schema": "aspenops.closure-evidence/v1",
+  "source_sha": "ecfffe721bf786658f45d0bed3f9996dfbf98d12",
+  "uv_version": "uv 0.11.16 (x86_64-unknown-linux-gnu)",
+  "workflow_removed_during_qualification": true
+}
