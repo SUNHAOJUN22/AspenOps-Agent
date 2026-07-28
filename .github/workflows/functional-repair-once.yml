@@ -103,7 +103,7 @@ jobs:
 
           config_path = Path("src/aspenops_nexus/config.py")
           config_text = config_path.read_text(encoding="utf-8")
-          start_marker = "        if self.backend in {\"aspen_plus\", \"hysys\"} and not self.allowed_roots:\n"
+          start_marker = "        if self.backend == \"mock\":\n"
           start = config_text.find(start_marker)
           if start < 0:
               raise SystemExit("Settings direct-construction real-backend block not found")
