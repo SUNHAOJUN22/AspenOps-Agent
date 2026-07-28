@@ -14,6 +14,11 @@ UV_LOCK = ROOT / "uv.lock"
 LOCK_EVIDENCE = ROOT / "docs" / "lock-sync-evidence.json"
 
 
+def _normalized_text_sha256(path: Path) -> str:
+    normalized = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def test_order_helpers_are_deterministic_and_non_mutating() -> None:
     namespace = runpy.run_path(str(ORDER_GATE))
     reverse_order = namespace["_reverse_order"]
@@ -70,5 +75,6 @@ def test_frozen_mcp_boundary_and_lock_evidence_are_current() -> None:
     assert evidence["lock_check"] == "PASS"
     assert evidence["mcp_requirement"] == requirement
     assert evidence["uv_version"].startswith("uv 0.11.16 ")
-    assert evidence["pyproject_sha256"] == hashlib.sha256(PYPROJECT.read_bytes()).hexdigest()
-    assert evidence["uv_lock_sha256"] == hashlib.sha256(UV_LOCK.read_bytes()).hexdigest()
+    assert evidence["hash_normalization"] == "text-newlines-lf"
+    assert evidence["pyproject_sha256"] == _normalized_text_sha256(PYPROJECT)
+    assert evidence["uv_lock_sha256"] == _normalized_text_sha256(UV_LOCK)
