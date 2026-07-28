@@ -94,10 +94,8 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy src
-          rm .github/workflows/closure-evidence-once.yml
           rm .github/workflows/source-repair-once.yml
           uv run pytest -W error::ResourceWarning
-          git restore .github/workflows/closure-evidence-once.yml
           git restore .github/workflows/source-repair-once.yml
           git add -A
           git config user.name "github-actions[bot]"
