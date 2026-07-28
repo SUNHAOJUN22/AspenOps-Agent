@@ -88,13 +88,17 @@ jobs:
 
           replace_once(
               "src/aspenops_nexus/evaluation.py",
-              "    if isinstance(raw, (int, float)) and not isinstance(raw, bool):\n"
-              "        return convert(float(raw), node.native_unit, target_unit)\n",
-              "    if isinstance(raw, (int, float)) and not isinstance(raw, bool):\n"
-              "        numeric = float(raw)\n"
-              "        if not math.isfinite(numeric):\n"
-              "            return numeric\n"
-              "        return convert(numeric, node.native_unit, target_unit)\n",
+              "    if isinstance(raw, bool | str):\n"
+              "        return raw\n"
+              "    target_unit = unit or node.native_unit\n"
+              "    return convert(float(raw), node.native_unit, target_unit)\n",
+              "    if isinstance(raw, bool | str):\n"
+              "        return raw\n"
+              "    numeric = float(raw)\n"
+              "    if not math.isfinite(numeric):\n"
+              "        return numeric\n"
+              "    target_unit = unit or node.native_unit\n"
+              "    return convert(numeric, node.native_unit, target_unit)\n",
           )
 
           config_path = Path("src/aspenops_nexus/config.py")
