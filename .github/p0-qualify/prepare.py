@@ -8,145 +8,117 @@ EDGE_PARTS = ROOT / ".github" / "rsl-source" / "test_research_contract_edges.py"
 GRAPH_OUTPUT = ROOT / "src" / "aspenops_nexus" / "research_graph.py"
 EDGE_OUTPUT = ROOT / "tests" / "test_research_contract_edges.py"
 WHEEL_TEST = ROOT / "tests" / "test_wheel_metadata_edges.py"
+SELF_WORKFLOW = ROOT / ".github" / "workflows" / "research-p0-final-once.yml"
 
 
-def replace_once(text: str, old: str, new: str) -> str:
-    count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f"expected exactly one patch target, found {count}: {old[:100]!r}")
-    return text.replace(old, new, 1)
+def patch(text: str, old: str, new: str, *, count: int = 1) -> str:
+    actual = text.count(old)
+    if actual != count:
+        raise RuntimeError(f"expected {count} patch targets, found {actual}: {old[:100]!r}")
+    return text.replace(old, new)
 
 
 def reconstruct_graph() -> str:
-    part0 = (GRAPH_PARTS / "part-00").read_text(encoding="utf-8")
-    part1_lines = (GRAPH_PARTS / "part-01").read_text(encoding="utf-8").splitlines(keepends=True)
-    part1 = "".join(part1_lines[2:])
-    part2 = (GRAPH_PARTS / "part-02").read_text(encoding="utf-8")
-    part3 = (GRAPH_PARTS / "part-03").read_text(encoding="utf-8")
-    return part0 + part1 + part2 + part3
+    parts = [
+        (GRAPH_PARTS / "part-00").read_text(encoding="utf-8"),
+        "".join(
+            (GRAPH_PARTS / "part-01")
+            .read_text(encoding="utf-8")
+            .splitlines(keepends=True)[2:]
+        ),
+        (GRAPH_PARTS / "part-02").read_text(encoding="utf-8"),
+        (GRAPH_PARTS / "part-03").read_text(encoding="utf-8"),
+    ]
+    return "".join(parts)
 
 
 def repair_graph(text: str) -> str:
-    text = replace_once(text, "from typing import Any, cast", "from typing import Any, Literal, cast")
-    text = replace_once(
+    text = patch(
         text,
-        """    datasets_by_id = {item.dataset_id: item for item in document.datasets}
-    targets_by_id = {item.target_id: item for item in document.targets}
-    parameters_by_id = {item.parameter_id: item for item in document.parameters}
-    assumptions_by_id = {item.assumption_id: item for item in document.assumptions}
-    calibrations_by_id = {item.calibration_id: item for item in document.calibrations}
-    validations_by_id = {item.validation_id: item for item in document.validations}
-""",
-        """    datasets_by_id = {item.dataset_id: item for item in document.datasets}
-    calibrations_by_id = {item.calibration_id: item for item in document.calibrations}
-""",
+        "from typing import Any, cast",
+        "from typing import Any, Literal, cast",
     )
-    text = replace_once(
+    for unused in (
+        "    targets_by_id = {item.target_id: item for item in document.targets}\n",
+        "    parameters_by_id = {item.parameter_id: item for item in document.parameters}\n",
+        "    assumptions_by_id = {item.assumption_id: item for item in document.assumptions}\n",
+        "    validations_by_id = {item.validation_id: item for item in document.validations}\n",
+    ):
+        text = patch(text, unused, "")
+
+    text = patch(
         text,
-        """            target = resolve(
-                ref,
-                owner=owner,
-                path=f"calibration.target_refs[{index}]",
-            )
-            if ref.object_type != "target" or not isinstance(target, Target):
-""",
-        """            resolved_target = resolve(
-                ref,
-                owner=owner,
-                path=f"calibration.target_refs[{index}]",
-            )
-            if ref.object_type != "target" or not isinstance(resolved_target, Target):
-""",
+        "            target = resolve(\n",
+        "            resolved_target = resolve(\n",
+        count=2,
     )
-    text = replace_once(
+    text = patch(
         text,
-        """            elif target.role not in {"fit", "acceptance", "diagnostic"}:
-                add(
-                    "error",
-                    "calibration_target_role",
-                    f"Calibration cannot use Target with role={target.role}",
-""",
-        """            elif resolved_target.role not in {"fit", "acceptance", "diagnostic"}:
-                add(
-                    "error",
-                    "calibration_target_role",
-                    f"Calibration cannot use Target with role={resolved_target.role}",
-""",
+        "not isinstance(target, Target)",
+        "not isinstance(resolved_target, Target)",
+        count=2,
     )
-    text = replace_once(
+    text = patch(text, "target.role", "resolved_target.role", count=2)
+    text = patch(
         text,
-        """            parameter = resolve(
-                ref,
-                owner=owner,
-                path=f"calibration.parameter_refs[{index}]",
-            )
-            if ref.object_type != "parameter" or not isinstance(parameter, Parameter):
-""",
-        """            resolved_parameter = resolve(
-                ref,
-                owner=owner,
-                path=f"calibration.parameter_refs[{index}]",
-            )
-            if ref.object_type != "parameter" or not isinstance(
-                resolved_parameter, Parameter
-            ):
-""",
+        "            parameter = resolve(\n",
+        "            resolved_parameter = resolve(\n",
     )
-    text = replace_once(
+    text = patch(
         text,
-        """            elif parameter.mode == "estimated":
-                estimated_count += 1
-""",
-        """            elif resolved_parameter.mode == "estimated":
-                estimated_count += 1
-""",
+        "not isinstance(parameter, Parameter)",
+        "not isinstance(resolved_parameter, Parameter)",
     )
-    text = replace_once(
+    text = patch(text, "parameter.mode", "resolved_parameter.mode")
+    text = patch(
         text,
-        """            target = resolve(
-                ref,
-                owner=owner,
-                path=f"validation.target_refs[{index}]",
-            )
-            if ref.object_type != "target" or not isinstance(target, Target):
-""",
-        """            resolved_target = resolve(
-                ref,
-                owner=owner,
-                path=f"validation.target_refs[{index}]",
-            )
-            if ref.object_type != "target" or not isinstance(resolved_target, Target):
-""",
+        "            calibration = calibrations_by_id.get(producer.object_id)\n",
+        "            resolved_calibration = calibrations_by_id.get(producer.object_id)\n",
     )
-    text = replace_once(
+    text = patch(text, "calibration is None", "resolved_calibration is None")
+    text = patch(text, "calibration.status", "resolved_calibration.status")
+    text = patch(
         text,
-        """            calibration = calibrations_by_id.get(producer.object_id)
-            if calibration is None:
-""",
-        """            resolved_calibration = calibrations_by_id.get(producer.object_id)
-            if resolved_calibration is None:
-""",
+        "calibration.accepted_parameter_snapshot",
+        "resolved_calibration.accepted_parameter_snapshot",
+        count=2,
     )
-    text = replace_once(
+    text = patch(
         text,
-        '            elif calibration.status != "accepted":',
-        '            elif resolved_calibration.status != "accepted":',
+        "            validation = resolve(\n",
+        "            resolved_validation = resolve(\n",
     )
-    text = replace_once(
+    text = patch(
         text,
-        """            elif calibration.accepted_parameter_snapshot is None or (
-                calibration.accepted_parameter_snapshot.sha256
-""",
-        """            elif resolved_calibration.accepted_parameter_snapshot is None or (
-                resolved_calibration.accepted_parameter_snapshot.sha256
-""",
+        "not isinstance(validation, Validation)",
+        "not isinstance(resolved_validation, Validation)",
     )
-    text = replace_once(
+    text = patch(
+        text,
+        "linked_validations.append(validation)",
+        "linked_validations.append(resolved_validation)",
+    )
+    text = patch(
+        text,
+        "            assumption = resolve(\n",
+        "            resolved_assumption = resolve(\n",
+    )
+    text = patch(
+        text,
+        "not isinstance(assumption, Assumption)",
+        "not isinstance(resolved_assumption, Assumption)",
+    )
+    text = patch(
+        text,
+        "linked_assumptions.append(assumption)",
+        "linked_assumptions.append(resolved_assumption)",
+    )
+    text = patch(
         text,
         '    validation_ceiling = "STRUCTURE_ONLY"',
         '    validation_ceiling: Maturity = "STRUCTURE_ONLY"',
     )
-    text = replace_once(
+    text = patch(
         text,
         """    computed_ceiling = cast(
         Maturity,
@@ -164,80 +136,19 @@ def repair_graph(text: str) -> str:
             ),
         )
 """,
-        """    computed_ceiling: Maturity = (
-        document.study.claim_ceiling
-        if _MATURITY_RANK[document.study.claim_ceiling]
-        <= _MATURITY_RANK[validation_ceiling]
-        else validation_ceiling
+        """    computed_ceiling: Maturity = min(
+        (document.study.claim_ceiling, validation_ceiling),
+        key=lambda item: _MATURITY_RANK[item],
     )
     if not document.validations:
         source_reproduced: Maturity = "SOURCE_CASE_REPRODUCED"
-        computed_ceiling = (
-            document.study.claim_ceiling
-            if _MATURITY_RANK[document.study.claim_ceiling]
-            <= _MATURITY_RANK[source_reproduced]
-            else source_reproduced
+        computed_ceiling = min(
+            (document.study.claim_ceiling, source_reproduced),
+            key=lambda item: _MATURITY_RANK[item],
         )
 """,
     )
-    text = replace_once(
-        text,
-        """            validation = resolve(
-                ref,
-                owner=owner,
-                path=f"claim.validation_refs[{index}]",
-            )
-            if ref.object_type != "validation" or not isinstance(validation, Validation):
-""",
-        """            resolved_validation = resolve(
-                ref,
-                owner=owner,
-                path=f"claim.validation_refs[{index}]",
-            )
-            if ref.object_type != "validation" or not isinstance(
-                resolved_validation, Validation
-            ):
-""",
-    )
-    text = replace_once(
-        text,
-        """            else:
-                linked_validations.append(validation)
-        linked_assumptions: list[Assumption] = []
-""",
-        """            else:
-                linked_validations.append(resolved_validation)
-        linked_assumptions: list[Assumption] = []
-""",
-    )
-    text = replace_once(
-        text,
-        """            assumption = resolve(
-                ref,
-                owner=owner,
-                path=f"claim.assumption_refs[{index}]",
-            )
-            if ref.object_type != "assumption" or not isinstance(assumption, Assumption):
-""",
-        """            resolved_assumption = resolve(
-                ref,
-                owner=owner,
-                path=f"claim.assumption_refs[{index}]",
-            )
-            if ref.object_type != "assumption" or not isinstance(
-                resolved_assumption, Assumption
-            ):
-""",
-    )
-    text = replace_once(
-        text,
-        """            else:
-                linked_assumptions.append(assumption)
-        if _MATURITY_RANK[claim.maturity] > _MATURITY_RANK[document.study.claim_ceiling]:
-""",
-        """            else:
-                linked_assumptions.append(resolved_assumption)
-        if (
+    claim_guard = """        if (
             document.study.purpose == "source_reproduction"
             and _MATURITY_RANK[claim.maturity]
             > _MATURITY_RANK["SOURCE_CASE_REPRODUCED"]
@@ -262,10 +173,12 @@ def repair_graph(text: str) -> str:
                     owner,
                     "claim.maturity",
                 )
-        if _MATURITY_RANK[claim.maturity] > _MATURITY_RANK[document.study.claim_ceiling]:
-""",
+"""
+    study_ceiling = (
+        "        if _MATURITY_RANK[claim.maturity] "
+        "> _MATURITY_RANK[document.study.claim_ceiling]:\n"
     )
-    return text
+    return patch(text, study_ceiling, claim_guard + study_ceiling)
 
 
 def main() -> int:
@@ -277,13 +190,14 @@ def main() -> int:
         "".join(path.read_text(encoding="utf-8") for path in edge_parts),
         encoding="utf-8",
     )
-    wheel_test = WHEEL_TEST.read_text(encoding="utf-8")
-    wheel_test = replace_once(
-        wheel_test,
-        '("mcp>=1.9,<2; extra == \'other\'", "not enabled by the agent extra")',
-        '("mcp>=1.9,<2; extra == \'other\'", "scoped to the agent extra")',
+    wheel_text = WHEEL_TEST.read_text(encoding="utf-8")
+    wheel_text = patch(
+        wheel_text,
+        "not enabled by the agent extra",
+        "scoped to the agent extra",
     )
-    WHEEL_TEST.write_text(wheel_test, encoding="utf-8")
+    WHEEL_TEST.write_text(wheel_text, encoding="utf-8")
+    SELF_WORKFLOW.unlink(missing_ok=True)
     return 0
 
 
