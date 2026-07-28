@@ -1,0 +1,150 @@
+    parameter = _first(no_estimated, "parameters")
+    parameter["mode"] = "fixed"
+    assert "calibration_no_estimated_parameter" in _codes(no_estimated)
+
+    wrong_snapshot_producer = _document()
+    calibration = _first(wrong_snapshot_producer, "calibrations")
+    snapshot = calibration["accepted_parameter_snapshot"]
+    assert isinstance(snapshot, dict)
+    snapshot["producer"] = {"type": "calibration", "id": "calibration.other"}
+    assert "calibration_snapshot_producer" in _codes(wrong_snapshot_producer)
+
+
+def test_validation_graph_edges() -> None:
+    wrong_dataset_type = _document()
+    validation = _first(wrong_dataset_type, "validations")
+    validation["dataset_refs"] = [
+        {"type": "target", "id": "target.production.validation"}
+    ]
+    assert "validation_dataset_type" in _codes(wrong_dataset_type)
+
+    bad_dataset_role = _document()
+    datasets = bad_dataset_role["datasets"]
+    assert isinstance(datasets, list)
+    validation_dataset = datasets[1]
+    assert isinstance(validation_dataset, dict)
+    validation_dataset["role"] = "calibration"
+    assert "validation_dataset_role" in _codes(bad_dataset_role)
+
+    wrong_target_type = _document()
+    validation = _first(wrong_target_type, "validations")
+    validation["target_refs"] = [
+        {"type": "parameter", "id": "parameter.kinetic.propagation"}
+    ]
+    assert "validation_target_type" in _codes(wrong_target_type)
+
+    no_producer = _document()
+    validation = _first(no_producer, "validations")
+    snapshot = validation["parameter_snapshot"]
+    assert isinstance(snapshot, dict)
+    snapshot["producer"] = None
+    assert "validation_snapshot_missing_calibration" in _codes(no_producer)
+
+    missing_calibration = _document()
+    validation = _first(missing_calibration, "validations")
+    snapshot = validation["parameter_snapshot"]
+    assert isinstance(snapshot, dict)
+    snapshot["producer"] = {"type": "calibration", "id": "calibration.missing"}
+    assert "validation_calibration_missing" in _codes(missing_calibration)
+
+    not_accepted = _document()
+    calibration = _first(not_accepted, "calibrations")
+    calibration["status"] = "converged"
+    assert "validation_calibration_not_accepted" in _codes(not_accepted)
+
+    model_mismatch = _document()
+    validation = _first(model_mismatch, "validations")
+    model = validation["model_snapshot"]
+    assert isinstance(model, dict)
+    model["sha256"] = "c" * 64
+    assert "validation_model_snapshot_mismatch" in _codes(model_mismatch)
+
+    registry_mismatch = _document()
+    validation = _first(registry_mismatch, "validations")
+    registry = validation["registry_snapshot"]
+    assert isinstance(registry, dict)
+    registry["sha256"] = "d" * 64
+    assert "validation_registry_snapshot_mismatch" in _codes(registry_mismatch)
+
+
+def test_all_calibration_validation_leakage_guards() -> None:
+    same_dataset = _document()
+    validation = _first(same_dataset, "validations")
+    validation["dataset_refs"] = [
+        {"type": "dataset", "id": "dataset.epm.calibration"}
+    ]
+    assert "calibration_validation_dataset_leakage" in _codes(same_dataset)
+
+    same_split = _document()
+    datasets = same_split["datasets"]
+    assert isinstance(datasets, list)
+    validation_dataset = datasets[1]
+    assert isinstance(validation_dataset, dict)
+    validation_dataset["split_group"] = "calibration-grades"
+    assert "calibration_validation_split_group_leakage" in _codes(same_split)
+
+    same_records = _document()
+    datasets = same_records["datasets"]
+    assert isinstance(datasets, list)
+    validation_dataset = datasets[1]
+    assert isinstance(validation_dataset, dict)
+    validation_dataset["record_set_sha256"] = "9" * 64
+    assert "calibration_validation_record_leakage" in _codes(same_records)
+
+
+def test_claim_reference_and_validation_guards() -> None:
+    wrong_validation_type = _document()
+    claim = _first(wrong_validation_type, "claims")
+    claim["validation_refs"] = [
+        {"type": "calibration", "id": "calibration.epm.production"}
+    ]
+    claim["claim_sha256"] = None
+    assert "claim_validation_type" in _codes(wrong_validation_type)
+
+    wrong_assumption_type = _document()
+    claim = _first(wrong_assumption_type, "claims")
+    claim["assumption_refs"] = [
+        {"type": "validation", "id": "validation.epm.heldout-grade"}
+    ]
+    claim["claim_sha256"] = None
+    assert "claim_assumption_type" in _codes(wrong_assumption_type)
+
+    no_passed = _document()
+    claim = _first(no_passed, "claims")
+    claim["validation_refs"] = []
+    claim["claim_sha256"] = None
+    assert "claim_requires_passed_validation" in _codes(no_passed)
+
+
+def test_no_validation_ceiling_and_lifecycle_guards() -> None:
+    no_validation = _document()
+    no_validation["validations"] = []
+    no_validation["claims"] = []
+    study = no_validation["study"]
+    assert isinstance(study, dict)
+    study["lifecycle_state"] = "specified"
+    refs = study["object_refs"]
+    assert isinstance(refs, list)
+    refs[:] = [
+        item
+        for item in refs
+        if isinstance(item, dict) and item.get("type") not in {"validation", "claim"}
+    ]
+    report = validate_research_document(no_validation)
+    assert report.computed_claim_ceiling == "SOURCE_CASE_REPRODUCED"
+
+    missing_calibration = _document()
+    calibration = _first(missing_calibration, "calibrations")
+    calibration["status"] = "rejected"
+    assert "study_lifecycle_missing_calibration" in _codes(missing_calibration)
+
+    missing_validation = _document()
+    validation = _first(missing_validation, "validations")
+    validation["status"] = "failed"
+    assert "study_lifecycle_missing_validation" in _codes(missing_validation)
+
+    missing_claim = _document()
+    claim = _first(missing_claim, "claims")
+    claim["status"] = "proposed"
+    claim["claim_sha256"] = None
+    assert "study_lifecycle_missing_claim" in _codes(missing_claim)
