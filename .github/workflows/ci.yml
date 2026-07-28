@@ -35,6 +35,57 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
+          exec > >(tee /tmp/p0-preparation.log) 2>&1
+
+          preparation_failed() {
+            local code=$?
+            trap - ERR
+            set +e
+            git checkout "$P0_BASELINE_SHA" -- .
+            mapfile -t added < <(
+              git diff --name-only --diff-filter=A \
+                "$P0_BASELINE_SHA" "$QUALIFIED_SOURCE_SHA"
+            )
+            for path in "${added[@]}"; do
+              rm -rf -- "$path"
+            done
+            mkdir -p docs
+            PREPARATION_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          log = Path("/tmp/p0-preparation.log")
+          payload = {
+              "schema": "aspenops.research-platform-p0-blocker/v1",
+              "phase": "P0",
+              "decision": "FAIL",
+              "blocker_code": "QUALIFICATION_PREPARATION_FAILED",
+              "exit_code": int(os.environ["PREPARATION_CODE"]),
+              "failure_tail": {
+                  "preparation": log.read_text(
+                      encoding="utf-8", errors="replace"
+                  ).splitlines()[-160:]
+              },
+              "p0_implementation_retained": False,
+              "runtime_core_changed": False,
+              "boundary": "P0 was removed because qualification preparation failed.",
+          }
+          Path("docs/research-layer-p0-blocker.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            git config user.name "github-actions[bot]"
+            git config user.email \
+              "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "test: record P0 qualification preparation blocker"
+            git push origin HEAD:main
+            exit "$code"
+          }
+          trap preparation_failed ERR
+
           python - <<'PY'
           from pathlib import Path
           import subprocess
@@ -133,4 +184,5 @@ jobs:
           )
           PY
 
+          trap - ERR
           bash /tmp/p0-qualification.sh
