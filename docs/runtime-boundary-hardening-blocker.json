@@ -1,0 +1,11 @@
+{
+  "baseline_sha": "5ed99b0ea6274ecab8815969f7b26ebc44d8c5ff",
+  "blocker_code": "QUALIFICATION_JOB_FAILED",
+  "decision": "FAIL",
+  "implementation_retained": false,
+  "linux_result": "failure",
+  "run_attempt": "1",
+  "run_id": "30421436682",
+  "schema": "aspenops.runtime-boundary-hardening-blocker/v1",
+  "windows_result": "failure"
+}
