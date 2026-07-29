@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def write(path: str, content: str) -> None:
+    target = ROOT / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    target = ROOT / path
+    text = target.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"{path}: expected one patch target, found {count}: {old[:80]!r}")
+    target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def insert_after(path: str, marker: str, addition: str) -> None:
+    replace_once(path, marker, marker + addition)
+
+
+write(
+    "src/aspenops_nexus/json_safety.py",
+    '''from __future__ import annotations
+
+import json
+import math
+from typing import Any, cast
+
+MAX_METADATA_BYTES = 262_144
+MAX_JSON_DEPTH = 8
+
+
+def reject_unknown(mapping: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        raise ValueError(f"Unsupported {label} fields: {', '.join(unknown)}")
+
+
+def safe_json(value: Any, label: str, *, depth: int = 0) -> Any:
+    if depth > MAX_JSON_DEPTH:
+        raise ValueError(f"{label} exceeds maximum JSON nesting depth {MAX_JSON_DEPTH}")
+    if value is None or isinstance(value, bool | str | int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{label} contains a non-finite number")
+        return value
+    if isinstance(value, list | tuple):
+        return [
+            safe_json(item, f"{label}[{index}]", depth=depth + 1)
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for raw_key, item in value.items():
+            if not isinstance(raw_key, str):
+                raise ValueError(f"{label} keys must be strings")
+            key = raw_key.strip()
+            if not key:
+                raise ValueError(f"{label} keys must be non-empty strings")
+            if any(character in key for character in ("\\x00", "\\r", "\\n")):
+                raise ValueError(f"{label} keys must be one safe text line")
+            if key in result:
+                raise ValueError(f"{label} contains duplicate normalized key: {key}")
+            result[key] = safe_json(item, f"{label}.{key}", depth=depth + 1)
+        return result
+    raise ValueError(f"{label} contains a non-JSON value of type {type(value).__name__}")
+
+
+def bounded_json_object(
+    value: Any,
+    label: str,
+    *,
+    max_bytes: int = MAX_METADATA_BYTES,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object")
+    normalized = cast(dict[str, Any], safe_json(value, label))
+    encoded = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(encoded) > max_bytes:
+        raise ValueError(f"{label} exceeds {max_bytes} bytes")
+    return normalized
+''',
+)
+
+write(
+    "src/aspenops_nexus/units.py",
+    '''from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+
+class UnitError(ValueError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class UnitSpec:
+    dimension: str
+    to_base_scale: float = 1.0
+    to_base_offset: float = 0.0
+
+    def to_base(self, value: float) -> float:
+        return value * self.to_base_scale + self.to_base_offset
+
+    def from_base(self, value: float) -> float:
+        return (value - self.to_base_offset) / self.to_base_scale
+
+
+_UNITS: dict[str, UnitSpec] = {
+    "1": UnitSpec("dimensionless"),
+    "fraction": UnitSpec("dimensionless"),
+    "%": UnitSpec("dimensionless", 0.01),
+    "ppm": UnitSpec("dimensionless", 1e-6),
+    "K": UnitSpec("absolute_temperature"),
+    "K_abs": UnitSpec("absolute_temperature"),
+    "C": UnitSpec("absolute_temperature", 1.0, 273.15),
+    "degC": UnitSpec("absolute_temperature", 1.0, 273.15),
+    "degC_abs": UnitSpec("absolute_temperature", 1.0, 273.15),
+    "F": UnitSpec("absolute_temperature", 5.0 / 9.0, 255.3722222222222),
+    "degF": UnitSpec("absolute_temperature", 5.0 / 9.0, 255.3722222222222),
+    "degF_abs": UnitSpec("absolute_temperature", 5.0 / 9.0, 255.3722222222222),
+    "delta_K": UnitSpec("temperature_difference"),
+    "delta_C": UnitSpec("temperature_difference"),
+    "delta_degC": UnitSpec("temperature_difference"),
+    "delta_F": UnitSpec("temperature_difference", 5.0 / 9.0),
+    "delta_degF": UnitSpec("temperature_difference", 5.0 / 9.0),
+    "Pa": UnitSpec("absolute_pressure"),
+    "Pa_abs": UnitSpec("absolute_pressure"),
+    "kPa": UnitSpec("absolute_pressure", 1_000.0),
+    "kPa_abs": UnitSpec("absolute_pressure", 1_000.0),
+    "MPa": UnitSpec("absolute_pressure", 1_000_000.0),
+    "MPa_abs": UnitSpec("absolute_pressure", 1_000_000.0),
+    "bar": UnitSpec("absolute_pressure", 100_000.0),
+    "bar_abs": UnitSpec("absolute_pressure", 100_000.0),
+    "bara": UnitSpec("absolute_pressure", 100_000.0),
+    "mbar": UnitSpec("absolute_pressure", 100.0),
+    "mbar_abs": UnitSpec("absolute_pressure", 100.0),
+    "atm": UnitSpec("absolute_pressure", 101_325.0),
+    "atm_abs": UnitSpec("absolute_pressure", 101_325.0),
+    "psi": UnitSpec("absolute_pressure", 6_894.757293168),
+    "psi_abs": UnitSpec("absolute_pressure", 6_894.757293168),
+    "Pa_g": UnitSpec("gauge_pressure"),
+    "kPa_g": UnitSpec("gauge_pressure", 1_000.0),
+    "MPa_g": UnitSpec("gauge_pressure", 1_000_000.0),
+    "bar_g": UnitSpec("gauge_pressure", 100_000.0),
+    "barg": UnitSpec("gauge_pressure", 100_000.0),
+    "mbar_g": UnitSpec("gauge_pressure", 100.0),
+    "psi_g": UnitSpec("gauge_pressure", 6_894.757293168),
+    "psig": UnitSpec("gauge_pressure", 6_894.757293168),
+    "kg/s": UnitSpec("mass_flow"),
+    "kg/h": UnitSpec("mass_flow", 1.0 / 3600.0),
+    "t/h": UnitSpec("mass_flow", 1000.0 / 3600.0),
+    "g/s": UnitSpec("mass_flow", 0.001),
+    "mol/s": UnitSpec("molar_flow"),
+    "mol/h": UnitSpec("molar_flow", 1.0 / 3600.0),
+    "kmol/s": UnitSpec("molar_flow", 1000.0),
+    "kmol/h": UnitSpec("molar_flow", 1000.0 / 3600.0),
+    "W": UnitSpec("power"),
+    "kW": UnitSpec("power", 1_000.0),
+    "MW": UnitSpec("power", 1_000_000.0),
+    "J/s": UnitSpec("power"),
+    "kJ/h": UnitSpec("power", 1000.0 / 3600.0),
+    "m3/s": UnitSpec("volumetric_flow"),
+    "m3/h": UnitSpec("volumetric_flow", 1.0 / 3600.0),
+    "L/s": UnitSpec("volumetric_flow", 0.001),
+    "L/min": UnitSpec("volumetric_flow", 0.001 / 60.0),
+    "kg/m3": UnitSpec("density"),
+    "g/cm3": UnitSpec("density", 1000.0),
+    "Pa.s": UnitSpec("viscosity"),
+    "cP": UnitSpec("viscosity", 0.001),
+}
+
+
+def supported_units() -> dict[str, str]:
+    return {name: spec.dimension for name, spec in sorted(_UNITS.items())}
+
+
+def dimension(unit: str | None) -> str | None:
+    if unit is None:
+        return None
+    try:
+        return _UNITS[unit].dimension
+    except KeyError as exc:
+        raise UnitError(f"Unsupported unit: {unit!r}") from exc
+
+
+def convert(value: float, source: str | None, target: str | None) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise UnitError("Unit conversion value must be finite numeric")
+    try:
+        numeric = float(value)
+    except OverflowError as exc:
+        raise UnitError("Unit conversion value must be finite numeric") from exc
+    if not math.isfinite(numeric):
+        raise UnitError("Unit conversion value must be finite numeric")
+    if source is not None and not isinstance(source, str):
+        raise UnitError("Source unit must be a string or null")
+    if target is not None and not isinstance(target, str):
+        raise UnitError("Target unit must be a string or null")
+    if source is None or target is None:
+        return numeric
+    if source not in _UNITS or target not in _UNITS:
+        raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
+    if source == target:
+        return numeric
+    src = _UNITS[source]
+    dst = _UNITS[target]
+    if src.dimension != dst.dimension:
+        raise UnitError(
+            f"Incompatible units: {source!r} ({src.dimension}) and "
+            f"{target!r} ({dst.dimension})"
+        )
+    converted = dst.from_base(src.to_base(numeric))
+    if not math.isfinite(converted):
+        raise UnitError("Unit conversion produced a non-finite value")
+    return converted
+''',
+)
+
+# Strict request and metadata contracts.
+insert_after(
+    "src/aspenops_nexus/models.py",
+    "from typing import Any, Literal, cast\n",
+    "\nfrom .json_safety import bounded_json_object, reject_unknown\n",
+)
+for marker, allowed, label in (
+    ('        mapping = _object(data, "write")\n', '{"key", "identifiers", "value", "unit"}', "write"),
+    ('        mapping = _object(data, "read")\n', '{"key", "identifiers", "unit", "required"}', "read"),
+    (
+        '        mapping = _object(data, "constraint")\n',
+        '{"key", "identifiers", "operator", "value", "unit", "name", "tolerance"}',
+        "constraint",
+    ),
+    (
+        '        mapping = _object(data, "balance term")\n',
+        '{"key", "identifiers", "coefficient", "unit"}',
+        "balance term",
+    ),
+    (
+        '        mapping = _object(data, "balance")\n',
+        '{"name", "terms", "expected", "abs_tol", "rel_tol", "floor"}',
+        "balance",
+    ),
+):
+    insert_after(
