@@ -1,0 +1,260 @@
+        if _job_object_managed(handle)
+        else _merge_fingerprints(
+            handle.owned_descendants,
+            _capture_descendant_fingerprints(handle.process),
+        )
+    )
+    try:
+        if _process_is_alive(handle.process):
+            handle.connection.send(
+                {
+                    "protocol": IPC_PROTOCOL,
+                    "action": "close",
+                    "request_id": request_id,
+                }
+            )
+            if handle.connection.poll(timeout_s):
+                graceful = _valid_close_response(handle.connection.recv(), request_id)
+    except (EOFError, BrokenPipeError, OSError, RuntimeError, ValueError):
+        graceful = False
+    if graceful:
+        with suppress(Exception):
+            handle.process.join(timeout=timeout_s)
+    if _process_is_alive(handle.process):
+        _terminate_handle(handle, captured=captured)
+    elif captured:
+        handle.runtime["parent_fallback_cleanup"] = {
+            "job_object_managed": False,
+            "fallback_required": True,
+            **_terminate_captured_processes(captured),
+        }
+    _cleanup_handle(handle)
+''',
+)
+replace_once(
+    "src/aspenops_nexus/worker.py",
+    '''    if not response_ready:
+        _terminate(handle)
+        return _failure_result(
+''',
+    '''    if not response_ready:
+        cleanup = _terminate_handle(handle)
+        return _failure_result(
+''',
+)
+insert_after(
+    "src/aspenops_nexus/worker.py",
+    '                "hard_deadline_enforced": True,\n',
+    '                "parent_process_cleanup": cleanup,\n',
+)
+
+# MCP always has an explicit filesystem root, including Mock.
+replace_once(
+    "src/aspenops_nexus/mcp_server.py",
+    "from .policy import Policy\n",
+    "from .policy import Policy, PolicyError\n",
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    "    return installed\n",
+    '''
+
+def _mcp_policy(settings: Settings) -> Policy:
+    if not settings.allowed_roots:
+        raise PolicyError("MCP requires ASPENOPS_ALLOWED_ROOTS even when backend=mock")
+    policy = Policy(settings.mode, settings.allowed_roots)
+    policy.assert_path(settings.state_dir)
+    return policy
+''',
+)
+replace_once(
+    "src/aspenops_nexus/mcp_server.py",
+    '''2. Inspect the case-specific semantic registry with list_semantic_variables.
+3. Call dry_run_request before any write or solve.
+4. Use run_batch_sync only for small bounded work; submit_batch for DOE/optimization.
+5. Poll job_status and fetch job_result. Preserve the returned integrity bundle.
+6. Accept a process result only when ok=true. Communication, engine return, convergence,
+''',
+    '''2. Configure ASPENOPS_ALLOWED_ROOTS before any MCP file access, including Mock.
+3. Inspect the case-specific semantic registry with list_semantic_variables.
+4. Call dry_run_request before any write or solve.
+5. Use run_batch_sync only for small bounded work; submit_batch for DOE/optimization.
+6. Poll job_status and fetch job_result. Preserve the returned integrity bundle.
+7. Accept a process result only when ok=true. Communication, engine return, convergence,
+''',
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    '''    def __init__(self, settings: Settings, scheduler: BackgroundScheduler) -> None:
+        self.settings = settings
+        self.scheduler = scheduler
+''',
+    '''
+    def _assert_request_paths(self, request: dict[str, Any]) -> None:
+        policy = _mcp_policy(self.settings)
+        for key in ("model_path", "registry_path"):
+            value = request.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"MCP request requires a non-empty {key}")
+            policy.assert_path(value)
+''',
+)
+replace_once(
+    "src/aspenops_nexus/mcp_server.py",
+    '''    @staticmethod
+    def _durable_request(request: dict[str, Any]) -> dict[str, Any]:
+        return pin_durable_request_paths(request, submission_cwd=Path.cwd())
+''',
+    '''    def _durable_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        durable = pin_durable_request_paths(request, submission_cwd=Path.cwd())
+        self._assert_request_paths(durable)
+        return durable
+''',
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    '        result["pool_manager"] = self.scheduler.pool_manager.stats()\n',
+    '''        result["mcp_filesystem_ready"] = bool(self.settings.allowed_roots)
+        result["mcp_allowed_roots_required_for_mock"] = True
+''',
+)
+replace_once(
+    "src/aspenops_nexus/mcp_server.py",
+    '        policy = Policy(self.settings.mode, self.settings.allowed_roots)\n        path = policy.assert_path(registry_path)\n',
+    '        path = _mcp_policy(self.settings).assert_path(registry_path)\n',
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    '''    def dry_run_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Validate paths, policy, semantic keys, identifiers, units, bounds and worker caps."""
+''',
+    "        self._assert_request_paths(request)\n",
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    '''    def run_batch_sync(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Run a small batch synchronously; prefer submit_batch for long simulator work."""
+''',
+    "        self._assert_request_paths(request)\n",
+)
+replace_once(
+    "src/aspenops_nexus/mcp_server.py",
+    '        path = Policy(self.settings.mode, self.settings.allowed_roots).assert_path(bundle_path)\n',
+    '        path = _mcp_policy(self.settings).assert_path(bundle_path)\n',
+)
+insert_after(
+    "src/aspenops_nexus/mcp_server.py",
+    "    active_settings = settings or Settings.from_env()\n",
+    "    _mcp_policy(active_settings)\n",
+)
+
+# Registry quantity and optimization subdocuments become strict.
+insert_after(
+    "src/aspenops_nexus/registry.py",
+    '''        unit = node.get("unit")
+        if unit is not None:
+''',
+    "            quantity = node.get(\"quantity\")\n",
+)
+insert_after(
+    "src/aspenops_nexus/registry.py",
+    '''            except UnitError as exc:
+                raise RegistryError(f"Invalid unit for {key}: {unit!r}") from exc
+''',
+    '''            if quantity is not None:
+                if not isinstance(quantity, str) or not quantity.strip():
+                    raise RegistryError(f"quantity for {key} must be a non-empty string")
+                observed_dimension = dimension(unit)
+                if quantity != observed_dimension:
+                    raise RegistryError(
+                        f"quantity for {key} must match unit dimension {observed_dimension!r}"
+                    )
+''',
+)
+insert_after(
+    "src/aspenops_nexus/optimization.py",
+    "from .config import Settings\n",
+    "from .json_safety import reject_unknown\n",
+)
+insert_after(
+    "src/aspenops_nexus/optimization.py",
+    "    def from_mapping(cls, data: Mapping[str, object]) -> VariableSpec:\n",
+    '''        reject_unknown(
+            dict(data),
+            {"name", "key", "identifiers", "kind", "unit", "lower", "upper", "choices"},
+            "optimization variable",
+        )
+''',
+)
+insert_after(
+    "src/aspenops_nexus/optimization.py",
+    "    def from_mapping(cls, data: Mapping[str, object]) -> ObjectiveSpec:\n",
+    '''        reject_unknown(
+            dict(data),
+            {"output_key", "key", "identifiers", "direction", "weight"},
+            "optimization objective",
+        )
+''',
+)
+insert_after(
+    "src/aspenops_nexus/optimization.py",
+    "    def from_mapping(cls, data: Mapping[str, object]) -> OptimizationBudget:\n",
+    '''        reject_unknown(
+            dict(data),
+            {"population_size", "generations", "max_evaluations", "mutation", "crossover", "seed"},
+            "optimization budget",
+        )
+''',
+)
+insert_after(
+    "src/aspenops_nexus/optimization.py",
+    '        optimization = _object_map(_required(document, "optimization"), label="optimization")\n',
+    '''        reject_unknown(
+            cast(dict[str, Any], optimization),
+            {"variables", "objectives", "objective", "budget", "checkpoint_path"},
+            "optimization",
+        )
+        if "objective" in optimization and "objectives" in optimization:
+            raise ValueError("optimization cannot define both objective and objectives")
+''',
+)
+
+# Built-in registry declares exact physical dimensions.
+registry_path = ROOT / "src/aspenops_nexus/data/node-registry.json"
+registry_data = json.loads(registry_path.read_text(encoding="utf-8"))
+quantities = {
+    "stream.input.temperature": "absolute_temperature",
+    "stream.input.pressure": "absolute_pressure",
+    "stream.input.mass_flow": "mass_flow",
+    "block.input.reflux_ratio": "dimensionless",
+    "block.input.stages": "dimensionless",
+    "stream.output.purity": "dimensionless",
+    "stream.output.mass_flow": "mass_flow",
+    "block.output.reboiler_duty": "power",
+    "reactor.output.conversion": "dimensionless",
+}
+for key, quantity in quantities.items():
+    registry_data["nodes"][key]["quantity"] = quantity
+registry_path.write_text(
+    json.dumps(registry_data, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
+    encoding="utf-8",
+)
+
+# Existing tests and MCP probe are updated to the stronger contracts.
+replace_once(
+    "tests/test_backend_adapter_edges.py",
+    '''def test_hysys_reinitialize_success_and_failure() -> None:
+    backend = HysysBackend()
+    with pytest.raises(BackendError, match="No HYSYS case"):
+        backend.reinitialize()
+
+    solver = SimpleNamespace(CanSolve=False)
+    backend.case = SimpleNamespace(Solver=solver)
+    backend.reinitialize()
+    assert solver.CanSolve is True
+
+    class BrokenSolver:
+        @property
+        def CanSolve(self) -> bool:
+            return False
+
