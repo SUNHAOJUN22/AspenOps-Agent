@@ -1,0 +1,16 @@
+{
+  "all_hard_gates_passed": true,
+  "aspen_executed": false,
+  "calibration_validation_isolation_tested": true,
+  "claim_evidence_gate_tested": true,
+  "dynamic_modeling_executed": false,
+  "epdm_ceiling_tested": "STRUCTURE_ONLY",
+  "machine_learning_executed": false,
+  "parameter_estimation_executed": false,
+  "phase": "P0",
+  "run_id": "30442716461",
+  "runtime_core_changed": false,
+  "schema": "aspenops.closed-loop-validation/v1",
+  "status": "PASS",
+  "unresolved_critical_assumption_gate_tested": true
+}

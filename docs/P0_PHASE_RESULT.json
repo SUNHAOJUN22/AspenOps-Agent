@@ -1,0 +1,82 @@
+{
+  "boundary": "P0 governance only; no Aspen execution, estimation, dynamics, ML, or runtime-control-plane modification.",
+  "branch_coverage_percent": {
+    "3.11": 92.13381555153707,
+    "3.12": 92.13381555153707,
+    "3.13": 92.13381555153707,
+    "p0": 96.15384615384616
+  },
+  "decision": "PASS",
+  "deliverables": {
+    "closed_loop_validation": true,
+    "complete_examples": 2,
+    "coverage_report": true,
+    "object_relationship_diagram": true,
+    "qualification_state_machine": true,
+    "schemas": 9,
+    "source": true,
+    "test_report": true
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 19.426
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 20.122
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 17.366
+    }
+  },
+  "hard_gates": {
+    "audit": 0,
+    "bandit": 0,
+    "build": 0,
+    "compile": 0,
+    "demo": 0,
+    "format": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order": 0,
+    "p0": 0,
+    "p0-format-fix": 0,
+    "p0-ruff-fix": 0,
+    "process-ir": 0,
+    "restore": 0,
+    "ruff": 0,
+    "source-audit": 0,
+    "sync": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "p0_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 68,
+    "time": 0.995
+  },
+  "phase": "P0",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30442716461"
+  },
+  "qualified_source_sha": "28abeb1f5a79e4e4e1cbe859b7762f24710769e5",
+  "schema": "aspenops.research-platform-p0-result/v1"
+}

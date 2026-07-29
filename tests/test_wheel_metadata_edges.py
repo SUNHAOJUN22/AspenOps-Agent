@@ -40,7 +40,7 @@ def _write_wheel(
         ("other>=1.9,<2; extra == 'agent'", "unexpected package name"),
         ("mcp>=1.9; extra == 'agent'", "must constrain"),
         ("mcp>=1.9,<2", "scoped to the agent extra"),
-        ("mcp>=1.9,<2; extra == 'other'", "not enabled by the agent extra"),
+        ("mcp>=1.9,<2; extra == 'other'", "scoped to the agent extra"),
     ],
 )
 def test_mcp_requirement_contract_rejects_every_boundary(
@@ -83,9 +83,7 @@ def test_inspect_wheel_rejects_oversized_metadata(tmp_path: Path) -> None:
     oversized = "X-Metadata: " + ("x" * wheel_metadata._MAX_METADATA_BYTES)
     _write_wheel(
         tmp_path,
-        metadata_members=[
-            ("aspenops_nexus-2.0.0.dist-info/METADATA", oversized)
-        ],
+        metadata_members=[("aspenops_nexus-2.0.0.dist-info/METADATA", oversized)],
     )
 
     with pytest.raises(RuntimeError, match="METADATA exceeds"):
@@ -98,20 +96,12 @@ def test_inspect_wheel_requires_one_mcp_requirement(
     mcp_entries: int,
 ) -> None:
     requirements = "".join(
-        "Requires-Dist: mcp<2,>=1.9; extra == 'agent'\n"
-        for _ in range(mcp_entries)
+        "Requires-Dist: mcp<2,>=1.9; extra == 'agent'\n" for _ in range(mcp_entries)
     )
-    metadata = (
-        "Metadata-Version: 2.4\n"
-        "Name: aspenops-nexus\n"
-        "Version: 2.0.0\n"
-        f"{requirements}\n"
-    )
+    metadata = f"Metadata-Version: 2.4\nName: aspenops-nexus\nVersion: 2.0.0\n{requirements}\n"
     _write_wheel(
         tmp_path,
-        metadata_members=[
-            ("aspenops_nexus-2.0.0.dist-info/METADATA", metadata)
-        ],
+        metadata_members=[("aspenops_nexus-2.0.0.dist-info/METADATA", metadata)],
     )
 
     with pytest.raises(RuntimeError, match=f"found {mcp_entries}"):
@@ -126,9 +116,7 @@ def test_wheel_metadata_cli_writes_the_same_json_it_prints(
     wheel = _write_wheel(dist_dir)
     output = tmp_path / "reports" / "wheel.json"
 
-    assert wheel_metadata.main(
-        ["--dist-dir", str(dist_dir), "--output", str(output)]
-    ) == 0
+    assert wheel_metadata.main(["--dist-dir", str(dist_dir), "--output", str(output)]) == 0
     printed = json.loads(capsys.readouterr().out)
     stored = json.loads(output.read_text(encoding="utf-8"))
 

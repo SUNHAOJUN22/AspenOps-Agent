@@ -118,13 +118,10 @@ def audit_tree(root: Path) -> dict[str, Any]:
                         }
                     )
                 if name in _SUBPROCESS_CALLS:
-                    shell_keywords = [
-                        item for item in node.keywords if item.arg == "shell"
-                    ]
+                    shell_keywords = [item for item in node.keywords if item.arg == "shell"]
                     for keyword in shell_keywords:
                         safe_false = (
-                            isinstance(keyword.value, ast.Constant)
-                            and keyword.value.value is False
+                            isinstance(keyword.value, ast.Constant) and keyword.value.value is False
                         )
                         if not safe_false:
                             forbidden.append(

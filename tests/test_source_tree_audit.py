@@ -45,11 +45,7 @@ def test_broad_exception_is_advisory_not_a_false_security_pass(tmp_path: Path) -
     source = tmp_path / "scripts"
     source.mkdir()
     (source / "boundary.py").write_text(
-        "def boundary():\n"
-        "    try:\n"
-        "        return 1\n"
-        "    except Exception:\n"
-        "        return 0\n",
+        "def boundary():\n    try:\n        return 1\n    except Exception:\n        return 0\n",
         encoding="utf-8",
     )
 
@@ -57,9 +53,7 @@ def test_broad_exception_is_advisory_not_a_false_security_pass(tmp_path: Path) -
 
     assert report["status"] == "PASS"
     assert report["forbidden_findings"] == []
-    assert [item["kind"] for item in report["advisory_findings"]] == [
-        "broad_exception_handler"
-    ]
+    assert [item["kind"] for item in report["advisory_findings"]] == ["broad_exception_handler"]
 
 
 def test_audit_cli_writes_machine_readable_failure(tmp_path: Path) -> None:
