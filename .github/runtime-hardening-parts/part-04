@@ -1,0 +1,260 @@
+        @CanSolve.setter
+        def CanSolve(self, value: bool) -> None:
+            raise RuntimeError("reset failed")
+
+    backend.case = SimpleNamespace(Solver=BrokenSolver())
+    with pytest.raises(BackendError, match="Unable to reset HYSYS"):
+        backend.reinitialize()
+''',
+    '''def test_hysys_reinitialize_success_and_failure(tmp_path: Path) -> None:
+    backend = HysysBackend()
+    with pytest.raises(BackendError, match="No HYSYS case"):
+        backend.reinitialize()
+
+    model = tmp_path / "case.hsc"
+    model.write_text("model", encoding="utf-8")
+    old_case = SimpleNamespace(Close=lambda save: None)
+    new_case = fake_case()
+    application = FakeHysysApplication(new_case)
+    backend.application = application
+    backend.case = old_case
+    backend.model_path = model
+    backend.reinitialize()
+    assert backend.case is new_case
+    assert backend.reopen_count == 1
+
+    broken = FakeHysysApplication(new_case, fail=True)
+    backend.application = broken
+    backend.case = old_case
+    with pytest.raises(BackendError, match="Unable to reopen staged HYSYS"):
+        backend.reinitialize()
+    assert backend.application is None
+    assert backend.case is None
+''',
+)
+
+replace_once(
+    "tests/test_mcp.py",
+    "from aspenops_nexus.mcp_server import AspenOpsTools, build_server\n",
+    "from aspenops_nexus.config import Settings\nfrom aspenops_nexus.mcp_server import AspenOpsTools, build_server\n",
+)
+replace_once(
+    "tests/test_mcp.py",
+    '''def test_mcp_surface_is_narrow_and_typed() -> None:
+    async def list_names() -> list[str]:
+        server = build_server(start_scheduler=False)
+''',
+    '''def test_mcp_surface_is_narrow_and_typed(tmp_path: Path) -> None:
+    async def list_names() -> list[str]:
+        server = build_server(
+            settings=Settings(
+                allowed_roots=(tmp_path.resolve(),),
+                state_dir=tmp_path / "state",
+            ),
+            start_scheduler=False,
+        )
+''',
+)
+replace_once(
+    "tests/test_mcp.py",
+    '''    tools = AspenOpsTools(SimpleNamespace(), FakeScheduler())  # type: ignore[arg-type]
+''',
+    '''    tools = AspenOpsTools(
+        Settings(
+            allowed_roots=(tmp_path.resolve(),),
+            state_dir=tmp_path / "state",
+        ),
+        FakeScheduler(),  # type: ignore[arg-type]
+    )
+''',
+)
+
+replace_once(
+    "tests/test_mcp_tools.py",
+    '''        system = facade.system_info()
+        variables = facade.list_semantic_variables(str(REGISTRY))
+''',
+    '''        system = facade.system_info()
+        variables = facade.list_semantic_variables(str(REGISTRY))
+''',
+)
+insert_after(
+    "tests/test_mcp_tools.py",
+    '    assert system["ready"] is True\n',
+    '    assert system["mcp_filesystem_ready"] is True\n',
+)
+replace_once(
+    "tests/test_mcp_tools.py",
+    '''    try:
+        assert facade.submit_batch({"kind": "batch"}) == {"job_id": "job-123"}
+        assert facade.submit_optimization({"optimization": {}}) == {"job_id": "job-123"}
+''',
+    '''    batch = batch_document()
+    optimization = {**batch_document(), "optimization": {}}
+    try:
+        assert facade.submit_batch(batch) == {"job_id": "job-123"}
+        assert facade.submit_optimization(optimization) == {"job_id": "job-123"}
+''',
+)
+replace_once(
+    "tests/test_mcp_tools.py",
+    '''    assert submitted == [{"kind": "batch"}, {"optimization": {}}]
+''',
+    '''    assert len(submitted) == 2
+    for request in submitted:
+        assert Path(request["model_path"]).is_absolute()
+        assert Path(request["registry_path"]).is_absolute()
+        assert request["metadata"]["submission_cwd"] == str(Path.cwd().resolve())
+''',
+)
+
+replace_once(
+    "scripts/check_mcp.py",
+    "from aspenops_nexus.mcp_server import _require_supported_mcp_sdk, build_server\n",
+    "from aspenops_nexus.config import Settings\nfrom aspenops_nexus.mcp_server import _require_supported_mcp_sdk, build_server\n",
+)
+replace_once(
+    "scripts/check_mcp.py",
+    '''    sdk_version = _require_supported_mcp_sdk()
+    server = build_server(start_scheduler=False)
+''',
+    '''    sdk_version = _require_supported_mcp_sdk()
+    root = Path.cwd().resolve()
+    server = build_server(
+        settings=Settings(
+            allowed_roots=(root,),
+            state_dir=root / "var" / "mcp-check",
+        ),
+        start_scheduler=False,
+    )
+''',
+)
+
+# Focused regression coverage.
+write(
+    "tests/test_runtime_boundary_hardening.py",
+    '''from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+import aspenops_nexus.worker as worker_module
+from aspenops_nexus.backends.base import BackendStateError, SimulatorBackend
+from aspenops_nexus.backends.hysys import HysysBackend
+from aspenops_nexus.batch import expand_batch_document
+from aspenops_nexus.config import Settings
+from aspenops_nexus.evaluation import evaluate
+from aspenops_nexus.evaluation_plan import EvaluationPlan, IOEstimate
+from aspenops_nexus.mcp_server import build_server
+from aspenops_nexus.models import (
+    BalanceSpec,
+    BalanceTerm,
+    ConstraintSpec,
+    EvaluationRequest,
+    VariableRead,
+    VariableWrite,
+)
+from aspenops_nexus.optimization import (
+    ObjectiveSpec,
+    OptimizationBudget,
+    OptimizationProblem,
+    VariableSpec,
+)
+from aspenops_nexus.policy import PolicyError
+from aspenops_nexus.registry import NodeRegistry, RegistryError
+from aspenops_nexus.units import UnitError, convert, dimension
+from aspenops_nexus.worker import WorkerHandle, evaluate_on_worker
+from aspenops_nexus.windows_job import ProcessFingerprint
+
+
+def request(**updates: Any) -> dict[str, Any]:
+    value: dict[str, Any] = {"model_path": "model.json", "registry_path": "registry.json"}
+    value.update(updates)
+    return value
+
+
+def test_absolute_delta_and_gauge_units_are_not_interchangeable() -> None:
+    assert dimension("C") == "absolute_temperature"
+    assert dimension("delta_C") == "temperature_difference"
+    assert dimension("bar") == "absolute_pressure"
+    assert dimension("bar_g") == "gauge_pressure"
+    assert convert(25.0, "C", "K") == pytest.approx(298.15)
+    assert convert(18.0, "delta_F", "delta_C") == pytest.approx(10.0)
+    assert convert(1.0, "barg", "kPa_g") == pytest.approx(100.0)
+    with pytest.raises(UnitError, match="Incompatible units"):
+        convert(25.0, "C", "delta_K")
+    with pytest.raises(UnitError, match="Incompatible units"):
+        convert(1.0, "bar", "bar_g")
+
+
+def test_registry_quantity_matches_unit_dimension(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    path.write_text(
+        '{"nodes":{"x":{"backend":"mock","access":"write",'
+        '"unit":"delta_C","quantity":"absolute_temperature","paths":["x"]}}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistryError, match="must match unit dimension"):
+        NodeRegistry(path)
+
+
+@pytest.mark.parametrize(
+    ("factory", "payload"),
+    [
+        (VariableWrite.from_dict, {"key": "x", "value": 1, "typo": True}),
+        (VariableRead.from_dict, {"key": "x", "typo": True}),
+        (ConstraintSpec.from_dict, {"key": "x", "value": 1, "typo": True}),
+        (BalanceTerm.from_dict, {"key": "x", "typo": True}),
+        (BalanceSpec.from_dict, {"name": "m", "terms": [{"key": "x"}], "typo": True}),
+        (EvaluationRequest.from_dict, request(typo=True)),
+    ],
+)
+def test_runtime_contracts_reject_unknown_fields(factory: Any, payload: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="Unsupported .* fields: typo"):
+        factory(payload)
+
+
+def test_batch_point_and_optimization_subdocuments_are_strict() -> None:
+    with pytest.raises(ValueError, match="Unsupported batch request fields: typo"):
+        expand_batch_document(request(typo=True))
+    with pytest.raises(ValueError, match=r"Unsupported points\[0\] fields: typo"):
+        expand_batch_document(request(points=[{"typo": True}]))
+    with pytest.raises(ValueError, match="Unsupported optimization variable fields"):
+        VariableSpec.from_mapping({"key": "x", "lower": 0, "upper": 1, "typo": True})
+    with pytest.raises(ValueError, match="Unsupported optimization objective fields"):
+        ObjectiveSpec.from_mapping({"output_key": "x", "typo": True})
+    with pytest.raises(ValueError, match="Unsupported optimization budget fields"):
+        OptimizationBudget.from_mapping({"typo": True})
+    with pytest.raises(ValueError, match="Unsupported optimization fields"):
+        OptimizationProblem.from_document({"optimization": {"typo": True}})
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"value": float("nan")},
+        {"value": object()},
+        {1: "numeric key"},
+        {"line\nbreak": True},
+        {"a": 1, " a ": 2},
+    ],
+)
+def test_metadata_rejects_nonfinite_nonjson_and_unsafe_keys(metadata: dict[Any, Any]) -> None:
+    with pytest.raises(ValueError):
+        EvaluationRequest.from_dict(request(metadata=metadata))
+
+
+def test_metadata_depth_size_and_normalization() -> None:
+    nested: Any = "end"
+    for _ in range(10):
+        nested = [nested]
+    with pytest.raises(ValueError, match="maximum JSON nesting depth"):
+        EvaluationRequest.from_dict(request(metadata={"nested": nested}))
+    with pytest.raises(ValueError, match="metadata exceeds"):
+        EvaluationRequest.from_dict(request(metadata={"payload": "x" * 262_145}))
+    parsed = EvaluationRequest.from_dict(request(metadata={"nested": (1, {"ok": True})}))
+    assert parsed.metadata == {"nested": [1, {"ok": True}]}
+
