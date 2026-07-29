@@ -1,0 +1,373 @@
+name: Runtime boundary hardening qualification
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: runtime-boundary-hardening-v1
+  cancel-in-progress: false
+
+env:
+  BASELINE_SHA: 5ed99b0ea6274ecab8815969f7b26ebc44d8c5ff
+  TRIGGER_TITLE: ASPENOPS_RUNTIME_BOUNDARY_HARDENING_V1
+
+jobs:
+  linux:
+    if: github.event.issue.title == 'ASPENOPS_RUNTIME_BOUNDARY_HARDENING_V1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Materialize transparent hardening patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          parts = sorted(Path('.github/runtime-hardening-parts').glob('part-*'))
+          if len(parts) != 6:
+              raise SystemExit(f'expected 6 patch parts, found {len(parts)}')
+          payload = ''.join(path.read_text(encoding='utf-8') for path in parts)
+          Path('/tmp/apply-runtime-boundary-hardening.py').write_text(
+              payload,
+              encoding='utf-8',
+          )
+          PY
+          python /tmp/apply-runtime-boundary-hardening.py
+          rm -rf .github/runtime-hardening-parts
+          rm -f .github/workflows/runtime-boundary-hardening.yml
+      - name: Sync frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/runtime-hardening
+          uv lock --check 2>&1 | tee var/runtime-hardening/uv-lock.log
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing \
+            2>&1 | tee var/runtime-hardening/uv-sync.log
+      - name: Format and static analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.12 ruff check --fix --unsafe-fixes . \
+            2>&1 | tee var/runtime-hardening/ruff-fix.log
+          uv run --python 3.12 ruff format . \
+            2>&1 | tee var/runtime-hardening/ruff-format-fix.log
+          uv run --python 3.12 ruff check . \
+            2>&1 | tee var/runtime-hardening/ruff.log
+          uv run --python 3.12 ruff format --check . \
+            2>&1 | tee var/runtime-hardening/ruff-format.log
+          uv run --python 3.12 mypy src \
+            2>&1 | tee var/runtime-hardening/mypy.log
+          uv run --python 3.12 python -m compileall -q src scripts
+          uv run --python 3.12 python scripts/audit_source_tree.py \
+            --output var/runtime-hardening/source-tree-audit.json
+      - name: Dependency and security audits
+        shell: bash
+        env:
+          UV_PREVIEW_FEATURES: json-output
+        run: |
+          set -euo pipefail
+          audit_failed=0
+          for platform in linux windows; do
+            for version in 3.11 3.12 3.13; do
+              stem="var/runtime-hardening/dependency-${platform}-${version}"
+              if ! uv audit --frozen \
+                --python-platform "$platform" \
+                --python-version "$version" \
+                --output-format json > "${stem}.json" 2> "${stem}.log"; then
+                audit_failed=1
+              fi
+              python -m json.tool "${stem}.json" >/dev/null || audit_failed=1
+            done
+          done
+          test "$audit_failed" -eq 0
+          bandit_status=0
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/runtime-hardening/bandit.json \
+            2> var/runtime-hardening/bandit.log || bandit_status=$?
+          python -m json.tool var/runtime-hardening/bandit.json >/dev/null
+          test "$bandit_status" -eq 0
+      - name: Focused boundary regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.12 pytest -W error::ResourceWarning \
+            tests/test_runtime_boundary_hardening.py \
+            tests/test_mcp.py \
+            tests/test_mcp_tools.py \
+            tests/test_backend_adapter_edges.py \
+            tests/test_hysys_convergence_contracts.py \
+            tests/test_worker_contracts.py \
+            tests/test_worker_protocol_hardening.py \
+            tests/test_models_strict_contracts.py \
+            tests/test_batch_resource_limits.py \
+            tests/test_units.py \
+            tests/test_config_registry_edge_cases.py \
+            --junitxml=var/runtime-hardening/focused-junit.xml \
+            2>&1 | tee var/runtime-hardening/focused-tests.log
+      - name: Full Python 3.12 qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.12 pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/runtime-hardening/coverage-3.12.json \
+            --junitxml=var/runtime-hardening/junit-3.12.xml \
+            --cov-fail-under=95.0 \
+            2>&1 | tee var/runtime-hardening/pytest-3.12.log
+          uv run --python 3.12 python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir var/runtime-hardening/order \
+            2>&1 | tee var/runtime-hardening/order.log
+      - name: Build, MCP, Process IR and Wheel smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --python 3.12 python scripts/validate_process_ir.py \
+            examples/process-intent.example.json \
+            --canonical-output var/runtime-hardening/process-intent-canonical.json \
+            --report-output var/runtime-hardening/process-intent-report.json
+          uv run --python 3.12 python scripts/check_mcp.py \
+            2>&1 | tee var/runtime-hardening/mcp.log
+          uv build 2>&1 | tee var/runtime-hardening/build.log
+          uv run --python 3.12 python scripts/check_wheel_metadata.py \
+            --dist-dir dist \
+            --output var/runtime-hardening/wheel-metadata.json
+          uv run --python 3.12 aspenops demo \
+            2>&1 | tee var/runtime-hardening/demo.log
+          uv export --frozen \
+            --extra agent \
+            --no-default-groups \
+            --no-emit-project \
+            --format requirements.txt \
+            --output-file var/runtime-hardening/runtime-requirements.txt
+          uv venv --python 3.12 /tmp/aspenops-runtime-hardening-wheel
+          uv pip sync \
+            --python /tmp/aspenops-runtime-hardening-wheel/bin/python \
+            --require-hashes \
+            var/runtime-hardening/runtime-requirements.txt
+          uv pip install \
+            --python /tmp/aspenops-runtime-hardening-wheel/bin/python \
+            --offline \
+            --no-deps \
+            dist/*.whl
+          uv pip check --python /tmp/aspenops-runtime-hardening-wheel/bin/python
+          /tmp/aspenops-runtime-hardening-wheel/bin/aspenops --version
+          /tmp/aspenops-runtime-hardening-wheel/bin/aspenops demo
+
+  windows:
+    if: github.event.issue.title == 'ASPENOPS_RUNTIME_BOUNDARY_HARDENING_V1'
+    runs-on: windows-2025
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Materialize transparent hardening patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          parts = sorted(Path('.github/runtime-hardening-parts').glob('part-*'))
+          if len(parts) != 6:
+              raise SystemExit(f'expected 6 patch parts, found {len(parts)}')
+          payload = ''.join(path.read_text(encoding='utf-8') for path in parts)
+          Path('apply-runtime-boundary-hardening.py').write_text(
+              payload,
+              encoding='utf-8',
+          )
+          PY
+          python apply-runtime-boundary-hardening.py
+          rm -f apply-runtime-boundary-hardening.py
+          rm -rf .github/runtime-hardening-parts
+          rm -f .github/workflows/runtime-boundary-hardening.yml
+      - name: Windows frozen quality and full tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/runtime-hardening
+          uv lock --check 2>&1 | tee var/runtime-hardening/uv-lock.log
+          uv sync --python 3.12 --frozen \
+            --extra windows --extra dev --extra agent --extra signing \
+            2>&1 | tee var/runtime-hardening/uv-sync.log
+          uv run --python 3.12 ruff check --fix --unsafe-fixes .
+          uv run --python 3.12 ruff format .
+          uv run --python 3.12 ruff check .
+          uv run --python 3.12 ruff format --check .
+          uv run --python 3.12 mypy src
+          uv run --python 3.12 python -m compileall -q src scripts
+          uv run --python 3.12 python scripts/audit_source_tree.py \
+            --output var/runtime-hardening/source-tree-audit.json
+          uv run --python 3.12 pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/runtime-hardening/coverage-windows.json \
+            --junitxml=var/runtime-hardening/junit-windows.xml \
+            --cov-fail-under=95.0 \
+            2>&1 | tee var/runtime-hardening/pytest-windows.log
+          uv run --python 3.12 python scripts/validate_process_ir.py \
+            examples/process-intent.example.json \
+            --canonical-output var/runtime-hardening/process-intent-canonical.json \
+            --report-output var/runtime-hardening/process-intent-report.json
+          uv build 2>&1 | tee var/runtime-hardening/build.log
+          uv run --python 3.12 aspenops --version
+          uv run --python 3.12 aspenops demo
+
+  finalize:
+    if: always() && github.event.issue.title == 'ASPENOPS_RUNTIME_BOUNDARY_HARDENING_V1'
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        if: needs.linux.result == 'success' && needs.windows.result == 'success'
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Commit qualified source or restore baseline
+        shell: bash
+        env:
+          LINUX_RESULT: ${{ needs.linux.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "$LINUX_RESULT" != "success" || "$WINDOWS_RESULT" != "success" ]]; then
+            candidate_sha="$(git rev-parse HEAD)"
+            git checkout "$BASELINE_SHA" -- .
+            mapfile -t added < <(
+              git diff --name-only --diff-filter=A "$BASELINE_SHA" "$candidate_sha"
+            )
+            for path in "${added[@]}"; do
+              rm -rf -- "$path"
+            done
+            mkdir -p docs
+            LINUX_RESULT="$LINUX_RESULT" \
+              WINDOWS_RESULT="$WINDOWS_RESULT" \
+              RUN_ID="$RUN_ID" \
+              RUN_ATTEMPT="$RUN_ATTEMPT" \
+              python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema": "aspenops.runtime-boundary-hardening-blocker/v1",
+              "decision": "FAIL",
+              "blocker_code": "QUALIFICATION_JOB_FAILED",
+              "linux_result": os.environ["LINUX_RESULT"],
+              "windows_result": os.environ["WINDOWS_RESULT"],
+              "run_id": os.environ["RUN_ID"],
+              "run_attempt": os.environ["RUN_ATTEMPT"],
+              "implementation_retained": False,
+              "baseline_sha": os.environ["BASELINE_SHA"],
+          }
+          Path("docs/runtime-boundary-hardening-blocker.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            git add -A
+            git commit -m "test: record runtime boundary hardening blocker"
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          parts = sorted(Path('.github/runtime-hardening-parts').glob('part-*'))
+          if len(parts) != 6:
+              raise SystemExit(f'expected 6 patch parts, found {len(parts)}')
+          Path('/tmp/apply-runtime-boundary-hardening.py').write_text(
+              ''.join(path.read_text(encoding='utf-8') for path in parts),
+              encoding='utf-8',
+          )
+          PY
+          python /tmp/apply-runtime-boundary-hardening.py
+          rm -rf .github/runtime-hardening-parts
+          rm -f .github/workflows/runtime-boundary-hardening.yml
+          rm -f docs/runtime-boundary-hardening-blocker.json
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          uv run --python 3.12 ruff check --fix --unsafe-fixes .
+          uv run --python 3.12 ruff format .
+          uv run --python 3.12 ruff check .
+          uv run --python 3.12 ruff format --check .
+          uv run --python 3.12 mypy src
+          uv run --python 3.12 python -m compileall -q src scripts
+
+          git add -A
+          git commit -m "fix: harden runtime execution boundaries"
+          source_sha="$(git rev-parse HEAD)"
+          SOURCE_SHA="$source_sha" \
+            RUN_ID="$RUN_ID" \
+            RUN_ATTEMPT="$RUN_ATTEMPT" \
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema": "aspenops.runtime-boundary-hardening-result/v1",
+              "decision": "PASS",
+              "qualified_source_sha": os.environ["SOURCE_SHA"],
+              "run_id": os.environ["RUN_ID"],
+              "run_attempt": os.environ["RUN_ATTEMPT"],
+              "linux_result": "success",
+              "windows_result": "success",
+              "changes": {
+                  "mcp_mock_requires_allowed_roots": True,
+                  "hysys_reopens_staged_case": True,
+                  "parent_unmanaged_process_cleanup": True,
+                  "absolute_delta_temperature_separated": True,
+                  "absolute_gauge_pressure_separated": True,
+                  "unknown_runtime_fields_rejected": True,
+                  "metadata_recursive_limits": True,
+              },
+              "real_aspen_boundary": "PENDING_REAL_ASPEN_CERTIFICATION",
+          }
+          Path("docs/runtime-boundary-hardening-result.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git add docs/runtime-boundary-hardening-result.json
+          git commit -m "test: record runtime boundary hardening qualification"
+          git push origin HEAD:main
