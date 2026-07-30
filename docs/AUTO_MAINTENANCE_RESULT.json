@@ -1,21 +1,18 @@
 {
-  "boundary": "P0 governance only; no Aspen execution, estimation, dynamics, ML, or runtime-control-plane modification.",
-  "branch_coverage_percent": {
-    "3.11": 92.13381555153707,
-    "3.12": 92.13381555153707,
-    "3.13": 92.13381555153707,
-    "p0": 96.15384615384616
+  "aspen_executed": false,
+  "coverage": {
+    "legacy_branch_coverage_percent": {
+      "3.11": 92.13381555153707,
+      "3.12": 92.13381555153707,
+      "3.13": 92.13381555153707,
+      "p0": 96.15384615384616
+    }
   },
   "decision": "PASS",
-  "deliverables": {
-    "closed_loop_validation": true,
-    "complete_examples": 2,
-    "coverage_report": true,
-    "object_relationship_diagram": true,
-    "qualification_state_machine": true,
-    "schemas": 9,
-    "source": true,
-    "test_report": true
+  "dynamic_modeling_executed": false,
+  "evidence_composition": {
+    "complete_gate_run_note": "All gates except the final schema-inventory command passed; the failure was test-script indentation after Wheel, dependencies, pip check, CLI and demo had succeeded.",
+    "finalize_run_note": "Revalidated frozen dependencies, focused schemas/examples, build, Wheel metadata, hash-verified runtime dependencies, Wheel install, pip check, CLI, demo and all nine packaged schemas."
   },
   "focused_schema_tests": {
     "errors": 0,
@@ -74,6 +71,7 @@
     "wheel-metadata": 0,
     "wheel-smoke": 0
   },
+  "machine_learning_executed": false,
   "p0_tests": {
     "errors": 0,
     "failures": 0,
@@ -81,16 +79,13 @@
     "tests": 68,
     "time": 0.995
   },
-  "phase": "P0",
-  "qualification_run": {
-    "run_attempt": "1",
-    "run_id": "30442716461"
-  },
-  "qualified_source_sha": "28abeb1f5a79e4e4e1cbe859b7762f24710769e5",
-  "requalification_runs": {
+  "parameter_estimation_executed": false,
+  "qualification_runs": {
     "complete_gate_run": "30505805750",
     "wheel_finalize_attempt": "1",
     "wheel_finalize_run": "30506006621"
   },
-  "schema": "aspenops.research-platform-p0-result/v1"
+  "runtime_core_changed": false,
+  "schema": "aspenops.auto-maintenance-result/v1",
+  "source_files_changed": false
 }
