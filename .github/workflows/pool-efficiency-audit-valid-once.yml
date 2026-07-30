@@ -1,0 +1,541 @@
+name: AspenOps Pool Efficiency Audit Valid Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspenops-pool-efficiency-audit-valid
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.issue.title == 'ASPENOPS_POOL_EFFICIENCY_AUDIT_VALID_V1_20260730'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply validated patch, benchmark and qualify
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE="$(git rev-parse HEAD)"
+          SELF=.github/workflows/pool-efficiency-audit-valid-once.yml
+          INVALID=.github/workflows/pool-efficiency-audit-pass-once.yml
+          E=var/pool-efficiency-audit-valid
+          rm -rf "$E" dist /tmp/aspenops-pool-wheel
+          mkdir -p "$E"
+          rm -f "$SELF" "$INVALID" docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json
+
+          : > "$E/status.tsv"
+          failed=0
+          gate() {
+            name="$1"; shift
+            set +e
+            "$@" >"$E/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+            [[ "$code" -eq 0 ]] || failed=1
+          }
+
+          cat > /tmp/apply-pool.b64 <<'B64'
+          ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgic3JjL2FzcGVub3BzX25l
+          eHVzL3Bvb2wucHkiKQp0ZXh0ID0gcGF0aC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikK
+          CgpkZWYgcmVwbGFjZV9zZWN0aW9uKHN0YXJ0X21hcmtlcjogc3RyLCBlbmRfbWFya2VyOiBz
+          dHIsIHJlcGxhY2VtZW50OiBzdHIpIC0+IE5vbmU6CiAgICBnbG9iYWwgdGV4dAogICAgc3Rh
+          cnQgPSB0ZXh0LmluZGV4KHN0YXJ0X21hcmtlcikKICAgIGVuZCA9IHRleHQuaW5kZXgoZW5k
+          X21hcmtlciwgc3RhcnQpCiAgICB0ZXh0ID0gdGV4dFs6c3RhcnRdICsgcmVwbGFjZW1lbnQg
+          KyB0ZXh0W2VuZDpdCgoKY2FjaGVfa2V5X3NlY3Rpb24gPSAiXG4iLmpvaW4oCiAgICBbCiAg
+          ICAgICAgIiAgICBkZWYgX2NhY2hlX2tleV93aXRoX3J1bnRpbWUoIiwKICAgICAgICAiICAg
+          ICAgICBzZWxmLCIsCiAgICAgICAgIiAgICAgICAgcmVxdWVzdDogRXZhbHVhdGlvblJlcXVl
+          c3QsIiwKICAgICAgICAiICAgICAgICBydW50aW1lX2lkZW50aXR5OiBkaWN0W3N0ciwgQW55
+          XSwiLAogICAgICAgICIgICAgKSAtPiBzdHI6IiwKICAgICAgICAiICAgICAgICBpZGVudGl0
+          eSA9IHsiLAogICAgICAgICcgICAgICAgICAgICAic2NoZW1hIjogUlVOVElNRV9TQ0hFTUEs
+          JywKICAgICAgICAnICAgICAgICAgICAgInJ1bnRpbWVfdmVyc2lvbiI6IF9fdmVyc2lvbl9f
+          LCcsCiAgICAgICAgJyAgICAgICAgICAgICJiYWNrZW5kIjogc2VsZi5iYWNrZW5kX25hbWUs
+          JywKICAgICAgICAnICAgICAgICAgICAgInJ1bnRpbWVfaWRlbnRpdHkiOiBydW50aW1lX2lk
+          ZW50aXR5LCcsCiAgICAgICAgJyAgICAgICAgICAgICJtb2RlbF9zaGEyNTYiOiBzZWxmLm1v
+          ZGVsX3NoYTI1NicsCiAgICAgICAgJyAgICAgICAgICAgICJyZWdpc3RyeV9zaGEyNTYiOiBz
+          ZWxmLnJlZ2lzdHJ5LnNoYTI1NicsCiAgICAgICAgJyAgICAgICAgICAgICJyZXF1ZXN0Ijog
+          cmVxdWVzdC5waHlzaWNhbF9pZGVudGl0eSgpLCcsCiAgICAgICAgIiAgICAgICAgfSIsCiAg
+          ICAgICAgIiAgICAgICAgcmV0dXJuIGNhbm9uaWNhbF9oYXNoKGlkZW50aXR5KSIsCiAgICAg
+          ICAgIiIsCiAgICAgICAgIiAgICBkZWYgY2FjaGVfa2V5KHNlbGYsIHJlcXVlc3Q6IEV2YWx1
+          YXRpb25SZXF1ZXN0KSAtPiBzdHI6IiwKICAgICAgICAiICAgICAgICByZXR1cm4gc2VsZi5f
+          Y2FjaGVfa2V5X3dpdGhfcnVudGltZShyZXF1ZXN0LCBzZWxmLl9ydW50aW1lX2NhY2hlX2lk
+          ZW50aXR5KCkpIiwKICAgICAgICAiIiwKICAgICAgICAiIiwKICAgIF0KKQpyZXBsYWNlX3Nl
+          Y3Rpb24oCiAgICAiICAgIGRlZiBjYWNoZV9rZXkoc2VsZiwgcmVxdWVzdDogRXZhbHVhdGlv
+          blJlcXVlc3QpIC0+IHN0cjpcbiIsCiAgICAiICAgIGRlZiBfa2V5X3JlcXVlc3RzKFxuIiwK
+          ICAgIGNhY2hlX2tleV9zZWN0aW9uLAopCgprZXlfcmVxdWVzdHNfc2VjdGlvbiA9ICJcbiIu
+          am9pbigKICAgIFsKICAgICAgICAiICAgIGRlZiBfa2V5X3JlcXVlc3RzKCIsCiAgICAgICAg
+          IiAgICAgICAgc2VsZiwiLAogICAgICAgICIgICAgICAgIHJlcXVlc3RzOiBsaXN0W0V2YWx1
+          YXRpb25SZXF1ZXN0XSwiLAogICAgICAgICIgICAgKSAtPiBsaXN0W3R1cGxlW3N0ciwgRXZh
+          bHVhdGlvblJlcXVlc3RdXT6iLAogICAgICAgICcgICAgICAgICIiIlJldXNlIGNhY2hlLWtl
+          eSB3b3JrIHdoZW4gdGhlIHNhbWUgaW1tdXRhYmxlIHJlcXVlc3Qgb2JqZWN0IHJlcGVhdHMg
+          aW4gYSBiYXRjaC4iIiInLAogICAgICAgIC/IiwKICAgICAgICAiICAgICAgICBydW50aW1l
+          X2lkZW50aXR5ID0gc2VsZi5fcnVudGltZV9jYWNoZV9pZGVudGl0eSgpIiwKICAgICAgICAi
+          ICAgICAgICBieV9pZGVudGl0eTogZGljdFtpbnQsIHR1cGxlW0V2YWx1YXRpb25SZXF1ZXN0
+          LCBzdHJdXSA9IHt9IiwKICAgICAgICAiICAgICAgICBrZXllZDogbGlzdFt0dXBsZVtzdHIs
+          IEV2YWx1YXRpb25SZXF1ZXN0XV0gPSBbXSIsCiAgICAgICAgIiAgICAgICAgZm9yIHJlcXVl
+          c3QgaW4gcmVxdWVzdHM6IiwKICAgICAgICAiICAgICAgICAgICAgaWRlbnRpdHkgPSBpZChy
+          ZXF1ZXN0KSIsCiAgICAgICAgIiAgICAgICAgICAgIGV4aXN0aW5nID0gYn lfaWRlbnRpdHku
+          Z2V0KGlkZW50aXR5KSIsCiAgICAgICAgIiAgICAgICAgICAgIGlmIGV4aXN0aW5nIGlzIG5v
+          dCBOb25lIGFuZCBleGlzdGluZ1swXSBpcyByZXF1ZXN0OiIsCiAgICAgICAgIiAgICAgICAg
+          ICAgICAgICBrZXkgPSBleGlzdGluZ1sxXSIsCiAgICAgICAgIiAgICAgICAgICAgIGVsc2U6
+          IiwKICAgICAgICAiICAgICAgICAgICAgICAgIGtleSA9IHNlbGYuX2NhY2hlX2tleV93aXRo
+          X3J1bnRpbWUocmVxdWVzdCwgcnVudGltZV9pZGVudGl0eSkiLAogICAgICAgICIgICAgICAg
+          ICAgICAgICAgYnlfaWRlbnRpdHlbaWRlbnRpdHldID0gKHJlcXVlc3QsIGtleSkiLAogICAg
+          ICAgICIgICAgICAgICAgICBrZXllZC5hcHBlbmQoKGtleSwgcmVxdWVzdCkpIiwKICAgICAg
+          ICAiICAgICAgICByZXR1cm4ga2V5ZWQiLAogICAgICAgIC/IiwKICAgICAgICAiIiwKICAgIF0K
+          KQpyZXBsYWNlX3NlY3Rpb24oCiAgICAiICAgIGRlZiBfa2V5X3JlcXVlc3RzKFxuIiwKICAg
+          ICIgICAgZGVmIF9jYWNoZWFibGUoXG4iLAogICAga2V5X3JlcXVlc3RzX3NlY3Rpb24sCikK
+          CnNpbmdsZV9zdGFydCA9IHRleHQuaW5kZXgoIiAgICBkZWYgX2V2YWx1YXRlX3NpbmdsZWZs
+          aWdodChcbiIpCnNpbmdsZV9lbmQgPSB0ZXh0LmluZGV4KCIgICAgZGVmIGV2YWx1YXRlX21h
+          bnkoXG4iLCBzaW5nbGVfc3RhcnQpCnNpbmdsZSA9IHRleHRbc2luZ2xlX3N0YXJ0OnNpbmds
+          ZV9lbmRdCm9sZF9wYXJzZSA9ICIgICAgICAgICAgICAgICAgcmVzdWx0ID0gRXZhbHVhdGlv
+          blJlc3VsdC5mcm9tX2RpY3QoZGVlcGNvcHkoY2FjaGVkKSkiCmlmIHNpbmdsZS5jb3VudChv
+          bGRfcGFyc2UpICE9IDE6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIlNpbmdsZWZsaWdodCBj
+          YWNoZWQtcmVzdWx0IHBhcnNlIHRhcmdldCBjaGFuZ2VkIikKc2luZ2xlID0gc2luZ2xlLnJl
+          cGxhY2UoCiAgICBvbGRfcGFyc2UsCiAgICAiICAgICAgICAgICAgICAgIHJlc3VsdCA9IEV2
+          YWx1YXRpb25SZXN1bHQuZnJvbV9kaWN0KGNhY2hlZCkiLAogICAgMSwKKQp0ZXh0ID0gdGV4
+          dFs6c2luZ2xlX3N0YXJ0XSArIHNpbmdsZSArIHRleHRbc2luZ2xlX2VuZDpdCgpiYXRjaF9z
+          dGFydCA9IHRleHQuaW5kZXgoIiAgICBkZWYgX2V2YWx1YXRlX21hbnlfbG9ja2VkKFxuIikK
+          YmF0Y2ggPSB0ZXh0W2JhdGNoX3N0YXJ0Ol0Kb2xkX2NhY2hlX2Jsb2NrID0gIlxuIi5qb2lu
+          KAogICAgWwogICAgICAgICIgICAgICAgIG91dHB1dDogbGlzdFtFdmFsdWF0aW9uUmVzdWx0
+          IHwgTm9uZV0gPSBbTm9uZV0gKiBsZW4ocmVxdWVzdHMpIiwKICAgICAgICAiICAgICAgICB1
+          bmlxdWU6IGRpY3Rbc3RyLCB0dXBsZVtFdmFsdWF0aW9uUmVxdWVzdCwgbGlzdFtpbnRdXV0g
+          PSB7fSIsCiAgICAgICAgIiAgICAgICAgZm9yIGluZGV4LCAoa2V5LCByZXF1ZXN0KSBpbiBl
+          bnVtZXJhdGUoa2V5ZWRfcmVxdWVzdHMpOiIsCiAgICAgICAgIiAgICAgICAgICAgIGNhY2hl
+          ZCA9IGNhY2hlZF9wYXlsb2Fkcy5nZXQoa2V5KSBpZiByZXF1ZXN0LnJlaW5pdGlhbGl6ZSBl
+          bHNlIE5vbmUiLAogICAgICAgICIgICAgICAgICAgICBpZiBjYWNoZWQgaXMgbm90IE5vbmU6
+          IiwKICAgICAgICAiICAgICAgICAgICAgICAgIHJlc3VsdCA9IEV2YWx1YXRpb25SZXN1bHQu
+          ZnJvbV9kaWN0KGRlZXBjb3B5KGNhY2hlZCkpIiwKICAgICAgICAiICAgICAgICAgICAgICAg
+          IHJlc3VsdC5jYWNoZV9zb3VyY2UgPSBcInBlcnNpc3RlbnRfY2FjaGVcIiIsCiAgICAgICAg
+          IiAgICAgICAgICAgICAgICByZXN1bHQuY2FjaGVfaGl0ID0gVHJ1ZSIsCiAgICAgICAgIiAg
+          ICAgICAgICAgICAgICByZXN1bHQucmVxdWVzdF9oYXNoID0ga2V5IiwKICAgICAgICAiICAg
+          ICAgICAgICAgICAgIG91dHB1dFtpbmRleF0gPSByZXN1bHQiLAogICAgICAgICIgICAgICAg
+          ICAgICAgICAgY29udGludWUiLAogICAgICAgICIgICAgICAgICAgICB1bmlxdWUuc2V0ZGVm
+          YXVsdChrZXksIChyZXF1ZXN0LCBbXSkpWzFdLmFwcGVuZChpbmRleCkiLAogICAgXQopCm5l
+          d19jYWNoZV9ibG9jayA9ICJcbiIuam9pbigKICAgIFsKICAgICAgICAiICAgICAgICBvdXRwdXQ6
+          IGxpc3RbRXZhbHVhdGlvblJlc3VsdCB8IE5vbmVdID0gW05vbmVdICogbGVuKHJlcXVlc3Rz
+          KSIsCiAgICAgICAgIiAgICAgICAgdW5pcXVlOiBkaWN0W3N0ciwgdHVwbGVbRXZhbHVhdGlv
+          blJlcXVlc3QsIGxpc3RbaW50XV1dID0ge30iLAogICAgICAgICIgICAgICAgIGNhY2hlZF9y
+          ZXN1bHRzOiBkaWN0W3N0ciwgRXZhbHVhdGlvblJlc3VsdF0gPSB7fSIsCiAgICAgICAgIiAg
+          ICAgICAgZm9yIGluZGV4LCAoa2V5LCByZXF1ZXN0KSBpbiBlbnVtZXJhdGUoa2V5ZWRfcmVx
+          dWVzdHMpOiIsCiAgICAgICAgIiAgICAgICAgICAgIGNhY2hlZCA9IGNhY2hlZF9wYXlsb2Fk
+          cy5nZXQoa2V5KSBpZiByZXF1ZXN0LnJlaW5pdGlhbGl6ZSBlbHNlIE5vbmUiLAogICAgICAg
+          ICIgICAgICAgICAgICBpZiBjYWNoZWQgaXMgbm90IE5vbmU6IiwKICAgICAgICAiICAgICAg
+          ICAgICAgICAgIHRlbXBsYXRlID0gY2FjaGVkX3Jlc3VsdHMuZ2V0KGtleSkiLAogICAgICAg
+          ICIgICAgICAgICAgICAgICAgaWYgdGVtcGxhdGUgaXMgTm9uZToiLAogICAgICAgICIgICAg
+          ICAgICAgICAgICAgICAgIHJlc3VsdCA9IEV2YWx1YXRpb25SZXN1bHQuZnJvbV9kaWN0KGNh
+          Y2hlZCkiLAogICAgICAgICIgICAgICAgICAgICAgICAgICAgIHJlc3VsdC5jYWNoZV9zb3Vy
+          Y2UgPSBcInBlcnNpc3RlbnRfY2FjaGVcIiIsCiAgICAgICAgIiAgICAgICAgICAgICAgICAg
+          ICAgcmVzdWx0LmNhY2hlX2hpdCA9IFRydWUiLAogICAgICAgICIgICAgICAgICAgICAgICAg
+          ICAgIHJlc3VsdC5yZXF1ZXN0X2hhc2ggPSBrZXkiLAogICAgICAgICIgICAgICAgICAgICAg
+          ICAgICAgIGNhY2hlZF9yZXN1bHRzW2tleV0gPSByZXN1bHQiLAogICAgICAgICIgICAgICAg
+          ICAgICAgICAgZWxzZToiLAogICAgICAgICIgICAgICAgICAgICAgICAgICAgIHJlc3VsdCA9
+          IGRlZXBjb3B5KHRlbXBsYXRlKSIsCiAgICAgICAgIiAgICAgICAgICAgICAgICBvdXRwdXRb
+          aW5kZXhdID0gcmVzdWx0IiwKICAgICAgICAiICAgICAgICAgICAgICAgIGNvbnRpbnVlIiwK
+          ICAgICAgICAiICAgICAgICAgICAgdW5pcXVlLnNldGRlZmF1bHQoa2V5LCAocmVxdWVzdCwg
+          W10pKVsxXS5hcHBlbmQoaW5kZXgpIiwKICAgIF0KKQppZiBiYXRjaC5jb3VudChvbGRfY2Fj
+          aGVfYmxvY2spICE9IDE6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIkJhdGNoIGNhY2hlZC1y
+          ZXN1bHQgYmxvY2sgdGFyZ2V0IGNoYW5nZWQiKQpiYXRjaCA9IGJhdGNoLnJlcGxhY2Uob2xk
+          X2NhY2hlX2Jsb2NrLCBuZXdfY2FjaGVfYmxvY2ssIDEpCm9sZF9yZXR1cm4gPSAicmV0dXJu
+          IFtyZXBsYWNlKGl0ZW0pIGZvciBpdGVtIGluIG91dHB1dCBpZiBpdGVtIGlzIG5vdCBOb25l
+          XSIKaWYgYmF0Y2guY291bnQob2xkX3JldHVybikgIT0gMjoKICAgIHJhaXNlIFJ1bnRpbWVF
+          cnJvcigiRXhwZWN0ZWQgdHdvIHJlZHVuZGFudCBmaW5hbCBzaGFsbG93LWNvcHkgcmV0dXJu
+          cyIpCmJhdGNoID0gYmF0Y2gucmVwbGFjZShvbGRfcmV0dXJuLCAicmV0dXJuIFtpdGVtIGZv
+          ciBpdGVtIGluIG91dHB1dCBpZiBpdGVtIGlzIG5vdCBOb25lXSIpCnRleHQgPSB0ZXh0Wzpi
+          YXRjaF9zdGFydF0gKyBiYXRjaApwYXRoLndyaXRlX3RleHQodGV4dCwgZW5jb2Rpbmc9InV0
+          Zi04IikK
+          B64
+          base64 -d /tmp/apply-pool.b64 > /tmp/apply_pool_efficiency.py
+          gate apply-patch python /tmp/apply_pool_efficiency.py
+
+          cat > /tmp/test-pool.b64 <<'B64'
+          ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKZnJvbSBjb3B5IGltcG9ydCBk
+          ZWVwY29weQpmcm9tIHR5cGluZyBpbXBvcnQgQW55CgppbXBvcnQgYXNwZW5vcHNfbmV4dXMu
+          cG9vbCBhcyBwb29sX21vZHVsZQpmcm9tIGFzcGVub3BzX25leHVzLm1vZGVscyBpbXBvcnQg
+          RXZhbHVhdGlvblJlcXVlc3QsIEV2YWx1YXRpb25SZXN1bHQKZnJvbSBhc3Blbm9wc19uZXh1
+          cy5wb29sIGltcG9ydCBDYXNlUG9vbAoKCmRlZiBfcmVxdWVzdCh2YWx1ZTogZmxvYXQpIC0+
+          IEV2YWx1YXRpb25SZXF1ZXN0OgogICAgcmV0dXJuIEV2YWx1YXRpb25SZXF1ZXN0LmZyb21f
+          ZGljdCgKICAgICAgICB7CiAgICAgICAgICAgICJtb2RlbF9wYXRoIjogIm1vZGVsLmJrcCIs
+          CiAgICAgICAgICAgICJyZWdpc3RyeV9wYXRoIjogInJlZ2lzdHJ5Lmpzb24iLAogICAgICAg
+          ICAgICAiYmFja2VuZCI6ICJtb2NrIiwKICAgICAgICAgICAgIndyaXRlcyI6IFt7ImtleSI6
+          ICJmZWVkIiwgInZhbHVlIjogdmFsdWV9XSwKICAgICAgICAgICAgInJlYWRzIjogW10sCiAg
+          ICAgICAgfQogICAgKQoKCmRlZiBfcGF5bG9hZCgpIC0+IGRpY3Rbc3RyLCBBbnldOgogICAg
+          cmV0dXJuIHsKICAgICAgICAib2siOiBUcnVlLAogICAgICAgICJjb21tdW5pY2F0aW9uX29r
+          IjogVHJ1ZSwKICAgICAgICAiZW5naW5lX29rIjogVHJ1ZSwKICAgICAgICAiY29udmVyZ2Vk
+          IjogVHJ1ZSwKICAgICAgICAiZmVhc2libGUiOiBUcnVlLAogICAgICAgICJ2YWx1ZXMiOiB7
+          InByb2R1Y3QiOiAxLjB9LAogICAgICAgICJ1bml0cyI6IHsicHJvZHVjdCI6ICIxIn0sCiAg
+          ICAgICAgInZpb2xhdGlvbnMiOiBbXSwKICAgICAgICAiZGlhZ25vc3RpY3MiOiB7Im5lc3Rl
+          ZCI6IHsidmFsdWUiOiAxfX0sCiAgICAgICAgImVsYXBzZWRfcyI6IDAuMDEsCiAgICAgICAg
+          ImJhbGFuY2VfcmVzaWR1YWxzIjoge30sCiAgICAgICAgImNhY2hlX3NvdXJjZSI6ICJjb21w
+          dXRlZCIsCiAgICAgICAgImNhY2hlX2hpdCI6IEZhbHNlLAogICAgICAgICJyZXF1ZXN0X2hh
+          c2giOiAiIiwKICAgICAgICAid29ya2VyX2lkIjogMCwKICAgIH0KCgpkZWYgdGVzdF9rZXlf
+          cmVxdWVzdHNfbm9ybWFsaXplc19ydW50aW1lX2lkZW50aXR5X29uY2UoKSAtPiBOb25lOgog
+          ICAgcG9vbCA9IG9iamVjdC5fX25ld19fKENhc2VQb29sKQogICAgcnVudGltZV9jYWxscyA9
+          IDAKICAgIGtleV9jYWxscyA9IDAKICAgIHJ1bnRpbWVfaWRlbnRpdHkgPSB7ImJhY2tlbmQi
+          OiAibW9jayIsICJidWlsZCI6IHsidmVyc2lvbiI6ICJ0ZXN0In19CgogICAgZGVmIHJ1bnRp
+          bWUoKSAtPiBkaWN0W3N0ciwgQW55XToKICAgICAgICBub25sb2NhbCBydW50aW1lX2NhbGxz
+          CiAgICAgICAgcnVudGltZV9jYWxscyArPSAxCiAgICAgICAgcmV0dXJuIHJ1bnRpbWVfaWRl
+          bnRpdHkKCiAgICBkZWYga2V5KHJlcXVlc3Q6IEV2YWx1YXRpb25SZXF1ZXN0LCBpZGVudGl0
+          eTogZGljdFtzdHIsIEFueV0pIC0+IHN0cjoKICAgICAgICBub25sb2NhbCBrZXlfY2FsbHMK
+          ICAgICAgICBrZXlfY2FsbHMgKz0gMQogICAgICAgIGFzc2VydCBpZGVudGl0eSBpcyBydW50
+          aW1lX2lkZW50aXR5CiAgICAgICAgcmV0dXJuIHN0cihyZXF1ZXN0LndyaXRlc1swXS52YWx1
+          ZSkKCiAgICBwb29sLl9ydW50aW1lX2NhY2hlX2lkZW50aXR5ID0gcnVudGltZSAgIyB0eXBl
+          OiBpZ25vcmVbbWV0aG9kLWFzc2lnbl0KICAgIHBvb2wuX2NhY2hlX2tleV93aXRoX3J1bnRp
+          bWUgPSBrZXkgICMgdHlwZTogaWdub3JlW21ldGhvZC1hc3NpZ25dCiAgICBmaXJzdCA9IF9y
+          ZXF1ZXN0KDEuMCkKICAgIHNlY29uZCA9IF9yZXF1ZXN0KDIuMCkKCiAgICBrZXllZCA9IHBv
+          b2wuX2tleV9yZXF1ZXN0cyhbZmlyc3QsIGZpcnN0LCBzZWNvbmRdKQoKICAgIGFzc2VydCBy
+          dW50aW1lX2NhbGxzID09IDEKICAgIGFzc2VydCBrZXlfY2FsbHMgPT0gMgogICAgYXNzZXJ0
+          IFtpdGVtWzBdIGZvciBpdGVtIGluIGtleWVkXSA9PSBbIjEuMCIsICIxLjAiLCAiMi4wIl0K
+          CgpkZWYgdGVzdF9zaW5nbGVfY2FjaGVkX3Jlc3VsdF9hdm9pZHNfcmVkdW5kYW50X2RlZXBj
+          b3B5KG1vbmtleXBhdGNoOiBBbnkpIC0+IE5vbmU6CiAgICBwYXlsb2FkID0gX3BheWxvYWQo
+          KQoKICAgIGNsYXNzIENhY2hlOgogICAgICAgIGRlZiBnZXQoc2VsZiwga2V5OiBzdHIpIC0+
+          IGRpY3Rbc3RyLCBBbnldOgogICAgICAgICAgICBhc3NlcnQga2V5ID09ICJzYW1lIgogICAg
+          ICAgICAgICByZXR1cm4gZGVlcGNvcHkocGF5bG9hZCkKCiAgICBwb29sID0gb2JqZWN0Ll9f
+          bmV3X18oQ2FzZVBvb2wpCiAgICBwb29sLl9oYW5kbGVzID0gW29iamVjdCgpXSAgIyB0eXBl
+          OiBpZ25vcmVbbGlzdC1pdGVtXQogICAgcG9vbC5jYWNoZSA9IENhY2hlKCkgICMgdHlwZTog
+          aWdub3JlW2Fzc2lnbm1lbnRdCiAgICBwb29sLmNhY2hlX2tleSA9IGxhbWJkYSByZXF1ZXN0
+          OiAic2FtZSIgICMgdHlwZTogaWdub3JlW21ldGhvZC1hc3NpZ25dCgogICAgZGVmIHVuZXhw
+          ZWN0ZWRfZGVlcGNvcHkoKmFyZ3M6IEFueSwgKiprd2FyZ3M6IEFueSkgLT4gQW55OgogICAg
+          ICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKCJzaW5nbGUgY2FjaGVkIHJlc3VsdCBtdXN0IG5v
+          dCBiZSBjb3BpZWQgYmVmb3JlIHBhcnNpbmciKQoKICAgIG1vbmtleXBhdGNoLnNldGF0dHIo
+          cG9vbF9tb2R1bGUsICJkZWVwY29weSIsIHVuZXhwZWN0ZWRfZGVlcGNvcHkpCiAgICByZXN1
+          bHQgPSBwb29sLl9ldmFsdWF0ZV9zaW5nbGVmbGlnaHQoX3JlcXVlc3QoMS4wKSwgTm9uZSkK
+          CiAgICBhc3NlcnQgcmVzdWx0LmNhY2hlX3NvdXJjZSA9PSAicGVyc2lzdGVudF9jYWNoZSIK
+          ICAgIGFzc2VydCByZXN1bHQuY2FjaGVfaGl0CiAgICBhc3NlcnQgcmVzdWx0LnJlcXVlc3Rf
+          aGFzaCA9PSAic2FtZSIKICAgIGFzc2VydCBwYXlsb2FkWyJkaWFnbm9zdGljcyJdWyJuZXN0
+          ZWQiXVsidmFsdWUiXSA9PSAxCgoKZGVmIHRlc3RfZHVwbGljYXRlX2NhY2hlZF9yZXN1bHRz
+          X2FyZV9wYXJzZWRfb25jZV9hbmRfaXNvbGF0ZWQobW9ua2V5cGF0Y2g6IEFueSkgLT4gTm9u
+          ZToKICAgIHBheWxvYWQgPSBfcGF5bG9hZCgpCgogICAgY2xhc3MgQ2FjaGU6CiAgICAgICAg
+          ZGVmIGdldF9tYW55KHNlbGYsIGtleXM6IGxpc3Rbc3RyXSkgLT4gZGljdFtzdHIsIGRpY3Rb
+          c3RyLCBBbnldXToKICAgICAgICAgICAgYXNzZXJ0IGtleXMgPT0gWyJzYW1lIiwgInNhbWUi
+          LCAic2FtZSJdCiAgICAgICAgICAgIHJldHVybiB7InNhbWUiOiBkZWVwY29weShwYXlsb2Fk
+          KX0KCiAgICBwb29sID0gb2JqZWN0Ll9fbmV3X18oQ2FzZVBvb2wpCiAgICBwb29sLl9oYW5k
+          bGVzID0gW29iamVjdCgpXSAgIyB0eXBlOiBpZ25vcmVbbGlzdC1pdGVtXQogICAgcG9vbC5j
+          YWNoZSA9IENhY2hlKCkgICMgdHlwZTogaWdub3JlW2Fzc2lnbm1lbnRdCiAgICBwb29sLl9r
+          ZXlfcmVxdWVzdHMgPSBsYW1iZGEgcmVxdWVzdHM6IFsgICMgdHlwZTogaWdub3JlW21ldGhv
+          ZC1hc3NpZ25dCiAgICAgICAgKCJzYW1lIiwgcmVxdWVzdCkgZm9yIHJlcXVlc3QgaW4gcmVx
+          dWVzdHMKICAgIF0KCiAgICBjYWxscyA9IDAKICAgIG9yaWdpbmFsID0gRXZhbHVhdGlvblJl
+          c3VsdC5mcm9tX2RpY3QuX19mdW5jX18KCiAgICBkZWYgY291bnRpbmdfZnJvbV9kaWN0KAog
+          ICAgICAgIGNsczogdHlwZVtFdmFsdWF0aW9uUmVzdWx0XSwgZGF0YTogZGljdFtzdHIsIEFu
+          eV0KICAgICkgLT4gRXZhbHVhdGlvblJlc3VsdDoKICAgICAgICBub25sb2NhbCBjYWxscwog
+          ICAgICAgIGNhbGxzICs9IDEKICAgICAgICByZXR1cm4gb3JpZ2luYWwoY2xzLCBkYXRhKQoK
+          ICAgbW9ua2V5cGF0Y2guc2V0YXR0cihFdmFsdWF0aW9uUmVzdWx0LCAiZnJvbV9kaWN0Iiwg
+          Y2xhc3NtZXRob2QoY291bnRpbmdfZnJvbV9kaWN0KSkKICAgIG9yaWdpbmFsX3JlcGxhY2Ug
+          PSBwb29sX21vZHVsZS5yZXBsYWNlCgogICAgZGVmIGd1YXJkZWRfcmVwbGFjZSh2YWx1ZTog
+          QW55LCAqYXJnczogQW55LCAqKmt3YXJnczogQW55KSAtPiBBbnk6CiAgICAgICAgaWYgaXNp
+          bnN0YW5jZSh2YWx1ZSwgRXZhbHVhdGlvblJlc3VsdCk6CiAgICAgICAgICAgIHJhaXNlIEFz
+          c2VydGlvbkVycm9yKCJjYWNoZWQtb25seSBmYXN0IHBhdGggbXVzdCBub3Qgc2hhbGxvdy1j
+          b3B5IHJlc3VsdHMiKQogICAgICAgIHJldHVybiBvcmlnaW5hbF9yZXBsYWNlKHZhbHVlLCAq
+          YXJncywgKiprd2FyZ3MpCgogICAgbW9ua2V5cGF0Y2guc2V0YXR0cihwb29sX21vZHVsZSwg
+          InJlcGxhY2UiLCBndWFyZGVkX3JlcGxhY2UpCiAgICByZXN1bHRzID0gcG9vbC5fZXZhbHVh
+          dGVfbWFueV9sb2NrZWQoCiAgICAgICAgW19yZXF1ZXN0KDEuMCksIF9yZXF1ZXN0KDEuMCks
+          IF9yZXF1ZXN0KDEuMCldLAogICAgICAgIGNhbmNlbF9jaGVjaz1Ob25lLAogICAgKQoKICAg
+          IGFzc2VydCBjYWxscyA9PSAxCiAgICBhc3NlcnQgbGVuKHJlc3VsdHMpID09IDMKICAgIGFz
+          c2VydCBsZW4oe2lkKHJlc3VsdCkgZm9yIHJlc3VsdCBpbiByZXN1bHRzfSkgPT0gMwogICAg
+          YXNzZXJ0IGFsbChyZXN1bHQuY2FjaGVfc291cmNlID09ICJwZXJzaXN0ZW50X2NhY2hlIiBm
+          b3IgcmVzdWx0IGluIHJlc3VsdHMpCiAgICBhc3NlcnQgYWxsKHJlc3VsdC5jYWNoZV9oaXQg
+          Zm9yIHJlc3VsdCBpbiByZXN1bHRzKQogICAgcmVzdWx0c1swXS5kaWFnbm9zdGljc1sibmVz
+          dGVkIl1bInZhbHVlIl0gPSA5OQogICAgYXNzZXJ0IHJlc3VsdHNbMV0uZGlhZ25vc3RpY3Nb
+          Im5lc3RlZCJdWyJ2YWx1ZSJdID09IDEKICAgIGFzc2VydCBwYXlsb2FkWyJkaWFnbm9zdGlj
+          cyJdWyJuZXN0ZWQiXVsidmFsdWUiXSA9PSAxCg==
+          B64
+          base64 -d /tmp/test-pool.b64 > tests/test_pool_efficiency.py
+
+          gate sync-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate ruff-fix uv run --python 3.12 ruff check --fix src/aspenops_nexus/pool.py tests/test_pool_efficiency.py
+          gate format-fix uv run --python 3.12 ruff format src/aspenops_nexus/pool.py tests/test_pool_efficiency.py
+
+          cat > /tmp/benchmark-pool.b64 <<'B64'
+          ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IGpzb24KaW1w
+          b3J0IHN0YXRpc3RpY3MKaW1wb3J0IHRpbWUKZnJvbSBjb3B5IGltcG9ydCBkZWVwY29weQpm
+          cm9tIHR5cGVzIGltcG9ydCBTaW1wbGVOYW1lc3BhY2UKZnJvbSB0eXBpbmcgaW1wb3J0IEFu
+          eQoKZnJvbSBhc3Blbm9wc19uZXh1cy5tb2RlbHMgaW1wb3J0IEV2YWx1YXRpb25SZXF1ZXN0
+          LCBFdmFsdWF0aW9uUmVzdWx0CmZyb20gYXNwZW5vcHNfbmV4dXMucG9vbCBpbXBvcnQgQ2Fz
+          ZVBvb2wKCgpkZWYgcmVxdWVzdCh2YWx1ZTogZmxvYXQpIC0+IEV2YWx1YXRpb25SZXF1ZXN0
+          OgogICAgcmV0dXJuIEV2YWx1YXRpb25SZXF1ZXN0LmZyb21fZGljdCgKICAgICAgICB7CiAg
+          ICAgICAgICAgICJtb2RlbF9wYXRoIjogIm1vZGVsLmJrcCIsCiAgICAgICAgICAgICJyZWdp
+          c3RyeV9wYXRoIjogInJlZ2lzdHJ5Lmpzb24iLAogICAgICAgICAgICAiYmFja2VuZCI6ICJt
+          b2NrIiwKICAgICAgICAgICAgIndyaXRlcyI6IFt7ImtleSI6ICJmZWVkIiwgInZhbHVlIjog
+          dmFsdWV9XSwKICAgICAgICAgICAgInJlYWRzIjogW10sCiAgICAgICAgfQogICAgKQoKCnBheW
+          xvYWQ6IGRpY3Rbc3RyLCBBbnldID0gewogICAgIm9rIjogVHJ1ZSwKICAgICJjb21tdW5pY2F0
+          aW9uX29rIjogVHJ1ZSwKICAgICJlbmdpbmVfb2siOiBUcnVlLAogICAgImNvbnZlcmdlZCI6
+          IFRydWUsCiAgICAiZmVhc2libGUiOiBUcnVlLAogICAgInZhbHVlcyI6IHtmInZ7aX0iOiBm
+          bG9hdChpKSBmb3IgaSBpbiByYW5nZSgzMil9LAogICAgInVuaXRzIjoge2YidntpfSI6ICIx
+          IiBmb3IgaSBpbiByYW5nZSgzMil9LAogICAgInZpb2xhdGlvbnMiOiBbXSwKICAgICJkaWFn
+          bm9zdGljcyI6IHsibmVzdGVkIjogeyJ2YWx1ZXMiOiBsaXN0KHJhbmdlKDY0KSl9fSwKICAg
+          ICJlbGFwc2VkX3MiOiAwLjAxLAogICAgImJhbGFuY2VfcmVzaWR1YWxzIjoge30sCiAgICAi
+          Y2FjaGVfc291cmNlIjogImNvbXB1dGVkIiwKICAgICJjYWNoZV9oaXQiOiBGYWxzZSwKICAg
+          ICJyZXF1ZXN0X2hhc2giOiAiIiwKICAgICJ3b3JrZXJfaWQiOiAwLAp9CmR1cGxpY2F0ZXMg
+          PSAxNTAwCnJlcXVlc3RzID0gW3JlcXVlc3QoZmxvYXQoaW5kZXgpKSBmb3IgaW5kZXggaW4g
+          cmFuZ2UoNzAwKV0KcnVudGltZSA9IHsKICAgICJiYWNrZW5kIjogIm1vY2siLAogICAgInBy
+          b2R1Y3QiOiB7Im5hbWUiOiAibW9jayIsICJ2ZXJzaW9uIjogIjIuMCIsICJmZWF0dXJlcyI6
+          IGxpc3QocmFuZ2UoNjQpKX0sCiAgICAibmVzdGVkIjogW3siaW5kZXgiOiBpbmRleCwgInZh
+          bHVlcyI6IGxpc3QocmFuZ2UoMTYpKX0gZm9yIGluZGV4IGluIHJhbmdlKDMyKV0sCn0KcG9v
+          bCA9IG9iamVjdC5fX25ld19fKENhc2VQb29sKQpwb29sLmJhY2tlbmRfbmFtZSA9ICJtb2Nr
+          Igpwb29sLm1vZGVsX3NoYTI1NiA9ICJtIiAqIDY0CnBvb2wucmVnaXN0cnkgPSBTaW1wbGVO
+          YW1lc3BhY2Uoc2hhMjU2PSJyIiAqIDY0KQpwb29sLl9oYW5kbGVzID0gW1NpbXBsZU5hbWVz
+          cGFjZShydW50aW1lPXJ1bnRpbWUpXQoKCmRlZiBvbGRfbWF0ZXJpYWxpemUoKSAtPiBsaXN0
+          W0V2YWx1YXRpb25SZXN1bHRdOgogICAgcmV0dXJuIFtFdmFsdWF0aW9uUmVzdWx0LmZyb21f
+          ZGljdChkZWVwY29weShwYXlsb2FkKSkgZm9yIF8gaW4gcmFuZ2UoZHVwbGljYXRlcyldCgoK
+          ZGVmIG5ld19tYXRlcmlhbGl6ZSgpIC0+IGxpc3RbRXZhbHVhdGlvblJlc3VsdF06CiAgICB0
+          ZW1wbGF0ZSA9IEV2YWx1YXRpb25SZXN1bHQuZnJvbV9kaWN0KHBheWxvYWQpCiAgICByZXR1
+          cm4gW3RlbXBsYXRlXSArIFtkZWVwY29weSh0ZW1wbGF0ZSkgZm9yIF8gaW4gcmFuZ2UoZHVw
+          bGljYXRlcyAtIDEpXQoKCmRlZiBvbGRfa2V5X3JlcXVlc3RzKCkgLT4gbGlzdFt0dXBsZVtz
+          dHIsIEV2YWx1YXRpb25SZXF1ZXN0XV06CiAgICBieV9pZGVudGl0eTogZGljdFtpbnQsIHR1
+          cGxlW0V2YWx1YXRpb25SZXF1ZXN0LCBzdHJdXSA9IHt9CiAgICBrZXllZDogbGlzdFt0dXBs
+          ZVtzdHIsIEV2YWx1YXRpb25SZXF1ZXN0XV0gPSBbXQogICAgZm9yIGl0ZW0gaW4gcmVxdWVz
+          dHM6CiAgICAgICAgaWRlbnRpdHkgPSBpZChpdGVtKQogICAgICAgIGV4aXN0aW5nID0gYnlf
+          aWRlbnRpdHkuZ2V0KGlkZW50aXR5KQogICAgICAgIGlmIGV4aXN0aW5nIGlzIG5vdCBOb25l
+          IGFuZCBleGlzdGluZ1swXSBpcyBpdGVtOgogICAgICAgICAgICBrZXkgPSBleGlzdGluZ1sx
+          XQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIGtleSA9IHBvb2wuY2FjaGVfa2V5KGl0ZW0p
+          CiAgICAgICAgICAgIGJ5X2lkZW50aXR5W2lkZW50aXR5XSA9IChpdGVtLCBrZXkpCiAgICAg
+          ICAga2V5ZWQuYXBwZW5kKChrZXksIGl0ZW0pKQogICAgcmV0dXJuIGtleWVkCgoKZGVmIG1l
+          YXN1cmUoZnVuY3Rpb246IEFueSwgcmVwZWF0czogaW50ID0gOSkgLT4gdHVwbGVbZmxvYXQs
+          IEFueV06CiAgICBzYW1wbGVzOiBsaXN0W2Zsb2F0XSA9IFtdCiAgICByZXN1bHQ6IEFueSA9
+          IE5vbmUKICAgIGZvciBfIGluIHJhbmdlKHJlcGVhdHMpOgogICAgICAgIHN0YXJ0ZWQgPSB0
+          aW1lLnBlcmZfY291bnRlcigpCiAgICAgICAgcmVzdWx0ID0gZnVuY3Rpb24oKQogICAgICAg
+          IHNhbXBsZXMuYXBwZW5kKHRpbWUucGVyZl9jb3VudGVyKCkgLSBzdGFydGVkKQogICAgcmV0
+          dXJuIHN0YXRpc3RpY3MubWVkaWFuKHNhbXBsZXMpLCByZXN1bHQKCgpvbGRfbWF0ZXJpYWxp
+          emVfcywgb2xkX3Jlc3VsdHMgPSBtZWFzdXJlKG9sZF9tYXRlcmlhbGl6ZSkKbmV3X21hdGVy
+          aWFsaXplX3MsIG5ld19yZXN1bHRzID0gbWVhc3VyZShuZXdfbWF0ZXJpYWxpemUpCm9sZF9r
+          ZXlfcywgb2xkX2tleXMgPSBtZWFzdXJlKG9sZF9rZXlfcmVxdWVzdHMpCm5ld19rZXlfcywg
+          bmV3X2tleXMgPSBtZWFzdXJlKGxhbWJkYTogcG9vbC5fa2V5X3JlcXVlc3RzKHJlcXVlc3Rz
+          KSkKY2hlY2tzID0gewogICAgIm1hdGVyaWFsaXplZF9yZXN1bHRzX2VxdWFsIjogW2l0ZW0u
+          dG9fZGljdCgpIGZvciBpdGVtIGluIG9sZF9yZXN1bHRzXQogICAgPT0gW2l0ZW0udG9fZGlj
+          dCgpIGZvciBpdGVtIGluIG5ld19yZXN1bHRzXSwKICAgICJjYWNoZV9rZXlzX2VxdWFsIjog
+          W2l0ZW1bMF0gZm9yIGl0ZW0gaW4gb2xkX2tleXNdID09IFtpdGVtWzBdIGZvciBpdGVtIGlu
+          IG5ld19rZXlzXSwKICAgICJtYXRlcmlhbGl6YXRpb25fZmFzdGVyIjogbmV3X21hdGVyaWFs
+          aXplX3MgPCBvbGRfbWF0ZXJpYWxpemVfcywKICAgICJrZXlpbmdfZmFzdGVyIjogbmV3X2tl
+          eV9zIDwgb2xkX2tleV9zLAp9CnJlc3VsdCA9IHsKICAgICJzY2hlbWEiOiAiYXNwZW5vcHMu
+          cG9vbC1lZmZpY2llbmN5LWJlbmNobWFyay92MSIsCiAgICAiYm91bmRhcnkiOiAiUHVyZSBQ
+          eXRob24gb3JjaGVzdHJhdGlvbiBiZW5jaG1hcms7IG5vdCBsaWNlbnNlZCBBc3BlbiBzb2x2
+          ZSBldmlkZW5jZS4iLAogICAgImJlZm9yZV9zZWNvbmRzIjogewogICAgICAgICJkdXBsaWNh
+          dGVfY2FjaGVfbWF0ZXJpYWxpemF0aW9uIjogb2xkX21hdGVyaWFsaXplX3MsCiAgICAgICAg
+          ImJhdGNoX2NhY2hlX2tleWluZyI6IG9sZF9rZXlfcywKICAgIH0sCiAgICAiYWZ0ZXJfc2Vj
+          b25kcyI6IHsKICAgICAgICAiZHVwbGljYXRlX2NhY2hlX21hdGVyaWFsaXphdGlvbiI6IG5l
+          d19tYXRlcmlhbGl6ZV9zLAogICAgICAgICJiYXRjaF9jYWNoZV9rZXlpbmciOiBuZXdfa2V5
+          X3MsCiAgICB9LAogICAgInNwZWVkdXBzIjogewogICAgICAgICJkdXBsaWNhdGVfY2FjaGVf
+          bWF0ZXJpYWxpemF0aW9uIjogb2xkX21hdGVyaWFsaXplX3MgLyBuZXdfbWF0ZXJpYWxpemVf
+          cywKICAgICAgICAiYmF0Y2hfY2FjaGVfa2V5aW5nIjogb2xkX2tleV9zIC8gbmV3X2tleV9z
+          LAogICAgfSwKICAgICJjaGVja3MiOiBjaGVja3MsCiAgICAiZGVjaXNpb24iOiAiUEFTUyIg
+          aWYgYWxsKGNoZWNrcy52YWx1ZXMoKSkgZWxzZSAiRkFJTCIsCn0Kd2l0aCBvcGVuKCJ2YXIv
+          cG9vbC1lZmZpY2llbmN5LWF1ZGl0LXZhbGlkL2JlbmNobWFyay5qc29uIiwgInciLCBlbmNv
+          ZGluZz0idXRmLTgiKSBhcyBoYW5kbGU6CiAgICBqc29uLmR1bXAocmVzdWx0LCBoYW5kbGUs
+          IGluZGVudD0yLCBzb3J0X2tleXM9VHJ1ZSkKICAgIGhhbmRsZS53cml0ZSgiXG4iKQppZiBy
+          ZXN1bHRbImRlY2lzaW9uIl0gIT0gIlBBU1MiOgogICAgcmFpc2UgU3lzdGVtRXhpdChqc29u
+          LmR1bXBzKHJlc3VsdCwgc29ydF9rZXlzPVRydWUpKQo=
+          B64
+          base64 -d /tmp/benchmark-pool.b64 > "$E/benchmark.py"
+
+          gate focused-tests uv run --python 3.12 pytest -W error::ResourceWarning tests/test_pool_efficiency.py --junitxml="$E/focused-junit.xml"
+          gate performance-benchmark uv run --python 3.12 python "$E/benchmark.py"
+          gate lock-check uv lock --check
+          gate dependency-audit bash -lc '
+            set -euo pipefail
+            export UV_PREVIEW_FEATURES=json-output
+            bad=0
+            for platform in linux windows; do
+              for version in 3.11 3.12 3.13; do
+                stem=var/pool-efficiency-audit-valid/audit-${platform}-${version}
+                uv audit --frozen --python-platform "$platform" --python-version "$version" --output-format json >"$stem.json" 2>"$stem.log" || bad=1
+                python -m json.tool "$stem.json" >/dev/null || bad=1
+              done
+            done
+            exit "$bad"
+          '
+          gate ruff uv run --python 3.12 ruff check .
+          gate format uv run --python 3.12 ruff format --check .
+          gate mypy uv run --python 3.12 mypy src
+          gate compileall uv run --python 3.12 python -m compileall -q src scripts
+          gate source-audit uv run --python 3.12 python scripts/audit_source_tree.py --output "$E/source-tree-audit.json"
+          gate bandit bash -lc '
+            set -euo pipefail
+            status=0
+            uv tool run --isolated --from bandit==1.9.4 bandit -r src scripts -lll -iii -f json -o var/pool-efficiency-audit-valid/bandit.json 2>var/pool-efficiency-audit-valid/bandit.log || status=$?
+            python -m json.tool var/pool-efficiency-audit-valid/bandit.json >/dev/null
+            exit "$status"
+          '
+          for version in 3.11 3.12 3.13; do
+            floor=94.5
+            [[ "$version" == 3.12 ]] && floor=95.0
+            gate full-$version bash -lc "
+              set -euo pipefail
+              uv sync --python $version --frozen --extra dev --extra agent --extra signing
+              uv run --python $version pytest -W error::ResourceWarning                 --cov=aspenops_nexus --cov-branch                 --cov-report=json:$E/coverage-$version.json                 --junitxml=$E/junit-$version.xml                 --cov-fail-under=$floor
+            "
+          done
+          gate restore-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate order-312 uv run --python 3.12 python scripts/run_test_order_gate.py --seed 20260730 --output-dir "$E/order"
+          gate process-ir uv run --python 3.12 python scripts/validate_process_ir.py examples/process-intent.example.json --canonical-output "$E/process-intent-canonical.json" --report-output "$E/process-intent-report.json"
+          gate mcp uv run --python 3.12 python scripts/check_mcp.py
+          gate benchmark-smoke uv run --python 3.12 python scripts/run_benchmark_matrix.py --repo-root . --output "$E/benchmark-smoke.json" --smoke
+          gate performance-policy uv run --python 3.12 python scripts/compare_benchmarks.py --baseline var/benchmarks/baseline.json --after var/benchmarks/after.json --baseline-doc "$E/performance-baseline.md" --after-doc "$E/performance-after.md" --fail-on-stable-regression
+          gate build uv build
+          gate wheel-metadata uv run --python 3.12 python scripts/check_wheel_metadata.py --dist-dir dist --output "$E/wheel-metadata.json"
+          gate wheel-smoke bash -lc '
+            set -euo pipefail
+            uv export --frozen --extra agent --no-default-groups --no-emit-project --format requirements.txt --output-file var/pool-efficiency-audit-valid/runtime-requirements.txt
+            uv venv --python 3.12 /tmp/aspenops-pool-wheel
+            uv pip sync --python /tmp/aspenops-pool-wheel/bin/python --require-hashes var/pool-efficiency-audit-valid/runtime-requirements.txt
+            uv pip install --python /tmp/aspenops-pool-wheel/bin/python --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-pool-wheel/bin/python
+            /tmp/aspenops-pool-wheel/bin/aspenops --version
+            /tmp/aspenops-pool-wheel/bin/aspenops --help >/dev/null
+            /tmp/aspenops-pool-wheel/bin/aspenops demo >/dev/null
+            /tmp/aspenops-pool-wheel/bin/python - <<"PY"
+          from aspenops_nexus.pool import CasePool
+          assert hasattr(CasePool, "_cache_key_with_runtime")
+          PY
+          '
+          gate diff-boundary python - <<'PY'
+          import subprocess
+          allowed = {
+              ".github/workflows/pool-efficiency-audit-valid-once.yml",
+              ".github/workflows/pool-efficiency-audit-pass-once.yml",
+              "docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json",
+              "src/aspenops_nexus/pool.py",
+              "tests/test_pool_efficiency.py",
+          }
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit("Unexpected changed files: " + ", ".join(unexpected))
+          PY
+
+          if [[ "$failed" -ne 0 ]]; then
+            cp "$E/status.tsv" /tmp/pool-status.tsv
+            cp -r "$E" /tmp/pool-evidence
+            git reset --hard "$BASE"
+            rm -f "$SELF" "$INVALID"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = Path("/tmp/pool-evidence")
+          status = {}
+          tails = {}
+          for line in Path("/tmp/pool-status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+              if int(code):
+                  log = evidence / f"{name}.log"
+                  if log.exists():
+                      tails[name] = log.read_text(errors="replace").splitlines()[-120:]
+          payload = {
+              "schema": "aspenops.pool-efficiency-blocker/v1",
+              "decision": "FAIL",
+              "source_changes_retained": False,
+              "aspen_executed": False,
+              "runtime_control_plane_changed": False,
+              "hard_gates": status,
+              "failure_tail": tails,
+          }
+          Path("docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+            git add -A
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m 'test: record validated pool efficiency audit blocker'
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence = Path("var/pool-efficiency-audit-valid")
+          status = {}
+          for line in (evidence / "status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+
+          def junit(path: Path) -> dict[str, int | float]:
+              root = ET.parse(path).getroot()
+              suite = root if root.tag == "testsuite" else root.find("testsuite")
+              if suite is None:
+                  raise RuntimeError(f"No testsuite in {path}")
+              return {
+                  "tests": int(suite.attrib.get("tests", 0)),
+                  "failures": int(suite.attrib.get("failures", 0)),
+                  "errors": int(suite.attrib.get("errors", 0)),
+                  "skipped": int(suite.attrib.get("skipped", 0)),
+                  "time_seconds": float(suite.attrib.get("time", 0.0)),
+              }
+
+          benchmark = json.loads((evidence / "benchmark.json").read_text())
+          payload = {
+              "schema": "aspenops.pool-efficiency-audit-result/v1",
+              "decision": "PASS",
+              "qualification_run": {
+                  "run_id": os.environ["RUN_ID"],
+                  "run_attempt": os.environ["RUN_ATTEMPT"],
+              },
+              "hard_gates": status,
+              "focused_tests": junit(evidence / "focused-junit.xml"),
+              "benchmark": benchmark,
+              "full_tests": {
+                  version: junit(evidence / f"junit-{version}.xml")
+                  for version in ("3.11", "3.12", "3.13")
+              },
+              "coverage_percent": {
+                  version: json.loads((evidence / f"coverage-{version}.json").read_text())["totals"]["percent_covered"]
+                  for version in ("3.11", "3.12", "3.13")
+              },
+              "source_files_changed": [
+                  "src/aspenops_nexus/pool.py",
+                  "tests/test_pool_efficiency.py",
+              ],
+              "aspen_executed": False,
+              "parameter_estimation_executed": False,
+              "dynamic_modeling_executed": False,
+              "machine_learning_executed": False,
+              "runtime_control_plane_changed": False,
+              "qualification_boundary": "Pure Python orchestration and portable package evidence; not licensed Aspen solve certification.",
+          }
+          Path("docs/POOL_EFFICIENCY_AUDIT_RESULT.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          Path("docs/POOL_EFFICIENCY_AUDIT_RESULT.md").write_text(
+              "# AspenOps Pool Efficiency Audit\n\n"
+              "**PASS**\n\n"
+              "- Batch cache-key runtime identity is normalized once per batch.\n"
+              "- Duplicate persistent-cache results are parsed once per cache key and returned as isolated objects.\n"
+              "- Redundant final dataclass shallow copies were removed.\n"
+              "- Licensed Windows/Aspen engineering certification remains pending.\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -f docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'perf: reduce batch cache orchestration overhead'
+          git push origin HEAD:main
+      - name: Close trigger issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close '${{ github.event.issue.number }}' --repo '${{ github.repository }}' --comment 'Validated pool efficiency audit finished. Inspect docs/POOL_EFFICIENCY_AUDIT_RESULT.json or docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json on main.'
