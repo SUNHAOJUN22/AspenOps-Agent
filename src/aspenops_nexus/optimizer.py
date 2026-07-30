@@ -38,11 +38,11 @@ class ParetoPoint:
 
 def better(a: Candidate, b: Candidate) -> Candidate:
     """Deb feasibility ordering followed by scalar objective minimization."""
-    if a.feasible and not b.feasible:
-        return a
-    if b.feasible and not a.feasible:
-        return b
-    if a.feasible and b.feasible:
+    a_feasible = a.violation <= 0.0
+    b_feasible = b.violation <= 0.0
+    if a_feasible != b_feasible:
+        return a if a_feasible else b
+    if a_feasible:
         return a if a.objective <= b.objective else b
     return a if a.violation <= b.violation else b
 
@@ -61,8 +61,47 @@ def dominates(a: ParetoPoint, b: ParetoPoint) -> bool:
     return no_worse and strictly_better
 
 
+def _pareto_front_general(feasible: tuple[ParetoPoint, ...]) -> tuple[ParetoPoint, ...]:
+    frontier: list[ParetoPoint] = []
+    for candidate in feasible:
+        if any(dominates(existing, candidate) for existing in frontier):
+            continue
+        frontier = [existing for existing in frontier if not dominates(candidate, existing)]
+        frontier.append(candidate)
+    return tuple(frontier)
+
+
+def _pareto_front_two_objectives(
+    feasible: tuple[ParetoPoint, ...],
+) -> tuple[ParetoPoint, ...]:
+    ordered = sorted(
+        enumerate(feasible),
+        key=lambda item: (item[1].objectives[0], item[1].objectives[1]),
+    )
+    selected: set[int] = set()
+    prior_min_second = math.inf
+    index = 0
+    while index < len(ordered):
+        first = ordered[index][1].objectives[0]
+        end = index + 1
+        while end < len(ordered) and ordered[end][1].objectives[0] == first:
+            end += 1
+        group_min_second = ordered[index][1].objectives[1]
+        if prior_min_second > group_min_second:
+            for original_index, point in ordered[index:end]:
+                if point.objectives[1] == group_min_second:
+                    selected.add(original_index)
+        prior_min_second = min(prior_min_second, group_min_second)
+        index = end
+    return tuple(
+        point
+        for original_index, point in enumerate(feasible)
+        if original_index in selected
+    )
+
+
 def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
-    """Return the ordered unique nondominated front with cheap feasibility filtering."""
+    """Return the ordered unique feasibility-first nondominated front."""
 
     unique = tuple(dict.fromkeys(points))
     if not unique:
@@ -72,13 +111,19 @@ def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
         minimum_violation = min(point.violation for point in unique)
         return tuple(point for point in unique if point.violation == minimum_violation)
 
-    return tuple(
-        candidate
-        for candidate in feasible
-        if not any(
-            dominates(existing, candidate) for existing in feasible if existing is not candidate
-        )
-    )
+    objective_count = len(feasible[0].objectives)
+    if any(len(point.objectives) != objective_count for point in feasible[1:]):
+        raise ValueError("Pareto objective vectors must have equal dimensions")
+    if objective_count == 0:
+        return feasible
+    if not all(math.isfinite(value) for point in feasible for value in point.objectives):
+        return _pareto_front_general(feasible)
+    if objective_count == 1:
+        minimum = min(point.objectives[0] for point in feasible)
+        return tuple(point for point in feasible if point.objectives[0] == minimum)
+    if objective_count == 2:
+        return _pareto_front_two_objectives(feasible)
+    return _pareto_front_general(feasible)
 
 
 def _validate_parameters(
@@ -117,19 +162,21 @@ def differential_evolution_batch(
     max_evaluations: int | None = None,
     checkpoint: Callable[[int, tuple[Candidate, ...], int], None] | None = None,
 ) -> DifferentialEvolutionResult:
-    """Run bounded DE/best/1/bin with one batch evaluation per generation."""
-    _validate_parameters(bounds, population_size, generations, mutation, crossover)
+    """Run bounded DE/rand/1/bin with one batch evaluation per generation."""
+    bounds_tuple = tuple(bounds)
+    _validate_parameters(bounds_tuple, population_size, generations, mutation, crossover)
     budget = population_size * (generations + 1) if max_evaluations is None else max_evaluations
     if budget < population_size:
         raise ValueError("max_evaluations must cover the initial population")
     allowed_generations = min(generations, (budget - population_size) // population_size)
     rng = random.Random(seed)
+    dimension_count = len(bounds_tuple)
 
     def random_vector() -> tuple[float, ...]:
-        return tuple(rng.uniform(lower, upper) for lower, upper in bounds)
+        return tuple(rng.uniform(lower, upper) for lower, upper in bounds_tuple)
 
     def score_batch(vectors: Sequence[tuple[float, ...]]) -> list[Candidate]:
-        scores = list(evaluate_many(vectors))
+        scores = evaluate_many(vectors)
         if len(scores) != len(vectors):
             raise ValueError("evaluate_many returned a different number of scores")
         candidates: list[Candidate] = []
@@ -151,14 +198,19 @@ def differential_evolution_batch(
     for generation in range(1, allowed_generations + 1):
         trial_vectors: list[tuple[float, ...]] = []
         for index, target in enumerate(population):
-            sampled = rng.sample(range(population_size - 1), 3)
-            peer_indices = [item if item < index else item + 1 for item in sampled]
-            a = population[peer_indices[0]].x
-            b = population[peer_indices[1]].x
-            c = population[peer_indices[2]].x
-            forced = rng.randrange(len(bounds))
+            a_index, b_index, c_index = rng.sample(range(population_size - 1), 3)
+            if a_index >= index:
+                a_index += 1
+            if b_index >= index:
+                b_index += 1
+            if c_index >= index:
+                c_index += 1
+            a = population[a_index].x
+            b = population[b_index].x
+            c = population[c_index].x
+            forced = rng.randrange(dimension_count)
             trial_values: list[float] = []
-            for dimension, (lower, upper) in enumerate(bounds):
+            for dimension, (lower, upper) in enumerate(bounds_tuple):
                 mutant = a[dimension] + mutation * (b[dimension] - c[dimension])
                 value = (
                     mutant
