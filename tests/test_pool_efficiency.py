@@ -112,9 +112,7 @@ def test_duplicate_cached_results_are_parsed_once_and_isolated(monkeypatch: Any)
     calls = 0
     original = EvaluationResult.from_dict.__func__
 
-    def counting_from_dict(
-        cls: type[EvaluationResult], data: dict[str, Any]
-    ) -> EvaluationResult:
+    def counting_from_dict(cls: type[EvaluationResult], data: dict[str, Any]) -> EvaluationResult:
         nonlocal calls
         calls += 1
         return original(cls, data)
