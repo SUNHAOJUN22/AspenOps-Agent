@@ -1,0 +1,93 @@
+from pathlib import Path
+
+path = Path("src/aspenops_nexus/evaluation_plan.py")
+text = path.read_text(encoding="utf-8")
+
+
+def replace_once(old: str, new: str) -> None:
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"Expected one patch target, found {count}: {old[:120]!r}")
+    text = text.replace(old, new, 1)
+
+
+replace_once(
+    '''def node_identity(node: ResolvedNode) -> str:
+    suffix = ",".join(f"{key}={value}" for key, value in sorted(node.identifiers.items()))
+    return node.key if not suffix else f"{node.key}:{suffix}"
+''',
+    '''def _semantic_identity(key: str, identifiers: dict[str, str]) -> str:
+    suffix = ",".join(f"{name}={value}" for name, value in sorted(identifiers.items()))
+    return key if not suffix else f"{key}:{suffix}"
+
+
+def node_identity(node: ResolvedNode) -> str:
+    return _semantic_identity(node.key, node.identifiers)
+''',
+)
+
+replace_once(
+    '''        unique_reads: dict[str, ResolvedNode] = {}
+        output_bindings: list[OutputBinding] = []
+        for read_spec in request.reads:
+            read_node = registry.resolve(read_spec.key, read_spec.identifiers)
+            registry.validate_backend(read_node, request.backend)
+            identity = node_identity(read_node)
+            unique_reads.setdefault(identity, read_node)
+            output_bindings.append(OutputBinding(read_spec, read_node, identity, identity))
+
+        constraints: list[CompiledConstraint] = []
+        for constraint_spec in request.constraints:
+            constraint_node = registry.resolve(constraint_spec.key, constraint_spec.identifiers)
+            registry.validate_backend(constraint_node, request.backend)
+            identity = node_identity(constraint_node)
+            unique_reads.setdefault(identity, constraint_node)
+            constraints.append(CompiledConstraint(constraint_spec, constraint_node, identity))
+
+        balances: list[CompiledBalance] = []
+        for balance_spec in request.balances:
+            terms: list[CompiledBalanceTerm] = []
+            for term_spec in balance_spec.terms:
+                term_node = registry.resolve(term_spec.key, term_spec.identifiers)
+                registry.validate_backend(term_node, request.backend)
+                identity = node_identity(term_node)
+                unique_reads.setdefault(identity, term_node)
+                terms.append(CompiledBalanceTerm(term_spec, term_node, identity))
+            balances.append(CompiledBalance(balance_spec, tuple(terms)))
+''',
+    '''        unique_reads: dict[str, ResolvedNode] = {}
+
+        def resolve_read_node(key: str, identifiers: dict[str, str]) -> tuple[ResolvedNode, str]:
+            identity = _semantic_identity(key, identifiers)
+            node = unique_reads.get(identity)
+            if node is None:
+                node = registry.resolve(key, identifiers)
+                registry.validate_backend(node, request.backend)
+                unique_reads[identity] = node
+            return node, identity
+
+        output_bindings: list[OutputBinding] = []
+        for read_spec in request.reads:
+            read_node, identity = resolve_read_node(read_spec.key, read_spec.identifiers)
+            output_bindings.append(OutputBinding(read_spec, read_node, identity, identity))
+
+        constraints: list[CompiledConstraint] = []
+        for constraint_spec in request.constraints:
+            constraint_node, identity = resolve_read_node(
+                constraint_spec.key,
+                constraint_spec.identifiers,
+            )
+            constraints.append(CompiledConstraint(constraint_spec, constraint_node, identity))
+
+        balances: list[CompiledBalance] = []
+        for balance_spec in request.balances:
+            terms: list[CompiledBalanceTerm] = []
+            for term_spec in balance_spec.terms:
+                term_node, identity = resolve_read_node(term_spec.key, term_spec.identifiers)
+                terms.append(CompiledBalanceTerm(term_spec, term_node, identity))
+            balances.append(CompiledBalance(balance_spec, tuple(terms)))
+''',
+)
+
+path.write_text(text, encoding="utf-8")
