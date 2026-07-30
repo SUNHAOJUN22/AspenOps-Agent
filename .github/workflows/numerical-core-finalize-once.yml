@@ -1,0 +1,217 @@
+name: Numerical Core Finalize Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspenops-numerical-core-finalize-once
+  cancel-in-progress: false
+
+env:
+  PREVIOUS_GOOD_SHA: aa91f4ba154756bee2fc597d957706119a249846
+  QUALIFIED_SOURCE_SHA: a5ffe396747ed197eb8646b73705200cb4d3ec60
+
+jobs:
+  finalize:
+    if: github.event.issue.title == 'ASPENOPS_NUMERICAL_CORE_OPTIMIZATION_V1_FINALIZE_20260730'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Restore qualified source and complete Wheel validation
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE="$(git rev-parse HEAD)"
+          SELF=.github/workflows/numerical-core-finalize-once.yml
+          E=var/numerical-finalize
+          rm -rf "$E" dist /tmp/aspenops-numerical-wheel
+          mkdir -p "$E"
+          : > "$E/status.tsv"
+          failed=0
+
+          gate() {
+            local name="$1"
+            shift
+            set +e
+            "$@" >"$E/${name}.log" 2>&1
+            local code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+            if [[ "$code" -ne 0 ]]; then failed=1; fi
+          }
+
+          git checkout "$QUALIFIED_SOURCE_SHA" -- \
+            src/aspenops_nexus/optimizer.py src/aspenops_nexus/units.py \
+            docs/optimization-engine.md tests/test_numerical_core_optimization.py
+          rm -f "$SELF"
+
+          gate prior-evidence uv run --python 3.12 python -c \
+            "import json,pathlib; d=json.loads(pathlib.Path('docs/NUMERICAL_OPTIMIZATION_BLOCKER.json').read_text()); assert d['run_id']=='30508162562'; assert all(code==0 for name,code in d['hard_gates'].items() if name!='wheel-smoke'); assert d['hard_gates']['wheel-smoke']==1"
+          gate sync uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate ruff-fix uv run ruff check --fix --unsafe-fixes \
+            src/aspenops_nexus/optimizer.py src/aspenops_nexus/units.py \
+            tests/test_numerical_core_optimization.py
+          gate format-fix uv run ruff format \
+            src/aspenops_nexus/optimizer.py src/aspenops_nexus/units.py \
+            tests/test_numerical_core_optimization.py
+          gate ruff uv run ruff check .
+          gate format uv run ruff format --check .
+          gate mypy uv run mypy src
+          gate focused-tests uv run pytest -W error::ResourceWarning \
+            tests/test_numerical_core_optimization.py tests/test_optimizer.py \
+            tests/test_optimizer_complete_edges.py \
+            tests/test_optimizer_performance_contracts.py tests/test_units.py \
+            --junitxml="$E/focused-junit.xml"
+
+          git show "$PREVIOUS_GOOD_SHA:src/aspenops_nexus/optimizer.py" > /tmp/optimizer-before.py
+          git show "$PREVIOUS_GOOD_SHA:src/aspenops_nexus/units.py" > /tmp/units-before.py
+          cat > /tmp/benchmark-final.py <<'PY'
+          import gc, importlib.util, json, math, sys, time
+          from pathlib import Path
+
+          def load(name, path):
+              spec=importlib.util.spec_from_file_location(name,path)
+              assert spec and spec.loader
+              module=importlib.util.module_from_spec(spec)
+              sys.modules[name]=module
+              spec.loader.exec_module(module)
+              return module
+
+          before_o=load('before_o',Path('/tmp/optimizer-before.py'))
+          after_o=load('after_o',Path('src/aspenops_nexus/optimizer.py'))
+          before_u=load('before_u',Path('/tmp/units-before.py'))
+          after_u=load('after_u',Path('src/aspenops_nexus/units.py'))
+
+          def best(function):
+              samples=[]
+              for _ in range(3):
+                  gc.collect(); start=time.perf_counter(); function(); samples.append(time.perf_counter()-start)
+              return min(samples)
+
+          def pareto(module):
+              points=[module.ParetoPoint((float(i),),(float(i),float(1400-i)),0.0) for i in range(1400)]
+              size=[0]
+              elapsed=best(lambda: size.__setitem__(0,len(module.pareto_front(points))))
+              return elapsed,size[0]
+
+          pairs=(('C','K'),('K','C'),('bar','kPa'),('atm','Pa'),('kg/h','kg/s'),('kmol/h','mol/s'),('MW','kW'),('cP','Pa.s'))
+          def units(module):
+              total=[0.0]
+              def run():
+                  value=0.0
+                  for i in range(40000):
+                      number=float(i%1000)+0.25
+                      for source,target in pairs: value += module.convert(number,source,target)
+                  total[0]=value
+              return best(run),total[0]
+
+          pb,psb=pareto(before_o); pa,psa=pareto(after_o)
+          ub,uob=units(before_u); ua,uoa=units(after_u)
+          speedups={'pareto_2d':pb/pa,'unit_conversion':ub/ua}
+          checks={'pareto_equal':psb==psa==1400,'units_equal':math.isclose(uob,uoa,rel_tol=0.0,abs_tol=0.0),'pareto_at_least_2x':speedups['pareto_2d']>=2.0,'units_no_regression':speedups['unit_conversion']>=0.85}
+          payload={'schema':'aspenops.numerical-benchmark-comparison/v1','speedups':speedups,'checks':checks,'before_seconds':{'pareto_2d':pb,'unit_conversion':ub},'after_seconds':{'pareto_2d':pa,'unit_conversion':ua},'decision':'PASS' if all(checks.values()) else 'FAIL','boundary':'Pure Python numerical benchmark; not licensed Aspen solver evidence.'}
+          Path('var/numerical-finalize/benchmark.json').write_text(json.dumps(payload,indent=2,sort_keys=True)+'\n')
+          if payload['decision']!='PASS': raise SystemExit('benchmark failed')
+          PY
+          gate numerical-benchmark uv run python /tmp/benchmark-final.py
+          gate build uv build
+          gate wheel-metadata uv run python scripts/check_wheel_metadata.py \
+            --dist-dir dist --output "$E/wheel-metadata.json"
+
+          wheel_smoke() {
+            uv export --frozen --extra agent --no-default-groups \
+              --no-emit-project --format requirements.txt \
+              --output-file "$E/runtime-requirements.txt"
+            uv venv --python 3.12 /tmp/aspenops-numerical-wheel
+            uv pip sync --python /tmp/aspenops-numerical-wheel/bin/python \
+              --require-hashes "$E/runtime-requirements.txt"
+            uv pip install --python /tmp/aspenops-numerical-wheel/bin/python \
+              --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-numerical-wheel/bin/python
+            /tmp/aspenops-numerical-wheel/bin/aspenops --version
+            /tmp/aspenops-numerical-wheel/bin/aspenops demo
+            cat > /tmp/check-installed-numerical.py <<'PY'
+          from aspenops_nexus.optimizer import ParetoPoint, pareto_front
+          from aspenops_nexus.units import convert
+
+          points=[ParetoPoint((0.0,),(1.0,2.0)),ParetoPoint((1.0,),(2.0,1.0))]
+          assert pareto_front(points)==tuple(points)
+          assert convert(1.0,"bar","kPa")==100.0
+          PY
+            /tmp/aspenops-numerical-wheel/bin/python /tmp/check-installed-numerical.py
+          }
+          gate wheel-smoke wheel_smoke
+          gate diff-boundary bash -lc '
+            set -euo pipefail
+            allowed="src/aspenops_nexus/optimizer.py src/aspenops_nexus/units.py docs/optimization-engine.md tests/test_numerical_core_optimization.py docs/NUMERICAL_OPTIMIZATION_BLOCKER.json"
+            for path in $(git diff --name-only "$PREVIOUS_GOOD_SHA"); do
+              case " $allowed " in *" $path "*) ;; *) echo "unexpected path: $path" >&2; exit 1;; esac
+            done
+          '
+
+          if [[ "$failed" -ne 0 ]]; then
+            git reset --hard "$BASE"
+            git checkout "$PREVIOUS_GOOD_SHA" -- \
+              src/aspenops_nexus/optimizer.py src/aspenops_nexus/units.py \
+              docs/optimization-engine.md
+            git rm -f tests/test_numerical_core_optimization.py "$SELF" 2>/dev/null || true
+            python - <<'PY'
+          import json,os
+          from pathlib import Path
+          e=Path('var/numerical-finalize'); status={}; tails={}
+          for line in (e/'status.tsv').read_text().splitlines(): name,code=line.split('\t',1); status[name]=int(code)
+          for name,code in status.items():
+              log=e/f'{name}.log'
+              if code and log.exists(): tails[name]=log.read_text(errors='replace').splitlines()[-100:]
+          data={'schema':'aspenops.numerical-optimization-blocker/v1','decision':'FAIL','run_id':os.environ['RUN_ID'],'run_attempt':os.environ['RUN_ATTEMPT'],'hard_gates':status,'failure_tail':tails,'source_changes_retained':False,'runtime_control_plane_changed':False,'aspen_executed':False}
+          Path('docs/NUMERICAL_OPTIMIZATION_BLOCKER.json').write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+          PY
+            git add -A
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m 'test: record numerical optimization finalization blocker'
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json,os,xml.etree.ElementTree as ET
+          from pathlib import Path
+          e=Path('var/numerical-finalize'); status={}
+          for line in (e/'status.tsv').read_text().splitlines(): name,code=line.split('\t',1); status[name]=int(code)
+          root=ET.parse(e/'focused-junit.xml').getroot(); suite=root if root.tag=='testsuite' else root.find('testsuite'); assert suite is not None
+          focused={key:(float(suite.attrib.get(key,0)) if key=='time' else int(suite.attrib.get(key,0))) for key in ('tests','failures','errors','skipped','time')}
+          benchmark=json.loads((e/'benchmark.json').read_text())
+          previous=json.loads(Path('docs/NUMERICAL_OPTIMIZATION_BLOCKER.json').read_text())
+          data={'schema':'aspenops.numerical-optimization-result/v1','decision':'PASS','qualification_runs':{'complete_gate_run':previous['run_id'],'wheel_finalize_run':os.environ['RUN_ID'],'wheel_finalize_attempt':os.environ['RUN_ATTEMPT']},'complete_hard_gates':previous['hard_gates']|{'wheel-smoke':0},'finalize_hard_gates':status,'benchmark':benchmark,'focused_tests':focused,'mathematical_audit':{'differential_evolution_strategy':'DE/rand/1/bin','pareto_one_objective':'O(n) exact minimum filter','pareto_two_objectives':'O(n log n) exact stable sweep','pareto_higher_dimensions':'exact incremental frontier','unit_conversion':'precomputed exact affine coefficients','conservation_summation':'math.fsum retained','constraint_and_convergence_semantics':'unchanged'},'runtime_control_plane_changed':False,'aspen_executed':False,'parameter_estimation_executed':False,'dynamic_modeling_executed':False,'machine_learning_executed':False,'qualification_boundary':'Portable numerical/Python evidence only; not licensed Aspen solver-performance or physical-model certification evidence.'}
+          Path('docs/NUMERICAL_OPTIMIZATION_RESULT.json').write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+          speedups=benchmark['speedups']
+          Path('docs/NUMERICAL_OPTIMIZATION_RESULT.md').write_text('# AspenOps Numerical Core Optimization\n\n**Decision: PASS**\n\n'+f"- Two-objective Pareto speedup: {speedups['pareto_2d']:.2f}x\n- Unit conversion speedup: {speedups['unit_conversion']:.2f}x\n"+'- Numerical equivalence: PASS\n- Full Python 3.11/3.12/3.13 regression: PASS\n- Aspen execution: not performed\n- Runtime control plane: unchanged\n')
+          Path('docs/NUMERICAL_OPTIMIZATION_BLOCKER.json').unlink()
+          PY
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'perf: qualify accelerated numerical core'
+          git push origin HEAD:main
+      - name: Close trigger issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close '${{ github.event.issue.number }}' --repo '${{ github.repository }}' --comment 'Numerical optimization finalization completed; inspect main and docs/NUMERICAL_OPTIMIZATION_RESULT.json.'
