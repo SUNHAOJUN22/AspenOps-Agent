@@ -1,0 +1,257 @@
+name: AspenOps Main Incremental Audit V4 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/main-incremental-audit-v4-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-main-incremental-audit-v4
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Verify unchanged critical surface and qualify incrementally
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE_PASS=6a3c35620a249f1c78290dac6ea14446dfc5cc3a
+          HEAD="$(git rev-parse HEAD)"
+          SELF=.github/workflows/main-incremental-audit-v4-once.yml
+          E=var/main-incremental-audit-v4
+          rm -rf "$E" dist /tmp/aspenops-v4-wheel /tmp/aspenops-v4-check.py
+          mkdir -p "$E"
+
+          git diff --name-only "$BASE_PASS" "$HEAD" \
+            | grep -v "^${SELF}$" \
+            | grep -E '^(src/|tests/|scripts/|examples/|\.github/workflows/|pyproject\.toml$|uv\.lock$)' \
+            > "$E/critical-changes.txt" || true
+
+          rm -f "$SELF" docs/MAIN_INCREMENTAL_AUDIT_V4_BLOCKER.json
+          : > "$E/status.tsv"
+          failed=0
+          gate() {
+            name="$1"; shift
+            set +e
+            "$@" >"$E/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+            [[ "$code" -eq 0 ]] || failed=1
+          }
+
+          gate incremental-delta bash -lc 'test ! -s var/main-incremental-audit-v4/critical-changes.txt'
+          gate lock-check uv lock --check
+          gate sync-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate dependency-audit bash -lc '
+            set -euo pipefail
+            export UV_PREVIEW_FEATURES=json-output
+            bad=0
+            for platform in linux windows; do
+              for version in 3.11 3.12 3.13; do
+                stem=var/main-incremental-audit-v4/audit-${platform}-${version}
+                uv audit --frozen --python-platform "$platform" --python-version "$version" --output-format json >"$stem.json" 2>"$stem.log" || bad=1
+                python -m json.tool "$stem.json" >/dev/null || bad=1
+              done
+            done
+            exit "$bad"
+          '
+          gate ruff uv run --python 3.12 ruff check .
+          gate format uv run --python 3.12 ruff format --check .
+          gate mypy uv run --python 3.12 mypy src
+          gate compileall uv run --python 3.12 python -m compileall -q src scripts
+          gate source-audit uv run --python 3.12 python scripts/audit_source_tree.py --output "$E/source-tree-audit.json"
+          gate bandit bash -lc '
+            set -euo pipefail
+            status=0
+            uv tool run --isolated --from bandit==1.9.4 bandit -r src scripts -lll -iii -f json -o var/main-incremental-audit-v4/bandit.json 2>var/main-incremental-audit-v4/bandit.log || status=$?
+            python -m json.tool var/main-incremental-audit-v4/bandit.json >/dev/null
+            exit "$status"
+          '
+          gate focused-tests uv run --python 3.12 pytest -W error::ResourceWarning \
+            tests/test_numerical_core_optimization.py \
+            tests/test_optimizer.py tests/test_optimizer_complete_edges.py \
+            tests/test_units.py tests/test_models_strict_contracts.py \
+            tests/test_config_registry_edge_cases.py \
+            tests/test_evaluation_plan.py tests/test_evaluation_plan_write_conflicts.py \
+            tests/test_worker_protocol_hardening.py tests/test_batch_resource_limits.py \
+            tests/test_job_store.py tests/test_job_store_lease_recovery.py \
+            tests/test_job_store_lease_strictness.py tests/test_job_store_owner_fencing.py \
+            tests/test_archive_safety_complete.py \
+            tests/test_mcp.py tests/test_mcp_tools.py \
+            tests/test_process_ir.py tests/test_process_ir_edges.py \
+            tests/test_research_study.py tests/test_research_schemas.py \
+            tests/test_research_examples.py tests/test_research_governance.py \
+            tests/test_research_contract_edges.py \
+            --junitxml="$E/focused-junit.xml"
+          gate process-ir uv run --python 3.12 python scripts/validate_process_ir.py \
+            examples/process-intent.example.json \
+            --canonical-output "$E/process-intent-canonical.json" \
+            --report-output "$E/process-intent-report.json"
+          gate mcp uv run --python 3.12 python scripts/check_mcp.py
+          gate benchmark-smoke uv run --python 3.12 python scripts/run_benchmark_matrix.py \
+            --repo-root . --output "$E/benchmark-smoke.json" --smoke
+          gate performance-policy uv run --python 3.12 python scripts/compare_benchmarks.py \
+            --baseline var/benchmarks/baseline.json \
+            --after var/benchmarks/after.json \
+            --baseline-doc "$E/performance-baseline.md" \
+            --after-doc "$E/performance-after.md" \
+            --fail-on-stable-regression
+          gate build uv build
+          gate wheel-metadata uv run --python 3.12 python scripts/check_wheel_metadata.py \
+            --dist-dir dist --output "$E/wheel-metadata.json"
+
+          cat > /tmp/aspenops-v4-check.py <<'PY'
+          from aspenops_nexus.optimizer import ParetoPoint, pareto_front
+          from aspenops_nexus.units import convert
+
+          assert abs(convert(1.0, "bar", "kPa") - 100.0) < 1e-12
+          point = ParetoPoint((0.0,), (1.0, 1.0), 0.0)
+          assert pareto_front([point, point]) == (point,)
+          PY
+
+          gate wheel-smoke bash -lc '
+            set -euo pipefail
+            uv export --frozen --extra agent --no-default-groups --no-emit-project \
+              --format requirements.txt \
+              --output-file var/main-incremental-audit-v4/runtime-requirements.txt
+            uv venv --python 3.12 /tmp/aspenops-v4-wheel
+            uv pip sync --python /tmp/aspenops-v4-wheel/bin/python --require-hashes \
+              var/main-incremental-audit-v4/runtime-requirements.txt
+            uv pip install --python /tmp/aspenops-v4-wheel/bin/python --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-v4-wheel/bin/python
+            /tmp/aspenops-v4-wheel/bin/aspenops --version
+            /tmp/aspenops-v4-wheel/bin/aspenops --help >/dev/null
+            /tmp/aspenops-v4-wheel/bin/aspenops demo >/dev/null
+            /tmp/aspenops-v4-wheel/bin/aspenops scheduler --help >/dev/null
+            /tmp/aspenops-v4-wheel/bin/aspenops cancel --help >/dev/null
+            /tmp/aspenops-v4-wheel/bin/aspenops optimize --help >/dev/null
+            /tmp/aspenops-v4-wheel/bin/aspenops mcp --help >/dev/null
+            /tmp/aspenops-v4-wheel/bin/python /tmp/aspenops-v4-check.py
+          '
+
+          if [[ "$failed" -ne 0 ]]; then
+            git reset --hard "$HEAD"
+            rm -f "$SELF"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = Path("var/main-incremental-audit-v4")
+          status = {}
+          tails = {}
+          for line in (evidence / "status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+              if int(code):
+                  log = evidence / f"{name}.log"
+                  if log.exists():
+                      tails[name] = log.read_text(errors="replace").splitlines()[-120:]
+          payload = {
+              "schema": "aspenops.main-incremental-audit-blocker/v4",
+              "decision": "FAIL",
+              "baseline_pass_sha": "6a3c35620a249f1c78290dac6ea14446dfc5cc3a",
+              "critical_changes": (evidence / "critical-changes.txt").read_text().splitlines(),
+              "hard_gates": status,
+              "failure_tail": tails,
+              "source_changes_retained": False,
+              "aspen_executed": False,
+          }
+          Path("docs/MAIN_INCREMENTAL_AUDIT_V4_BLOCKER.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+            git add -A
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m 'test: record V4 incremental audit blocker'
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence = Path("var/main-incremental-audit-v4")
+          status = {}
+          for line in (evidence / "status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+
+          root = ET.parse(evidence / "focused-junit.xml").getroot()
+          suite = root if root.tag == "testsuite" else root.find("testsuite")
+          if suite is None:
+              raise RuntimeError("No testsuite in focused JUnit")
+          focused = {
+              "tests": int(suite.attrib.get("tests", 0)),
+              "failures": int(suite.attrib.get("failures", 0)),
+              "errors": int(suite.attrib.get("errors", 0)),
+              "skipped": int(suite.attrib.get("skipped", 0)),
+              "time_seconds": float(suite.attrib.get("time", 0.0)),
+          }
+          v3 = json.loads(Path("docs/MAIN_AUDIT_V3_RESULT.json").read_text(encoding="utf-8"))
+          payload = {
+              "schema": "aspenops.main-incremental-audit-result/v4",
+              "decision": "PASS",
+              "mode": "incremental-fast-path",
+              "baseline_pass_sha": "6a3c35620a249f1c78290dac6ea14446dfc5cc3a",
+              "qualified_head_before_report": os.environ.get("GITHUB_SHA", ""),
+              "critical_changes": [],
+              "hard_gates": status,
+              "focused_tests": focused,
+              "inherited_full_test_evidence": v3.get("full_tests", {}),
+              "inherited_coverage_percent": v3.get("coverage_percent", {}),
+              "qualification_run": {
+                  "run_id": os.environ["RUN_ID"],
+                  "run_attempt": os.environ["RUN_ATTEMPT"],
+              },
+              "source_changes_retained": False,
+              "source_files_changed": [],
+              "runtime_control_plane_changed": False,
+              "aspen_executed": False,
+              "parameter_estimation_executed": False,
+              "dynamic_modeling_executed": False,
+              "machine_learning_executed": False,
+              "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+          }
+          Path("docs/MAIN_INCREMENTAL_AUDIT_V4_RESULT.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          Path("docs/MAIN_INCREMENTAL_AUDIT_V4_RESULT.md").write_text(
+              "# AspenOps Main Incremental Audit V4\n\n"
+              "**PASS**\n\n"
+              "- Mode: incremental fast path\n"
+              "- Critical code changes since V3 PASS: none\n"
+              "- Source changes retained: no\n"
+              "- Licensed Windows/Aspen engineering certification: pending\n",
+              encoding="utf-8",
+          )
+          PY
+
+          rm -f docs/MAIN_INCREMENTAL_AUDIT_V4_BLOCKER.json
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'chore: complete V4 incremental main audit'
+          git push origin HEAD:main
