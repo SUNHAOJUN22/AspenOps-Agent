@@ -40,35 +40,6 @@ def _payload() -> dict[str, Any]:
     }
 
 
-def test_key_requests_normalizes_runtime_identity_once() -> None:
-    pool = object.__new__(CasePool)
-    runtime_calls = 0
-    key_calls = 0
-    runtime_identity = {"backend": "mock", "build": {"version": "test"}}
-
-    def runtime() -> dict[str, Any]:
-        nonlocal runtime_calls
-        runtime_calls += 1
-        return runtime_identity
-
-    def key(request: EvaluationRequest, identity: dict[str, Any]) -> str:
-        nonlocal key_calls
-        key_calls += 1
-        assert identity is runtime_identity
-        return str(request.writes[0].value)
-
-    pool._runtime_cache_identity = runtime  # type: ignore[method-assign]
-    pool._cache_key_with_runtime = key  # type: ignore[method-assign]
-    first = _request(1.0)
-    second = _request(2.0)
-
-    keyed = pool._key_requests([first, first, second])
-
-    assert runtime_calls == 1
-    assert key_calls == 2
-    assert [item[0] for item in keyed] == ["1.0", "1.0", "2.0"]
-
-
 def test_single_cached_result_avoids_redundant_deepcopy(monkeypatch: Any) -> None:
     payload = _payload()
 

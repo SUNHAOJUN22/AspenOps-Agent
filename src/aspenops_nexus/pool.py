@@ -305,7 +305,7 @@ class CasePool:
         if request.reinitialize:
             cached = self.cache.get(request_hash)
             if cached is not None:
-                result = EvaluationResult.from_dict(deepcopy(cached))
+                result = EvaluationResult.from_dict(cached)
                 result.cache_source = "persistent_cache"
                 result.cache_hit = True
                 result.request_hash = request_hash
@@ -361,13 +361,19 @@ class CasePool:
         )
         output: list[EvaluationResult | None] = [None] * len(requests)
         unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
+        cached_results: dict[str, EvaluationResult] = {}
         for index, (key, request) in enumerate(keyed_requests):
             cached = cached_payloads.get(key) if request.reinitialize else None
             if cached is not None:
-                result = EvaluationResult.from_dict(deepcopy(cached))
-                result.cache_source = "persistent_cache"
-                result.cache_hit = True
-                result.request_hash = key
+                template = cached_results.get(key)
+                if template is None:
+                    result = EvaluationResult.from_dict(cached)
+                    result.cache_source = "persistent_cache"
+                    result.cache_hit = True
+                    result.request_hash = key
+                    cached_results[key] = result
+                else:
+                    result = deepcopy(template)
                 output[index] = result
                 continue
             unique.setdefault(key, (request, []))[1].append(index)
@@ -375,7 +381,7 @@ class CasePool:
         if not unique:
             if any(item is None for item in output):
                 raise RuntimeError("Internal cache error: one or more results were not assigned")
-            return [replace(item) for item in output if item is not None]
+            return [item for item in output if item is not None]
 
         tasks: queue.Queue[tuple[str, EvaluationRequest, list[int]]] = queue.Queue()
         for key, (request, indexes) in unique.items():
@@ -457,4 +463,4 @@ class CasePool:
             raise RuntimeError(f"CasePool dispatch failed: {errors[0]}") from errors[0]
         if any(item is None for item in output):
             raise RuntimeError("Internal scheduler error: one or more results were not assigned")
-        return [replace(item) for item in output if item is not None]
+        return [item for item in output if item is not None]

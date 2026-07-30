@@ -1,0 +1,114 @@
+{
+  "aspen_executed": false,
+  "benchmark": {
+    "after_seconds": {
+      "duplicate_cached_batch": 0.09881038999999703,
+      "single_cached_hits": 0.027314981999992938
+    },
+    "before_seconds": {
+      "duplicate_cached_batch": 0.11552491099999429,
+      "single_cached_hits": 0.14930358699999147
+    },
+    "boundary": "Pure Python cache-result materialization benchmark; not licensed Aspen solve evidence.",
+    "checks": {
+      "duplicate_batch_faster": true,
+      "duplicate_results_equal": true,
+      "single_materialization_faster": true,
+      "single_results_equal": true
+    },
+    "decision": "PASS",
+    "schema": "aspenops.pool-efficiency-benchmark/v2",
+    "speedups": {
+      "duplicate_cached_batch": 1.1691575248311212,
+      "single_cached_hits": 5.465996170161491
+    }
+  },
+  "coverage_percent": {
+    "3.11": 95.72934595524957,
+    "3.12": 95.72934595524957,
+    "3.13": 95.72934595524957
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 2,
+    "time_seconds": 0.145
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 888,
+      "time_seconds": 20.011
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 888,
+      "time_seconds": 22.03
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 888,
+      "time_seconds": 18.785
+    }
+  },
+  "hard_gates": {
+    "apply-patch": 0,
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "copy-benchmark": 0,
+    "copy-test": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "performance-benchmark": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "machine_learning_executed": false,
+  "parameter_estimation_executed": false,
+  "preserved_contracts": [
+    "cache_key public call observability",
+    "cache-key bytes",
+    "result isolation",
+    "worker and runtime control semantics"
+  ],
+  "qualification_boundary": "Pure Python cache-result materialization and portable package evidence; not licensed Aspen solve certification.",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30531740774"
+  },
+  "rejected_candidate": "batch runtime-identity reuse was rejected because it bypassed public cache_key call-count instrumentation",
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.cache-materialization-audit-result/v1",
+  "source_files_changed": [
+    "src/aspenops_nexus/pool.py",
+    "tests/test_pool_efficiency.py"
+  ]
+}
