@@ -1,0 +1,614 @@
+name: AspenOps Pool Efficiency Audit Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspenops-pool-efficiency-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.issue.title == 'ASPENOPS_POOL_EFFICIENCY_AUDIT_V1_20260730'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply, benchmark and qualify exact efficiency patch
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE="$(git rev-parse HEAD)"
+          SELF=.github/workflows/pool-efficiency-audit-once.yml
+          E=var/pool-efficiency-audit
+          rm -rf "$E" dist /tmp/aspenops-pool-wheel
+          mkdir -p "$E"
+          rm -f "$SELF" docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/pool.py")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one patch target, found {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''    def cache_key(self, request: EvaluationRequest) -> str:
+                  identity = {
+                      "schema": RUNTIME_SCHEMA,
+                      "runtime_version": __version__,
+                      "backend": self.backend_name,
+                      "runtime_identity": self._runtime_cache_identity(),
+                      "model_sha256": self.model_sha256,
+                      "registry_sha256": self.registry.sha256,
+                      "request": request.physical_identity(),
+                  }
+                  return canonical_hash(identity)
+          ''',
+              '''    def _cache_key_with_runtime(
+                  self,
+                  request: EvaluationRequest,
+                  runtime_identity: dict[str, Any],
+              ) -> str:
+                  identity = {
+                      "schema": RUNTIME_SCHEMA,
+                      "runtime_version": __version__,
+                      "backend": self.backend_name,
+                      "runtime_identity": runtime_identity,
+                      "model_sha256": self.model_sha256,
+                      "registry_sha256": self.registry.sha256,
+                      "request": request.physical_identity(),
+                  }
+                  return canonical_hash(identity)
+
+              def cache_key(self, request: EvaluationRequest) -> str:
+                  return self._cache_key_with_runtime(request, self._runtime_cache_identity())
+          ''',
+          )
+          replace_once(
+              '''        by_identity: dict[int, tuple[EvaluationRequest, str]] = {}
+                  keyed: list[tuple[str, EvaluationRequest]] = []
+                  for request in requests:
+                      identity = id(request)
+                      existing = by_identity.get(identity)
+                      if existing is not None and existing[0] is request:
+                          key = existing[1]
+                      else:
+                          key = self.cache_key(request)
+                          by_identity[identity] = (request, key)
+                      keyed.append((key, request))
+                  return keyed
+          ''',
+              '''        runtime_identity = self._runtime_cache_identity()
+                  by_identity: dict[int, tuple[EvaluationRequest, str]] = {}
+                  keyed: list[tuple[str, EvaluationRequest]] = []
+                  for request in requests:
+                      identity = id(request)
+                      existing = by_identity.get(identity)
+                      if existing is not None and existing[0] is request:
+                          key = existing[1]
+                      else:
+                          key = self._cache_key_with_runtime(request, runtime_identity)
+                          by_identity[identity] = (request, key)
+                      keyed.append((key, request))
+                  return keyed
+          ''',
+          )
+          replace_once(
+              "                result = EvaluationResult.from_dict(deepcopy(cached))\n",
+              "                result = EvaluationResult.from_dict(cached)\n",
+          )
+          replace_once(
+              '''        output: list[EvaluationResult | None] = [None] * len(requests)
+                  unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
+                  for index, (key, request) in enumerate(keyed_requests):
+                      cached = cached_payloads.get(key) if request.reinitialize else None
+                      if cached is not None:
+                          result = EvaluationResult.from_dict(deepcopy(cached))
+                          result.cache_source = "persistent_cache"
+                          result.cache_hit = True
+                          result.request_hash = key
+                          output[index] = result
+                          continue
+                      unique.setdefault(key, (request, []))[1].append(index)
+          ''',
+              '''        output: list[EvaluationResult | None] = [None] * len(requests)
+                  unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
+                  cached_results: dict[str, EvaluationResult] = {}
+                  for index, (key, request) in enumerate(keyed_requests):
+                      cached = cached_payloads.get(key) if request.reinitialize else None
+                      if cached is not None:
+                          template = cached_results.get(key)
+                          if template is None:
+                              result = EvaluationResult.from_dict(cached)
+                              result.cache_source = "persistent_cache"
+                              result.cache_hit = True
+                              result.request_hash = key
+                              cached_results[key] = result
+                          else:
+                              result = deepcopy(template)
+                          output[index] = result
+                          continue
+                      unique.setdefault(key, (request, []))[1].append(index)
+          ''',
+          )
+          replace_once(
+              "            return [replace(item) for item in output if item is not None]\n",
+              "            return [item for item in output if item is not None]\n",
+          )
+          replace_once(
+              "        return [replace(item) for item in output if item is not None]\n",
+              "        return [item for item in output if item is not None]\n",
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          cat > tests/test_pool_efficiency.py <<'PY'
+          from __future__ import annotations
+
+          from typing import Any
+
+          import aspenops_nexus.pool as pool_module
+          from aspenops_nexus.models import EvaluationRequest, EvaluationResult
+          from aspenops_nexus.pool import CasePool
+
+
+          def _request(value: float) -> EvaluationRequest:
+              return EvaluationRequest.from_dict(
+                  {
+                      "model_path": "model.bkp",
+                      "registry_path": "registry.json",
+                      "backend": "mock",
+                      "writes": [{"key": "feed", "value": value}],
+                      "reads": [],
+                  }
+              )
+
+
+          def _payload() -> dict[str, Any]:
+              return {
+                  "ok": True,
+                  "communication_ok": True,
+                  "engine_ok": True,
+                  "converged": True,
+                  "feasible": True,
+                  "values": {"product": 1.0},
+                  "units": {"product": "1"},
+                  "violations": [],
+                  "diagnostics": {"nested": {"value": 1}},
+                  "elapsed_s": 0.01,
+                  "balance_residuals": {},
+                  "cache_source": "computed",
+                  "cache_hit": False,
+                  "request_hash": "",
+                  "worker_id": 0,
+              }
+
+
+          def test_key_requests_normalizes_runtime_identity_once() -> None:
+              pool = object.__new__(CasePool)
+              runtime_calls = 0
+              key_calls = 0
+              runtime_identity = {"backend": "mock", "build": {"version": "test"}}
+
+              def runtime() -> dict[str, Any]:
+                  nonlocal runtime_calls
+                  runtime_calls += 1
+                  return runtime_identity
+
+              def key(request: EvaluationRequest, identity: dict[str, Any]) -> str:
+                  nonlocal key_calls
+                  key_calls += 1
+                  assert identity is runtime_identity
+                  return str(request.writes[0].value)
+
+              pool._runtime_cache_identity = runtime  # type: ignore[method-assign]
+              pool._cache_key_with_runtime = key  # type: ignore[method-assign]
+              first = _request(1.0)
+              second = _request(2.0)
+
+              keyed = pool._key_requests([first, first, second])
+
+              assert runtime_calls == 1
+              assert key_calls == 2
+              assert [item[0] for item in keyed] == ["1.0", "1.0", "2.0"]
+
+
+          def test_duplicate_cached_results_are_parsed_once_and_isolated(monkeypatch: Any) -> None:
+              payload = _payload()
+
+              class Cache:
+                  def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+                      assert keys == ["same", "same", "same"]
+                      return {"same": payload}
+
+              pool = object.__new__(CasePool)
+              pool._handles = [object()]  # type: ignore[list-item]
+              pool.cache = Cache()  # type: ignore[assignment]
+              pool._key_requests = lambda requests: [  # type: ignore[method-assign]
+                  ("same", request) for request in requests
+              ]
+
+              calls = 0
+              original = EvaluationResult.from_dict.__func__
+
+              def counting_from_dict(
+                  cls: type[EvaluationResult], data: dict[str, Any]
+              ) -> EvaluationResult:
+                  nonlocal calls
+                  calls += 1
+                  return original(cls, data)
+
+              monkeypatch.setattr(
+                  EvaluationResult,
+                  "from_dict",
+                  classmethod(counting_from_dict),
+              )
+
+              def unexpected_replace(*args: Any, **kwargs: Any) -> Any:
+                  raise AssertionError("cached-only fast path must not shallow-copy results")
+
+              monkeypatch.setattr(pool_module, "replace", unexpected_replace)
+              results = pool._evaluate_many_locked(
+                  [_request(1.0), _request(1.0), _request(1.0)],
+                  cancel_check=None,
+              )
+
+              assert calls == 1
+              assert len(results) == 3
+              assert len({id(result) for result in results}) == 3
+              assert all(result.cache_source == "persistent_cache" for result in results)
+              assert all(result.cache_hit for result in results)
+              results[0].diagnostics["nested"]["value"] = 99
+              assert results[1].diagnostics["nested"]["value"] == 1
+              assert payload["diagnostics"]["nested"]["value"] == 1
+          PY
+
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          uv run --python 3.12 ruff check --fix src/aspenops_nexus/pool.py tests/test_pool_efficiency.py
+          uv run --python 3.12 ruff format src/aspenops_nexus/pool.py tests/test_pool_efficiency.py
+
+          cat > "$E/benchmark.py" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import statistics
+          import time
+          from copy import deepcopy
+          from types import SimpleNamespace
+          from typing import Any
+
+          from aspenops_nexus.models import EvaluationRequest, EvaluationResult
+          from aspenops_nexus.pool import CasePool
+
+
+          def request(value: float) -> EvaluationRequest:
+              return EvaluationRequest.from_dict(
+                  {
+                      "model_path": "model.bkp",
+                      "registry_path": "registry.json",
+                      "backend": "mock",
+                      "writes": [{"key": "feed", "value": value}],
+                      "reads": [],
+                  }
+              )
+
+
+          payload: dict[str, Any] = {
+              "ok": True,
+              "communication_ok": True,
+              "engine_ok": True,
+              "converged": True,
+              "feasible": True,
+              "values": {f"v{i}": float(i) for i in range(32)},
+              "units": {f"v{i}": "1" for i in range(32)},
+              "violations": [],
+              "diagnostics": {"nested": {"values": list(range(64))}},
+              "elapsed_s": 0.01,
+              "balance_residuals": {},
+              "cache_source": "computed",
+              "cache_hit": False,
+              "request_hash": "",
+              "worker_id": 0,
+          }
+
+          duplicates = 1500
+          requests = [request(float(index)) for index in range(700)]
+          runtime = {
+              "backend": "mock",
+              "product": {"name": "mock", "version": "2.0", "features": list(range(64))},
+              "nested": [{"index": index, "values": list(range(16))} for index in range(32)],
+          }
+          pool = object.__new__(CasePool)
+          pool.backend_name = "mock"
+          pool.model_sha256 = "m" * 64
+          pool.registry = SimpleNamespace(sha256="r" * 64)
+          pool._handles = [SimpleNamespace(runtime=runtime)]
+
+
+          def old_materialize() -> list[EvaluationResult]:
+              return [EvaluationResult.from_dict(deepcopy(payload)) for _ in range(duplicates)]
+
+
+          def new_materialize() -> list[EvaluationResult]:
+              template = EvaluationResult.from_dict(payload)
+              return [template, *(deepcopy(template) for _ in range(duplicates - 1))]
+
+
+          def old_key_requests() -> list[tuple[str, EvaluationRequest]]:
+              by_identity: dict[int, tuple[EvaluationRequest, str]] = {}
+              keyed: list[tuple[str, EvaluationRequest]] = []
+              for item in requests:
+                  identity = id(item)
+                  existing = by_identity.get(identity)
+                  if existing is not None and existing[0] is item:
+                      key = existing[1]
+                  else:
+                      key = pool.cache_key(item)
+                      by_identity[identity] = (item, key)
+                  keyed.append((key, item))
+              return keyed
+
+
+          def measure(function: Any, repeats: int = 7) -> tuple[float, Any]:
+              samples: list[float] = []
+              result: Any = None
+              for _ in range(repeats):
+                  start = time.perf_counter()
+                  result = function()
+                  samples.append(time.perf_counter() - start)
+              return statistics.median(samples), result
+
+
+          old_materialize_s, old_results = measure(old_materialize)
+          new_materialize_s, new_results = measure(new_materialize)
+          old_key_s, old_keys = measure(old_key_requests)
+          new_key_s, new_keys = measure(lambda: pool._key_requests(requests))
+
+          checks = {
+              "materialized_results_equal": [item.to_dict() for item in old_results]
+              == [item.to_dict() for item in new_results],
+              "cache_keys_equal": [item[0] for item in old_keys] == [item[0] for item in new_keys],
+              "materialization_faster": new_materialize_s < old_materialize_s,
+              "keying_faster": new_key_s < old_key_s,
+          }
+          result = {
+              "schema": "aspenops.pool-efficiency-benchmark/v1",
+              "boundary": "Pure Python orchestration benchmark; not licensed Aspen solve evidence.",
+              "before_seconds": {
+                  "duplicate_cache_materialization": old_materialize_s,
+                  "batch_cache_keying": old_key_s,
+              },
+              "after_seconds": {
+                  "duplicate_cache_materialization": new_materialize_s,
+                  "batch_cache_keying": new_key_s,
+              },
+              "speedups": {
+                  "duplicate_cache_materialization": old_materialize_s / new_materialize_s,
+                  "batch_cache_keying": old_key_s / new_key_s,
+              },
+              "checks": checks,
+              "decision": "PASS" if all(checks.values()) else "FAIL",
+          }
+          with open("var/pool-efficiency-audit/benchmark.json", "w", encoding="utf-8") as handle:
+              json.dump(result, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          if result["decision"] != "PASS":
+              raise SystemExit(json.dumps(result, sort_keys=True))
+          PY
+
+          : > "$E/status.tsv"
+          failed=0
+          gate() {
+            name="$1"; shift
+            set +e
+            "$@" >"$E/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+            [[ "$code" -eq 0 ]] || failed=1
+          }
+
+          gate performance-benchmark uv run --python 3.12 python "$E/benchmark.py"
+          gate lock-check uv lock --check
+          gate dependency-audit bash -lc '
+            set -euo pipefail
+            export UV_PREVIEW_FEATURES=json-output
+            bad=0
+            for platform in linux windows; do
+              for version in 3.11 3.12 3.13; do
+                stem=var/pool-efficiency-audit/audit-${platform}-${version}
+                uv audit --frozen --python-platform "$platform" --python-version "$version" --output-format json >"$stem.json" 2>"$stem.log" || bad=1
+                python -m json.tool "$stem.json" >/dev/null || bad=1
+              done
+            done
+            exit "$bad"
+          '
+          gate ruff uv run --python 3.12 ruff check .
+          gate format uv run --python 3.12 ruff format --check .
+          gate mypy uv run --python 3.12 mypy src
+          gate compileall uv run --python 3.12 python -m compileall -q src scripts
+          gate source-audit uv run --python 3.12 python scripts/audit_source_tree.py --output "$E/source-tree-audit.json"
+          gate bandit bash -lc '
+            set -euo pipefail
+            status=0
+            uv tool run --isolated --from bandit==1.9.4 bandit -r src scripts -lll -iii -f json -o var/pool-efficiency-audit/bandit.json 2>var/pool-efficiency-audit/bandit.log || status=$?
+            python -m json.tool var/pool-efficiency-audit/bandit.json >/dev/null
+            exit "$status"
+          '
+          for version in 3.11 3.12 3.13; do
+            floor=94.5
+            [[ "$version" == 3.12 ]] && floor=95.0
+            gate full-$version bash -lc "
+              set -euo pipefail
+              uv sync --python $version --frozen --extra dev --extra agent --extra signing
+              uv run --python $version pytest -W error::ResourceWarning \\
+                --cov=aspenops_nexus --cov-branch \\
+                --cov-report=json:$E/coverage-$version.json \\
+                --junitxml=$E/junit-$version.xml \\
+                --cov-fail-under=$floor
+            "
+          done
+          gate restore-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate order-312 uv run --python 3.12 python scripts/run_test_order_gate.py --seed 20260730 --output-dir "$E/order"
+          gate process-ir uv run --python 3.12 python scripts/validate_process_ir.py examples/process-intent.example.json --canonical-output "$E/process-intent-canonical.json" --report-output "$E/process-intent-report.json"
+          gate mcp uv run --python 3.12 python scripts/check_mcp.py
+          gate benchmark-smoke uv run --python 3.12 python scripts/run_benchmark_matrix.py --repo-root . --output "$E/benchmark-smoke.json" --smoke
+          gate performance-policy uv run --python 3.12 python scripts/compare_benchmarks.py --baseline var/benchmarks/baseline.json --after var/benchmarks/after.json --baseline-doc "$E/performance-baseline.md" --after-doc "$E/performance-after.md" --fail-on-stable-regression
+          gate build uv build
+          gate wheel-metadata uv run --python 3.12 python scripts/check_wheel_metadata.py --dist-dir dist --output "$E/wheel-metadata.json"
+          gate wheel-smoke bash -lc '
+            set -euo pipefail
+            uv export --frozen --extra agent --no-default-groups --no-emit-project --format requirements.txt --output-file var/pool-efficiency-audit/runtime-requirements.txt
+            uv venv --python 3.12 /tmp/aspenops-pool-wheel
+            uv pip sync --python /tmp/aspenops-pool-wheel/bin/python --require-hashes var/pool-efficiency-audit/runtime-requirements.txt
+            uv pip install --python /tmp/aspenops-pool-wheel/bin/python --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-pool-wheel/bin/python
+            /tmp/aspenops-pool-wheel/bin/aspenops --version
+            /tmp/aspenops-pool-wheel/bin/aspenops --help >/dev/null
+            /tmp/aspenops-pool-wheel/bin/aspenops demo >/dev/null
+            /tmp/aspenops-pool-wheel/bin/python - <<"PY"
+          from aspenops_nexus.pool import CasePool
+          assert hasattr(CasePool, "_cache_key_with_runtime")
+          PY
+          '
+
+          if [[ "$failed" -ne 0 ]]; then
+            cp "$E/status.tsv" /tmp/pool-status.tsv
+            cp -r "$E" /tmp/pool-evidence
+            git reset --hard "$BASE"
+            rm -f "$SELF"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = Path("/tmp/pool-evidence")
+          status = {}
+          tails = {}
+          for line in Path("/tmp/pool-status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+              if int(code):
+                  log = evidence / f"{name}.log"
+                  if log.exists():
+                      tails[name] = log.read_text(errors="replace").splitlines()[-120:]
+          payload = {
+              "schema": "aspenops.pool-efficiency-blocker/v1",
+              "decision": "FAIL",
+              "source_changes_retained": False,
+              "aspen_executed": False,
+              "runtime_control_plane_changed": False,
+              "hard_gates": status,
+              "failure_tail": tails,
+          }
+          Path("docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+            git add -A
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m 'test: record pool efficiency audit blocker'
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence = Path("var/pool-efficiency-audit")
+          status = {}
+          for line in (evidence / "status.tsv").read_text().splitlines():
+              name, code = line.split("\t")
+              status[name] = int(code)
+
+          def junit(path: Path) -> dict[str, int | float]:
+              root = ET.parse(path).getroot()
+              suite = root if root.tag == "testsuite" else root.find("testsuite")
+              if suite is None:
+                  raise RuntimeError(f"No testsuite in {path}")
+              return {
+                  "tests": int(suite.attrib.get("tests", 0)),
+                  "failures": int(suite.attrib.get("failures", 0)),
+                  "errors": int(suite.attrib.get("errors", 0)),
+                  "skipped": int(suite.attrib.get("skipped", 0)),
+                  "time_seconds": float(suite.attrib.get("time", 0.0)),
+              }
+
+          benchmark = json.loads((evidence / "benchmark.json").read_text())
+          payload = {
+              "schema": "aspenops.pool-efficiency-audit-result/v1",
+              "decision": "PASS",
+              "qualification_run": {
+                  "run_id": os.environ["RUN_ID"],
+                  "run_attempt": os.environ["RUN_ATTEMPT"],
+              },
+              "hard_gates": status,
+              "benchmark": benchmark,
+              "full_tests": {
+                  version: junit(evidence / f"junit-{version}.xml")
+                  for version in ("3.11", "3.12", "3.13")
+              },
+              "coverage_percent": {
+                  version: json.loads((evidence / f"coverage-{version}.json").read_text())["totals"]["percent_covered"]
+                  for version in ("3.11", "3.12", "3.13")
+              },
+              "source_files_changed": [
+                  "src/aspenops_nexus/pool.py",
+                  "tests/test_pool_efficiency.py",
+              ],
+              "aspen_executed": False,
+              "parameter_estimation_executed": False,
+              "dynamic_modeling_executed": False,
+              "machine_learning_executed": False,
+              "runtime_control_plane_changed": False,
+              "qualification_boundary": "Pure Python orchestration and portable package evidence; not licensed Aspen solve certification.",
+          }
+          Path("docs/POOL_EFFICIENCY_AUDIT_RESULT.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          Path("docs/POOL_EFFICIENCY_AUDIT_RESULT.md").write_text(
+              "# AspenOps Pool Efficiency Audit\n\n"
+              "**PASS**\n\n"
+              "- Batch cache-key runtime identity is normalized once per batch.\n"
+              "- Duplicate persistent-cache results are parsed once per cache key and returned as isolated objects.\n"
+              "- Redundant final dataclass shallow copies were removed.\n"
+              "- Licensed Windows/Aspen engineering certification remains pending.\n",
+              encoding="utf-8",
+          )
+          PY
+          rm -f docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'perf: reduce batch cache orchestration overhead'
+          git push origin HEAD:main
+      - name: Close trigger issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close '${{ github.event.issue.number }}' --repo '${{ github.repository }}' --comment 'Pool efficiency audit finished. Inspect docs/POOL_EFFICIENCY_AUDIT_RESULT.json or docs/POOL_EFFICIENCY_AUDIT_BLOCKER.json on main.'
