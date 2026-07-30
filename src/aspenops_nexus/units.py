@@ -61,9 +61,24 @@ _UNITS: dict[str, UnitSpec] = {
     "cP": UnitSpec("viscosity", 0.001),
 }
 
+_SUPPORTED_UNITS: tuple[tuple[str, str], ...] = tuple(
+    (name, spec.dimension) for name, spec in sorted(_UNITS.items())
+)
+_CONVERSIONS: dict[tuple[str, str], tuple[float, float, float, float]] = {
+    (source, target): (
+        source_spec.to_base_scale,
+        source_spec.to_base_offset,
+        target_spec.to_base_offset,
+        target_spec.to_base_scale,
+    )
+    for source, source_spec in _UNITS.items()
+    for target, target_spec in _UNITS.items()
+    if source_spec.dimension == target_spec.dimension
+}
+
 
 def supported_units() -> dict[str, str]:
-    return {name: spec.dimension for name, spec in sorted(_UNITS.items())}
+    return dict(_SUPPORTED_UNITS)
 
 
 def dimension(unit: str | None) -> str | None:
@@ -90,17 +105,22 @@ def convert(value: float, source: str | None, target: str | None) -> float:
         raise UnitError("Target unit must be a string or null")
     if source is None or target is None:
         return numeric
-    if source not in _UNITS or target not in _UNITS:
-        raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
     if source == target:
+        if source not in _UNITS:
+            raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
         return numeric
-    src = _UNITS[source]
-    dst = _UNITS[target]
-    if src.dimension != dst.dimension:
+    conversion = _CONVERSIONS.get((source, target))
+    if conversion is None:
+        source_spec = _UNITS.get(source)
+        target_spec = _UNITS.get(target)
+        if source_spec is None or target_spec is None:
+            raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
         raise UnitError(
-            f"Incompatible units: {source!r} ({src.dimension}) and {target!r} ({dst.dimension})"
+            f"Incompatible units: {source!r} ({source_spec.dimension}) and "
+            f"{target!r} ({target_spec.dimension})"
         )
-    converted = dst.from_base(src.to_base(numeric))
+    source_scale, source_offset, target_offset, target_scale = conversion
+    converted = (numeric * source_scale + source_offset - target_offset) / target_scale
     if not math.isfinite(converted):
         raise UnitError("Unit conversion produced a non-finite value")
     return converted

@@ -1,0 +1,97 @@
+{
+  "aspen_executed": false,
+  "benchmark": {
+    "after_seconds": {
+      "pareto_2d": 0.0016004259999959913,
+      "unit_conversion": 0.163538721000009
+    },
+    "before_seconds": {
+      "pareto_2d": 2.589107245000008,
+      "unit_conversion": 0.1731598269999921
+    },
+    "boundary": "Pure Python numerical benchmark; not licensed Aspen solver evidence.",
+    "checks": {
+      "pareto_at_least_2x": true,
+      "pareto_equal": true,
+      "units_equal": true,
+      "units_no_regression": true
+    },
+    "decision": "PASS",
+    "schema": "aspenops.numerical-benchmark-comparison/v1",
+    "speedups": {
+      "pareto_2d": 1617.7612991831506,
+      "unit_conversion": 1.0588307523817713
+    }
+  },
+  "complete_hard_gates": {
+    "bandit": 0,
+    "build": 0,
+    "compileall": 0,
+    "demo": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "numerical-benchmark": 0,
+    "order-312": 0,
+    "portable-benchmark": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "finalize_hard_gates": {
+    "build": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "mypy": 0,
+    "numerical-benchmark": 0,
+    "prior-evidence": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "sync": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 43,
+    "time": 0.204
+  },
+  "machine_learning_executed": false,
+  "mathematical_audit": {
+    "conservation_summation": "math.fsum retained",
+    "constraint_and_convergence_semantics": "unchanged",
+    "differential_evolution_strategy": "DE/rand/1/bin",
+    "pareto_higher_dimensions": "exact incremental frontier",
+    "pareto_one_objective": "O(n) exact minimum filter",
+    "pareto_two_objectives": "O(n log n) exact stable sweep",
+    "unit_conversion": "precomputed exact affine coefficients"
+  },
+  "parameter_estimation_executed": false,
+  "qualification_boundary": "Portable numerical/Python evidence only; not licensed Aspen solver-performance or physical-model certification evidence.",
+  "qualification_runs": {
+    "complete_gate_run": "30508162562",
+    "wheel_finalize_attempt": "1",
+    "wheel_finalize_run": "30508386680"
+  },
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.numerical-optimization-result/v1"
+}
