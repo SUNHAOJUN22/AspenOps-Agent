@@ -1,0 +1,256 @@
+name: AspenOps Main Code Audit Auto Fix Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspenops-main-code-audit-v2
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.issue.title == 'ASPENOPS_MAIN_CODE_AUDIT_AUTO_FIX_AND_QUALIFY_V2_20260730'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Audit, safely fix and qualify current main
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE="$(git rev-parse HEAD)"
+          SELF=.github/workflows/main-code-audit-autofix-once.yml
+          E=var/main-code-audit-v2
+          rm -rf "$E" dist /tmp/aspenops-v2-wheel
+          mkdir -p "$E"
+          rm -f "$SELF" docs/MAIN_CODE_AUDIT_BLOCKER.json
+
+          : > "$E/status.tsv"
+          failed=0
+          gate() {
+            name="$1"; shift
+            set +e
+            "$@" >"$E/$name.log" 2>&1
+            code=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+            [[ "$code" -eq 0 ]] || failed=1
+          }
+
+          gate lock-check uv lock --check
+          gate sync-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate dependency-audit bash -lc '
+            set -euo pipefail
+            export UV_PREVIEW_FEATURES=json-output
+            failed=0
+            for platform in linux windows; do
+              for version in 3.11 3.12 3.13; do
+                stem=var/main-code-audit-v2/audit-${platform}-${version}
+                uv audit --frozen --python-platform "$platform" --python-version "$version" --output-format json >"$stem.json" 2>"$stem.log" || failed=1
+                python -m json.tool "$stem.json" >/dev/null || failed=1
+              done
+            done
+            exit "$failed"
+          '
+          gate ruff-fix uv run --python 3.12 ruff check --fix src tests scripts
+          gate format-fix uv run --python 3.12 ruff format src tests scripts
+          gate ruff uv run --python 3.12 ruff check .
+          gate format uv run --python 3.12 ruff format --check .
+          gate mypy uv run --python 3.12 mypy src
+          gate compileall uv run --python 3.12 python -m compileall -q src scripts
+          gate source-audit uv run --python 3.12 python scripts/audit_source_tree.py --output "$E/source-tree-audit.json"
+          gate bandit bash -lc '
+            set -euo pipefail
+            status=0
+            uv tool run --isolated --from bandit==1.9.4 bandit -r src scripts -lll -iii -f json -o var/main-code-audit-v2/bandit.json 2>var/main-code-audit-v2/bandit.log || status=$?
+            python -m json.tool var/main-code-audit-v2/bandit.json >/dev/null
+            exit "$status"
+          '
+          gate focused-tests uv run --python 3.12 pytest -W error::ResourceWarning \
+            tests/test_numerical_core_optimization.py \
+            tests/test_optimizer.py tests/test_optimizer_complete_edges.py \
+            tests/test_units.py tests/test_evaluation_plan.py \
+            tests/test_evaluation_plan_write_conflicts.py \
+            tests/test_worker_protocol_hardening.py \
+            tests/test_job_store.py tests/test_job_store_lease_recovery.py \
+            tests/test_job_store_lease_strictness.py \
+            tests/test_job_store_owner_fencing.py \
+            tests/test_archive_safety_complete.py \
+            tests/test_mcp.py tests/test_mcp_tools.py \
+            tests/test_process_ir.py tests/test_process_ir_edges.py \
+            tests/test_research_study.py tests/test_research_schemas.py \
+            tests/test_research_examples.py tests/test_research_governance.py \
+            tests/test_research_contract_edges.py \
+            --junitxml="$E/focused-junit.xml"
+
+          for version in 3.11 3.12 3.13; do
+            floor=94.5
+            [[ "$version" == 3.12 ]] && floor=95.0
+            gate full-$version bash -lc "
+              set -euo pipefail
+              uv sync --python $version --frozen --extra dev --extra agent --extra signing
+              uv run --python $version pytest -W error::ResourceWarning \\
+                --cov=aspenops_nexus --cov-branch \\
+                --cov-report=json:$E/coverage-$version.json \\
+                --junitxml=$E/junit-$version.xml \\
+                --cov-fail-under=$floor
+            "
+          done
+          gate restore-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          gate order-312 uv run --python 3.12 python scripts/run_test_order_gate.py --seed 20260730 --output-dir "$E/order"
+          gate process-ir uv run --python 3.12 python scripts/validate_process_ir.py examples/process-intent.example.json --canonical-output "$E/process-intent-canonical.json" --report-output "$E/process-intent-report.json"
+          gate mcp uv run --python 3.12 python scripts/check_mcp.py
+          gate benchmark-smoke uv run --python 3.12 python scripts/run_benchmark_matrix.py --repo-root . --output "$E/benchmark-smoke.json" --smoke
+          gate performance-policy uv run --python 3.12 python scripts/compare_benchmarks.py --baseline var/benchmarks/baseline.json --after var/benchmarks/after.json --baseline-doc "$E/performance-baseline.md" --after-doc "$E/performance-after.md" --fail-on-stable-regression
+          gate build uv build
+          gate wheel-metadata uv run --python 3.12 python scripts/check_wheel_metadata.py --dist-dir dist --output "$E/wheel-metadata.json"
+          gate wheel-smoke bash -lc '
+            set -euo pipefail
+            uv export --frozen --extra agent --no-default-groups --no-emit-project --format requirements.txt --output-file var/main-code-audit-v2/runtime-requirements.txt
+            uv venv --python 3.12 /tmp/aspenops-v2-wheel
+            uv pip sync --python /tmp/aspenops-v2-wheel/bin/python --require-hashes var/main-code-audit-v2/runtime-requirements.txt
+            uv pip install --python /tmp/aspenops-v2-wheel/bin/python --offline --no-deps dist/*.whl
+            uv pip check --python /tmp/aspenops-v2-wheel/bin/python
+            /tmp/aspenops-v2-wheel/bin/aspenops --version
+            /tmp/aspenops-v2-wheel/bin/aspenops --help >/dev/null
+            /tmp/aspenops-v2-wheel/bin/aspenops demo >/dev/null
+            /tmp/aspenops-v2-wheel/bin/aspenops scheduler --help >/dev/null
+            /tmp/aspenops-v2-wheel/bin/aspenops cancel --help >/dev/null
+            /tmp/aspenops-v2-wheel/bin/aspenops optimize --help >/dev/null
+            /tmp/aspenops-v2-wheel/bin/aspenops mcp --help >/dev/null
+            /tmp/aspenops-v2-wheel/bin/python -c "from aspenops_nexus.units import convert; assert abs(convert(1.0, 'bar', 'kPa') - 100.0) < 1e-12; from aspenops_nexus.optimizer import ParetoPoint, pareto_front; p=ParetoPoint((0.0,), (1.0, 1.0), 0.0); assert pareto_front([p,p]) == (p,)"
+          '
+
+          python - <<'PY'
+          import subprocess
+          allowed_prefixes = ('src/', 'tests/', 'scripts/', 'docs/')
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          forbidden = [path for path in changed if path != '.github/workflows/main-code-audit-autofix-once.yml' and not path.startswith(allowed_prefixes)]
+          if forbidden:
+              raise SystemExit('unexpected changed paths: ' + ', '.join(forbidden))
+          PY
+
+          if [[ "$failed" -ne 0 ]]; then
+            git reset --hard "$BASE"
+            rm -f "$SELF"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          evidence = Path('var/main-code-audit-v2')
+          status = {}
+          tails = {}
+          for line in (evidence / 'status.tsv').read_text().splitlines():
+              name, code = line.split('\t')
+              status[name] = int(code)
+              if int(code):
+                  log = evidence / f'{name}.log'
+                  if log.exists():
+                      tails[name] = log.read_text(errors='replace').splitlines()[-120:]
+          payload = {
+              'schema': 'aspenops.main-code-audit-blocker/v2',
+              'decision': 'FAIL',
+              'source_changes_retained': False,
+              'runtime_control_plane_changed': False,
+              'aspen_executed': False,
+              'gate_status': status,
+              'failure_tail': tails,
+          }
+          Path('docs/MAIN_CODE_AUDIT_BLOCKER.json').write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+            git add -A
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m 'test: record V2 main code audit blocker'
+            git push origin HEAD:main
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          evidence = Path('var/main-code-audit-v2')
+          status = {}
+          for line in (evidence / 'status.tsv').read_text().splitlines():
+              name, code = line.split('\t')
+              status[name] = int(code)
+
+          def junit(path: Path) -> dict[str, int | float]:
+              root = ET.parse(path).getroot()
+              suite = root if root.tag == 'testsuite' else root.find('testsuite')
+              if suite is None:
+                  raise RuntimeError(f'No testsuite in {path}')
+              return {
+                  'tests': int(suite.attrib.get('tests', 0)),
+                  'failures': int(suite.attrib.get('failures', 0)),
+                  'errors': int(suite.attrib.get('errors', 0)),
+                  'skipped': int(suite.attrib.get('skipped', 0)),
+                  'time_seconds': float(suite.attrib.get('time', 0.0)),
+              }
+
+          def coverage(path: Path) -> float:
+              totals = json.loads(path.read_text(encoding='utf-8'))['totals']
+              return float(totals['percent_covered'])
+
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          source_changed = [path for path in changed if path.startswith(('src/', 'tests/', 'scripts/'))]
+          payload = {
+              'schema': 'aspenops.main-code-audit-result/v2',
+              'decision': 'PASS',
+              'qualified_head_before_report': os.environ.get('GITHUB_SHA', ''),
+              'qualification_run': {'run_id': os.environ['RUN_ID'], 'run_attempt': os.environ['RUN_ATTEMPT']},
+              'hard_gates': status,
+              'focused_tests': junit(evidence / 'focused-junit.xml'),
+              'full_tests': {v: junit(evidence / f'junit-{v}.xml') for v in ('3.11', '3.12', '3.13')},
+              'coverage_percent': {v: coverage(evidence / f'coverage-{v}.json') for v in ('3.11', '3.12', '3.13')},
+              'source_changes_retained': bool(source_changed),
+              'source_files_changed': source_changed,
+              'runtime_control_plane_changed': False,
+              'aspen_executed': False,
+              'parameter_estimation_executed': False,
+              'dynamic_modeling_executed': False,
+              'machine_learning_executed': False,
+              'external_gate': 'PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION',
+          }
+          Path('docs/MAIN_CODE_AUDIT_RESULT.json').write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          Path('docs/MAIN_CODE_AUDIT_RESULT.md').write_text(
+              '# AspenOps Main Code Audit V2\n\n'
+              '**PASS**\n\n'
+              f"- Run: `{os.environ['RUN_ID']}` attempt `{os.environ['RUN_ATTEMPT']}`\n"
+              f"- Safe source changes retained: `{bool(source_changed)}`\n"
+              f"- Changed source files: `{source_changed}`\n"
+              '- Aspen execution: no\n'
+              '- Runtime control plane changed: no\n'
+              '- Licensed Windows/Aspen engineering certification: pending\n',
+              encoding='utf-8',
+          )
+          PY
+          rm -f docs/MAIN_CODE_AUDIT_BLOCKER.json
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'chore: complete V2 main code audit and auto update'
+          git push origin HEAD:main
+      - name: Close trigger issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close '${{ github.event.issue.number }}' --repo '${{ github.repository }}' --comment 'V2 main code audit finished. Inspect docs/MAIN_CODE_AUDIT_RESULT.json or docs/MAIN_CODE_AUDIT_BLOCKER.json on main.'
