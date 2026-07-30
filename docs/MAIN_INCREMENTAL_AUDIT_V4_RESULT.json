@@ -10,7 +10,7 @@
     "failures": 0,
     "skipped": 0,
     "tests": 266,
-    "time_seconds": 3.018
+    "time_seconds": 2.943
   },
   "hard_gates": {
     "bandit": 0,
@@ -65,9 +65,9 @@
   "parameter_estimation_executed": false,
   "qualification_run": {
     "run_attempt": "1",
-    "run_id": "30519791808"
+    "run_id": "30519871430"
   },
-  "qualified_head_before_report": "4a9e82b9536cf0e26d745668eb21d7fe37ac73e1",
+  "qualified_head_before_report": "c71c090107073e71a21240cad679ad088633ee66",
   "runtime_control_plane_changed": false,
   "schema": "aspenops.main-incremental-audit-result/v4",
   "source_changes_retained": false,
