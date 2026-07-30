@@ -1,0 +1,39 @@
+{
+  "aspen_executed": false,
+  "decision": "FAIL",
+  "failure_tail": {
+    "issue44-materialize": [
+      "Issue #44 parts missing: [1, 2, 3, 4, 5, 6, 7]"
+    ]
+  },
+  "gate_status": {
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "dependency-audit": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "issue44-materialize": 1,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "issue44_audit": null,
+  "schema": "aspenops.main-audit-v3-blocker/v1",
+  "source_changes_retained": false
+}
