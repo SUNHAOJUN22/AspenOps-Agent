@@ -1,0 +1,75 @@
+{
+  "aspen_executed": false,
+  "baseline_pass_sha": "6a3c35620a249f1c78290dac6ea14446dfc5cc3a",
+  "critical_changes": [],
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 266,
+    "time_seconds": 3.018
+  },
+  "hard_gates": {
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "dependency-audit": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "incremental-delta": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "ruff": 0,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "inherited_coverage_percent": {
+    "3.11": 95.72612767789859,
+    "3.12": 95.72612767789859,
+    "3.13": 95.72612767789859
+  },
+  "inherited_full_test_evidence": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 886,
+      "time_seconds": 19.858
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 886,
+      "time_seconds": 21.455
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 886,
+      "time_seconds": 18.773
+    }
+  },
+  "machine_learning_executed": false,
+  "mode": "incremental-fast-path",
+  "parameter_estimation_executed": false,
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30519791808"
+  },
+  "qualified_head_before_report": "4a9e82b9536cf0e26d745668eb21d7fe37ac73e1",
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.main-incremental-audit-result/v4",
+  "source_changes_retained": false,
+  "source_files_changed": []
+}
