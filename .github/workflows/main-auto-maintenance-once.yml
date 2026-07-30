@@ -1,0 +1,199 @@
+name: AspenOps Main Auto Maintenance Finalize Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspenops-main-auto-maintenance-finalize-once
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.event.issue.title == 'ASPENOPS_MAIN_AUTO_MAINTENANCE_V3_FINALIZE_20260730'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Validate prior evidence and finish Wheel qualification
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          BASE="$(git rev-parse HEAD)"
+          SELF=.github/workflows/main-auto-maintenance-once.yml
+          E=var/auto-maintenance-final
+          rm -rf "$E" dist /tmp/aspenops-auto-wheel
+          mkdir -p "$E"
+          rm -f "$SELF"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          blocker = json.loads(Path('docs/AUTO_MAINTENANCE_BLOCKER.json').read_text(encoding='utf-8'))
+          status = blocker['gate_status']
+          failed = {name: code for name, code in status.items() if code}
+          assert failed == {'wheel-smoke': 1}, failed
+          assert blocker['runtime_core_changed'] is False
+          assert blocker['source_changes_retained'] is False
+          required = {
+              'bandit', 'boundary-check', 'build', 'compileall', 'dependency-audit',
+              'diff-check', 'format', 'full-3.11', 'full-3.12', 'full-3.13',
+              'lock-check', 'mcp', 'mypy', 'order-312', 'p0-contract',
+              'p0-format-fix', 'p0-ruff-fix', 'process-ir', 'restore-312',
+              'ruff', 'source-audit', 'sync-312', 'wheel-metadata',
+          }
+          assert required <= set(status)
+          assert all(status[name] == 0 for name in required)
+          PY
+
+          uv lock --check >"$E/lock.log" 2>&1
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing \
+            >"$E/sync.log" 2>&1
+          uv run --python 3.12 pytest -W error::ResourceWarning \
+            tests/test_research_schemas.py tests/test_research_examples.py \
+            --junitxml="$E/focused-junit.xml" >"$E/focused-tests.log" 2>&1
+          uv build >"$E/build.log" 2>&1
+          uv run --python 3.12 python scripts/check_wheel_metadata.py \
+            --dist-dir dist --output "$E/wheel-metadata.json" \
+            >"$E/wheel-metadata.log" 2>&1
+          uv export --frozen --extra agent --no-default-groups --no-emit-project \
+            --format requirements.txt --output-file "$E/runtime-requirements.txt" \
+            >"$E/export.log" 2>&1
+          uv venv --python 3.12 /tmp/aspenops-auto-wheel >"$E/venv.log" 2>&1
+          uv pip sync --python /tmp/aspenops-auto-wheel/bin/python --require-hashes \
+            "$E/runtime-requirements.txt" >"$E/runtime-sync.log" 2>&1
+          uv pip install --python /tmp/aspenops-auto-wheel/bin/python \
+            --offline --no-deps dist/*.whl >"$E/wheel-install.log" 2>&1
+          uv pip check --python /tmp/aspenops-auto-wheel/bin/python >"$E/pip-check.log" 2>&1
+          /tmp/aspenops-auto-wheel/bin/aspenops --version >"$E/version.log" 2>&1
+          /tmp/aspenops-auto-wheel/bin/aspenops --help >"$E/help.log" 2>&1
+          /tmp/aspenops-auto-wheel/bin/aspenops demo >"$E/demo.log" 2>&1
+          /tmp/aspenops-auto-wheel/bin/python -c '
+          import importlib.resources as resources
+          import aspenops_nexus.research
+          root = resources.files("aspenops_nexus").joinpath("data")
+          observed = {path.name for path in root.iterdir() if path.name.startswith("research-") and path.name.endswith(".schema.json")}
+          expected = {"research-common.schema.json", "research-study.schema.json", "research-dataset.schema.json", "research-target.schema.json", "research-parameter.schema.json", "research-assumption.schema.json", "research-calibration.schema.json", "research-validation.schema.json", "research-claim.schema.json"}
+          assert observed == expected, (observed, expected)
+          ' >"$E/schema-inventory.log" 2>&1
+          git diff --check
+
+          python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          blocker_path = Path('docs/AUTO_MAINTENANCE_BLOCKER.json')
+          blocker = json.loads(blocker_path.read_text(encoding='utf-8'))
+          gates = dict(blocker['gate_status'])
+          gates['wheel-smoke'] = 0
+          root = ET.parse('var/auto-maintenance-final/focused-junit.xml').getroot()
+          suite = root if root.tag == 'testsuite' else root.find('testsuite')
+          if suite is None:
+              raise RuntimeError('focused JUnit has no testsuite')
+          focused = {
+              'tests': int(suite.attrib.get('tests', 0)),
+              'failures': int(suite.attrib.get('failures', 0)),
+              'errors': int(suite.attrib.get('errors', 0)),
+              'skipped': int(suite.attrib.get('skipped', 0)),
+              'time_seconds': float(suite.attrib.get('time', 0.0)),
+          }
+          previous = json.loads(Path('docs/P0_PHASE_RESULT.json').read_text(encoding='utf-8'))
+          result = {
+              'schema': 'aspenops.auto-maintenance-result/v1',
+              'decision': 'PASS',
+              'qualification_runs': {
+                  'complete_gate_run': blocker['run_id'],
+                  'wheel_finalize_run': os.environ['RUN_ID'],
+                  'wheel_finalize_attempt': os.environ['RUN_ATTEMPT'],
+              },
+              'hard_gates': gates,
+              'p0_tests': previous['p0_tests'],
+              'full_tests': previous['full_tests'],
+              'coverage': previous.get('coverage', {
+                  'legacy_branch_coverage_percent': previous.get('branch_coverage_percent', {})
+              }),
+              'focused_schema_tests': focused,
+              'evidence_composition': {
+                  'complete_gate_run_note': 'All gates except the final schema-inventory command passed; the failure was test-script indentation after Wheel, dependencies, pip check, CLI and demo had succeeded.',
+                  'finalize_run_note': 'Revalidated frozen dependencies, focused schemas/examples, build, Wheel metadata, hash-verified runtime dependencies, Wheel install, pip check, CLI, demo and all nine packaged schemas.',
+              },
+              'source_files_changed': False,
+              'runtime_core_changed': False,
+              'aspen_executed': False,
+              'parameter_estimation_executed': False,
+              'dynamic_modeling_executed': False,
+              'machine_learning_executed': False,
+          }
+          Path('docs/AUTO_MAINTENANCE_RESULT.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          previous['decision'] = 'PASS'
+          previous['hard_gates'] = gates
+          previous['requalification_runs'] = result['qualification_runs']
+          previous['focused_schema_tests'] = focused
+          Path('docs/P0_PHASE_RESULT.json').write_text(
+              json.dumps(previous, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          blocker_path.unlink()
+          PY
+
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: complete automatic code qualification'
+          git push origin HEAD:main
+      - name: Record focused blocker
+        if: failure()
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          rm -f .github/workflows/main-auto-maintenance-once.yml
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              'schema': 'aspenops.auto-maintenance-blocker/v1',
+              'decision': 'FAIL',
+              'run_id': os.environ['RUN_ID'],
+              'blocker_code': 'FOCUSED_WHEEL_FINALIZATION_FAILED',
+              'source_changes_retained': False,
+              'runtime_core_changed': False,
+          }
+          Path('docs/AUTO_MAINTENANCE_BLOCKER.json').write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test: record focused automatic maintenance blocker'
+          git push origin HEAD:main
+      - name: Close trigger issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue close '${{ github.event.issue.number }}' --repo '${{ github.repository }}' \
+            --comment 'Automatic main qualification finalization completed; inspect docs/AUTO_MAINTENANCE_RESULT.json or docs/AUTO_MAINTENANCE_BLOCKER.json.'
