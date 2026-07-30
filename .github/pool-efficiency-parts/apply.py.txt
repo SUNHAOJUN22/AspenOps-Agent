@@ -1,0 +1,136 @@
+from pathlib import Path
+
+path = Path("src/aspenops_nexus/pool.py")
+text = path.read_text(encoding="utf-8")
+
+
+def replace_section(start_marker: str, end_marker: str, replacement: str) -> None:
+    global text
+    start = text.index(start_marker)
+    end = text.index(end_marker, start)
+    text = text[:start] + replacement + text[end:]
+
+
+cache_key_section = "\n".join(
+    [
+        "    def _cache_key_with_runtime(",
+        "        self,",
+        "        request: EvaluationRequest,",
+        "        runtime_identity: dict[str, Any],",
+        "    ) -> str:",
+        "        identity = {",
+        '            "schema": RUNTIME_SCHEMA,',
+        '            "runtime_version": __version__,',
+        '            "backend": self.backend_name,',
+        '            "runtime_identity": runtime_identity,',
+        '            "model_sha256": self.model_sha256,',
+        '            "registry_sha256": self.registry.sha256,',
+        '            "request": request.physical_identity(),',
+        "        }",
+        "        return canonical_hash(identity)",
+        "",
+        "    def cache_key(self, request: EvaluationRequest) -> str:",
+        "        return self._cache_key_with_runtime(request, self._runtime_cache_identity())",
+        "",
+        "",
+    ]
+)
+replace_section(
+    "    def cache_key(self, request: EvaluationRequest) -> str:\n",
+    "    def _key_requests(\n",
+    cache_key_section,
+)
+
+key_requests_section = "\n".join(
+    [
+        "    def _key_requests(",
+        "        self,",
+        "        requests: list[EvaluationRequest],",
+        "    ) -> list[tuple[str, EvaluationRequest]]:",
+        '        """Reuse cache-key work when the same immutable request object repeats in a batch."""',
+        "",
+        "        runtime_identity = self._runtime_cache_identity()",
+        "        by_identity: dict[int, tuple[EvaluationRequest, str]] = {}",
+        "        keyed: list[tuple[str, EvaluationRequest]] = []",
+        "        for request in requests:",
+        "            identity = id(request)",
+        "            existing = by_identity.get(identity)",
+        "            if existing is not None and existing[0] is request:",
+        "                key = existing[1]",
+        "            else:",
+        "                key = self._cache_key_with_runtime(request, runtime_identity)",
+        "                by_identity[identity] = (request, key)",
+        "            keyed.append((key, request))",
+        "        return keyed",
+        "",
+        "",
+    ]
+)
+replace_section(
+    "    def _key_requests(\n",
+    "    def _cacheable(",
+    key_requests_section,
+)
+
+single_start = text.index("    def _evaluate_singleflight(\n")
+single_end = text.index("    def evaluate_many(\n", single_start)
+single = text[single_start:single_end]
+old_parse = "                result = EvaluationResult.from_dict(deepcopy(cached))"
+if single.count(old_parse) != 1:
+    raise RuntimeError("Singleflight cached-result parse target changed")
+single = single.replace(
+    old_parse,
+    "                result = EvaluationResult.from_dict(cached)",
+    1,
+)
+text = text[:single_start] + single + text[single_end:]
+
+batch_start = text.index("    def _evaluate_many_locked(\n")
+batch = text[batch_start:]
+old_cache_block = "\n".join(
+    [
+        "        output: list[EvaluationResult | None] = [None] * len(requests)",
+        "        unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}",
+        "        for index, (key, request) in enumerate(keyed_requests):",
+        "            cached = cached_payloads.get(key) if request.reinitialize else None",
+        "            if cached is not None:",
+        "                result = EvaluationResult.from_dict(deepcopy(cached))",
+        '                result.cache_source = "persistent_cache"',
+        "                result.cache_hit = True",
+        "                result.request_hash = key",
+        "                output[index] = result",
+        "                continue",
+        "            unique.setdefault(key, (request, []))[1].append(index)",
+    ]
+)
+new_cache_block = "\n".join(
+    [
+        "        output: list[EvaluationResult | None] = [None] * len(requests)",
+        "        unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}",
+        "        cached_results: dict[str, EvaluationResult] = {}",
+        "        for index, (key, request) in enumerate(keyed_requests):",
+        "            cached = cached_payloads.get(key) if request.reinitialize else None",
+        "            if cached is not None:",
+        "                template = cached_results.get(key)",
+        "                if template is None:",
+        "                    result = EvaluationResult.from_dict(cached)",
+        '                    result.cache_source = "persistent_cache"',
+        "                    result.cache_hit = True",
+        "                    result.request_hash = key",
+        "                    cached_results[key] = result",
+        "                else:",
+        "                    result = deepcopy(template)",
+        "                output[index] = result",
+        "                continue",
+        "            unique.setdefault(key, (request, []))[1].append(index)",
+    ]
+)
+if batch.count(old_cache_block) != 1:
+    raise RuntimeError("Batch cached-result block target changed")
+batch = batch.replace(old_cache_block, new_cache_block, 1)
+old_return = "return [replace(item) for item in output if item is not None]"
+if batch.count(old_return) != 2:
+    raise RuntimeError("Expected two redundant final shallow-copy returns")
+batch = batch.replace(old_return, "return [item for item in output if item is not None]")
+text = text[:batch_start] + batch
+path.write_text(text, encoding="utf-8")
