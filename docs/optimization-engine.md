@@ -25,7 +25,7 @@ their declared bounds.
 
 ## Batch differential evolution
 
-The implemented search is bounded `DE/rand/1/bin` with Deb-style feasibility
+The implemented search is bounded `DE/best/1/bin` with Deb-style feasibility
 ordering. The initial population and every generation are submitted with one
 `evaluate_many` call:
 
@@ -55,13 +55,6 @@ They remain sortable without becoming competitive with physically valid points.
 Original objective values are retained for reporting. Maximization objectives
 are sign-normalized only for internal minimization. The result includes a
 non-dominated Pareto archive evaluated under feasibility-first dominance.
-
-For one objective the archive is extracted with a linear minimum filter. For
-two objectives AspenOps uses an exact stable sweep with `O(n log n)` sorting and
-linear scanning. Higher-dimensional objective sets retain exact incremental
-dominance filtering. These paths preserve input ordering and duplicate-removal
-semantics while avoiding unnecessary pairwise work in the common one- and
-two-objective cases.
 
 The scalar weighted score guides the current DE search; it is not presented as
 a universal replacement for Pareto decision analysis.
