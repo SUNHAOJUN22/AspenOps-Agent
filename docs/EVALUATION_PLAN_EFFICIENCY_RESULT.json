@@ -1,0 +1,114 @@
+{
+  "aspen_executed": false,
+  "benchmark": {
+    "after_seconds": 0.0037666980000068406,
+    "before_seconds": 0.009703437000013082,
+    "boundary": "Pure Python EvaluationPlan compilation benchmark; not licensed Aspen solve evidence.",
+    "checks": {
+      "declared_reads_equal": true,
+      "meaningful_speedup": true,
+      "optimized_faster": true,
+      "plans_equal": true,
+      "unique_reads_equal": true
+    },
+    "decision": "PASS",
+    "declared_read_references": 901,
+    "schema": "aspenops.evaluation-plan-resolution-benchmark/v1",
+    "speedup": 2.576112287206317,
+    "unique_read_nodes": 1
+  },
+  "coverage_percent": {
+    "3.11": 95.7307237337348,
+    "3.12": 95.7307237337348,
+    "3.13": 95.7307237337348
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 28,
+    "time_seconds": 0.723
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 890,
+      "time_seconds": 19.492
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 890,
+      "time_seconds": 22.233
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 890,
+      "time_seconds": 18.717
+    }
+  },
+  "hard_gates": {
+    "apply-patch": 0,
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "copy-benchmark": 0,
+    "copy-test": 0,
+    "copy-wheel-smoke": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "performance-benchmark": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-311": 0,
+    "sync-312": 0,
+    "sync-312-full": 0,
+    "sync-313": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "machine_learning_executed": false,
+  "parameter_estimation_executed": false,
+  "preserved_contracts": [
+    "declared read counts",
+    "unique read ordering",
+    "output binding order and units",
+    "constraint and balance semantics",
+    "physical identity and cache keys",
+    "worker and runtime control semantics"
+  ],
+  "qualification_boundary": "Pure Python EvaluationPlan compilation and portable package evidence; not licensed Aspen solve certification.",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30558434013"
+  },
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.evaluation-plan-efficiency-result/v1",
+  "source_files_changed": [
+    "src/aspenops_nexus/evaluation_plan.py",
+    "tests/test_evaluation_plan_resolution.py"
+  ]
+}
