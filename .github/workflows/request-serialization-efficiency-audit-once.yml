@@ -1,0 +1,30 @@
+name: AspenOps Request Serialization Efficiency Finalize Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-request-serialization-efficiency-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.issue.title == 'ASPENOPS_REQUEST_SERIALIZATION_EFFICIENCY_FINAL_V1_20260731'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run reviewed fail-closed qualification
+        shell: bash
+        run: bash .github/request-serialization-parts/qualify.sh.txt
