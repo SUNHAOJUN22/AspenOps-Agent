@@ -1,0 +1,53 @@
+from pathlib import Path
+
+path = Path("src/aspenops_nexus/cache.py")
+text = path.read_text(encoding="utf-8")
+
+
+def replace_once(old: str, new: str) -> None:
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"Expected one patch target, found {count}: {old[:120]!r}")
+    text = text.replace(old, new, 1)
+
+
+marker = '''def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> Iterator[list[str]]:
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
+'''
+helper = marker + '''
+
+def _encode_payloads(payloads: dict[str, dict[str, Any]]) -> dict[str, str]:
+    encode = json.JSONEncoder(
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode
+    return {key: encode(payload) for key, payload in payloads.items()}
+'''
+replace_once(marker, helper)
+replace_once(
+    '''        encoded_payloads = {
+            key: json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            for key, payload in payloads.items()
+        }
+        rows = list(encoded_payloads.items())
+''',
+    '''        encoded_payloads = _encode_payloads(payloads)
+''',
+)
+replace_once(
+    '''                rows,
+''',
+    '''                encoded_payloads.items(),
+''',
+)
+path.write_text(text, encoding="utf-8")
