@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import queue
+import sqlite3
+import tempfile
+import threading
+from pathlib import Path
+from typing import Any
+
+import aspenops_nexus
+from aspenops_nexus.cache import ResultCache
+from aspenops_nexus.models import EvaluationRequest
+from aspenops_nexus.pool import CasePool
+from aspenops_nexus.worker import IPC_PROTOCOL, WorkerHandle, evaluate_on_worker
+
+assert aspenops_nexus.__version__ == "2.0.0"
+
+
+def request() -> EvaluationRequest:
+    return EvaluationRequest.from_dict(
+        {
+            "model_path": "model.bkp",
+            "registry_path": "registry.json",
+            "backend": "mock",
+            "writes": [],
+            "reads": [],
+        }
+    )
+
+
+with tempfile.TemporaryDirectory(prefix="aspenops-comprehensive-wheel-") as temporary:
+    root = Path(temporary)
+    cache_path = root / "cache.sqlite3"
+    cache = ResultCache(cache_path)
+    cache.put("key", {"nested": {"value": 1}})
+    first = cache.get("key")
+    second = cache.get("key")
+    assert first == second == {"nested": {"value": 1}}
+    assert first is not second
+    assert first is not None and second is not None
+    first["nested"]["value"] = 99
+    assert second == {"nested": {"value": 1}}
+
+    with sqlite3.connect(cache_path) as connection:
+        before = connection.execute(
+            "SELECT hit_count FROM result_cache WHERE cache_key='key'"
+        ).fetchone()
+    assert before is not None and int(before[0]) == 0
+
+    pool = object.__new__(CasePool)
+    pool._handles = []
+    pool._replace_lock = threading.RLock()
+    pool.cache = cache
+    pool.close()
+
+    with sqlite3.connect(cache_path) as connection:
+        after = connection.execute(
+            "SELECT hit_count FROM result_cache WHERE cache_key='key'"
+        ).fetchone()
+    assert after is not None and int(after[0]) == 2
+
+
+class EmptyCache:
+    def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        return {}
+
+    def put_many(self, payloads: dict[str, dict[str, Any]]) -> None:
+        raise AssertionError(payloads)
+
+
+cancel_pool = object.__new__(CasePool)
+cancel_pool._handles = [object()]  # type: ignore[list-item]
+cancel_pool.cache = EmptyCache()  # type: ignore[assignment]
+cancel_pool._key_requests = lambda requests: [  # type: ignore[method-assign]
+    ("same", active) for active in requests
+]
+results = cancel_pool._evaluate_many_locked(
+    [request(), request()],
+    cancel_check=lambda: True,
+)
+assert len(results) == 2
+results[0].violations.append("changed")
+results[0].diagnostics["changed"] = True
+assert results[1].violations == ["batch_cancelled"]
+assert "changed" not in results[1].diagnostics
+
+
+class Connection:
+    def __init__(self) -> None:
+        self.sent: dict[str, Any] | None = None
+
+    def send(self, obj: Any) -> None:
+        assert isinstance(obj, dict)
+        self.sent = obj
+
+    def poll(self, timeout: float = 0.0) -> bool:
+        return timeout > 0.0
+
+    def recv(self) -> Any:
+        assert self.sent is not None
+        return {
+            "protocol": IPC_PROTOCOL,
+            "kind": "result",
+            "request_id": self.sent["request_id"],
+            "result": {
+                "ok": True,
+                "communication_ok": True,
+                "engine_ok": True,
+                "converged": True,
+                "feasible": True,
+                "values": {},
+                "units": {},
+                "violations": [],
+                "diagnostics": {"worker": "invalid"},
+                "elapsed_s": 0.0,
+            },
+        }
+
+    def close(self) -> None:
+        return None
+
+
+runtime = {"backend": "mock", "nested": {"build": 1}}
+handle = WorkerHandle(
+    worker_id=1,
+    process=object(),
+    connection=Connection(),
+    staged_model=Path("model.bkp"),
+    runtime=runtime,
+)
+worker_result = evaluate_on_worker(handle, request())
+worker_diagnostics = worker_result.diagnostics["worker"]
+assert isinstance(worker_diagnostics, dict)
+worker_diagnostics["runtime"]["nested"]["build"] = 99
+assert runtime["nested"]["build"] == 1
+
+# Keep queue imported in the installed artifact smoke so the dispatch dependency is exercised.
+assert queue.Empty is not None
