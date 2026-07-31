@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import gc
+import json
+import statistics
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Callable
+
+from aspenops_nexus.models import EvaluationResult
+
+result = EvaluationResult(
+    ok=True,
+    communication_ok=True,
+    engine_ok=True,
+    converged=True,
+    feasible=True,
+    values={
+        f"value-{index}": {
+            "scalar": float(index),
+            "series": [float(index + offset) for offset in range(16)],
+        }
+        for index in range(300)
+    },
+    units={f"value-{index}": "fraction" for index in range(300)},
+    violations=[f"advisory-{index}" for index in range(100)],
+    diagnostics={
+        "workers": [
+            {
+                "worker_id": index,
+                "generation": index % 8,
+                "history": ["start", "solve", "verify", "complete"],
+            }
+            for index in range(100)
+        ],
+        "trace": {"iterations": list(range(500)), "accepted": True},
+    },
+    elapsed_s=12.5,
+    balance_residuals={
+        f"balance-{index}": {
+            "absolute": float(index) * 1e-9,
+            "relative": float(index) * 2e-9,
+            "scale": float(index + 1),
+            "tolerance": 1e-6,
+        }
+        for index in range(100)
+    },
+    cache_source="computed",
+    cache_hit=False,
+    request_hash="b" * 64,
+    worker_id=3,
+)
+
+
+def legacy_snapshot() -> dict[str, Any]:
+    return asdict(result)
+
+
+def optimized_snapshot() -> dict[str, Any]:
+    return result.to_dict()
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def measure(
+    function: Callable[[], dict[str, Any]],
+    *,
+    repeats: int = 11,
+    loops: int = 20,
+) -> tuple[float, dict[str, Any]]:
+    samples: list[float] = []
+    value: dict[str, Any] = {}
+    for _ in range(repeats):
+        gc.collect()
+        started = time.perf_counter()
+        for _ in range(loops):
+            value = function()
+        samples.append(time.perf_counter() - started)
+    return statistics.median(samples), value
+
+
+legacy_seconds, legacy_value = measure(legacy_snapshot)
+optimized_seconds, optimized_value = measure(optimized_snapshot)
+speedup = legacy_seconds / optimized_seconds
+roundtrip = EvaluationResult.from_dict(optimized_value)
+probe = optimized_snapshot()
+probe["values"]["value-0"]["series"][0] = -1.0
+probe["diagnostics"]["workers"][0]["history"][0] = "changed"
+probe["balance_residuals"]["balance-0"]["absolute"] = 99.0
+checks = {
+    "exact_python_shape_equal": legacy_value == optimized_value,
+    "canonical_json_equal": canonical_json(legacy_value) == canonical_json(optimized_value),
+    "direct_roundtrip_equal": roundtrip == result,
+    "deep_snapshot_isolation": (
+        result.values["value-0"]["series"][0] == 0.0
+        and result.diagnostics["workers"][0]["history"][0] == "start"
+        and result.balance_residuals["balance-0"]["absolute"] == 0.0
+    ),
+    "optimized_faster": optimized_seconds < legacy_seconds,
+    "meaningful_speedup": speedup >= 1.5,
+}
+report = {
+    "schema": "aspenops.result-serialization-benchmark/v2",
+    "boundary": "Pure Python EvaluationResult JSON-aware snapshot serialization; not Aspen solve evidence.",
+    "result_shape": {
+        "values": len(result.values),
+        "units": len(result.units),
+        "violations": len(result.violations),
+        "diagnostic_workers": len(result.diagnostics["workers"]),
+        "balances": len(result.balance_residuals),
+    },
+    "before_seconds": legacy_seconds,
+    "after_seconds": optimized_seconds,
+    "speedup": speedup,
+    "checks": checks,
+    "decision": "PASS" if all(checks.values()) else "FAIL",
+}
+output = Path("var/result-serialization-efficiency/benchmark.json")
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if report["decision"] != "PASS":
+    raise SystemExit(json.dumps(report, sort_keys=True))
