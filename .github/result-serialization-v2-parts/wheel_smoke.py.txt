@@ -1,0 +1,25 @@
+from aspenops_nexus.models import EvaluationResult
+
+result = EvaluationResult(
+    ok=True,
+    communication_ok=True,
+    engine_ok=True,
+    converged=True,
+    feasible=True,
+    values={"nested": {"series": [1.0, 2.0]}},
+    units={"nested": None},
+    violations=[],
+    diagnostics={"worker": {"history": ["start", "complete"]}},
+    elapsed_s=0.1,
+    balance_residuals={"mass": {"absolute": 1e-8, "relative": 2e-8}},
+    request_hash="c" * 64,
+    worker_id=1,
+)
+snapshot = result.to_dict()
+assert EvaluationResult.from_dict(snapshot) == result
+snapshot["values"]["nested"]["series"][0] = 99.0
+snapshot["diagnostics"]["worker"]["history"][0] = "changed"
+snapshot["balance_residuals"]["mass"]["absolute"] = 99.0
+assert result.values["nested"]["series"][0] == 1.0
+assert result.diagnostics["worker"]["history"][0] == "start"
+assert result.balance_residuals["mass"]["absolute"] == 1e-8
