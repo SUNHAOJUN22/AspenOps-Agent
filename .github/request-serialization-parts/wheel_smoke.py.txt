@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from types import SimpleNamespace
+from typing import Any
+
+from aspenops_nexus import RUNTIME_SCHEMA, __version__
+from aspenops_nexus.hashing import canonical_hash
+from aspenops_nexus.models import EvaluationRequest
+from aspenops_nexus.pool import CasePool
+
+request = EvaluationRequest.from_dict(
+    {
+        "model_path": "model.bkp",
+        "registry_path": "registry.json",
+        "backend": "mock",
+        "writes": [
+            {
+                "key": "stream.input.temperature",
+                "identifiers": {"stream": "FEED"},
+                "value": 80.0,
+                "unit": "C",
+            }
+        ],
+        "reads": [
+            {
+                "key": "stream.output.purity",
+                "identifiers": {"stream": "PRODUCT"},
+                "unit": "fraction",
+            }
+        ],
+        "balances": [
+            {
+                "name": "mass",
+                "terms": [
+                    {
+                        "key": "stream.input.flow",
+                        "identifiers": {"stream": "FEED"},
+                        "coefficient": 1.0,
+                        "unit": "kg/s",
+                    }
+                ],
+            }
+        ],
+    }
+)
+document = request.to_dict()
+assert isinstance(document["balances"][0]["terms"], list)
+assert EvaluationRequest.from_dict(document) == request
+legacy_physical: dict[str, Any] = {
+    "backend": request.backend,
+    "reset_mode": request.reset_mode,
+    "writes": [asdict(item) for item in request.writes],
+    "reads": [asdict(item) for item in request.reads],
+    "constraints": [asdict(item) for item in request.constraints],
+    "balances": [asdict(item) for item in request.balances],
+}
+assert request.physical_identity() == legacy_physical
+pool = object.__new__(CasePool)
+pool.backend_name = "mock"
+pool.model_sha256 = "m" * 64
+pool.registry = SimpleNamespace(sha256="r" * 64)
+pool._handles = []
+legacy_cache_identity = {
+    "schema": RUNTIME_SCHEMA,
+    "runtime_version": __version__,
+    "backend": "mock",
+    "runtime_identity": {"backend": "mock"},
+    "model_sha256": "m" * 64,
+    "registry_sha256": "r" * 64,
+    "request": legacy_physical,
+}
+assert pool.cache_key(request) == canonical_hash(legacy_cache_identity)
