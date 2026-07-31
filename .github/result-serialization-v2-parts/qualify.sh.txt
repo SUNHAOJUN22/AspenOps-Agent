@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE="$(git rev-parse HEAD)"
+export BASE
+export RUN_ID="${GITHUB_RUN_ID:-}"
+export RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}"
+SELF=.github/workflows/result-serialization-efficiency-v2-audit-once.yml
+PARTS=.github/result-serialization-v2-parts
+TEST=tests/test_result_serialization_efficiency.py
+E=var/result-serialization-efficiency
+REPORT=/tmp/result-serialization-report.py
+rm -rf "$E" dist /tmp/aspenops-result-wheel
+mkdir -p "$E"
+cp "$PARTS/report.py.txt" "$REPORT"
+rm -f docs/RESULT_SERIALIZATION_EFFICIENCY_BLOCKER.json
+
+: > "$E/status.tsv"
+failed=0
+gate() {
+  name="$1"; shift
+  set +e
+  "$@" >"$E/$name.log" 2>&1
+  code=$?
+  set -e
+  printf '%s\t%s\n' "$name" "$code" >> "$E/status.tsv"
+  [[ "$code" -eq 0 ]] || failed=1
+}
+
+gate apply-patch python "$PARTS/apply.py.txt"
+gate copy-test cp "$PARTS/test_result_serialization_efficiency.py.txt" "$TEST"
+gate copy-benchmark cp "$PARTS/benchmark.py.txt" "$E/benchmark.py"
+gate copy-wheel-smoke cp "$PARTS/wheel_smoke.py.txt" "$E/wheel_smoke.py"
+rm -rf "$PARTS"
+rm -f "$SELF"
+
+gate sync-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+gate ruff-fix uv run --python 3.12 ruff check --fix src/aspenops_nexus/models.py "$TEST"
+gate format-fix uv run --python 3.12 ruff format src/aspenops_nexus/models.py "$TEST"
+gate focused-tests uv run --python 3.12 pytest \
+  "$TEST" tests/test_models_strict_contracts.py tests/test_pool_efficiency.py \
+  tests/test_singleflight.py --junitxml="$E/focused-junit.xml"
+gate performance-benchmark uv run --python 3.12 python "$E/benchmark.py"
+gate lock-check uv lock --check
+gate dependency-audit bash -lc '
+  set -euo pipefail
+  export UV_PREVIEW_FEATURES=json-output
+  bad=0
+  for platform in linux windows; do
+    for version in 3.11 3.12 3.13; do
+      stem=var/result-serialization-efficiency/audit-${platform}-${version}
+      uv audit --frozen --python-platform "$platform" --python-version "$version" \
+        --output-format json >"$stem.json" 2>"$stem.log" || bad=1
+      python -m json.tool "$stem.json" >/dev/null || bad=1
+    done
+  done
+  exit "$bad"
+'
+gate ruff uv run --python 3.12 ruff check .
+gate format uv run --python 3.12 ruff format --check .
+gate mypy uv run --python 3.12 mypy src
+gate compileall uv run --python 3.12 python -m compileall -q src scripts
+gate source-audit uv run --python 3.12 python scripts/audit_source_tree.py \
+  --output "$E/source-tree-audit.json"
+gate bandit bash -lc '
+  set -euo pipefail
+  status=0
+  uv tool run --isolated --from bandit==1.9.4 bandit -r src scripts -lll -iii \
+    -f json -o var/result-serialization-efficiency/bandit.json \
+    2>var/result-serialization-efficiency/bandit.log || status=$?
+  python -m json.tool var/result-serialization-efficiency/bandit.json >/dev/null
+  exit "$status"
+'
+gate diff-boundary bash -lc '
+  set -euo pipefail
+  bad="$(git diff --name-only "$BASE" | grep -Ev "^(src/aspenops_nexus/models.py|tests/test_result_serialization_efficiency.py|\.github/result-serialization-v2-parts/.*|\.github/workflows/result-serialization-efficiency-v2-audit-once.yml|docs/RESULT_SERIALIZATION_EFFICIENCY_BLOCKER.json)$" || true)"
+  if [[ -n "$bad" ]]; then
+    printf "%s\n" "$bad"
+    exit 1
+  fi
+'
+
+gate sync-311 uv sync --python 3.11 --frozen --extra dev --extra agent --extra signing
+gate full-3.11 uv run --python 3.11 pytest --cov=aspenops_nexus --cov-branch \
+  --cov-fail-under=95.0 --cov-report=json:"$E/coverage-3.11.json" \
+  --junitxml="$E/junit-3.11.xml"
+gate sync-312-full uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+gate full-3.12 uv run --python 3.12 pytest --cov=aspenops_nexus --cov-branch \
+  --cov-fail-under=95.0 --cov-report=json:"$E/coverage-3.12.json" \
+  --junitxml="$E/junit-3.12.xml"
+gate sync-313 uv sync --python 3.13 --frozen --extra dev --extra agent --extra signing
+gate full-3.13 uv run --python 3.13 pytest --cov=aspenops_nexus --cov-branch \
+  --cov-fail-under=95.0 --cov-report=json:"$E/coverage-3.13.json" \
+  --junitxml="$E/junit-3.13.xml"
+gate restore-312 uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+gate order-312 uv run --python 3.12 python scripts/run_test_order_gate.py \
+  --output-dir "$E/order"
+gate process-ir uv run --python 3.12 python scripts/validate_process_ir.py \
+  examples/process-intent.example.json \
+  --canonical-output "$E/process-intent-canonical.json" \
+  --report-output "$E/process-intent-report.json"
+gate mcp uv run --python 3.12 python scripts/check_mcp.py
+gate benchmark-smoke uv run --python 3.12 python scripts/run_benchmark_matrix.py \
+  --repo-root . --output "$E/benchmark-smoke.json" --smoke
+gate performance-policy uv run --python 3.12 python scripts/compare_benchmarks.py \
+  --baseline var/benchmarks/baseline.json \
+  --after var/benchmarks/after.json \
+  --baseline-doc "$E/performance-baseline.md" \
+  --after-doc "$E/performance-after.md" \
+  --fail-on-stable-regression
+gate build uv build
+gate wheel-metadata uv run --python 3.12 python scripts/check_wheel_metadata.py \
+  --dist-dir dist --output "$E/wheel-metadata.json"
+gate wheel-smoke bash -lc '
+  set -euo pipefail
+  uv export --frozen --extra agent --no-default-groups --no-emit-project \
+    --format requirements.txt \
+    --output-file var/result-serialization-efficiency/runtime-requirements.txt
+  uv venv --python 3.12 /tmp/aspenops-result-wheel
+  uv pip sync --python /tmp/aspenops-result-wheel/bin/python --require-hashes \
+    var/result-serialization-efficiency/runtime-requirements.txt
+  uv pip install --python /tmp/aspenops-result-wheel/bin/python --offline --no-deps dist/*.whl
+  uv pip check --python /tmp/aspenops-result-wheel/bin/python
+  /tmp/aspenops-result-wheel/bin/aspenops --version
+  /tmp/aspenops-result-wheel/bin/aspenops --help >/dev/null
+  /tmp/aspenops-result-wheel/bin/aspenops demo >/dev/null
+  /tmp/aspenops-result-wheel/bin/aspenops scheduler --help >/dev/null
+  /tmp/aspenops-result-wheel/bin/aspenops cancel --help >/dev/null
+  /tmp/aspenops-result-wheel/bin/aspenops optimize --help >/dev/null
+  /tmp/aspenops-result-wheel/bin/aspenops mcp --help >/dev/null
+  /tmp/aspenops-result-wheel/bin/python var/result-serialization-efficiency/wheel_smoke.py
+'
+
+git config user.name github-actions[bot]
+git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+if [[ "$failed" -ne 0 ]]; then
+  git reset --hard "$BASE"
+  rm -f "$SELF" docs/RESULT_SERIALIZATION_EFFICIENCY_RESULT.json \
+    docs/RESULT_SERIALIZATION_EFFICIENCY_RESULT.md
+  rm -rf "$PARTS"
+  python "$REPORT" --decision FAIL --evidence "$E"
+  git add -A
+  git commit -m 'test: record JSON-aware result serialization blocker'
+  git push origin HEAD:main
+  exit 1
+fi
+
+rm -f docs/RESULT_SERIALIZATION_EFFICIENCY_BLOCKER.json
+python "$REPORT" --decision PASS --evidence "$E"
+git add -A
+git commit -m 'perf: accelerate JSON-aware result serialization snapshots'
+git push origin HEAD:main
