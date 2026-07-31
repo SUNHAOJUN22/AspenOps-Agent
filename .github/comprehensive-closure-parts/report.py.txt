@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any
+
+
+def junit(path: Path) -> dict[str, Any]:
+    root = ET.parse(path).getroot()
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    if suite is None:
+        raise RuntimeError(f"No testsuite found in {path}")
+    return {
+        "tests": int(suite.attrib.get("tests", 0)),
+        "failures": int(suite.attrib.get("failures", 0)),
+        "errors": int(suite.attrib.get("errors", 0)),
+        "skipped": int(suite.attrib.get("skipped", 0)),
+        "time_seconds": float(suite.attrib.get("time", 0.0)),
+    }
+
+
+def coverage(path: Path) -> float:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return float(data["totals"]["percent_covered"])
+
+
+def statuses(path: Path) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, value = line.split("\t", 1)
+        result[name] = int(value)
+    return result
+
+
+def failure_tails(evidence: Path, gate_status: dict[str, int]) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for name, code in gate_status.items():
+        if code == 0:
+            continue
+        path = evidence / f"{name}.log"
+        if path.exists():
+            result[name] = path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()[-160:]
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--decision", choices=("PASS", "FAIL"), required=True)
+    parser.add_argument("--evidence", type=Path, required=True)
+    args = parser.parse_args()
+    evidence = args.evidence
+    gate_status = statuses(evidence / "status.tsv")
+
+    report: dict[str, Any] = {
+        "schema": (
+            "aspenops.comprehensive-code-closure-result/v1"
+            if args.decision == "PASS"
+            else "aspenops.comprehensive-code-closure-blocker/v1"
+        ),
+        "decision": args.decision,
+        "qualified_source_baseline": "60d47ab88324c5998a068768d87c635e50fcceda",
+        "hard_gates": gate_status,
+        "runtime_control_plane_changed": False,
+        "aspen_executed": False,
+        "parameter_estimation_executed": False,
+        "dynamic_modeling_executed": False,
+        "machine_learning_executed": False,
+        "qualification_boundary": (
+            "Portable Python orchestration, persistence, IPC and package evidence; "
+            "not licensed Aspen solve or engineering certification."
+        ),
+        "qualification_run": {
+            "run_id": os.environ.get("RUN_ID", ""),
+            "run_attempt": os.environ.get("RUN_ATTEMPT", ""),
+        },
+    }
+
+    if args.decision == "FAIL":
+        report.update(
+            {
+                "source_changes_retained": False,
+                "failure_tail": failure_tails(evidence, gate_status),
+            }
+        )
+        Path("docs/COMPREHENSIVE_CODE_CLOSURE_BLOCKER.json").write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return
+
+    benchmark = json.loads((evidence / "benchmark.json").read_text(encoding="utf-8"))
+    hygiene = json.loads((evidence / "hygiene-audit.json").read_text(encoding="utf-8"))
+    report.update(
+        {
+            "benchmark": benchmark,
+            "hygiene_audit": hygiene,
+            "focused_tests": junit(evidence / "focused-junit.xml"),
+            "full_tests": {
+                version: junit(evidence / f"junit-{version}.xml")
+                for version in ("3.11", "3.12", "3.13")
+            },
+            "coverage_percent": {
+                version: coverage(evidence / f"coverage-{version}.json")
+                for version in ("3.11", "3.12", "3.13")
+            },
+            "issues_fixed": [
+                "Cancelled batch results now deep-copy mutable diagnostics and violations.",
+                "CasePool.close persists sub-threshold cache hit accounting.",
+                "Worker diagnostics tolerate a non-object backend worker field.",
+                "Worker runtime evidence is deep-isolated from WorkerHandle cache identity.",
+                "Queue unfinished-task accounting removed where queue.join is never used.",
+                "Validated result lists return without redundant list reconstruction.",
+                "Decoded JSON cache objects avoid a redundant top-level mapping copy.",
+                "Pending hit rows stream to SQLite without an intermediate list.",
+            ],
+            "preserved_contracts": [
+                "cache-key bytes and public cache_key observability",
+                "result and cancellation isolation",
+                "cache hit totals and SQLite transaction semantics",
+                "worker generation, timeout and recycle semantics",
+                "request/result JSON and IPC protocol shapes",
+                "licensed Aspen execution remains explicitly gated",
+            ],
+            "source_files_changed": [
+                "src/aspenops_nexus/cache.py",
+                "src/aspenops_nexus/pool.py",
+                "src/aspenops_nexus/worker.py",
+                "tests/test_comprehensive_closure.py",
+            ],
+            "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+        }
+    )
+    Path("docs/COMPREHENSIVE_CODE_CLOSURE_RESULT.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    speedups = benchmark["speedups"]
+    Path("docs/COMPREHENSIVE_CODE_CLOSURE_RESULT.md").write_text(
+        "# AspenOps Comprehensive Code Closure\n\n"
+        "**PASS**\n\n"
+        "- Eight reproducible correctness, integrity and efficiency gaps closed\n"
+        f"- Queue drain speedup: {speedups['queue_drain']:.3f}x\n"
+        f"- Validated result return speedup: {speedups['validated_return']:.3f}x\n"
+        f"- Cache decode speedup: {speedups['cache_decode']:.3f}x\n"
+        "- Python 3.11/3.12/3.13 full qualification: PASS\n"
+        "- Static, security, order, build and frozen-Wheel gates: PASS\n"
+        "- Licensed Windows/Aspen engineering certification: pending\n",
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    main()
