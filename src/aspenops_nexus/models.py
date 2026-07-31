@@ -239,6 +239,67 @@ class BalanceSpec:
         )
 
 
+def _variable_write_dict(item: VariableWrite) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "value": item.value,
+        "unit": item.unit,
+    }
+
+
+def _variable_read_dict(item: VariableRead) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "unit": item.unit,
+        "required": item.required,
+    }
+
+
+def _constraint_dict(item: ConstraintSpec) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "operator": item.operator,
+        "value": item.value,
+        "unit": item.unit,
+        "name": item.name,
+        "tolerance": item.tolerance,
+    }
+
+
+def _balance_term_dict(item: BalanceTerm) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "coefficient": item.coefficient,
+        "unit": item.unit,
+    }
+
+
+def _balance_document(item: BalanceSpec) -> dict[str, Any]:
+    return {
+        "name": item.name,
+        "terms": [_balance_term_dict(term) for term in item.terms],
+        "expected": item.expected,
+        "abs_tol": item.abs_tol,
+        "rel_tol": item.rel_tol,
+        "floor": item.floor,
+    }
+
+
+def _balance_identity(item: BalanceSpec) -> dict[str, Any]:
+    return {
+        "name": item.name,
+        "terms": tuple(_balance_term_dict(term) for term in item.terms),
+        "expected": item.expected,
+        "abs_tol": item.abs_tol,
+        "rel_tol": item.rel_tol,
+        "floor": item.floor,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationRequest:
     model_path: str
@@ -306,10 +367,10 @@ class EvaluationRequest:
             "model_path": self.model_path,
             "registry_path": self.registry_path,
             "backend": self.backend,
-            "writes": [asdict(item) for item in self.writes],
-            "reads": [asdict(item) for item in self.reads],
-            "constraints": [asdict(item) for item in self.constraints],
-            "balances": [asdict(item) for item in self.balances],
+            "writes": [_variable_write_dict(item) for item in self.writes],
+            "reads": [_variable_read_dict(item) for item in self.reads],
+            "constraints": [_constraint_dict(item) for item in self.constraints],
+            "balances": [_balance_document(item) for item in self.balances],
             "reset_mode": self.reset_mode,
             "timeout_s": self.timeout_s,
             "metadata": dict(self.metadata),
@@ -320,10 +381,10 @@ class EvaluationRequest:
         return {
             "backend": self.backend,
             "reset_mode": self.reset_mode,
-            "writes": [asdict(item) for item in self.writes],
-            "reads": [asdict(item) for item in self.reads],
-            "constraints": [asdict(item) for item in self.constraints],
-            "balances": [asdict(item) for item in self.balances],
+            "writes": [_variable_write_dict(item) for item in self.writes],
+            "reads": [_variable_read_dict(item) for item in self.reads],
+            "constraints": [_constraint_dict(item) for item in self.constraints],
+            "balances": [_balance_identity(item) for item in self.balances],
         }
 
 
