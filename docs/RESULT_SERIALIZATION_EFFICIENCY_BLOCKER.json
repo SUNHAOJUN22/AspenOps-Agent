@@ -4,7 +4,7 @@
   "dynamic_modeling_executed": false,
   "failure_tail": {
     "performance-benchmark": [
-      "{\"after_seconds\": 0.05129122099999961, \"before_seconds\": 0.03375986000000353, \"boundary\": \"Pure Python EvaluationResult snapshot serialization; not Aspen solve evidence.\", \"checks\": {\"canonical_json_equal\": true, \"deep_snapshot_isolation\": true, \"direct_roundtrip_equal\": true, \"exact_python_shape_equal\": true, \"meaningful_speedup\": false, \"optimized_faster\": false}, \"decision\": \"FAIL\", \"result_shape\": {\"balances\": 100, \"diagnostic_workers\": 100, \"units\": 300, \"values\": 300, \"violations\": 100}, \"schema\": \"aspenops.result-serialization-benchmark/v1\", \"speedup\": 0.6581995776626918}"
+      "{\"after_seconds\": 0.056646782000001394, \"before_seconds\": 0.03326803699999914, \"boundary\": \"Pure Python EvaluationResult JSON-aware snapshot serialization; not Aspen solve evidence.\", \"checks\": {\"canonical_json_equal\": true, \"deep_snapshot_isolation\": true, \"direct_roundtrip_equal\": true, \"exact_python_shape_equal\": true, \"meaningful_speedup\": false, \"optimized_faster\": false}, \"decision\": \"FAIL\", \"result_shape\": {\"balances\": 100, \"diagnostic_workers\": 100, \"units\": 300, \"values\": 300, \"violations\": 100}, \"schema\": \"aspenops.result-serialization-benchmark/v2\", \"speedup\": 0.5872890890783226}"
     ]
   },
   "hard_gates": {
@@ -44,12 +44,13 @@
   },
   "machine_learning_executed": false,
   "parameter_estimation_executed": false,
-  "qualification_boundary": "Pure Python EvaluationResult snapshot serialization and portable package evidence; not licensed Aspen solve certification.",
+  "qualification_boundary": "Pure Python EvaluationResult JSON-aware snapshot serialization and portable package evidence; not licensed Aspen solve certification.",
   "qualification_run": {
     "run_attempt": "1",
-    "run_id": "30600447761"
+    "run_id": "30600871765"
   },
+  "rejected_candidate": "The first explicit multi-deepcopy serializer was rejected at 0.658x of legacy dataclasses.asdict performance and was not retained.",
   "runtime_control_plane_changed": false,
-  "schema": "aspenops.result-serialization-efficiency-blocker/v1",
+  "schema": "aspenops.result-serialization-efficiency-blocker/v2",
   "source_changes_retained": false
 }
