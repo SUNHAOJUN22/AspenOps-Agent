@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import gc
+import json
+import queue
+import statistics
+import time
+from typing import Any, Callable
+
+from aspenops_nexus.models import EvaluationResult
+
+
+def measure(function: Callable[[], Any], repeats: int = 11) -> tuple[float, Any]:
+    samples: list[float] = []
+    result: Any = None
+    for _ in range(repeats):
+        gc.collect()
+        started = time.perf_counter()
+        result = function()
+        samples.append(time.perf_counter() - started)
+    return statistics.median(samples), result
+
+
+queue_items = list(range(40_000))
+
+
+def legacy_queue_drain() -> int:
+    tasks: queue.Queue[int] = queue.Queue()
+    for item in queue_items:
+        tasks.put_nowait(item)
+    total = 0
+    while True:
+        try:
+            total += tasks.get_nowait()
+        except queue.Empty:
+            return total
+        finally:
+            if tasks.unfinished_tasks:
+                tasks.task_done()
+
+
+def optimized_queue_drain() -> int:
+    tasks: queue.Queue[int] = queue.Queue()
+    for item in queue_items:
+        tasks.put_nowait(item)
+    total = 0
+    while True:
+        try:
+            total += tasks.get_nowait()
+        except queue.Empty:
+            return total
+
+
+result = EvaluationResult(
+    ok=True,
+    communication_ok=True,
+    engine_ok=True,
+    converged=True,
+    feasible=True,
+    values={"value": 1.0},
+    units={"value": "1"},
+    violations=[],
+    diagnostics={},
+    elapsed_s=0.0,
+)
+validated_output: list[EvaluationResult | None] = [result for _ in range(150_000)]
+
+
+def legacy_validated_return() -> list[EvaluationResult]:
+    return [item for item in validated_output if item is not None]
+
+
+def optimized_validated_return() -> list[EvaluationResult | None]:
+    return validated_output
+
+
+encoded_payloads = [
+    json.dumps(
+        {
+            f"key-{column}": {"value": index + column, "items": [1, 2, 3]}
+            for column in range(32)
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    for index in range(2_500)
+]
+
+
+def legacy_decode() -> list[dict[str, Any]]:
+    decoded: list[dict[str, Any]] = []
+    for payload in encoded_payloads:
+        value = json.loads(payload)
+        assert isinstance(value, dict)
+        decoded.append({str(name): item for name, item in value.items()})
+    return decoded
+
+
+def optimized_decode() -> list[dict[str, Any]]:
+    decoded: list[dict[str, Any]] = []
+    for payload in encoded_payloads:
+        value = json.loads(payload)
+        assert isinstance(value, dict)
+        decoded.append(value)
+    return decoded
+
+
+legacy_queue_s, legacy_queue_value = measure(legacy_queue_drain)
+optimized_queue_s, optimized_queue_value = measure(optimized_queue_drain)
+legacy_return_s, legacy_return_value = measure(legacy_validated_return)
+optimized_return_s, optimized_return_value = measure(optimized_validated_return)
+legacy_decode_s, legacy_decode_value = measure(legacy_decode)
+optimized_decode_s, optimized_decode_value = measure(optimized_decode)
+
+speedups = {
+    "queue_drain": legacy_queue_s / optimized_queue_s,
+    "validated_return": legacy_return_s / optimized_return_s,
+    "cache_decode": legacy_decode_s / optimized_decode_s,
+}
+checks = {
+    "queue_results_equal": legacy_queue_value == optimized_queue_value,
+    "return_results_equal": legacy_return_value == optimized_return_value,
+    "decode_results_equal": legacy_decode_value == optimized_decode_value,
+    "queue_faster": speedups["queue_drain"] >= 1.03,
+    "return_faster": speedups["validated_return"] >= 2.0,
+    "decode_faster": speedups["cache_decode"] >= 1.01,
+}
+report = {
+    "schema": "aspenops.comprehensive-closure-benchmark/v2",
+    "boundary": "Pure Python orchestration microbenchmarks; not licensed Aspen solve evidence.",
+    "before_seconds": {
+        "queue_drain": legacy_queue_s,
+        "validated_return": legacy_return_s,
+        "cache_decode": legacy_decode_s,
+    },
+    "after_seconds": {
+        "queue_drain": optimized_queue_s,
+        "validated_return": optimized_return_s,
+        "cache_decode": optimized_decode_s,
+    },
+    "speedups": speedups,
+    "checks": checks,
+    "decision": "PASS" if all(checks.values()) else "FAIL",
+}
+with open("var/comprehensive-closure-v2/benchmark.json", "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+if report["decision"] != "PASS":
+    raise SystemExit(json.dumps(report, sort_keys=True))
