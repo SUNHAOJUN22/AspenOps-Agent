@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import ast
+import json
+from pathlib import Path
+from typing import Any
+
+ROOTS = (Path("src"), Path("scripts"))
+MARKERS = ("TODO", "FIXME", "XXX", "HACK")
+issues: list[dict[str, Any]] = []
+files = 0
+
+
+def record(path: Path, line: int, rule: str, detail: str) -> None:
+    issues.append(
+        {
+            "path": path.as_posix(),
+            "line": line,
+            "rule": rule,
+            "detail": detail,
+        }
+    )
+
+
+for root in ROOTS:
+    for path in sorted(root.rglob("*.py")):
+        files += 1
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for marker in MARKERS:
+                if marker in line:
+                    record(path, line_number, "unfinished-marker", marker)
+        try:
+            tree = ast.parse(text, filename=path.as_posix())
+        except SyntaxError as exc:
+            record(path, exc.lineno or 0, "syntax-error", str(exc))
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                record(path, node.lineno, "bare-except", "Bare exception handler")
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                defaults = [*node.args.defaults]
+                defaults.extend(item for item in node.args.kw_defaults if item is not None)
+                for default in defaults:
+                    if isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                        record(
+                            path,
+                            node.lineno,
+                            "mutable-default",
+                            f"Mutable default in {node.name}",
+                        )
+
+report = {
+    "schema": "aspenops.comprehensive-hygiene-audit/v1",
+    "files_scanned": files,
+    "issue_count": len(issues),
+    "issues": issues,
+    "decision": "PASS" if not issues else "FAIL",
+}
+output = Path("var/comprehensive-closure/hygiene-audit.json")
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if issues:
+    raise SystemExit(json.dumps(report, sort_keys=True))
