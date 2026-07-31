@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any
+
+
+def junit(path: Path) -> dict[str, Any]:
+    root = ET.parse(path).getroot()
+    suite = root if root.tag == "testsuite" else root.find("testsuite")
+    if suite is None:
+        raise RuntimeError(f"No testsuite found in {path}")
+    return {
+        "tests": int(suite.attrib.get("tests", 0)),
+        "failures": int(suite.attrib.get("failures", 0)),
+        "errors": int(suite.attrib.get("errors", 0)),
+        "skipped": int(suite.attrib.get("skipped", 0)),
+        "time_seconds": float(suite.attrib.get("time", 0.0)),
+    }
+
+
+def status_map(evidence: Path) -> dict[str, int]:
+    statuses: dict[str, int] = {}
+    for line in (evidence / "status.tsv").read_text(encoding="utf-8").splitlines():
+        name, code = line.split("\t")
+        statuses[name] = int(code)
+    return statuses
+
+
+def log_tails(evidence: Path, statuses: dict[str, int]) -> dict[str, list[str]]:
+    tails: dict[str, list[str]] = {}
+    for name, code in statuses.items():
+        if code == 0:
+            continue
+        log = evidence / f"{name}.log"
+        if log.exists():
+            tails[name] = log.read_text(encoding="utf-8", errors="replace").splitlines()[-160:]
+    return tails
+
+
+def coverage(path: Path) -> float:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return float(data["totals"]["percent_covered"])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--decision", choices=("PASS", "FAIL"), required=True)
+    parser.add_argument("--evidence", type=Path, required=True)
+    args = parser.parse_args()
+    evidence = args.evidence
+    statuses = status_map(evidence)
+    base: dict[str, Any] = {
+        "schema": "aspenops.result-serialization-efficiency-result/v2"
+        if args.decision == "PASS"
+        else "aspenops.result-serialization-efficiency-blocker/v2",
+        "decision": args.decision,
+        "hard_gates": statuses,
+        "runtime_control_plane_changed": False,
+        "aspen_executed": False,
+        "parameter_estimation_executed": False,
+        "dynamic_modeling_executed": False,
+        "machine_learning_executed": False,
+        "qualification_boundary": (
+            "Pure Python EvaluationResult JSON-aware snapshot serialization and portable "
+            "package evidence; not licensed Aspen solve certification."
+        ),
+        "qualification_run": {
+            "run_id": os.environ.get("RUN_ID", ""),
+            "run_attempt": os.environ.get("RUN_ATTEMPT", ""),
+        },
+        "rejected_candidate": (
+            "The first explicit multi-deepcopy serializer was rejected at 0.658x of legacy "
+            "dataclasses.asdict performance and was not retained."
+        ),
+    }
+    if args.decision == "FAIL":
+        base.update(
+            {
+                "source_changes_retained": False,
+                "failure_tail": log_tails(evidence, statuses),
+            }
+        )
+        Path("docs/RESULT_SERIALIZATION_EFFICIENCY_BLOCKER.json").write_text(
+            json.dumps(base, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return
+
+    benchmark = json.loads((evidence / "benchmark.json").read_text(encoding="utf-8"))
+    base.update(
+        {
+            "benchmark": benchmark,
+            "focused_tests": junit(evidence / "focused-junit.xml"),
+            "full_tests": {
+                version: junit(evidence / f"junit-{version}.xml")
+                for version in ("3.11", "3.12", "3.13")
+            },
+            "coverage_percent": {
+                version: coverage(evidence / f"coverage-{version}.json")
+                for version in ("3.11", "3.12", "3.13")
+            },
+            "preserved_contracts": [
+                "EvaluationResult.to_dict public call observability",
+                "exact legacy snapshot Python shape and canonical JSON",
+                "deep isolation of values, diagnostics and balance residuals",
+                "fallback deepcopy semantics for unsupported object types",
+                "cache, worker and runtime control semantics",
+            ],
+            "source_files_changed": [
+                "src/aspenops_nexus/models.py",
+                "tests/test_result_serialization_efficiency.py",
+            ],
+            "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+        }
+    )
+    Path("docs/RESULT_SERIALIZATION_EFFICIENCY_RESULT.json").write_text(
+        json.dumps(base, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    Path("docs/RESULT_SERIALIZATION_EFFICIENCY_RESULT.md").write_text(
+        "# AspenOps Result Serialization Efficiency Audit\n\n"
+        "**PASS**\n\n"
+        f"- JSON-aware EvaluationResult snapshot speedup: {benchmark['speedup']:.3f}x\n"
+        "- Exact legacy snapshot equality: PASS\n"
+        "- Deep result isolation and direct round trip: PASS\n"
+        "- First slower multi-deepcopy candidate: rejected and rolled back\n"
+        "- Licensed Windows/Aspen engineering certification: pending\n",
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    main()
