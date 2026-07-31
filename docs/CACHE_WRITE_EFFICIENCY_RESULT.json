@@ -106,10 +106,17 @@
     "Explicit multi-deepcopy EvaluationResult serializer: 0.658x legacy performance.",
     "JSON-aware EvaluationResult recursion: 0.587x legacy performance."
   ],
+  "retained_contract_tests": {
+    "file": "tests/test_result_serialization_efficiency.py",
+    "reason": "The two tests preserve the existing dataclasses.asdict snapshot equality and deep-isolation contracts after both alternative implementations were rejected.",
+    "rejected_implementation_retained": false,
+    "tests": 2
+  },
   "runtime_control_plane_changed": false,
   "schema": "aspenops.cache-write-efficiency-result/v1",
   "source_files_changed": [
     "src/aspenops_nexus/cache.py",
-    "tests/test_cache_write_efficiency.py"
+    "tests/test_cache_write_efficiency.py",
+    "tests/test_result_serialization_efficiency.py"
   ]
 }
