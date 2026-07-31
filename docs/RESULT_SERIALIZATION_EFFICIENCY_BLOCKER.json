@@ -1,0 +1,55 @@
+{
+  "aspen_executed": false,
+  "decision": "FAIL",
+  "dynamic_modeling_executed": false,
+  "failure_tail": {
+    "performance-benchmark": [
+      "{\"after_seconds\": 0.05129122099999961, \"before_seconds\": 0.03375986000000353, \"boundary\": \"Pure Python EvaluationResult snapshot serialization; not Aspen solve evidence.\", \"checks\": {\"canonical_json_equal\": true, \"deep_snapshot_isolation\": true, \"direct_roundtrip_equal\": true, \"exact_python_shape_equal\": true, \"meaningful_speedup\": false, \"optimized_faster\": false}, \"decision\": \"FAIL\", \"result_shape\": {\"balances\": 100, \"diagnostic_workers\": 100, \"units\": 300, \"values\": 300, \"violations\": 100}, \"schema\": \"aspenops.result-serialization-benchmark/v1\", \"speedup\": 0.6581995776626918}"
+    ]
+  },
+  "hard_gates": {
+    "apply-patch": 0,
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "copy-benchmark": 0,
+    "copy-test": 0,
+    "copy-wheel-smoke": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "performance-benchmark": 1,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-311": 0,
+    "sync-312": 0,
+    "sync-312-full": 0,
+    "sync-313": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "machine_learning_executed": false,
+  "parameter_estimation_executed": false,
+  "qualification_boundary": "Pure Python EvaluationResult snapshot serialization and portable package evidence; not licensed Aspen solve certification.",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30600447761"
+  },
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.result-serialization-efficiency-blocker/v1",
+  "source_changes_retained": false
+}
