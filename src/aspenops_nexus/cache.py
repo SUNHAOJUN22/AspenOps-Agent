@@ -19,6 +19,16 @@ def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> Iterator[
         yield values[index : index + size]
 
 
+def _encode_payloads(payloads: dict[str, dict[str, Any]]) -> dict[str, str]:
+    encode = json.JSONEncoder(
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode
+    return {key: encode(payload) for key, payload in payloads.items()}
+
+
 class ResultCache:
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -146,17 +156,7 @@ class ResultCache:
     def put_many(self, payloads: dict[str, dict[str, Any]]) -> None:
         if not payloads:
             return
-        encoded_payloads = {
-            key: json.dumps(
-                payload,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-                allow_nan=False,
-            )
-            for key, payload in payloads.items()
-        }
-        rows = list(encoded_payloads.items())
+        encoded_payloads = _encode_payloads(payloads)
         with self._lock, closing(self._connect()) as connection, connection:
             self._flush_hits(connection)
             connection.executemany(
@@ -165,7 +165,7 @@ class ResultCache:
                 VALUES (?, ?)
                 ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload
                 """,
-                rows,
+                encoded_payloads.items(),
             )
             for key, encoded in encoded_payloads.items():
                 self._remember(key, encoded)

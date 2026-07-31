@@ -1,0 +1,115 @@
+{
+  "aspen_executed": false,
+  "benchmark": {
+    "after_seconds": 0.09656788599999544,
+    "before_seconds": 0.1298509090000053,
+    "boundary": "Pure Python bulk cache payload encoding and row iteration; SQLite I/O excluded.",
+    "checks": {
+      "encoded_bytes_equal": true,
+      "meaningful_speedup": true,
+      "optimized_faster": true,
+      "row_checksum_equal": true
+    },
+    "decision": "PASS",
+    "payload_count": 10000,
+    "schema": "aspenops.cache-write-encoding-benchmark/v1",
+    "speedup": 1.344659331157062
+  },
+  "coverage_percent": {
+    "3.11": 95.82304305809085,
+    "3.12": 95.82304305809085,
+    "3.13": 95.82304305809085
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 8,
+    "time_seconds": 0.742
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 898,
+      "time_seconds": 19.753
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 898,
+      "time_seconds": 21.843
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 898,
+      "time_seconds": 18.469
+    }
+  },
+  "hard_gates": {
+    "apply-patch": 0,
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "copy-benchmark": 0,
+    "copy-test": 0,
+    "copy-wheel-smoke": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "performance-benchmark": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-311": 0,
+    "sync-312": 0,
+    "sync-312-full": 0,
+    "sync-313": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "machine_learning_executed": false,
+  "parameter_estimation_executed": false,
+  "preserved_contracts": [
+    "exact compact JSON bytes and key ordering",
+    "Unicode output and allow_nan=False rejection",
+    "ResultCache put_many/get_many round trip",
+    "hit accounting, memory LRU and SQLite transaction semantics",
+    "worker and runtime control semantics"
+  ],
+  "qualification_boundary": "Pure Python bulk cache payload encoding and portable package evidence; not licensed Aspen solve certification.",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30601296854"
+  },
+  "rejected_candidates": [
+    "Explicit multi-deepcopy EvaluationResult serializer: 0.658x legacy performance.",
+    "JSON-aware EvaluationResult recursion: 0.587x legacy performance."
+  ],
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.cache-write-efficiency-result/v1",
+  "source_files_changed": [
+    "src/aspenops_nexus/cache.py",
+    "tests/test_cache_write_efficiency.py"
+  ]
+}
