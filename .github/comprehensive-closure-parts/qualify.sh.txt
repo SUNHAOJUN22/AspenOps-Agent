@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE="$(git rev-parse HEAD)"
+export BASE
 export RUN_ID="${GITHUB_RUN_ID:-}"
 export RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}"
 SELF=.github/workflows/comprehensive-code-closure-once.yml
