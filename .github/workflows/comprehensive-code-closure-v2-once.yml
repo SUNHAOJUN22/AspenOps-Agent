@@ -1,0 +1,30 @@
+name: AspenOps Comprehensive Code Closure V2 Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-comprehensive-code-closure
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.issue.title == 'ASPENOPS_COMPREHENSIVE_CODE_CLOSURE_V2_FINAL_20260801'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run final fail-closed qualification
+        shell: bash
+        run: bash .github/comprehensive-closure-v2-parts/qualify.sh.txt
