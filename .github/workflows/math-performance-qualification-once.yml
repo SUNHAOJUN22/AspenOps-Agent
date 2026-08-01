@@ -1,0 +1,531 @@
+name: One-time math and performance qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/math-performance-qualification-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-math-performance-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Verify exact baseline and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "0e12306bc49985b6a2c71d9db04ab39ed13fa15d"
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Create deterministic copy benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/bench_result_copy.py <<'PY'
+          from __future__ import annotations
+
+          import gc
+          import hashlib
+          import json
+          import statistics
+          import sys
+          import time
+          from copy import deepcopy
+          from pathlib import Path
+          from typing import Any, Callable
+
+          from aspenops_nexus.models import EvaluationResult
+
+
+          def representative_result() -> EvaluationResult:
+              values: dict[str, Any] = {f"value_{index}": index * 0.125 for index in range(96)}
+              diagnostics: dict[str, Any] = {
+                  "state_trace": ["received", "plan_compiled", "engine_returned", "verified"],
+                  "runtime": {
+                      "backend": "mock",
+                      "build": "qualification",
+                      "nested": {
+                          "limits": list(range(32)),
+                          "labels": {f"k{index}": f"v{index}" for index in range(32)},
+                      },
+                  },
+                  "constraints": [
+                      {
+                          "name": f"c{index}",
+                          "actual": index * 0.1,
+                          "limit": index * 0.1 + 1.0,
+                          "violation": 0.0,
+                          "passed": True,
+                      }
+                      for index in range(48)
+                  ],
+              }
+              balances = {
+                  f"balance_{index}": {
+                      "residual": 0.0,
+                      "absolute": 0.0,
+                      "scale": float(index + 1),
+                      "relative": 0.0,
+                      "abs_tol": 1e-6,
+                      "rel_tol": 1e-6,
+                      "passed": 1.0,
+                  }
+                  for index in range(24)
+              }
+              return EvaluationResult(
+                  ok=True,
+                  communication_ok=True,
+                  engine_ok=True,
+                  converged=True,
+                  feasible=True,
+                  values=values,
+                  units={key: "kg/h" for key in values},
+                  violations=[],
+                  diagnostics=diagnostics,
+                  elapsed_s=0.125,
+                  balance_residuals=balances,
+                  cache_source="computed",
+                  cache_hit=False,
+                  request_hash="a" * 64,
+                  worker_id=3,
+              )
+
+
+          def measure(function: Callable[[], Any], loops: int = 600, repeats: int = 9) -> float:
+              samples: list[float] = []
+              checksum = 0
+              for _ in range(repeats):
+                  gc.collect()
+                  started = time.perf_counter()
+                  for _ in range(loops):
+                      value = function()
+                      checksum ^= id(value)
+                  samples.append(time.perf_counter() - started)
+              if checksum == -1:
+                  raise AssertionError("unreachable checksum")
+              return statistics.median(samples)
+
+
+          mode = sys.argv[1]
+          output = Path(sys.argv[2])
+          result = representative_result()
+          if mode == "baseline":
+              clone_function: Callable[[], EvaluationResult] = lambda: deepcopy(result)
+          elif mode == "candidate":
+              clone_method = getattr(result, "clone", None)
+              if not callable(clone_method):
+                  raise AssertionError("candidate clone method is missing")
+              clone_function = clone_method
+          else:
+              raise ValueError(mode)
+
+          clone = clone_function()
+          payload = result.to_dict()
+          clone.values["value_0"] = -1
+          clone.diagnostics["runtime"]["nested"]["limits"].append(999)
+          clone.balance_residuals["balance_0"]["scale"] = -1.0
+          assert result.values["value_0"] == 0.0
+          assert 999 not in result.diagnostics["runtime"]["nested"]["limits"]
+          assert result.balance_residuals["balance_0"]["scale"] == 1.0
+          payload["diagnostics"]["runtime"]["nested"]["limits"].append(998)
+          assert 998 not in result.diagnostics["runtime"]["nested"]["limits"]
+
+          canonical = json.dumps(
+              result.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
+          ).encode("utf-8")
+          report = {
+              "mode": mode,
+              "loops": 600,
+              "clone_seconds": measure(clone_function),
+              "to_dict_seconds": measure(result.to_dict),
+              "payload_sha256": hashlib.sha256(canonical).hexdigest(),
+          }
+          output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+          uv run python /tmp/bench_result_copy.py baseline /tmp/result-copy-before.json
+      - name: Apply semantics-preserving candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one target in {path}, found {count}: {old!r}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+          models = Path("src/aspenops_nexus/models.py")
+          replace_once(
+              models,
+              "import math\nfrom dataclasses import asdict, dataclass, field\n",
+              "import math\nfrom copy import deepcopy\nfrom dataclasses import dataclass, field\n",
+          )
+          replace_once(
+              models,
+              """    def to_dict(self) -> dict[str, Any]:
+                  return asdict(self)
+          """,
+              """    def clone(self) -> EvaluationResult:
+                  \"\"\"Return an independently mutable result without generic dataclass traversal.\"\"\"
+                  return EvaluationResult(
+                      ok=self.ok,
+                      communication_ok=self.communication_ok,
+                      engine_ok=self.engine_ok,
+                      converged=self.converged,
+                      feasible=self.feasible,
+                      values=deepcopy(self.values),
+                      units=dict(self.units),
+                      violations=list(self.violations),
+                      diagnostics=deepcopy(self.diagnostics),
+                      elapsed_s=self.elapsed_s,
+                      balance_residuals={
+                          name: dict(detail) for name, detail in self.balance_residuals.items()
+                      },
+                      cache_source=self.cache_source,
+                      cache_hit=self.cache_hit,
+                      request_hash=self.request_hash,
+                      worker_id=self.worker_id,
+                  )
+
+              def to_dict(self) -> dict[str, Any]:
+                  return {
+                      \"ok\": self.ok,
+                      \"communication_ok\": self.communication_ok,
+                      \"engine_ok\": self.engine_ok,
+                      \"converged\": self.converged,
+                      \"feasible\": self.feasible,
+                      \"values\": deepcopy(self.values),
+                      \"units\": dict(self.units),
+                      \"violations\": list(self.violations),
+                      \"diagnostics\": deepcopy(self.diagnostics),
+                      \"elapsed_s\": self.elapsed_s,
+                      \"balance_residuals\": {
+                          name: dict(detail) for name, detail in self.balance_residuals.items()
+                      },
+                      \"cache_source\": self.cache_source,
+                      \"cache_hit\": self.cache_hit,
+                      \"request_hash\": self.request_hash,
+                      \"worker_id\": self.worker_id,
+                  }
+          """,
+          )
+
+          pool = Path("src/aspenops_nexus/pool.py")
+          replace_once(pool, "from copy import deepcopy\n", "")
+          replacements = {
+              "result = deepcopy(flight.result)": "result = flight.result.clone()",
+              "flight.result = deepcopy(result)": "flight.result = result.clone()",
+              "result = deepcopy(template)": "result = template.clone()",
+              "output[index] = deepcopy(cancelled)": "output[index] = cancelled.clone()",
+              "clone = result if ordinal == 0 else deepcopy(result)": (
+                  "clone = result if ordinal == 0 else result.clone()"
+              ),
+          }
+          text = pool.read_text(encoding="utf-8")
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one pool target, found {count}: {old}")
+              text = text.replace(old, new, 1)
+          if "deepcopy(" in text:
+              raise RuntimeError("Unexpected deepcopy call remains in pool.py")
+          pool.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/test_runtime_closure.py")
+          replace_once(
+              tests,
+              "from aspenops_nexus.models import EvaluationRequest\n",
+              "from aspenops_nexus.models import EvaluationRequest, EvaluationResult\n",
+          )
+          test_text = tests.read_text(encoding="utf-8")
+          marker = "def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:"
+          if marker in test_text:
+              raise RuntimeError("Result copy regression test already exists")
+          test_text += """
+
+
+def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
+    result = EvaluationResult(
+        ok=True,
+        communication_ok=True,
+        engine_ok=True,
+        converged=True,
+        feasible=True,
+        values={\"nested\": {\"items\": [1, 2]}},
+        units={\"nested\": None},
+        violations=[\"original\"],
+        diagnostics={\"worker\": {\"runtime\": {\"build\": 1}}},
+        elapsed_s=0.25,
+        balance_residuals={\"mass\": {\"residual\": 0.0, \"passed\": 1.0}},
+        request_hash=\"abc\",
+        worker_id=2,
+    )
+
+    clone = result.clone()
+    payload = result.to_dict()
+    assert EvaluationResult.from_dict(payload) == result
+
+    clone.values[\"nested\"][\"items\"].append(3)
+    clone.violations.append(\"clone\")
+    clone.diagnostics[\"worker\"][\"runtime\"][\"build\"] = 2
+    clone.balance_residuals[\"mass\"][\"residual\"] = 1.0
+    payload[\"values\"][\"nested\"][\"items\"].append(4)
+    payload[\"diagnostics\"][\"worker\"][\"runtime\"][\"build\"] = 3
+
+    assert result.values == {\"nested\": {\"items\": [1, 2]}}
+    assert result.violations == [\"original\"]
+    assert result.diagnostics == {\"worker\": {\"runtime\": {\"build\": 1}}}
+    assert result.balance_residuals == {\"mass\": {\"residual\": 0.0, \"passed\": 1.0}}
+          """
+          tests.write_text(test_text, encoding="utf-8")
+          PY
+          uv run ruff format src/aspenops_nexus/models.py src/aspenops_nexus/pool.py tests/test_runtime_closure.py
+      - name: Audit mathematical contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import json
+          import math
+          import sys
+          from pathlib import Path
+
+          from aspenops_nexus.evaluation import _constraint_violation, _finite_nonnegative_sum
+          from aspenops_nexus.models import ConstraintSpec
+          from aspenops_nexus.optimization import (
+              _finite_weighted_sum,
+              _saturating_nonnegative_add,
+          )
+
+          cases = [
+              ("<", 9.5, 10.0, 0.5, 0.0),
+              ("<", 9.75, 10.0, 0.5, 0.25),
+              ("<=", 10.5, 10.0, 0.5, 0.0),
+              ("<=", 10.75, 10.0, 0.5, 0.25),
+              (">", 10.5, 10.0, 0.5, 0.0),
+              (">", 10.25, 10.0, 0.5, 0.25),
+              (">=", 9.5, 10.0, 0.5, 0.0),
+              (">=", 9.25, 10.0, 0.5, 0.25),
+              ("==", 10.5, 10.0, 0.5, 0.0),
+              ("==", 10.75, 10.0, 0.5, 0.25),
+          ]
+          evaluated = []
+          for operator, actual, limit, tolerance, expected in cases:
+              spec = ConstraintSpec(
+                  key="x",
+                  identifiers={},
+                  operator=operator,
+                  value=limit,
+                  tolerance=tolerance,
+              )
+              observed = _constraint_violation(spec, actual)
+              if not math.isclose(observed, expected, rel_tol=0.0, abs_tol=1e-15):
+                  raise AssertionError((operator, actual, observed, expected))
+              evaluated.append(
+                  {
+                      "operator": operator,
+                      "actual": actual,
+                      "limit": limit,
+                      "tolerance": tolerance,
+                      "violation": observed,
+                  }
+              )
+
+          saturated, did_saturate = _finite_nonnegative_sum(
+              [sys.float_info.max, sys.float_info.max]
+          )
+          assert saturated == sys.float_info.max and did_saturate
+          assert _saturating_nonnegative_add(sys.float_info.max, 1.0) == sys.float_info.max
+          assert _finite_weighted_sum(((2.0, 1e308), (-2.0, 1e308))) == 0.0
+          assert math.isfinite(_finite_weighted_sum(((2.0, 1e308), (2.0, 1e308))))
+
+          report = {
+              "decision": "PASS",
+              "constraint_cases": evaluated,
+              "strict_operator_semantics": "strict inequalities apply tolerance as a safety margin",
+              "non_strict_operator_semantics": "non-strict inequalities apply tolerance as an acceptance band",
+              "equality_semantics": "absolute residual less than or equal to tolerance",
+              "finite_aggregation": True,
+              "weighted_cancellation": True,
+          }
+          Path("/tmp/math-audit.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+      - name: Benchmark and accept only measured improvement
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python /tmp/bench_result_copy.py candidate /tmp/result-copy-after.json
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          before = json.loads(Path("/tmp/result-copy-before.json").read_text(encoding="utf-8"))
+          after = json.loads(Path("/tmp/result-copy-after.json").read_text(encoding="utf-8"))
+          if before["payload_sha256"] != after["payload_sha256"]:
+              raise AssertionError("Serialization payload changed")
+          clone_speedup = before["clone_seconds"] / after["clone_seconds"]
+          to_dict_speedup = before["to_dict_seconds"] / after["to_dict_seconds"]
+          if clone_speedup < 1.15:
+              raise AssertionError(f"clone speedup below threshold: {clone_speedup:.3f}x")
+          if to_dict_speedup < 1.10:
+              raise AssertionError(f"to_dict speedup below threshold: {to_dict_speedup:.3f}x")
+          decision = {
+              "decision": "PASS",
+              "clone_speedup": clone_speedup,
+              "to_dict_speedup": to_dict_speedup,
+              "payload_equal": True,
+              "thresholds": {"clone": 1.15, "to_dict": 1.10},
+          }
+          Path("/tmp/performance-decision.json").write_text(
+              json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(decision, indent=2, sort_keys=True))
+          PY
+      - name: Run focused and full qualification
+        shell: bash
+        env:
+          PYTHONTRACEMALLOC: "10"
+        run: |
+          set -euo pipefail
+          mkdir -p var/qualification
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -W error::ResourceWarning \
+            tests/test_runtime_closure.py \
+            tests/test_finite_aggregation.py \
+            --junitxml=var/qualification/focused.xml
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/qualification/coverage.json \
+            --junitxml=var/qualification/full.xml \
+            --cov-fail-under=95
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir var/qualification
+          uv run python scripts/audit_source_tree.py \
+            --output var/qualification/source-tree-audit.json
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/qualification/benchmark-smoke.json \
+            --smoke
+          uv build
+      - name: Write qualification evidence and publish
+        shell: bash
+        env:
+          QUALIFIED_PARENT: "0e12306bc49985b6a2c71d9db04ab39ed13fa15d"
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          before = json.loads(Path("/tmp/result-copy-before.json").read_text(encoding="utf-8"))
+          after = json.loads(Path("/tmp/result-copy-after.json").read_text(encoding="utf-8"))
+          performance = json.loads(
+              Path("/tmp/performance-decision.json").read_text(encoding="utf-8")
+          )
+          math_audit = json.loads(Path("/tmp/math-audit.json").read_text(encoding="utf-8"))
+          coverage = json.loads(
+              Path("var/qualification/coverage.json").read_text(encoding="utf-8")
+          )
+          report = {
+              "schema": "aspenops.math-performance-qualification/v1",
+              "decision": "PASS",
+              "qualified_parent": os.environ["QUALIFIED_PARENT"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "aspen_executed": False,
+              "boundary": (
+                  "Portable Python numerical and orchestration qualification; "
+                  "not licensed Aspen Plus/HYSYS physical solve evidence."
+              ),
+              "changes": [
+                  "EvaluationResult.clone performs field-aware deep isolation.",
+                  "EvaluationResult.to_dict avoids generic dataclass traversal.",
+                  "CasePool duplicate, cache and singleflight copies use the optimized clone path.",
+              ],
+              "benchmark_before": before,
+              "benchmark_after": after,
+              "performance": performance,
+              "math_audit": math_audit,
+              "coverage_percent": coverage["totals"]["percent_covered"],
+              "gates": {
+                  "ruff": "PASS",
+                  "format": "PASS",
+                  "mypy_strict": "PASS",
+                  "compileall": "PASS",
+                  "focused_tests": "PASS",
+                  "full_tests_python_3_12": "PASS",
+                  "order_independence": "PASS",
+                  "source_tree_audit": "PASS",
+                  "benchmark_smoke": "PASS",
+                  "build": "PASS",
+              },
+              "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+          }
+          docs = Path("docs")
+          docs.mkdir(exist_ok=True)
+          json_path = docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.json"
+          json_path.write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          md = f"""# Math and Performance Qualification Result
+
+          **Decision:** PASS
+
+          - Qualified parent: `{report['qualified_parent']}`
+          - Result-copy speedup: `{performance['clone_speedup']:.3f}x`
+          - Result-serialization speedup: `{performance['to_dict_speedup']:.3f}x`
+          - Serialization payload equality: `{performance['payload_equal']}`
+          - Python 3.12 branch coverage: `{report['coverage_percent']:.3f}%`
+          - Mathematical contract audit: PASS
+          - Full portable regression and build gates: PASS
+          - Licensed Windows/Aspen engineering certification: PENDING
+
+          The benchmark measures portable Python result copying and serialization only. It is not Aspen Plus/HYSYS solve-speed evidence.
+          """
+          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.md").write_text(
+              "\n".join(line.strip() for line in md.strip().splitlines()) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git rm .github/workflows/math-performance-qualification-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/aspenops_nexus/models.py src/aspenops_nexus/pool.py \
+            tests/test_runtime_closure.py \
+            docs/MATH_PERFORMANCE_QUALIFICATION_RESULT.json \
+            docs/MATH_PERFORMANCE_QUALIFICATION_RESULT.md
+          git diff --cached --check
+          git commit -m "perf: accelerate result copying and serialization"
+          git push origin HEAD:main
