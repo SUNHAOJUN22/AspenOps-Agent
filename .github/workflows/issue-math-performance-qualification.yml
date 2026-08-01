@@ -1,0 +1,64 @@
+name: Complete math and performance qualification
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: scheduled-math-performance-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.issue.title == 'EXECUTE_MATH_PERFORMANCE_QUALIFICATION_20260802'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRIGGER_ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Record run identity
+        if: github.event_name == 'issues'
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+            "Qualification started. Run ID: ${GITHUB_RUN_ID}. Event SHA: ${GITHUB_SHA}."
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Execute fail-closed qualification
+        shell: bash
+        run: bash tools/run_math_performance_qualification.sh
+
+      - name: Report failure
+        if: failure() && github.event_name == 'issues'
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+            "Qualification FAILED. Run ID: ${GITHUB_RUN_ID}. Candidate changes were not published. Inspect: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: math-performance-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: var/math-performance-final
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 90
