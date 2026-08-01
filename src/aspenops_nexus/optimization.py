@@ -121,9 +121,13 @@ def _finite_weighted_sum(pairs: Sequence[tuple[float, float]]) -> float:
             break
         terms.append(term)
     else:
-        total = sum(terms)
-        if math.isfinite(total):
-            return total
+        try:
+            total = math.fsum(terms)
+        except OverflowError:
+            pass
+        else:
+            if math.isfinite(total):
+                return total
     exact = sum(
         (
             Fraction.from_float(weight) * Fraction.from_float(value)

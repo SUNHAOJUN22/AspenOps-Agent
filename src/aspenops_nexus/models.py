@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
 BackendName = Literal["mock", "aspen_plus", "hysys"]
@@ -388,6 +389,29 @@ class EvaluationRequest:
         }
 
 
+_RESULT_PAYLOAD_SCALAR_TYPES = frozenset((str, int, float, bool, type(None)))
+
+
+def _copy_result_payload(value: Any) -> Any:
+    """Copy JSON-like result data with a safe fallback for uncommon objects."""
+    value_type = type(value)
+    if value_type in _RESULT_PAYLOAD_SCALAR_TYPES:
+        return value
+    if value_type is dict:
+        copy_payload = _copy_result_payload
+        return {
+            key if type(key) in _RESULT_PAYLOAD_SCALAR_TYPES else deepcopy(key): copy_payload(item)
+            for key, item in value.items()
+        }
+    if value_type is list:
+        copy_payload = _copy_result_payload
+        return [copy_payload(item) for item in value]
+    if value_type is tuple:
+        copy_payload = _copy_result_payload
+        return tuple(copy_payload(item) for item in value)
+    return deepcopy(value)
+
+
 @dataclass(slots=True)
 class EvaluationResult:
     ok: bool
@@ -406,8 +430,54 @@ class EvaluationResult:
     request_hash: str = ""
     worker_id: int | None = None
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> EvaluationResult:
+        """Clone mutable result payloads without generic dataclass reconstruction."""
+        existing = memo.get(id(self))
+        if existing is not None:
+            return cast(EvaluationResult, existing)
+
+        clone = object.__new__(EvaluationResult)
+        memo[id(self)] = clone
+        clone.ok = self.ok
+        clone.communication_ok = self.communication_ok
+        clone.engine_ok = self.engine_ok
+        clone.converged = self.converged
+        clone.feasible = self.feasible
+        clone.values = deepcopy(self.values, memo)
+        clone.units = self.units.copy()
+        clone.violations = self.violations.copy()
+        clone.diagnostics = deepcopy(self.diagnostics, memo)
+        clone.elapsed_s = self.elapsed_s
+        clone.balance_residuals = {
+            name: detail.copy() for name, detail in self.balance_residuals.items()
+        }
+        clone.cache_source = self.cache_source
+        clone.cache_hit = self.cache_hit
+        clone.request_hash = self.request_hash
+        clone.worker_id = self.worker_id
+        return clone
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        """Serialize JSON-like fields without generic dataclass traversal."""
+        return {
+            "ok": self.ok,
+            "communication_ok": self.communication_ok,
+            "engine_ok": self.engine_ok,
+            "converged": self.converged,
+            "feasible": self.feasible,
+            "values": _copy_result_payload(self.values),
+            "units": self.units.copy(),
+            "violations": self.violations.copy(),
+            "diagnostics": _copy_result_payload(self.diagnostics),
+            "elapsed_s": self.elapsed_s,
+            "balance_residuals": {
+                name: detail.copy() for name, detail in self.balance_residuals.items()
+            },
+            "cache_source": self.cache_source,
+            "cache_hit": self.cache_hit,
+            "request_hash": self.request_hash,
+            "worker_id": self.worker_id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvaluationResult:
