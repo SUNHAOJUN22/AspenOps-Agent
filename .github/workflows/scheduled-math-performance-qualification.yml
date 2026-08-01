@@ -1,0 +1,340 @@
+name: Scheduled math and performance qualification
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: scheduled-math-performance-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRACKING_ISSUE: "96"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Announce run and verify registration
+        shell: bash
+        env:
+          EXPECTED_PARENT: 310d87b676c8e9debe769d5552ca4b48c74eb138
+          WORKFLOW_PATH: .github/workflows/scheduled-math-performance-qualification.yml
+        run: |
+          set -euo pipefail
+          gh issue comment "$TRACKING_ISSUE" --body \
+            "Scheduled qualification started. Run ID: ${GITHUB_RUN_ID}. Source SHA: $(git rev-parse HEAD)."
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$WORKFLOW_PATH"
+          git diff --check HEAD^ HEAD
+          uv lock --check
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+
+      - name: Apply candidate and clean registration assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/apply_math_performance_candidate.py
+          rm -f \
+            .github/workflows/math-performance-qualification-once.yml \
+            .github/workflows/optimize-result-deepcopy-once.yml \
+            .github/workflows/optimize-result-deepcopy-once-v2.yml \
+            tools/optimize_result_deepcopy_once.py \
+            tools/apply_math_performance_candidate.py
+          uv run ruff format \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            scripts/benchmark_result_serialization.py \
+            tests/test_evaluation_result_deepcopy.py \
+            tests/test_evaluation_result_serialization.py
+          uv run ruff check --fix \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            scripts/benchmark_result_serialization.py \
+            tests/test_evaluation_result_deepcopy.py \
+            tests/test_evaluation_result_serialization.py
+          git diff --check
+
+      - name: Audit numerical formulas
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/math-performance
+          uv run python - <<'PY'
+          import json
+          import math
+          import sys
+          from pathlib import Path
+
+          from aspenops_nexus.evaluation import _constraint_violation, _finite_nonnegative_sum
+          from aspenops_nexus.models import ConstraintSpec
+          from aspenops_nexus.optimization import (
+              _finite_weighted_sum,
+              _saturating_nonnegative_add,
+          )
+
+          cases = [
+              ("<", 9.5, 10.0, 0.5, 0.0),
+              ("<", 9.75, 10.0, 0.5, 0.25),
+              ("<=", 10.5, 10.0, 0.5, 0.0),
+              ("<=", 10.75, 10.0, 0.5, 0.25),
+              (">", 10.5, 10.0, 0.5, 0.0),
+              (">", 10.25, 10.0, 0.5, 0.25),
+              (">=", 9.5, 10.0, 0.5, 0.0),
+              (">=", 9.25, 10.0, 0.5, 0.25),
+              ("==", 10.5, 10.0, 0.5, 0.0),
+              ("==", 10.75, 10.0, 0.5, 0.25),
+          ]
+          details = []
+          for operator, actual, limit, tolerance, expected in cases:
+              spec = ConstraintSpec(
+                  key="x",
+                  identifiers={},
+                  operator=operator,
+                  value=limit,
+                  tolerance=tolerance,
+              )
+              observed = _constraint_violation(spec, actual)
+              assert math.isclose(observed, expected, rel_tol=0.0, abs_tol=1e-15)
+              details.append(
+                  {
+                      "operator": operator,
+                      "actual": actual,
+                      "limit": limit,
+                      "tolerance": tolerance,
+                      "violation": observed,
+                  }
+              )
+
+          total, saturated = _finite_nonnegative_sum(
+              [sys.float_info.max, sys.float_info.max]
+          )
+          assert total == sys.float_info.max and saturated
+          assert _saturating_nonnegative_add(sys.float_info.max, 1.0) == sys.float_info.max
+          assert _finite_weighted_sum(((2.0, 1e308), (-2.0, 1e308))) == 0.0
+          assert math.isfinite(_finite_weighted_sum(((2.0, 1e308), (2.0, 1e308))))
+
+          report = {
+              "decision": "PASS",
+              "constraint_cases": details,
+              "strict_inequalities": "tolerance is a safety margin",
+              "non_strict_inequalities": "tolerance is an acceptance band",
+              "equality": "absolute residual <= tolerance",
+              "finite_aggregation": True,
+              "weighted_overflow_cancellation": True,
+          }
+          Path("var/math-performance/math-audit.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Enforce measured performance
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/benchmark_result_deepcopy.py \
+            --output var/math-performance/result-deepcopy.json \
+            --min-speedup 1.5
+          uv run python scripts/benchmark_result_serialization.py \
+            --output var/math-performance/result-serialization.json \
+            --min-speedup 1.25
+
+      - name: Focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest -W error::ResourceWarning \
+            tests/test_evaluation_result_deepcopy.py \
+            tests/test_evaluation_result_serialization.py \
+            tests/test_runtime_closure.py \
+            tests/test_finite_aggregation.py \
+            --junitxml=var/math-performance/focused.xml
+
+      - name: Full Python 3.11 to 3.13 matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.11 3.12 3.13
+          for version in 3.11 3.12 3.13; do
+            uv sync --python "$version" --frozen --extra dev --extra agent --extra signing
+            uv run pytest -W error::ResourceWarning \
+              --junitxml="var/math-performance/junit-${version}.xml" \
+              2>&1 | tee "var/math-performance/pytest-${version}.log"
+          done
+
+      - name: Coverage, order, quality, security and build gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/math-performance/coverage.json \
+            --cov-fail-under=95
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir var/math-performance
+          uv lock --check
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py \
+            --output var/math-performance/source-tree-audit.json
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/math-performance/bandit.json
+          uv run python scripts/measure_operation_counts.py \
+            --output var/math-performance/operation-counts.json
+          uv run python scripts/run_benchmark_matrix.py \
+            --repo-root . \
+            --output var/math-performance/benchmark-smoke.json \
+            --smoke
+          uv build
+          git diff --check
+
+      - name: Write final evidence and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import json
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          root = Path("var/math-performance")
+          deep = json.loads((root / "result-deepcopy.json").read_text())
+          serial = json.loads((root / "result-serialization.json").read_text())
+          math_audit = json.loads((root / "math-audit.json").read_text())
+          coverage = json.loads((root / "coverage.json").read_text())
+          operation = json.loads((root / "operation-counts.json").read_text())
+
+          tests = {}
+          for version in ("3.11", "3.12", "3.13"):
+              suite = ET.parse(root / f"junit-{version}.xml").getroot()
+              tests[version] = {
+                  "tests": int(suite.attrib.get("tests", 0)),
+                  "failures": int(suite.attrib.get("failures", 0)),
+                  "errors": int(suite.attrib.get("errors", 0)),
+                  "skipped": int(suite.attrib.get("skipped", 0)),
+                  "time_seconds": float(suite.attrib.get("time", 0.0)),
+              }
+
+          report = {
+              "schema": "aspenops.math-performance-qualification/v1",
+              "decision": "PASS",
+              "qualified_source_baseline": "0e12306bc49985b6a2c71d9db04ab39ed13fa15d",
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "aspen_executed": False,
+              "boundary": (
+                  "Portable Python numerical, copying and serialization qualification; "
+                  "not licensed Aspen Plus/HYSYS physical solve evidence."
+              ),
+              "changes": [
+                  "Memo-aware field-specific EvaluationResult.__deepcopy__.",
+                  "Field-specific EvaluationResult.to_dict serialization.",
+                  "Permanent semantic and performance regression contracts.",
+                  "Removal of all temporary optimization workflows and patch tools.",
+              ],
+              "deepcopy_benchmark": deep,
+              "serialization_benchmark": serial,
+              "math_audit": math_audit,
+              "full_tests": tests,
+              "coverage_percent": coverage["totals"]["percent_covered"],
+              "operation_counts": {
+                  "pool": operation["pool"],
+                  "memory_cache": operation["memory_cache"],
+                  "cache": operation["cache"],
+              },
+              "gates": {
+                  "focused": "PASS",
+                  "python_3_11": "PASS",
+                  "python_3_12": "PASS",
+                  "python_3_13": "PASS",
+                  "coverage": "PASS",
+                  "order_independence": "PASS",
+                  "ruff": "PASS",
+                  "format": "PASS",
+                  "mypy_strict": "PASS",
+                  "compileall": "PASS",
+                  "source_tree_audit": "PASS",
+                  "bandit": "PASS",
+                  "operation_counts": "PASS",
+                  "benchmark_smoke": "PASS",
+                  "build": "PASS",
+              },
+              "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+          }
+          docs = Path("docs")
+          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.md").write_text(
+              "# Math and Performance Qualification Result\n\n"
+              "Decision: **PASS**\n\n"
+              f"- Result deepcopy speedup: `{deep['speedup']:.3f}x`\n"
+              f"- Result serialization speedup: `{serial['speedup']:.3f}x`\n"
+              f"- Deep-copy equivalence/isolation: `{deep['equivalent']}` / `{deep['deep_isolation']}`\n"
+              f"- Serialization equivalence/isolation: `{serial['equivalent']}` / `{serial['deep_isolation']}`\n"
+              f"- Python 3.12 branch coverage: `{report['coverage_percent']:.3f}%`\n"
+              "- Python 3.11 / 3.12 / 3.13 full suites: `PASS`\n"
+              "- Mathematical, order, quality, security and build gates: `PASS`\n"
+              "- Licensed Windows/Aspen engineering certification: `PENDING`\n\n"
+              "Performance measurements cover portable Python copying and serialization only.\n",
+              encoding="utf-8",
+          )
+          PY
+          git rm .github/workflows/scheduled-math-performance-qualification.yml
+          registration_sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$registration_sha"
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "perf: accelerate result copying and serialization"
+          git push origin HEAD:main
+          published_sha="$(git rev-parse HEAD)"
+          gh issue comment "$TRACKING_ISSUE" --body \
+            "Qualification PASS. Published SHA: ${published_sha}. Run ID: ${GITHUB_RUN_ID}."
+          gh issue close "$TRACKING_ISSUE" --reason completed
+
+      - name: Report failure
+        if: failure()
+        shell: bash
+        run: |
+          gh issue comment "$TRACKING_ISSUE" --body \
+            "Qualification FAILED. Run ID: ${GITHUB_RUN_ID}. Inspect: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. Candidate changes were not published."
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: math-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: var/math-performance
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 90
