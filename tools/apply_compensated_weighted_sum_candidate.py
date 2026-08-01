@@ -51,21 +51,27 @@ def patch_result_payload_copy() -> None:
         """@dataclass(slots=True)
 class EvaluationResult:
 """,
-        """def _copy_result_payload(value: Any) -> Any:
+        """_RESULT_PAYLOAD_SCALAR_TYPES = frozenset((str, int, float, bool, type(None)))
+
+
+def _copy_result_payload(value: Any) -> Any:
     \"\"\"Copy JSON-like result data with a safe fallback for uncommon objects.\"\"\"
     value_type = type(value)
+    if value_type in _RESULT_PAYLOAD_SCALAR_TYPES:
+        return value
     if value_type is dict:
+        copy_payload = _copy_result_payload
         return {
-            key if type(key) in {str, int, float, bool, type(None)} else deepcopy(key):
-            _copy_result_payload(item)
+            key if type(key) in _RESULT_PAYLOAD_SCALAR_TYPES else deepcopy(key):
+            copy_payload(item)
             for key, item in value.items()
         }
     if value_type is list:
-        return [_copy_result_payload(item) for item in value]
+        copy_payload = _copy_result_payload
+        return [copy_payload(item) for item in value]
     if value_type is tuple:
-        return tuple(_copy_result_payload(item) for item in value)
-    if value_type in {str, int, float, bool, type(None)}:
-        return value
+        copy_payload = _copy_result_payload
+        return tuple(copy_payload(item) for item in value)
     return deepcopy(value)
 
 
