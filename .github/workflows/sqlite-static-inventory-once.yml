@@ -1,0 +1,83 @@
+name: AspenOps SQLite Static Inventory Once
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-comprehensive-code-closure
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    if: github.event.issue.title == 'ASPENOPS_SQLITE_STATIC_INVENTORY_20260801'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Record SQLite call sites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          findings = []
+          for root_name in ('src', 'tests', 'scripts'):
+              for path in sorted((root / root_name).rglob('*.py')):
+                  text = path.read_text(encoding='utf-8')
+                  tree = ast.parse(text, filename=str(path))
+                  lines = text.splitlines()
+                  parents = {}
+                  for parent in ast.walk(tree):
+                      for child in ast.iter_child_nodes(parent):
+                          parents[child] = parent
+                  for node in ast.walk(tree):
+                      if not isinstance(node, ast.Call):
+                          continue
+                      target = node.func
+                      if not (
+                          isinstance(target, ast.Attribute)
+                          and isinstance(target.value, ast.Name)
+                          and target.value.id == 'sqlite3'
+                          and target.attr == 'connect'
+                      ):
+                          continue
+                      ancestor = parents.get(node)
+                      ancestors = []
+                      while ancestor is not None:
+                          ancestors.append(type(ancestor).__name__)
+                          ancestor = parents.get(ancestor)
+                      start = max(0, node.lineno - 3)
+                      end = min(len(lines), (node.end_lineno or node.lineno) + 2)
+                      findings.append({
+                          'path': str(path.relative_to(root)),
+                          'line': node.lineno,
+                          'ancestor_types': ancestors[:12],
+                          'source': '\n'.join(
+                              f'{index + 1}: {lines[index]}' for index in range(start, end)
+                          ),
+                      })
+          Path('docs/SQLITE_STATIC_INVENTORY.json').write_text(
+              json.dumps(
+                  {'schema': 'aspenops.sqlite-static-inventory/v1', 'findings': findings},
+                  indent=2,
+                  sort_keys=True,
+              ) + '\n',
+              encoding='utf-8',
+          )
+          PY
+          rm -f .github/workflows/sqlite-static-inventory-once.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'test: record SQLite static inventory'
+          git push origin HEAD:main
