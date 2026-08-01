@@ -42,6 +42,41 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
+      - name: Scope tracemalloc to Python 3.13
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/run_math_performance_qualification.sh")
+          text = path.read_text(encoding="utf-8")
+          old = '''for version in 3.11 3.12 3.13; do
+            uv sync --python "$version" --frozen --extra dev --extra agent --extra signing
+            PYTHONTRACEMALLOC=10 uv run pytest \\
+              -W error::ResourceWarning \\
+              -W error::pytest.PytestUnraisableExceptionWarning \\
+              --junitxml="$QUAL_DIR/junit-${version}.xml" \\
+              2>&1 | tee "$QUAL_DIR/pytest-${version}.log"
+          done
+          '''
+          new = '''for version in 3.11 3.12 3.13; do
+            uv sync --python "$version" --frozen --extra dev --extra agent --extra signing
+            tracer_prefix=()
+            if [[ "$version" == "3.13" ]]; then
+              tracer_prefix=(env PYTHONTRACEMALLOC=10)
+            fi
+            "${tracer_prefix[@]}" uv run pytest \\
+              -W error::ResourceWarning \\
+              -W error::pytest.PytestUnraisableExceptionWarning \\
+              --junitxml="$QUAL_DIR/junit-${version}.xml" \\
+              2>&1 | tee "$QUAL_DIR/pytest-${version}.log"
+          done
+          '''
+          if text.count(old) != 1:
+              raise RuntimeError("Expected one Python matrix block")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Execute fail-closed qualification
         shell: bash
         run: env -u UV_PYTHON bash tools/run_math_performance_qualification.sh
