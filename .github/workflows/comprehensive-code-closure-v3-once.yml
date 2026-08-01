@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   audit:
-    if: github.event.issue.title == 'ASPENOPS_COMPREHENSIVE_CODE_CLOSURE_V3_FINAL_20260801'
+    if: github.event.issue.title == 'ASPENOPS_COMPREHENSIVE_CODE_CLOSURE_V3_RERUN_20260801'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
