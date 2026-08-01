@@ -225,36 +225,27 @@ def _saturating_nonnegative_add(total: float, value: float) -> float:
 def _finite_weighted_sum(pairs: Sequence[tuple[float, float]]) -> float:
     materialized = tuple(pairs)
     terms: list[float] = []
-    exact_fallback = False
     for weight, value in materialized:
         term = weight * value
         if not math.isfinite(term):
-            exact_fallback = True
             break
         terms.append(term)
-    if not exact_fallback:
-        try:
-            total = math.fsum(terms)
-        except OverflowError:
-            exact_fallback = True
-        else:
-            if math.isfinite(total):
-                return total
-            exact_fallback = True
-    if exact_fallback:
-        exact = sum(
-            (
-                Fraction.from_float(weight) * Fraction.from_float(value)
-                for weight, value in materialized
-            ),
-            Fraction(),
-        )
-        if exact > _MAX_FINITE_FRACTION:
-            return _MAX_FINITE
-        if exact < -_MAX_FINITE_FRACTION:
-            return -_MAX_FINITE
-        return float(exact)
-    raise RuntimeError("Unreachable weighted-sum state")
+    else:
+        total = sum(terms)
+        if math.isfinite(total):
+            return total
+    exact = sum(
+        (
+            Fraction.from_float(weight) * Fraction.from_float(value)
+            for weight, value in materialized
+        ),
+        Fraction(),
+    )
+    if exact > _MAX_FINITE_FRACTION:
+        return _MAX_FINITE
+    if exact < -_MAX_FINITE_FRACTION:
+        return -_MAX_FINITE
+    return float(exact)
 
 
 def _output_key(key: str, identifiers: Mapping[str, str]) -> str:
