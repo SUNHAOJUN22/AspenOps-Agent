@@ -26,6 +26,47 @@ def normalize_generated_benchmarks() -> None:
         path.write_text(first_line + "\n" + dedent(remaining), encoding="utf-8")
 
 
+def patch_result_payload_copy() -> None:
+    path = Path("src/aspenops_nexus/models.py")
+    replace_once(
+        path,
+        """@dataclass(slots=True)
+class EvaluationResult:
+""",
+        """def _copy_result_payload(value: Any) -> Any:
+    \"\"\"Copy JSON-like result data with a safe fallback for uncommon objects.\"\"\"
+    value_type = type(value)
+    if value_type is dict:
+        return {
+            key if type(key) in {str, int, float, bool, type(None)} else deepcopy(key):
+            _copy_result_payload(item)
+            for key, item in value.items()
+        }
+    if value_type is list:
+        return [_copy_result_payload(item) for item in value]
+    if value_type is tuple:
+        return tuple(_copy_result_payload(item) for item in value)
+    if value_type in {str, int, float, bool, type(None)}:
+        return value
+    return deepcopy(value)
+
+
+@dataclass(slots=True)
+class EvaluationResult:
+""",
+    )
+    replace_once(
+        path,
+        '            "values": deepcopy(self.values),\n',
+        '            "values": _copy_result_payload(self.values),\n',
+    )
+    replace_once(
+        path,
+        '            "diagnostics": deepcopy(self.diagnostics),\n',
+        '            "diagnostics": _copy_result_payload(self.diagnostics),\n',
+    )
+
+
 def patch_weighted_sum() -> None:
     path = Path("src/aspenops_nexus/optimization.py")
     replace_once(
@@ -81,6 +122,7 @@ def test_finite_weighted_sum_retains_exact_overflow_saturation() -> None:
 
 def main() -> None:
     normalize_generated_benchmarks()
+    patch_result_payload_copy()
     patch_weighted_sum()
     write_regression_tests()
 
