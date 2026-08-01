@@ -1,0 +1,423 @@
+{
+  "aspen_executed": false,
+  "benchmark": {
+    "after_seconds": {
+      "queue_drain": 0.06139749399999772,
+      "validated_return": 5.010000023730754e-07
+    },
+    "before_seconds": {
+      "queue_drain": 0.08143785000000037,
+      "validated_return": 0.002574561000002973
+    },
+    "boundary": "Pure Python orchestration microbenchmarks; not licensed Aspen solve evidence.",
+    "checks": {
+      "queue_faster": true,
+      "queue_results_equal": true,
+      "return_faster": true,
+      "return_results_equal": true
+    },
+    "decision": "PASS",
+    "rejected_candidate": "The cache-decode top-level copy removal measured 0.952x baseline performance and is not retained.",
+    "schema": "aspenops.comprehensive-closure-benchmark/v3",
+    "speedups": {
+      "queue_drain": 1.3264034848067803,
+      "validated_return": 5138.844287042131
+    }
+  },
+  "coverage_percent": {
+    "3.11": 95.78050079914757,
+    "3.12": 95.78050079914757,
+    "3.13": 95.78050079914757
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+  "focused_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 68,
+    "time_seconds": 2.746
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 907,
+      "time_seconds": 21.113
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 907,
+      "time_seconds": 23.066
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 907,
+      "time_seconds": 150.27
+    }
+  },
+  "hard_gates": {
+    "apply-patch": 0,
+    "bandit": 0,
+    "benchmark-smoke": 0,
+    "build": 0,
+    "compileall": 0,
+    "copy-benchmark": 0,
+    "copy-hygiene": 0,
+    "copy-numeric-test": 0,
+    "copy-runtime-test": 0,
+    "copy-sqlite-test": 0,
+    "copy-wheel-smoke": 0,
+    "dependency-audit": 0,
+    "diff-boundary": 0,
+    "diff-check": 0,
+    "focused-tests": 0,
+    "format": 0,
+    "format-fix": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "hygiene-audit": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "operation-counts": 0,
+    "operation-counts-json": 0,
+    "order-312": 0,
+    "performance-benchmark": 0,
+    "performance-policy": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "ruff-fix": 0,
+    "source-audit": 0,
+    "sync-311": 0,
+    "sync-312": 0,
+    "sync-312-full": 0,
+    "sync-313": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "hygiene_audit": {
+    "decision": "PASS",
+    "findings": [],
+    "schema": "aspenops.comprehensive-hygiene/v3"
+  },
+  "issues_fixed": [
+    "Cancelled batch results deep-copy mutable diagnostics and violations.",
+    "CasePool.close persists sub-threshold cache hit accounting.",
+    "Worker diagnostics tolerate a non-object backend worker field.",
+    "Worker runtime evidence is deep-isolated from cache identity state.",
+    "Queue unfinished-task accounting is removed where join is never used.",
+    "Validated result lists return without redundant reconstruction.",
+    "Pending hit rows stream to SQLite without an intermediate list.",
+    "Finite constraint violations cannot overflow diagnostics to infinity.",
+    "Optimization violation aggregation saturates at the largest finite score.",
+    "Weighted objective aggregation preserves ordinary sums, cancellation and finite scores.",
+    "Twelve direct SQLite test connections are explicitly closed."
+  ],
+  "machine_learning_executed": false,
+  "operation_counts": {
+    "boundary": "These are deterministic Python orchestration operation counts. They do not measure licensed Aspen Plus/HYSYS solve performance.",
+    "cache": {
+      "loaded_keys": 1024,
+      "pending_hit_total_after_threshold": 0,
+      "persistent_hits": 1024,
+      "requested_keys": 1024
+    },
+    "environment": {
+      "cpu_logical": 4,
+      "git_commit": "4e722eb1e6b0b8d8da622b3347dd7079e7cdf590",
+      "memory_total_bytes": 16766418944,
+      "platform": "Linux-6.17.0-1020-azure-x86_64-with-glibc2.39",
+      "python": "3.12.3"
+    },
+    "expected": {
+      "cache.pending_hit_total_after_threshold": 0,
+      "memory_cache.deep_result_isolation": true,
+      "memory_cache.json_decode_calls": 2,
+      "memory_cache.sqlite_connection_calls": 0,
+      "pareto.dominance_calls": 0,
+      "pool.cache_key_calls": 1,
+      "pool.deep_result_isolation": true,
+      "pool.result_serializations": 1,
+      "pool.same_batch_dedup_results": 99,
+      "pool.solver_calls": 1
+    },
+    "kind": "portable-deterministic-performance-contracts",
+    "memory": {
+      "rss_after_bytes": 28467200,
+      "rss_before_bytes": 25165824,
+      "rss_delta_bytes": 3301376,
+      "traced_current_bytes": 161743,
+      "traced_peak_bytes": 1128686,
+      "tracemalloc_frames": 10
+    },
+    "memory_cache": {
+      "deep_result_isolation": true,
+      "json_decode_calls": 2,
+      "requested_hits": 3,
+      "sqlite_connection_calls": 0,
+      "strategy": "compact_json_snapshot"
+    },
+    "pareto": {
+      "dominance_calls": 0,
+      "front_points": 1,
+      "input_points": 1000
+    },
+    "pool": {
+      "cache_key_calls": 1,
+      "computed_results": 1,
+      "deep_result_isolation": true,
+      "points": 100,
+      "result_serializations": 1,
+      "same_batch_dedup_results": 99,
+      "solver_calls": 1
+    },
+    "profile": {
+      "boundary": "cProfile is a diagnostic run with profiler overhead. Operation counts are the hard performance contracts and are interpreted separately from profiled wall time.",
+      "primitive_calls": 53608,
+      "top_cumulative_functions": [
+        {
+          "cumulative_time_s": 0.18464012700000001,
+          "file": "measure_operation_counts.py",
+          "function": "pool_counts",
+          "line": 73,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 0.000143368
+        },
+        {
+          "cumulative_time_s": 0.169386263,
+          "file": "pool.py",
+          "function": "evaluate_many",
+          "line": 342,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 6.961100000000001e-05
+        },
+        {
+          "cumulative_time_s": 0.169284905,
+          "file": "pool.py",
+          "function": "_evaluate_many_locked",
+          "line": 355,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 0.002043137
+        },
+        {
+          "cumulative_time_s": 0.167501365,
+          "file": "measure_operation_counts.py",
+          "function": "cache_counts",
+          "line": 146,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 0.007323018000000001
+        },
+        {
+          "cumulative_time_s": 0.162310499,
+          "file": "copy.py",
+          "function": "deepcopy",
+          "line": 118,
+          "primitive_calls": 99,
+          "total_calls": 4257,
+          "total_time_s": 0.058789224
+        },
+        {
+          "cumulative_time_s": 0.15964111,
+          "file": "threading.py",
+          "function": "join",
+          "line": 1115,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 5.4813000000000005e-05
+        },
+        {
+          "cumulative_time_s": 0.15949579800000002,
+          "file": "threading.py",
+          "function": "_wait_for_tstate_lock",
+          "line": 1153,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 5.4111000000000004e-05
+        },
+        {
+          "cumulative_time_s": 0.159415672,
+          "file": "~",
+          "function": "<method 'acquire' of '_thread.lock' objects>",
+          "line": 0,
+          "primitive_calls": 8,
+          "total_calls": 11,
+          "total_time_s": 0.000178819
+        },
+        {
+          "cumulative_time_s": 0.15920356000000002,
+          "file": "threading.py",
+          "function": "_bootstrap",
+          "line": 1016,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 7.418600000000001e-05
+        },
+        {
+          "cumulative_time_s": 0.15912937400000002,
+          "file": "threading.py",
+          "function": "_bootstrap_inner",
+          "line": 1056,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 1.4496000000000001e-05
+        },
+        {
+          "cumulative_time_s": 0.159106001,
+          "file": "threading.py",
+          "function": "run",
+          "line": 999,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 3.3181e-05
+        },
+        {
+          "cumulative_time_s": 0.158950119,
+          "file": "pool.py",
+          "function": "worker_loop",
+          "line": 398,
+          "primitive_calls": 1,
+          "total_calls": 1,
+          "total_time_s": 0.00046936300000000004
+        },
+        {
+          "cumulative_time_s": 0.148921577,
+          "file": "copy.py",
+          "function": "_reconstruct",
+          "line": 247,
+          "primitive_calls": 99,
+          "total_calls": 99,
+          "total_time_s": 0.008328962
+        },
+        {
+          "cumulative_time_s": 0.128115205,
+          "file": "copy.py",
+          "function": "_deepcopy_tuple",
+          "line": 200,
+          "primitive_calls": 99,
+          "total_calls": 99,
+          "total_time_s": 0.003380525
+        },
+        {
+          "cumulative_time_s": 0.11818471000000001,
+          "file": "copy.py",
+          "function": "_deepcopy_dict",
+          "line": 217,
+          "primitive_calls": 99,
+          "total_calls": 594,
+          "total_time_s": 0.009525513000000001
+        },
+        {
+          "cumulative_time_s": 0.094790735,
+          "file": "cache.py",
+          "function": "get_many",
+          "line": 102,
+          "primitive_calls": 4,
+          "total_calls": 4,
+          "total_time_s": 0.028432109
+        },
+        {
+          "cumulative_time_s": 0.067141014,
+          "file": "cache.py",
+          "function": "put_many",
+          "line": 156,
+          "primitive_calls": 3,
+          "total_calls": 3,
+          "total_time_s": 0.002118963
+        },
+        {
+          "cumulative_time_s": 0.049321409000000004,
+          "file": "cache.py",
+          "function": "_encode_payloads",
+          "line": 22,
+          "primitive_calls": 3,
+          "total_calls": 3,
+          "total_time_s": 0.00040484500000000003
+        },
+        {
+          "cumulative_time_s": 0.049285087000000005,
+          "file": "__init__.py",
+          "function": "loads",
+          "line": 299,
+          "primitive_calls": 1027,
+          "total_calls": 1027,
+          "total_time_s": 0.008087977
+        },
+        {
+          "cumulative_time_s": 0.049100389,
+          "file": "encoder.py",
+          "function": "encode",
+          "line": 183,
+          "primitive_calls": 1027,
+          "total_calls": 1027,
+          "total_time_s": 0.00320448
+        }
+      ],
+      "total_calls": 58309,
+      "total_profiled_time_s": 0.36399328300000017
+    },
+    "schema": "aspenops.operation-counts/v2"
+  },
+  "parameter_estimation_executed": false,
+  "preserved_contracts": [
+    "module-level pool.replace observability for existing regression guards",
+    "cache JSON decoding shape and deep-isolation behavior",
+    "cache-key bytes and public cache_key call observability",
+    "result, cancellation and runtime evidence isolation",
+    "cache hit totals, LRU and SQLite transaction semantics",
+    "worker generation, timeout and recycle semantics",
+    "request/result JSON and IPC protocol shapes",
+    "ordinary weighted-objective floating-point semantics",
+    "constraint, balance, objective and optimizer ordering semantics",
+    "licensed Aspen execution remains explicitly gated"
+  ],
+  "prior_blockers_resolved": [
+    "pool.replace compatibility symbol is explicitly re-exported and survives Ruff",
+    "all direct SQLite test connections close explicitly under Python 3.13",
+    "the regressing cache-decode candidate is removed from source and benchmark"
+  ],
+  "qualification_boundary": "Portable Python numerical, orchestration, persistence, IPC and package evidence; not licensed Aspen solve or engineering certification.",
+  "qualification_run": {
+    "run_attempt": "1",
+    "run_id": "30685793118"
+  },
+  "qualified_source_baseline": "60d47ab88324c5998a068768d87c635e50fcceda",
+  "rejected_change": "Cache decode top-level mapping-copy removal measured 0.952x baseline performance and was not retained.",
+  "runtime_control_plane_changed": false,
+  "schema": "aspenops.comprehensive-code-closure-result/v3",
+  "source_files_changed": [
+    "src/aspenops_nexus/cache.py",
+    "src/aspenops_nexus/evaluation.py",
+    "src/aspenops_nexus/optimization.py",
+    "src/aspenops_nexus/pool.py",
+    "src/aspenops_nexus/worker.py",
+    "tests/test_cache.py",
+    "tests/test_finite_aggregation.py",
+    "tests/test_job_store.py",
+    "tests/test_job_store_lease_recovery.py",
+    "tests/test_job_store_lease_strictness.py",
+    "tests/test_job_store_owner_fencing.py",
+    "tests/test_runtime_closure.py",
+    "tests/test_scheduler_edge_cases.py",
+    "tests/test_scheduler_multiprocess_races.py",
+    "tests/test_scheduler_restart_fencing.py",
+    "tests/test_sqlite_connection_hygiene.py"
+  ],
+  "warning_policy": [
+    "ResourceWarning is an error in focused and full qualification",
+    "pytest.PytestUnraisableExceptionWarning is an error in focused and full qualification",
+    "all test-suite sqlite3.connect calls must be wrapped by contextlib.closing"
+  ]
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -37,11 +38,25 @@ def _non_finite_label(value: float) -> str:
     return "positive_infinity" if value > 0 else "negative_infinity"
 
 
+_MAX_FINITE = sys.float_info.max
+
+
 def _safe_fsum(values: list[float]) -> float:
     try:
         return math.fsum(values)
     except OverflowError:
         return math.inf
+
+
+def _finite_nonnegative_sum(values: list[float]) -> tuple[float, bool]:
+    """Sum finite non-negative values and saturate rather than emit infinity."""
+    try:
+        total = math.fsum(values)
+    except OverflowError:
+        return _MAX_FINITE, True
+    if math.isfinite(total):
+        return total, False
+    return _MAX_FINITE, True
 
 
 def _json_safe(
@@ -191,7 +206,7 @@ def evaluate(
         diagnostics["state_trace"].append("outputs_read")
 
         constraint_details: list[dict[str, Any]] = []
-        total_constraint_violation = 0.0
+        finite_constraint_violations: list[float] = []
         constraint_violation_finite = True
         for index, compiled_constraint in enumerate(active_plan.constraints):
             name = compiled_constraint.spec.name or f"constraint_{index}"
@@ -269,7 +284,7 @@ def evaluate(
                 feasible = False
                 continue
             passed = violation <= 0.0
-            total_constraint_violation += violation
+            finite_constraint_violations.append(violation)
             constraint_details.append(
                 {
                     "name": name,
@@ -286,11 +301,16 @@ def evaluate(
                 violations.append(f"constraint_failed:{name}")
                 feasible = False
         if constraint_details:
+            total_constraint_violation, constraint_sum_saturated = _finite_nonnegative_sum(
+                finite_constraint_violations
+            )
             diagnostics["constraints"] = constraint_details
             diagnostics["total_constraint_violation"] = (
                 total_constraint_violation if constraint_violation_finite else None
             )
             diagnostics["finite_constraint_violation_sum"] = total_constraint_violation
+            if constraint_sum_saturated:
+                diagnostics["constraint_violation_sum_saturated"] = True
 
         non_finite_balances: dict[str, list[dict[str, str]]] = {}
         for compiled_balance in active_plan.balances:

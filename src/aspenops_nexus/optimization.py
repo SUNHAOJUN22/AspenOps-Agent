@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
@@ -91,11 +93,49 @@ def _choice(value: object) -> VariableValue:
     raise ValueError(f"Optimization choices must be scalar JSON values, got {type(value).__name__}")
 
 
+_MAX_FINITE = sys.float_info.max
+_MAX_FINITE_FRACTION = Fraction.from_float(_MAX_FINITE)
+
+
 def _finite_output(value: object) -> float | None:
     if isinstance(value, bool | int | float):
         number = float(value)
         return number if math.isfinite(number) else None
     return None
+
+
+def _saturating_nonnegative_add(total: float, value: float) -> float:
+    normalized_total = max(0.0, total)
+    normalized_value = max(0.0, value)
+    if normalized_total >= _MAX_FINITE - normalized_value:
+        return _MAX_FINITE
+    return normalized_total + normalized_value
+
+
+def _finite_weighted_sum(pairs: Sequence[tuple[float, float]]) -> float:
+    materialized = tuple(pairs)
+    terms: list[float] = []
+    for weight, value in materialized:
+        term = weight * value
+        if not math.isfinite(term):
+            break
+        terms.append(term)
+    else:
+        total = sum(terms)
+        if math.isfinite(total):
+            return total
+    exact = sum(
+        (
+            Fraction.from_float(weight) * Fraction.from_float(value)
+            for weight, value in materialized
+        ),
+        Fraction(),
+    )
+    if exact > _MAX_FINITE_FRACTION:
+        return _MAX_FINITE
+    if exact < -_MAX_FINITE_FRACTION:
+        return -_MAX_FINITE
+    return float(exact)
 
 
 def _output_key(key: str, identifiers: Mapping[str, str]) -> str:
@@ -414,7 +454,7 @@ class _Evaluator:
             return 0.0
         diagnostics = _optional_object_map(result.get("diagnostics", {}))
         total_value = _finite_output(diagnostics.get("total_constraint_violation"))
-        total = 0.0 if total_value is None else total_value
+        total = 0.0 if total_value is None else max(0.0, total_value)
 
         balances_value = result.get("balance_residuals", {})
         if isinstance(balances_value, dict):
@@ -424,7 +464,7 @@ class _Evaluator:
                 if not bool(balance.get("passed")):
                     relative = _finite_output(balance.get("relative"))
                     if relative is not None:
-                        total += max(0.0, relative)
+                        total = _saturating_nonnegative_add(total, relative)
 
         violations_value = result.get("violations", [])
         if isinstance(violations_value, list | tuple | set):
@@ -432,13 +472,13 @@ class _Evaluator:
         else:
             violations = set()
         if any(name.startswith("constraint_failed:") for name in violations):
-            total += 1.0
+            total = _saturating_nonnegative_add(total, 1.0)
         if any(name.startswith("balance_failed:") for name in violations):
-            total += 1.0
+            total = _saturating_nonnegative_add(total, 1.0)
         if not bool(result.get("communication_ok")):
-            total += 1_000_000.0
+            total = _saturating_nonnegative_add(total, 1_000_000.0)
         elif not bool(result.get("engine_ok")) or not bool(result.get("converged")):
-            total += 100_000.0
+            total = _saturating_nonnegative_add(total, 100_000.0)
         return max(total, 1e-12)
 
     def evaluate_many(
@@ -483,17 +523,19 @@ class _Evaluator:
                     value = -1e12 if objective.direction == "maximize" else 1e12
                 objective_values.append(value)
                 minimized_values.append(objective.minimized_value(value))
-            scalar = sum(
-                objective.weight * value
-                for objective, value in zip(
-                    self.problem.objectives,
-                    minimized_values,
-                    strict=True,
+            scalar = _finite_weighted_sum(
+                tuple(
+                    (objective.weight, value)
+                    for objective, value in zip(
+                        self.problem.objectives,
+                        minimized_values,
+                        strict=True,
+                    )
                 )
             )
             violation = self._violation(result)
             if missing:
-                violation += 1_000_000.0
+                violation = _saturating_nonnegative_add(violation, 1_000_000.0)
             self.trace.append(
                 OptimizationTracePoint(
                     x=tuple(vector),

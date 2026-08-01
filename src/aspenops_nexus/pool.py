@@ -5,9 +5,10 @@ import threading
 import time
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+from dataclasses import replace as _dataclass_replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from . import RUNTIME_SCHEMA, __version__
 from .cache import ResultCache
@@ -21,6 +22,9 @@ from .worker import (
     start_worker,
     stop_worker,
 )
+
+# Public compatibility hook used by operation-count and regression guards.
+replace = _dataclass_replace
 
 
 @dataclass(slots=True)
@@ -96,6 +100,7 @@ class CasePool:
             self._handles.clear()
         for handle in handles:
             stop_worker(handle)
+        self.cache.close()
 
     def _new_handle(self, worker_id: int) -> WorkerHandle:
         return start_worker(
@@ -381,7 +386,7 @@ class CasePool:
         if not unique:
             if any(item is None for item in output):
                 raise RuntimeError("Internal cache error: one or more results were not assigned")
-            return [item for item in output if item is not None]
+            return cast(list[EvaluationResult], output)
 
         tasks: queue.Queue[tuple[str, EvaluationRequest, list[int]]] = queue.Queue()
         for key, (request, indexes) in unique.items():
@@ -403,7 +408,7 @@ class CasePool:
                         cancelled = self._cancelled_result(key)
                         with result_lock:
                             for index in indexes:
-                                output[index] = replace(cancelled)
+                                output[index] = deepcopy(cancelled)
                         continue
 
                     recycle_event: tuple[str, int, int] | None = None
@@ -446,8 +451,6 @@ class CasePool:
                 except BaseException as exc:
                     with result_lock:
                         errors.append(exc)
-                finally:
-                    tasks.task_done()
 
         threads = [
             threading.Thread(target=worker_loop, args=(index,), name=f"aspenops-dispatch-{index}")
@@ -463,4 +466,4 @@ class CasePool:
             raise RuntimeError(f"CasePool dispatch failed: {errors[0]}") from errors[0]
         if any(item is None for item in output):
             raise RuntimeError("Internal scheduler error: one or more results were not assigned")
-        return [item for item in output if item is not None]
+        return cast(list[EvaluationResult], output)

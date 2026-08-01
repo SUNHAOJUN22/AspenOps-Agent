@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from aspenops_nexus.scheduler import JobStore
 
 def _expire_lease(path: Path, job_id: str) -> None:
     expired = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(
             "UPDATE jobs SET lease_expires_at=? WHERE job_id=?",
             (expired, job_id),

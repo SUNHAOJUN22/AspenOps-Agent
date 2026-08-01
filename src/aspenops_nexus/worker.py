@@ -7,6 +7,7 @@ import time
 import traceback
 import uuid
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -469,12 +470,15 @@ def evaluate_on_worker(handle: WorkerHandle, request: EvaluationRequest) -> Eval
         )
     result.worker_id = handle.worker_id
     handle.evaluations += 1
-    result.diagnostics.setdefault("worker", {})
-    result.diagnostics["worker"].update(
+    worker_diagnostics = result.diagnostics.get("worker")
+    if not isinstance(worker_diagnostics, dict):
+        worker_diagnostics = {}
+        result.diagnostics["worker"] = worker_diagnostics
+    worker_diagnostics.update(
         {
             "generation": handle.generation,
             "round_trip_s": time.perf_counter() - sent_at,
-            "runtime": handle.runtime,
+            "runtime": deepcopy(handle.runtime),
         }
     )
     return result

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -79,7 +80,7 @@ def test_expired_lease_is_reclaimed_at_least_once(tmp_path: Path) -> None:
     assert store.claim_next("worker-a") is not None
     assert store.mark_running(job_id, "worker-a")
     expired = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(
             "UPDATE jobs SET lease_expires_at=? WHERE job_id=?",
             (expired, job_id),

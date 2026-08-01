@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -118,7 +119,7 @@ def test_cache_persists_compact_json(tmp_path: Path) -> None:
     payload = {"ok": True, "nested": {"value": 3}}
     cache.put("a", payload)
 
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         encoded = str(
             connection.execute(
                 "SELECT payload FROM result_cache WHERE cache_key = ?",
@@ -135,7 +136,7 @@ def test_corrupted_cache_entries_are_removed_without_poisoning_valid_hits(tmp_pa
     path = tmp_path / "cache.sqlite3"
     cache = ResultCache(path)
     cache.put("good", {"ok": True, "value": 7})
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.executemany(
             "INSERT INTO result_cache(cache_key, payload) VALUES (?, ?)",
             [

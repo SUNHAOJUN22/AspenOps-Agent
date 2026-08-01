@@ -73,7 +73,7 @@ class ResultCache:
             SET hit_count = hit_count + ?, last_hit_at = CURRENT_TIMESTAMP
             WHERE cache_key = ?
             """,
-            [(count, key) for key, count in self._pending_hits.items()],
+            ((count, key) for key, count in self._pending_hits.items()),
         )
         self._pending_hits.clear()
         self._pending_hit_total = 0
@@ -172,6 +172,14 @@ class ResultCache:
 
     def put(self, key: str, payload: dict[str, Any]) -> None:
         self.put_many({key: payload})
+
+    def close(self) -> None:
+        """Persist pending hit accounting; cache connections remain operation-scoped."""
+        with self._lock:
+            if not self._pending_hits:
+                return
+            with closing(self._connect()) as connection, connection:
+                self._flush_hits(connection)
 
     def stats(self) -> dict[str, int]:
         with self._lock, closing(self._connect()) as connection, connection:

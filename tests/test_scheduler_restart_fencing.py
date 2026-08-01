@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +50,7 @@ def test_restart_recovers_only_unleased_orphan(tmp_path: Path) -> None:
     job_id = first.create({"x": 1})
     assert first.claim_next("worker-a", lease_s=120.0) is not None
     assert first.mark_running(job_id, "worker-a", lease_s=120.0)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(
             "UPDATE jobs SET lease_expires_at=NULL WHERE job_id=?",
             (job_id,),
