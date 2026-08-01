@@ -17,28 +17,37 @@ concurrency:
 jobs:
   qualify-and-publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: true
+
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Verify exact baseline and dependencies
+
+      - name: Verify registration and install locked dependencies
         shell: bash
+        env:
+          EXPECTED_PARENT: 8349caa6d20450684b2f96169235d9f71f673bb9
+          WORKFLOW_PATH: .github/workflows/math-performance-qualification-once.yml
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "0e12306bc49985b6a2c71d9db04ab39ed13fa15d"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$WORKFLOW_PATH"
+          git diff --check HEAD^ HEAD
           uv lock --check
-          uv sync --frozen --extra dev --extra agent --extra signing
-      - name: Create deterministic copy benchmark
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+
+      - name: Measure current serialization baseline
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/bench_result_copy.py <<'PY'
+          cat > /tmp/benchmark_result_to_dict.py <<'PY'
           from __future__ import annotations
 
           import gc
@@ -47,47 +56,45 @@ jobs:
           import statistics
           import sys
           import time
-          from copy import deepcopy
           from pathlib import Path
-          from typing import Any, Callable
+          from typing import Any
 
           from aspenops_nexus.models import EvaluationResult
 
 
-          def representative_result() -> EvaluationResult:
-              values: dict[str, Any] = {f"value_{index}": index * 0.125 for index in range(96)}
+          def result_document() -> EvaluationResult:
+              values: dict[str, Any] = {f"value_{i}": i * 0.125 for i in range(96)}
               diagnostics: dict[str, Any] = {
-                  "state_trace": ["received", "plan_compiled", "engine_returned", "verified"],
+                  "state_trace": ["received", "compiled", "solved", "verified"],
                   "runtime": {
                       "backend": "mock",
-                      "build": "qualification",
                       "nested": {
                           "limits": list(range(32)),
-                          "labels": {f"k{index}": f"v{index}" for index in range(32)},
+                          "labels": {f"k{i}": f"v{i}" for i in range(32)},
                       },
                   },
                   "constraints": [
                       {
-                          "name": f"c{index}",
-                          "actual": index * 0.1,
-                          "limit": index * 0.1 + 1.0,
+                          "name": f"c{i}",
+                          "actual": i * 0.1,
+                          "limit": i * 0.1 + 1.0,
                           "violation": 0.0,
                           "passed": True,
                       }
-                      for index in range(48)
+                      for i in range(48)
                   ],
               }
               balances = {
-                  f"balance_{index}": {
+                  f"balance_{i}": {
                       "residual": 0.0,
                       "absolute": 0.0,
-                      "scale": float(index + 1),
+                      "scale": float(i + 1),
                       "relative": 0.0,
                       "abs_tol": 1e-6,
                       "rel_tol": 1e-6,
                       "passed": 1.0,
                   }
-                  for index in range(24)
+                  for i in range(24)
               }
               return EvaluationResult(
                   ok=True,
@@ -101,70 +108,51 @@ jobs:
                   diagnostics=diagnostics,
                   elapsed_s=0.125,
                   balance_residuals=balances,
-                  cache_source="computed",
-                  cache_hit=False,
                   request_hash="a" * 64,
                   worker_id=3,
               )
 
 
-          def measure(function: Callable[[], Any], loops: int = 600, repeats: int = 9) -> float:
+          def measure(result: EvaluationResult, loops: int = 600, repeats: int = 9) -> float:
               samples: list[float] = []
               checksum = 0
               for _ in range(repeats):
                   gc.collect()
                   started = time.perf_counter()
                   for _ in range(loops):
-                      value = function()
-                      checksum ^= id(value)
+                      payload = result.to_dict()
+                      checksum ^= id(payload)
                   samples.append(time.perf_counter() - started)
               if checksum == -1:
                   raise AssertionError("unreachable checksum")
               return statistics.median(samples)
 
 
-          mode = sys.argv[1]
-          output = Path(sys.argv[2])
-          result = representative_result()
-          if mode == "baseline":
-              clone_function: Callable[[], EvaluationResult] = lambda: deepcopy(result)
-          elif mode == "candidate":
-              clone_method = getattr(result, "clone", None)
-              if not callable(clone_method):
-                  raise AssertionError("candidate clone method is missing")
-              clone_function = clone_method
-          else:
-              raise ValueError(mode)
-
-          clone = clone_function()
+          output = Path(sys.argv[1])
+          result = result_document()
           payload = result.to_dict()
-          clone.values["value_0"] = -1
-          clone.diagnostics["runtime"]["nested"]["limits"].append(999)
-          clone.balance_residuals["balance_0"]["scale"] = -1.0
-          assert result.values["value_0"] == 0.0
+          payload["diagnostics"]["runtime"]["nested"]["limits"].append(999)
+          payload["values"]["value_0"] = -1.0
           assert 999 not in result.diagnostics["runtime"]["nested"]["limits"]
-          assert result.balance_residuals["balance_0"]["scale"] == 1.0
-          payload["diagnostics"]["runtime"]["nested"]["limits"].append(998)
-          assert 998 not in result.diagnostics["runtime"]["nested"]["limits"]
-
+          assert result.values["value_0"] == 0.0
           canonical = json.dumps(
               result.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
           ).encode("utf-8")
           report = {
-              "mode": mode,
               "loops": 600,
-              "clone_seconds": measure(clone_function),
-              "to_dict_seconds": measure(result.to_dict),
+              "seconds": measure(result),
               "payload_sha256": hashlib.sha256(canonical).hexdigest(),
           }
           output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
-          uv run python /tmp/bench_result_copy.py baseline /tmp/result-copy-before.json
-      - name: Apply semantics-preserving candidate
+          uv run python /tmp/benchmark_result_to_dict.py /tmp/to-dict-before.json
+
+      - name: Apply field-aware copy and serialization candidate
         shell: bash
         run: |
           set -euo pipefail
+          python tools/optimize_result_deepcopy_once.py
           uv run python - <<'PY'
           from pathlib import Path
 
@@ -173,44 +161,23 @@ jobs:
               text = path.read_text(encoding="utf-8")
               count = text.count(old)
               if count != 1:
-                  raise RuntimeError(f"Expected one target in {path}, found {count}: {old!r}")
+                  raise RuntimeError(f"Expected one target in {path}, found {count}")
               path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
           models = Path("src/aspenops_nexus/models.py")
           replace_once(
               models,
-              "import math\nfrom dataclasses import asdict, dataclass, field\n",
-              "import math\nfrom copy import deepcopy\nfrom dataclasses import dataclass, field\n",
+              "from dataclasses import asdict, dataclass, field\n",
+              "from dataclasses import dataclass, field\n",
           )
           replace_once(
               models,
               """    def to_dict(self) -> dict[str, Any]:
                   return asdict(self)
           """,
-              """    def clone(self) -> EvaluationResult:
-                  \"\"\"Return an independently mutable result without generic dataclass traversal.\"\"\"
-                  return EvaluationResult(
-                      ok=self.ok,
-                      communication_ok=self.communication_ok,
-                      engine_ok=self.engine_ok,
-                      converged=self.converged,
-                      feasible=self.feasible,
-                      values=deepcopy(self.values),
-                      units=dict(self.units),
-                      violations=list(self.violations),
-                      diagnostics=deepcopy(self.diagnostics),
-                      elapsed_s=self.elapsed_s,
-                      balance_residuals={
-                          name: dict(detail) for name, detail in self.balance_residuals.items()
-                      },
-                      cache_source=self.cache_source,
-                      cache_hit=self.cache_hit,
-                      request_hash=self.request_hash,
-                      worker_id=self.worker_id,
-                  )
-
-              def to_dict(self) -> dict[str, Any]:
+              """    def to_dict(self) -> dict[str, Any]:
+                  \"\"\"Serialize JSON-like fields without generic dataclass traversal.\"\"\"
                   return {
                       \"ok\": self.ok,
                       \"communication_ok\": self.communication_ok,
@@ -218,12 +185,12 @@ jobs:
                       \"converged\": self.converged,
                       \"feasible\": self.feasible,
                       \"values\": deepcopy(self.values),
-                      \"units\": dict(self.units),
-                      \"violations\": list(self.violations),
+                      \"units\": self.units.copy(),
+                      \"violations\": self.violations.copy(),
                       \"diagnostics\": deepcopy(self.diagnostics),
                       \"elapsed_s\": self.elapsed_s,
                       \"balance_residuals\": {
-                          name: dict(detail) for name, detail in self.balance_residuals.items()
+                          name: detail.copy() for name, detail in self.balance_residuals.items()
                       },
                       \"cache_source\": self.cache_source,
                       \"cache_hit\": self.cache_hit,
@@ -233,77 +200,49 @@ jobs:
           """,
           )
 
-          pool = Path("src/aspenops_nexus/pool.py")
-          replace_once(pool, "from copy import deepcopy\n", "")
-          replacements = {
-              "result = deepcopy(flight.result)": "result = flight.result.clone()",
-              "flight.result = deepcopy(result)": "flight.result = result.clone()",
-              "result = deepcopy(template)": "result = template.clone()",
-              "output[index] = deepcopy(cancelled)": "output[index] = cancelled.clone()",
-              "clone = result if ordinal == 0 else deepcopy(result)": (
-                  "clone = result if ordinal == 0 else result.clone()"
-              ),
-          }
-          text = pool.read_text(encoding="utf-8")
-          for old, new in replacements.items():
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f"Expected one pool target, found {count}: {old}")
-              text = text.replace(old, new, 1)
-          if "deepcopy(" in text:
-              raise RuntimeError("Unexpected deepcopy call remains in pool.py")
-          pool.write_text(text, encoding="utf-8")
-
-          tests = Path("tests/test_runtime_closure.py")
-          replace_once(
-              tests,
-              "from aspenops_nexus.models import EvaluationRequest\n",
-              "from aspenops_nexus.models import EvaluationRequest, EvaluationResult\n",
-          )
-          test_text = tests.read_text(encoding="utf-8")
-          marker = "def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:"
-          if marker in test_text:
-              raise RuntimeError("Result copy regression test already exists")
-          test_text += """
+          tests = Path("tests/test_evaluation_result_deepcopy.py")
+          text = tests.read_text(encoding="utf-8")
+          marker = "def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:"
+          if marker in text:
+              raise RuntimeError("to_dict regression test already exists")
+          text += """
 
 
-def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
-    result = EvaluationResult(
-        ok=True,
-        communication_ok=True,
-        engine_ok=True,
-        converged=True,
-        feasible=True,
-        values={\"nested\": {\"items\": [1, 2]}},
-        units={\"nested\": None},
-        violations=[\"original\"],
-        diagnostics={\"worker\": {\"runtime\": {\"build\": 1}}},
-        elapsed_s=0.25,
-        balance_residuals={\"mass\": {\"residual\": 0.0, \"passed\": 1.0}},
-        request_hash=\"abc\",
-        worker_id=2,
-    )
-
-    clone = result.clone()
+def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
+    result = _result()
     payload = result.to_dict()
-    assert EvaluationResult.from_dict(payload) == result
+    restored = EvaluationResult.from_dict(payload)
+    assert restored == result
 
-    clone.values[\"nested\"][\"items\"].append(3)
-    clone.violations.append(\"clone\")
-    clone.diagnostics[\"worker\"][\"runtime\"][\"build\"] = 2
-    clone.balance_residuals[\"mass\"][\"residual\"] = 1.0
-    payload[\"values\"][\"nested\"][\"items\"].append(4)
-    payload[\"diagnostics\"][\"worker\"][\"runtime\"][\"build\"] = 3
+    payload[\"values\"][\"shared\"][\"items\"].append(4)
+    payload[\"diagnostics\"][\"shared\"][\"items\"].append(5)
+    payload[\"units\"][\"shared\"] = None
+    payload[\"violations\"].append(\"mutated\")
+    payload[\"balance_residuals\"][\"mass\"][\"relative\"] = 1.0
 
-    assert result.values == {\"nested\": {\"items\": [1, 2]}}
-    assert result.violations == [\"original\"]
-    assert result.diagnostics == {\"worker\": {\"runtime\": {\"build\": 1}}}
-    assert result.balance_residuals == {\"mass\": {\"residual\": 0.0, \"passed\": 1.0}}
+    assert result.values[\"shared\"][\"items\"] == [1, 2, 3]
+    assert result.diagnostics[\"shared\"][\"items\"] == [1, 2, 3]
+    assert result.units[\"shared\"] == \"fraction\"
+    assert result.violations == [\"example\"]
+    assert result.balance_residuals[\"mass\"][\"relative\"] == 0.0
           """
-          tests.write_text(test_text, encoding="utf-8")
+          tests.write_text(text, encoding="utf-8")
           PY
-          uv run ruff format src/aspenops_nexus/models.py src/aspenops_nexus/pool.py tests/test_runtime_closure.py
-      - name: Audit mathematical contracts
+          rm -f \
+            .github/workflows/optimize-result-deepcopy-once.yml \
+            .github/workflows/optimize-result-deepcopy-once-v2.yml \
+            tools/optimize_result_deepcopy_once.py
+          uv run ruff format \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            tests/test_evaluation_result_deepcopy.py
+          uv run ruff check --fix \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            tests/test_evaluation_result_deepcopy.py
+          git diff --check
+
+      - name: Audit numerical and mathematical contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -342,8 +281,7 @@ def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
                   tolerance=tolerance,
               )
               observed = _constraint_violation(spec, actual)
-              if not math.isclose(observed, expected, rel_tol=0.0, abs_tol=1e-15):
-                  raise AssertionError((operator, actual, observed, expected))
+              assert math.isclose(observed, expected, rel_tol=0.0, abs_tol=1e-15)
               evaluated.append(
                   {
                       "operator": operator,
@@ -365,84 +303,108 @@ def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
           report = {
               "decision": "PASS",
               "constraint_cases": evaluated,
-              "strict_operator_semantics": "strict inequalities apply tolerance as a safety margin",
-              "non_strict_operator_semantics": "non-strict inequalities apply tolerance as an acceptance band",
-              "equality_semantics": "absolute residual less than or equal to tolerance",
+              "strict_inequalities": "tolerance is a safety margin",
+              "non_strict_inequalities": "tolerance is an acceptance band",
+              "equality": "absolute residual <= tolerance",
               "finite_aggregation": True,
-              "weighted_cancellation": True,
+              "weighted_overflow_cancellation": True,
           }
           Path("/tmp/math-audit.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
-      - name: Benchmark and accept only measured improvement
+
+      - name: Measure and enforce performance improvements
         shell: bash
         run: |
           set -euo pipefail
-          uv run python /tmp/bench_result_copy.py candidate /tmp/result-copy-after.json
+          mkdir -p var/qualification
+          uv run python scripts/benchmark_result_deepcopy.py \
+            --output var/qualification/result-deepcopy-benchmark.json \
+            --min-speedup 1.5
+          uv run python /tmp/benchmark_result_to_dict.py /tmp/to-dict-after.json
           uv run python - <<'PY'
           import json
           from pathlib import Path
 
-          before = json.loads(Path("/tmp/result-copy-before.json").read_text(encoding="utf-8"))
-          after = json.loads(Path("/tmp/result-copy-after.json").read_text(encoding="utf-8"))
+          before = json.loads(Path("/tmp/to-dict-before.json").read_text(encoding="utf-8"))
+          after = json.loads(Path("/tmp/to-dict-after.json").read_text(encoding="utf-8"))
           if before["payload_sha256"] != after["payload_sha256"]:
-              raise AssertionError("Serialization payload changed")
-          clone_speedup = before["clone_seconds"] / after["clone_seconds"]
-          to_dict_speedup = before["to_dict_seconds"] / after["to_dict_seconds"]
-          if clone_speedup < 1.15:
-              raise AssertionError(f"clone speedup below threshold: {clone_speedup:.3f}x")
-          if to_dict_speedup < 1.10:
-              raise AssertionError(f"to_dict speedup below threshold: {to_dict_speedup:.3f}x")
+              raise AssertionError("Serialized payload changed")
+          speedup = before["seconds"] / after["seconds"]
+          if speedup < 1.15:
+              raise AssertionError(f"to_dict speedup below threshold: {speedup:.3f}x")
           decision = {
               "decision": "PASS",
-              "clone_speedup": clone_speedup,
-              "to_dict_speedup": to_dict_speedup,
+              "before_seconds": before["seconds"],
+              "after_seconds": after["seconds"],
+              "speedup": speedup,
+              "minimum_speedup": 1.15,
               "payload_equal": True,
-              "thresholds": {"clone": 1.15, "to_dict": 1.10},
           }
-          Path("/tmp/performance-decision.json").write_text(
+          Path("var/qualification/result-to-dict-benchmark.json").write_text(
               json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
           print(json.dumps(decision, indent=2, sort_keys=True))
           PY
-      - name: Run focused and full qualification
+
+      - name: Run focused and full Python matrix
         shell: bash
-        env:
-          PYTHONTRACEMALLOC: "10"
         run: |
           set -euo pipefail
-          mkdir -p var/qualification
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy src
-          uv run python -m compileall -q src scripts
+          uv python install 3.11 3.12 3.13
           uv run pytest -W error::ResourceWarning \
+            tests/test_evaluation_result_deepcopy.py \
             tests/test_runtime_closure.py \
             tests/test_finite_aggregation.py \
             --junitxml=var/qualification/focused.xml
+          for version in 3.11 3.12 3.13; do
+            uv sync --python "$version" --frozen --extra dev --extra agent --extra signing
+            uv run pytest -W error::ResourceWarning \
+              --junitxml="var/qualification/junit-${version}.xml" \
+              2>&1 | tee "var/qualification/pytest-${version}.log"
+          done
+
+      - name: Run coverage, order, quality, security and build gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
           uv run pytest -W error::ResourceWarning \
             --cov=aspenops_nexus \
             --cov-branch \
-            --cov-report=term-missing \
             --cov-report=json:var/qualification/coverage.json \
-            --junitxml=var/qualification/full.xml \
             --cov-fail-under=95
           uv run python scripts/run_test_order_gate.py \
             --seed 20260728 \
             --output-dir var/qualification
+          uv lock --check
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
           uv run python scripts/audit_source_tree.py \
             --output var/qualification/source-tree-audit.json
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/qualification/bandit.json
+          uv run python scripts/measure_operation_counts.py \
+            --output var/qualification/operation-counts.json
           uv run python scripts/run_benchmark_matrix.py \
             --repo-root . \
             --output var/qualification/benchmark-smoke.json \
             --smoke
           uv build
-      - name: Write qualification evidence and publish
+          git diff --check
+
+      - name: Write evidence, remove one-time workflow and publish
         shell: bash
         env:
-          QUALIFIED_PARENT: "0e12306bc49985b6a2c71d9db04ab39ed13fa15d"
+          QUALIFIED_SOURCE_BASELINE: 0e12306bc49985b6a2c71d9db04ab39ed13fa15d
         run: |
           set -euo pipefail
           uv run python - <<'PY'
@@ -450,44 +412,61 @@ def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
           import os
           from pathlib import Path
 
-          before = json.loads(Path("/tmp/result-copy-before.json").read_text(encoding="utf-8"))
-          after = json.loads(Path("/tmp/result-copy-after.json").read_text(encoding="utf-8"))
-          performance = json.loads(
-              Path("/tmp/performance-decision.json").read_text(encoding="utf-8")
+          deepcopy_benchmark = json.loads(
+              Path("var/qualification/result-deepcopy-benchmark.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          serialization_benchmark = json.loads(
+              Path("var/qualification/result-to-dict-benchmark.json").read_text(
+                  encoding="utf-8"
+              )
           )
           math_audit = json.loads(Path("/tmp/math-audit.json").read_text(encoding="utf-8"))
           coverage = json.loads(
               Path("var/qualification/coverage.json").read_text(encoding="utf-8")
           )
+          operation_counts = json.loads(
+              Path("var/qualification/operation-counts.json").read_text(encoding="utf-8")
+          )
           report = {
               "schema": "aspenops.math-performance-qualification/v1",
               "decision": "PASS",
-              "qualified_parent": os.environ["QUALIFIED_PARENT"],
+              "qualified_source_baseline": os.environ["QUALIFIED_SOURCE_BASELINE"],
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "aspen_executed": False,
               "boundary": (
-                  "Portable Python numerical and orchestration qualification; "
+                  "Portable Python numerical, result-copy and serialization qualification; "
                   "not licensed Aspen Plus/HYSYS physical solve evidence."
               ),
               "changes": [
-                  "EvaluationResult.clone performs field-aware deep isolation.",
+                  "EvaluationResult has a memo-aware field-specific __deepcopy__ implementation.",
                   "EvaluationResult.to_dict avoids generic dataclass traversal.",
-                  "CasePool duplicate, cache and singleflight copies use the optimized clone path.",
+                  "Temporary optimization registration workflows and patch tooling are removed.",
               ],
-              "benchmark_before": before,
-              "benchmark_after": after,
-              "performance": performance,
+              "deepcopy_benchmark": deepcopy_benchmark,
+              "serialization_benchmark": serialization_benchmark,
               "math_audit": math_audit,
               "coverage_percent": coverage["totals"]["percent_covered"],
+              "operation_counts": {
+                  "pool": operation_counts["pool"],
+                  "memory_cache": operation_counts["memory_cache"],
+                  "cache": operation_counts["cache"],
+              },
               "gates": {
+                  "focused_tests": "PASS",
+                  "python_3_11": "PASS",
+                  "python_3_12": "PASS",
+                  "python_3_13": "PASS",
+                  "coverage": "PASS",
+                  "order_independence": "PASS",
                   "ruff": "PASS",
                   "format": "PASS",
                   "mypy_strict": "PASS",
                   "compileall": "PASS",
-                  "focused_tests": "PASS",
-                  "full_tests_python_3_12": "PASS",
-                  "order_independence": "PASS",
                   "source_tree_audit": "PASS",
+                  "bandit": "PASS",
+                  "operation_counts": "PASS",
                   "benchmark_smoke": "PASS",
                   "build": "PASS",
               },
@@ -495,37 +474,43 @@ def test_evaluation_result_clone_and_payload_are_deeply_isolated() -> None:
           }
           docs = Path("docs")
           docs.mkdir(exist_ok=True)
-          json_path = docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.json"
-          json_path.write_text(
+          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
-          md = f"""# Math and Performance Qualification Result
-
-          **Decision:** PASS
-
-          - Qualified parent: `{report['qualified_parent']}`
-          - Result-copy speedup: `{performance['clone_speedup']:.3f}x`
-          - Result-serialization speedup: `{performance['to_dict_speedup']:.3f}x`
-          - Serialization payload equality: `{performance['payload_equal']}`
-          - Python 3.12 branch coverage: `{report['coverage_percent']:.3f}%`
-          - Mathematical contract audit: PASS
-          - Full portable regression and build gates: PASS
-          - Licensed Windows/Aspen engineering certification: PENDING
-
-          The benchmark measures portable Python result copying and serialization only. It is not Aspen Plus/HYSYS solve-speed evidence.
-          """
+          markdown = (
+              "# Math and Performance Qualification Result\n\n"
+              "Decision: **PASS**\n\n"
+              f"- Result deepcopy speedup: `{deepcopy_benchmark['speedup']:.3f}x`\n"
+              f"- Result serialization speedup: `{serialization_benchmark['speedup']:.3f}x`\n"
+              f"- Serialization payload equality: `{serialization_benchmark['payload_equal']}`\n"
+              f"- Python 3.12 branch coverage: `{report['coverage_percent']:.3f}%`\n"
+              "- Python 3.11 / 3.12 / 3.13 full suites: `PASS`\n"
+              "- Mathematical contracts, order, quality, security and build gates: `PASS`\n"
+              "- Licensed Windows/Aspen engineering certification: `PENDING`\n\n"
+              "The performance measurements cover portable Python result copying and "
+              "serialization only; they are not Aspen solve-speed evidence.\n"
+          )
           (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.md").write_text(
-              "\n".join(line.strip() for line in md.strip().splitlines()) + "\n",
-              encoding="utf-8",
+              markdown, encoding="utf-8"
           )
           PY
           git rm .github/workflows/math-performance-qualification-once.yml
+          registration_sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$registration_sha"
+          git add -A
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/aspenops_nexus/models.py src/aspenops_nexus/pool.py \
-            tests/test_runtime_closure.py \
-            docs/MATH_PERFORMANCE_QUALIFICATION_RESULT.json \
-            docs/MATH_PERFORMANCE_QUALIFICATION_RESULT.md
-          git diff --cached --check
           git commit -m "perf: accelerate result copying and serialization"
           git push origin HEAD:main
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: math-performance-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: var/qualification
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 90
