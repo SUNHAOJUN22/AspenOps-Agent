@@ -44,7 +44,7 @@ jobs:
 
       - name: Execute fail-closed qualification
         shell: bash
-        run: bash tools/run_math_performance_qualification.sh
+        run: env -u UV_PYTHON bash tools/run_math_performance_qualification.sh
 
       - name: Report failure
         if: failure() && github.event_name == 'issues'
