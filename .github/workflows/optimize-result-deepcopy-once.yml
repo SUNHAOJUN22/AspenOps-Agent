@@ -1,0 +1,549 @@
+name: Optimize result deepcopy once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/optimize-result-deepcopy-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: optimize-result-deepcopy-once
+  cancel-in-progress: false
+
+jobs:
+  optimize:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'ci: register result deepcopy optimization'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify registration boundary
+        shell: bash
+        env:
+          EXPECTED_PARENT: 0e12306bc49985b6a2c71d9db04ab39ed13fa15d
+          WORKFLOW_PATH: .github/workflows/optimize-result-deepcopy-once.yml
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$WORKFLOW_PATH"
+          git diff --check HEAD^ HEAD
+
+      - name: Apply field-aware deepcopy optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          from textwrap import dedent
+
+          models = Path("src/aspenops_nexus/models.py")
+          text = models.read_text(encoding="utf-8")
+
+          old_import = "import math\nfrom dataclasses import asdict, dataclass, field\n"
+          new_import = "import math\nfrom copy import deepcopy\nfrom dataclasses import asdict, dataclass, field\n"
+          if text.count(old_import) != 1:
+              raise RuntimeError("models.py import anchor changed")
+          text = text.replace(old_import, new_import, 1)
+
+          anchor = """    def to_dict(self) -> dict[str, Any]:
+              return asdict(self)
+          """
+          method = """    def __deepcopy__(self, memo: dict[int, Any]) -> EvaluationResult:
+              \"\"\"Clone mutable result payloads without generic dataclass reconstruction.\"\"\"
+              existing = memo.get(id(self))
+              if existing is not None:
+                  return cast(EvaluationResult, existing)
+
+              clone = object.__new__(EvaluationResult)
+              memo[id(self)] = clone
+              clone.ok = self.ok
+              clone.communication_ok = self.communication_ok
+              clone.engine_ok = self.engine_ok
+              clone.converged = self.converged
+              clone.feasible = self.feasible
+              clone.values = deepcopy(self.values, memo)
+              clone.units = self.units.copy()
+              clone.violations = self.violations.copy()
+              clone.diagnostics = deepcopy(self.diagnostics, memo)
+              clone.elapsed_s = self.elapsed_s
+              clone.balance_residuals = {
+                  name: detail.copy() for name, detail in self.balance_residuals.items()
+              }
+              clone.cache_source = self.cache_source
+              clone.cache_hit = self.cache_hit
+              clone.request_hash = self.request_hash
+              clone.worker_id = self.worker_id
+              return clone
+
+              def to_dict(self) -> dict[str, Any]:
+                  return asdict(self)
+          """
+          if text.count(anchor) != 1:
+              raise RuntimeError("EvaluationResult.to_dict anchor changed")
+          text = text.replace(anchor, method, 1)
+          models.write_text(text, encoding="utf-8")
+
+          benchmark = dedent('''
+              from __future__ import annotations
+
+              import argparse
+              import gc
+              import json
+              import statistics
+              import time
+              from copy import deepcopy
+              from dataclasses import asdict, dataclass, field
+              from pathlib import Path
+              from typing import Any
+
+              from aspenops_nexus.models import EvaluationResult
+
+
+              @dataclass(slots=True)
+              class _LegacyEvaluationResult:
+                  ok: bool
+                  communication_ok: bool
+                  engine_ok: bool
+                  converged: bool
+                  feasible: bool
+                  values: dict[str, Any]
+                  units: dict[str, str | None]
+                  violations: list[str]
+                  diagnostics: dict[str, Any]
+                  elapsed_s: float
+                  balance_residuals: dict[str, dict[str, float]] = field(default_factory=dict)
+                  cache_source: str = "computed"
+                  cache_hit: bool = False
+                  request_hash: str = ""
+                  worker_id: int | None = None
+
+
+              def _documents() -> tuple[_LegacyEvaluationResult, EvaluationResult]:
+                  legacy = _LegacyEvaluationResult(
+                      ok=True,
+                      communication_ok=True,
+                      engine_ok=True,
+                      converged=True,
+                      feasible=True,
+                      values={"stream.output.purity:stream=PRODUCT": 0.99},
+                      units={"stream.output.purity:stream=PRODUCT": "fraction"},
+                      violations=[],
+                      diagnostics={"nested": {"value": 1}},
+                      elapsed_s=0.001,
+                      balance_residuals={
+                          "mass": {
+                              "residual": 0.0,
+                              "absolute": 0.0,
+                              "scale": 1.0,
+                              "relative": 0.0,
+                              "passed": 1.0,
+                          }
+                      },
+                      request_hash="a" * 64,
+                      worker_id=0,
+                  )
+                  optimized = EvaluationResult(**asdict(legacy))
+                  return legacy, optimized
+
+
+              def _measure(function: Any, *, iterations: int, repeats: int) -> float:
+                  for _ in range(1_000):
+                      function()
+                  samples: list[float] = []
+                  gc_was_enabled = gc.isenabled()
+                  try:
+                      gc.disable()
+                      for _ in range(repeats):
+                          started = time.perf_counter()
+                          for _ in range(iterations):
+                              function()
+                          samples.append(time.perf_counter() - started)
+                  finally:
+                      if gc_was_enabled:
+                          gc.enable()
+                  return statistics.median(samples)
+
+
+              def run(*, iterations: int, repeats: int, minimum_speedup: float) -> dict[str, Any]:
+                  legacy, optimized = _documents()
+                  legacy_seconds = _measure(
+                      lambda: deepcopy(legacy), iterations=iterations, repeats=repeats
+                  )
+                  optimized_seconds = _measure(
+                      lambda: deepcopy(optimized), iterations=iterations, repeats=repeats
+                  )
+                  legacy_clone = deepcopy(legacy)
+                  optimized_clone = deepcopy(optimized)
+                  equivalent = asdict(legacy_clone) == optimized_clone.to_dict()
+
+                  optimized_clone.values["stream.output.purity:stream=PRODUCT"] = 0.5
+                  optimized_clone.diagnostics["nested"]["value"] = 99
+                  optimized_clone.balance_residuals["mass"]["relative"] = 1.0
+                  isolated = (
+                      optimized.values["stream.output.purity:stream=PRODUCT"] == 0.99
+                      and optimized.diagnostics["nested"]["value"] == 1
+                      and optimized.balance_residuals["mass"]["relative"] == 0.0
+                  )
+                  speedup = legacy_seconds / optimized_seconds
+                  passed = equivalent and isolated and speedup >= minimum_speedup
+                  return {
+                      "schema": "aspenops.result-deepcopy-benchmark/v1",
+                      "decision": "PASS" if passed else "FAIL",
+                      "boundary": (
+                          "Portable Python EvaluationResult cloning benchmark; "
+                          "not licensed Aspen solve evidence."
+                      ),
+                      "iterations": iterations,
+                      "repeats": repeats,
+                      "legacy_seconds": legacy_seconds,
+                      "optimized_seconds": optimized_seconds,
+                      "speedup": speedup,
+                      "minimum_speedup": minimum_speedup,
+                      "equivalent": equivalent,
+                      "deep_isolation": isolated,
+                  }
+
+
+              def main() -> None:
+                  parser = argparse.ArgumentParser()
+                  parser.add_argument("--output", required=True)
+                  parser.add_argument("--iterations", type=int, default=20_000)
+                  parser.add_argument("--repeats", type=int, default=9)
+                  parser.add_argument("--min-speedup", type=float, default=1.5)
+                  args = parser.parse_args()
+                  result = run(
+                      iterations=args.iterations,
+                      repeats=args.repeats,
+                      minimum_speedup=args.min_speedup,
+                  )
+                  output = Path(args.output)
+                  output.parent.mkdir(parents=True, exist_ok=True)
+                  output.write_text(
+                      json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False) + "\\n",
+                      encoding="utf-8",
+                  )
+                  print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+                  if result["decision"] != "PASS":
+                      raise SystemExit(1)
+
+
+              if __name__ == "__main__":
+                  main()
+              ''').lstrip()
+          Path("scripts/benchmark_result_deepcopy.py").write_text(benchmark, encoding="utf-8")
+
+          tests = dedent('''
+              from __future__ import annotations
+
+              import json
+              import os
+              import subprocess
+              import sys
+              from copy import deepcopy
+              from pathlib import Path
+              from typing import Any
+
+              import aspenops_nexus.models as models_module
+              from aspenops_nexus.models import EvaluationResult
+
+              ROOT = Path(__file__).resolve().parents[1]
+
+
+              def _result() -> EvaluationResult:
+                  shared: dict[str, Any] = {"items": [1, 2, 3]}
+                  return EvaluationResult(
+                      ok=True,
+                      communication_ok=True,
+                      engine_ok=True,
+                      converged=True,
+                      feasible=True,
+                      values={"shared": shared},
+                      units={"shared": "fraction"},
+                      violations=["example"],
+                      diagnostics={"shared": shared},
+                      elapsed_s=0.1,
+                      balance_residuals={"mass": {"relative": 0.0, "passed": 1.0}},
+                      request_hash="hash",
+                      worker_id=3,
+                  )
+
+
+              def test_evaluation_result_deepcopy_preserves_aliases_cycles_and_isolation() -> None:
+                  result = _result()
+                  result.diagnostics["cycle"] = result
+                  clone = deepcopy(result)
+
+                  assert clone is not result
+                  assert clone.values["shared"] is clone.diagnostics["shared"]
+                  assert clone.diagnostics["cycle"] is clone
+                  assert clone.units is not result.units
+                  assert clone.violations is not result.violations
+                  assert clone.balance_residuals is not result.balance_residuals
+                  assert clone.balance_residuals["mass"] is not result.balance_residuals["mass"]
+
+                  clone.values["shared"]["items"].append(4)
+                  clone.units["shared"] = None
+                  clone.violations.append("mutated")
+                  clone.balance_residuals["mass"]["relative"] = 1.0
+                  assert result.values["shared"]["items"] == [1, 2, 3]
+                  assert result.units["shared"] == "fraction"
+                  assert result.violations == ["example"]
+                  assert result.balance_residuals["mass"]["relative"] == 0.0
+
+
+              def test_evaluation_result_deepcopy_only_recurses_into_unbounded_payloads(
+                  monkeypatch: Any,
+              ) -> None:
+                  result = _result()
+                  original_deepcopy = models_module.deepcopy
+                  copied: list[object] = []
+
+                  def counted(value: object, memo: dict[int, object]) -> object:
+                      copied.append(value)
+                      return original_deepcopy(value, memo)
+
+                  monkeypatch.setattr(models_module, "deepcopy", counted)
+                  clone = deepcopy(result)
+                  assert clone.to_dict() == result.to_dict()
+                  assert copied == [result.values, result.diagnostics]
+
+
+              def test_result_deepcopy_benchmark_meets_performance_floor() -> None:
+                  output = ROOT / "var/ci" / (
+                      f"result-deepcopy-benchmark-py{sys.version_info.major}.{sys.version_info.minor}.json"
+                  )
+                  output.parent.mkdir(parents=True, exist_ok=True)
+                  environment = os.environ.copy()
+                  for key in tuple(environment):
+                      if key.startswith("COV_CORE") or key.startswith("COVERAGE"):
+                          environment.pop(key, None)
+                  completed = subprocess.run(
+                      [
+                          sys.executable,
+                          str(ROOT / "scripts/benchmark_result_deepcopy.py"),
+                          "--output",
+                          str(output),
+                          "--min-speedup",
+                          "1.25",
+                      ],
+                      cwd=ROOT,
+                      env=environment,
+                      check=False,
+                      capture_output=True,
+                      text=True,
+                      timeout=90,
+                  )
+                  assert completed.returncode == 0, completed.stdout + completed.stderr
+                  payload = json.loads(output.read_text(encoding="utf-8"))
+                  assert payload["decision"] == "PASS"
+                  assert payload["equivalent"] is True
+                  assert payload["deep_isolation"] is True
+                  assert payload["speedup"] >= 1.25
+              ''').lstrip()
+          Path("tests/test_evaluation_result_deepcopy.py").write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Format candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv tool run --from 'ruff==0.11.13' ruff format \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            tests/test_evaluation_result_deepcopy.py
+          uv tool run --from 'ruff==0.11.13' ruff check --fix \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            tests/test_evaluation_result_deepcopy.py
+
+      - name: Install locked Python toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.11 3.12 3.13
+
+      - name: Run measured benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/optimization
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          uv run python scripts/benchmark_result_deepcopy.py \
+            --output var/optimization/result-deepcopy-benchmark.json \
+            --min-speedup 1.5 \
+            | tee var/optimization/result-deepcopy-benchmark.log
+
+      - name: Run focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest -W error::ResourceWarning \
+            tests/test_evaluation_result_deepcopy.py \
+            tests/test_runtime_closure.py \
+            tests/test_finite_aggregation.py \
+            --junitxml=var/optimization/focused.xml \
+            2>&1 | tee var/optimization/focused.log
+
+      - name: Run full Python matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          for version in 3.11 3.12 3.13; do
+            uv sync --python "$version" --frozen --extra dev --extra agent --extra signing
+            uv run pytest -W error::ResourceWarning \
+              --junitxml="var/optimization/junit-${version}.xml" \
+              2>&1 | tee "var/optimization/pytest-${version}.log"
+          done
+
+      - name: Run quality, security and build gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+          uv lock --check
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py \
+            --output var/optimization/source-tree-audit.json
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/optimization/bandit.json
+          uv build 2>&1 | tee var/optimization/build.log
+          uv run python scripts/measure_operation_counts.py \
+            --output var/optimization/operation-counts.json
+          git diff --check
+
+      - name: Write retained evidence
+        shell: bash
+        env:
+          EXPECTED_PARENT: 0e12306bc49985b6a2c71d9db04ab39ed13fa15d
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          benchmark_path = Path("var/optimization/result-deepcopy-benchmark.json")
+          operation_path = Path("var/optimization/operation-counts.json")
+          benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
+          operation = json.loads(operation_path.read_text(encoding="utf-8"))
+          report = {
+              "schema": "aspenops.result-deepcopy-optimization/v1",
+              "decision": "PASS",
+              "source_parent": os.environ["EXPECTED_PARENT"],
+              "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "aspen_executed": False,
+              "boundary": (
+                  "Portable Python result-cloning optimization; not licensed Aspen solve "
+                  "or engineering certification evidence."
+              ),
+              "change": (
+                  "EvaluationResult now supplies a field-aware __deepcopy__ implementation. "
+                  "Unbounded values and diagnostics remain recursively copied; validated "
+                  "string and numeric containers use direct copies."
+              ),
+              "benchmark": benchmark,
+              "operation_counts": {
+                  "pool": operation["pool"],
+                  "memory": operation["memory"],
+                  "profile": operation["profile"],
+              },
+              "qualification": {
+                  "focused": "PASS",
+                  "python_3_11": "PASS",
+                  "python_3_12": "PASS",
+                  "python_3_13": "PASS",
+                  "ruff": "PASS",
+                  "format": "PASS",
+                  "mypy": "PASS",
+                  "compileall": "PASS",
+                  "source_audit": "PASS",
+                  "bandit": "PASS",
+                  "build": "PASS",
+              },
+          }
+          docs = Path("docs")
+          docs.mkdir(exist_ok=True)
+          (docs / "RESULT_DEEPCOPY_OPTIMIZATION.json").write_text(
+              json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
+              encoding="utf-8",
+          )
+          benchmark = report["benchmark"]
+          markdown = f"""# EvaluationResult deepcopy optimization
+
+          Decision: **PASS**
+
+          - Generic dataclass deepcopy median: `{benchmark['legacy_seconds']:.9f} s`
+          - Field-aware deepcopy median: `{benchmark['optimized_seconds']:.9f} s`
+          - Measured speedup: `{benchmark['speedup']:.3f}x`
+          - Equivalence: `{benchmark['equivalent']}`
+          - Deep isolation: `{benchmark['deep_isolation']}`
+          - Python 3.11 / 3.12 / 3.13 full suites: `PASS`
+          - Ruff / format / strict mypy / compileall / source audit / Bandit / build: `PASS`
+
+          Boundary: portable Python result cloning only; no licensed Aspen execution was performed.
+          """
+          (docs / "RESULT_DEEPCOPY_OPTIMIZATION.md").write_text(
+              "\n".join(line.strip() for line in markdown.strip().splitlines()) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish qualified optimization to main
+        shell: bash
+        env:
+          WORKFLOW_PATH: .github/workflows/optimize-result-deepcopy-once.yml
+        run: |
+          set -euo pipefail
+          registration_sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$registration_sha"
+          rm "$WORKFLOW_PATH"
+          git add \
+            src/aspenops_nexus/models.py \
+            scripts/benchmark_result_deepcopy.py \
+            tests/test_evaluation_result_deepcopy.py \
+            docs/RESULT_DEEPCOPY_OPTIMIZATION.json \
+            docs/RESULT_DEEPCOPY_OPTIMIZATION.md \
+            "$WORKFLOW_PATH"
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "perf: specialize result deepcopy"
+          git push origin HEAD:main
+
+      - name: Upload optimization evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: result-deepcopy-optimization-${{ github.run_id }}-${{ github.run_attempt }}
+          path: var/optimization
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 90
