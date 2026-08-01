@@ -19,13 +19,29 @@ cp "$PARTS/report.py.txt" "$REPORT"
 cleanup_diagnostics() {
   rm -f \
     .github/sqlite-resource-audit.py.txt \
+    .github/workflows/actions-status-diagnostic-once.yml \
     .github/workflows/sqlite-resource-audit-once.yml \
     .github/workflows/sqlite-resource-diagnostic-once.yml \
     .github/workflows/sqlite-static-inventory-once.yml \
+    docs/ACTIONS_STATUS_DIAGNOSTIC.json \
     docs/SQLITE_RESOURCE_AUDIT.json \
     docs/SQLITE_RESOURCE_DIAGNOSTIC.json \
     docs/SQLITE_STATIC_INVENTORY.json \
     docs/COMPREHENSIVE_CODE_CLOSURE_BLOCKER.json
+}
+
+publish_commit() {
+  if git push origin HEAD:main; then
+    return 0
+  fi
+  git fetch origin main
+  remote_delta="$(git diff --name-only "$BASE"..origin/main)"
+  if [[ -n "$remote_delta" ]]; then
+    printf 'Refusing to publish over non-equivalent remote tree changes:\n%s\n' "$remote_delta" >&2
+    return 1
+  fi
+  git rebase origin/main
+  git push origin HEAD:main
 }
 
 : > "$E/status.tsv"
@@ -120,7 +136,7 @@ gate bandit bash -lc '
 '
 gate diff-boundary bash -lc '
   set -euo pipefail
-  bad="$(git diff --name-only "$BASE" | grep -Ev "^(src/aspenops_nexus/(cache|evaluation|optimization|pool|worker)\.py|tests/test_(cache|finite_aggregation|job_store|job_store_lease_recovery|job_store_lease_strictness|job_store_owner_fencing|runtime_closure|scheduler_edge_cases|scheduler_multiprocess_races|scheduler_restart_fencing|sqlite_connection_hygiene)\.py|\.github/comprehensive-closure-v3-parts/.*|\.github/workflows/comprehensive-code-closure-v3-once\.yml|\.github/sqlite-resource-audit\.py\.txt|\.github/workflows/sqlite-resource-(audit|diagnostic)-once\.yml|\.github/workflows/sqlite-static-inventory-once\.yml|docs/(SQLITE_RESOURCE_(AUDIT|DIAGNOSTIC)|SQLITE_STATIC_INVENTORY|COMPREHENSIVE_CODE_CLOSURE_(BLOCKER|RESULT))\.(json|md))$" || true)"
+  bad="$(git diff --name-only "$BASE" | grep -Ev "^(src/aspenops_nexus/(cache|evaluation|optimization|pool|worker)\.py|tests/test_(cache|finite_aggregation|job_store|job_store_lease_recovery|job_store_lease_strictness|job_store_owner_fencing|runtime_closure|scheduler_edge_cases|scheduler_multiprocess_races|scheduler_restart_fencing|sqlite_connection_hygiene)\.py|\.github/comprehensive-closure-v3-parts/.*|\.github/workflows/comprehensive-code-closure-v3-once\.yml|\.github/sqlite-resource-audit\.py\.txt|\.github/workflows/actions-status-diagnostic-once\.yml|\.github/workflows/sqlite-resource-(audit|diagnostic)-once\.yml|\.github/workflows/sqlite-static-inventory-once\.yml|docs/(ACTIONS_STATUS_DIAGNOSTIC|SQLITE_RESOURCE_(AUDIT|DIAGNOSTIC)|SQLITE_STATIC_INVENTORY|COMPREHENSIVE_CODE_CLOSURE_(BLOCKER|RESULT))\.(json|md))$" || true)"
   if [[ -n "$bad" ]]; then
     printf "%s\n" "$bad"
     exit 1
@@ -201,7 +217,7 @@ if [[ "$failed" -ne 0 ]]; then
   python "$REPORT" --decision FAIL --evidence "$E"
   git add -A
   git commit -m 'test: record comprehensive code closure V3 blocker'
-  git push origin HEAD:main
+  publish_commit
   exit 1
 fi
 
@@ -209,4 +225,4 @@ rm -f docs/COMPREHENSIVE_CODE_CLOSURE_BLOCKER.json
 python "$REPORT" --decision PASS --evidence "$E"
 git add -A
 git commit -m 'fix: close all reproducible code issues'
-git push origin HEAD:main
+publish_commit
