@@ -1,0 +1,1 @@
+Temporary registration marker for `ASPENOPS_SQLITE_STATIC_INVENTORY_20260801`.
