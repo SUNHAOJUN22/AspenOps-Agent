@@ -1,14 +1,13 @@
 name: One-time math and performance qualification
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/math-performance-qualification-once.yml
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: aspenops-math-performance-qualification
@@ -16,8 +15,14 @@ concurrency:
 
 jobs:
   qualify-and-publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.issue.title == 'RUN_MATH_PERFORMANCE_QUALIFICATION_20260802'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    env:
+      TRIGGER_ISSUE: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -30,10 +35,18 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Verify registration and install locked dependencies
+      - name: Announce auditable run
+        if: github.event_name == 'issues'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue comment "$TRIGGER_ISSUE" --body \
+            "Qualification started. Run ID: ${GITHUB_RUN_ID}. Source SHA: $(git rev-parse HEAD)."
+
+      - name: Verify registration and locked environment
         shell: bash
         env:
-          EXPECTED_PARENT: 8349caa6d20450684b2f96169235d9f71f673bb9
+          EXPECTED_PARENT: 6f3d0655fb161d977e2aeb5a6faa5f1efdf0e4a0
           WORKFLOW_PATH: .github/workflows/math-performance-qualification-once.yml
         run: |
           set -euo pipefail
@@ -47,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/benchmark_result_to_dict.py <<'PY'
+          cat > /tmp/bench_to_dict.py <<'PY'
           from __future__ import annotations
 
           import gc
@@ -62,8 +75,8 @@ jobs:
           from aspenops_nexus.models import EvaluationResult
 
 
-          def result_document() -> EvaluationResult:
-              values: dict[str, Any] = {f"value_{i}": i * 0.125 for i in range(96)}
+          def document() -> EvaluationResult:
+              values: dict[str, Any] = {f"v{i}": i * 0.125 for i in range(96)}
               diagnostics: dict[str, Any] = {
                   "state_trace": ["received", "compiled", "solved", "verified"],
                   "runtime": {
@@ -74,18 +87,12 @@ jobs:
                       },
                   },
                   "constraints": [
-                      {
-                          "name": f"c{i}",
-                          "actual": i * 0.1,
-                          "limit": i * 0.1 + 1.0,
-                          "violation": 0.0,
-                          "passed": True,
-                      }
+                      {"name": f"c{i}", "actual": i * 0.1, "violation": 0.0}
                       for i in range(48)
                   ],
               }
               balances = {
-                  f"balance_{i}": {
+                  f"b{i}": {
                       "residual": 0.0,
                       "absolute": 0.0,
                       "scale": float(i + 1),
@@ -124,31 +131,32 @@ jobs:
                       checksum ^= id(payload)
                   samples.append(time.perf_counter() - started)
               if checksum == -1:
-                  raise AssertionError("unreachable checksum")
+                  raise AssertionError("unreachable")
               return statistics.median(samples)
 
 
-          output = Path(sys.argv[1])
-          result = result_document()
+          result = document()
           payload = result.to_dict()
           payload["diagnostics"]["runtime"]["nested"]["limits"].append(999)
-          payload["values"]["value_0"] = -1.0
+          payload["values"]["v0"] = -1.0
           assert 999 not in result.diagnostics["runtime"]["nested"]["limits"]
-          assert result.values["value_0"] == 0.0
+          assert result.values["v0"] == 0.0
           canonical = json.dumps(
               result.to_dict(), sort_keys=True, separators=(",", ":"), allow_nan=False
-          ).encode("utf-8")
+          ).encode()
           report = {
-              "loops": 600,
               "seconds": measure(result),
+              "loops": 600,
               "payload_sha256": hashlib.sha256(canonical).hexdigest(),
           }
-          output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          Path(sys.argv[1]).write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
-          uv run python /tmp/benchmark_result_to_dict.py /tmp/to-dict-before.json
+          uv run python /tmp/bench_to_dict.py /tmp/to-dict-before.json
 
-      - name: Apply field-aware copy and serialization candidate
+      - name: Apply measured candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -202,17 +210,26 @@ jobs:
 
           tests = Path("tests/test_evaluation_result_deepcopy.py")
           text = tests.read_text(encoding="utf-8")
-          marker = "def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:"
-          if marker in text:
-              raise RuntimeError("to_dict regression test already exists")
+          replace_once(
+              tests,
+              """    clone = deepcopy(result)
+              assert clone.to_dict() == result.to_dict()
+              assert copied == [result.values, result.diagnostics]
+          """,
+              """    clone = deepcopy(result)
+              assert copied == [result.values, result.diagnostics]
+              monkeypatch.setattr(models_module, \"deepcopy\", original_deepcopy)
+              assert clone.to_dict() == result.to_dict()
+          """,
+          )
+          text = tests.read_text(encoding="utf-8")
           text += """
 
 
 def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
     result = _result()
     payload = result.to_dict()
-    restored = EvaluationResult.from_dict(payload)
-    assert restored == result
+    assert EvaluationResult.from_dict(payload) == result
 
     payload[\"values\"][\"shared\"][\"items\"].append(4)
     payload[\"diagnostics\"][\"shared\"][\"items\"].append(5)
@@ -242,10 +259,11 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
             tests/test_evaluation_result_deepcopy.py
           git diff --check
 
-      - name: Audit numerical and mathematical contracts
+      - name: Verify formulas and performance
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p var/qualification
           uv run python - <<'PY'
           import json
           import math
@@ -271,85 +289,67 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
               ("==", 10.5, 10.0, 0.5, 0.0),
               ("==", 10.75, 10.0, 0.5, 0.25),
           ]
-          evaluated = []
           for operator, actual, limit, tolerance, expected in cases:
               spec = ConstraintSpec(
-                  key="x",
-                  identifiers={},
-                  operator=operator,
-                  value=limit,
-                  tolerance=tolerance,
+                  key="x", identifiers={}, operator=operator, value=limit, tolerance=tolerance
               )
               observed = _constraint_violation(spec, actual)
               assert math.isclose(observed, expected, rel_tol=0.0, abs_tol=1e-15)
-              evaluated.append(
-                  {
-                      "operator": operator,
-                      "actual": actual,
-                      "limit": limit,
-                      "tolerance": tolerance,
-                      "violation": observed,
-                  }
-              )
-
-          saturated, did_saturate = _finite_nonnegative_sum(
+          total, saturated = _finite_nonnegative_sum(
               [sys.float_info.max, sys.float_info.max]
           )
-          assert saturated == sys.float_info.max and did_saturate
+          assert total == sys.float_info.max and saturated
           assert _saturating_nonnegative_add(sys.float_info.max, 1.0) == sys.float_info.max
           assert _finite_weighted_sum(((2.0, 1e308), (-2.0, 1e308))) == 0.0
           assert math.isfinite(_finite_weighted_sum(((2.0, 1e308), (2.0, 1e308))))
-
-          report = {
-              "decision": "PASS",
-              "constraint_cases": evaluated,
-              "strict_inequalities": "tolerance is a safety margin",
-              "non_strict_inequalities": "tolerance is an acceptance band",
-              "equality": "absolute residual <= tolerance",
-              "finite_aggregation": True,
-              "weighted_overflow_cancellation": True,
-          }
-          Path("/tmp/math-audit.json").write_text(
-              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          Path("var/qualification/math-audit.json").write_text(
+              json.dumps(
+                  {
+                      "decision": "PASS",
+                      "constraint_cases": len(cases),
+                      "finite_aggregation": True,
+                      "weighted_overflow_cancellation": True,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
           )
-          print(json.dumps(report, indent=2, sort_keys=True))
           PY
-
-      - name: Measure and enforce performance improvements
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p var/qualification
           uv run python scripts/benchmark_result_deepcopy.py \
             --output var/qualification/result-deepcopy-benchmark.json \
             --min-speedup 1.5
-          uv run python /tmp/benchmark_result_to_dict.py /tmp/to-dict-after.json
+          uv run python /tmp/bench_to_dict.py /tmp/to-dict-after.json
           uv run python - <<'PY'
           import json
           from pathlib import Path
 
-          before = json.loads(Path("/tmp/to-dict-before.json").read_text(encoding="utf-8"))
-          after = json.loads(Path("/tmp/to-dict-after.json").read_text(encoding="utf-8"))
-          if before["payload_sha256"] != after["payload_sha256"]:
-              raise AssertionError("Serialized payload changed")
+          before = json.loads(Path("/tmp/to-dict-before.json").read_text())
+          after = json.loads(Path("/tmp/to-dict-after.json").read_text())
+          assert before["payload_sha256"] == after["payload_sha256"]
           speedup = before["seconds"] / after["seconds"]
           if speedup < 1.15:
               raise AssertionError(f"to_dict speedup below threshold: {speedup:.3f}x")
-          decision = {
-              "decision": "PASS",
-              "before_seconds": before["seconds"],
-              "after_seconds": after["seconds"],
-              "speedup": speedup,
-              "minimum_speedup": 1.15,
-              "payload_equal": True,
-          }
           Path("var/qualification/result-to-dict-benchmark.json").write_text(
-              json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+              json.dumps(
+                  {
+                      "decision": "PASS",
+                      "before_seconds": before["seconds"],
+                      "after_seconds": after["seconds"],
+                      "speedup": speedup,
+                      "minimum_speedup": 1.15,
+                      "payload_equal": True,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
           )
-          print(json.dumps(decision, indent=2, sort_keys=True))
           PY
 
-      - name: Run focused and full Python matrix
+      - name: Run complete qualification matrix
         shell: bash
         run: |
           set -euo pipefail
@@ -365,20 +365,13 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
               --junitxml="var/qualification/junit-${version}.xml" \
               2>&1 | tee "var/qualification/pytest-${version}.log"
           done
-
-      - name: Run coverage, order, quality, security and build gates
-        shell: bash
-        run: |
-          set -euo pipefail
           uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
           uv run pytest -W error::ResourceWarning \
-            --cov=aspenops_nexus \
-            --cov-branch \
+            --cov=aspenops_nexus --cov-branch \
             --cov-report=json:var/qualification/coverage.json \
             --cov-fail-under=95
           uv run python scripts/run_test_order_gate.py \
-            --seed 20260728 \
-            --output-dir var/qualification
+            --seed 20260728 --output-dir var/qualification
           uv lock --check
           uv run ruff check .
           uv run ruff format --check .
@@ -387,24 +380,17 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
           uv run python scripts/audit_source_tree.py \
             --output var/qualification/source-tree-audit.json
           uv tool run --isolated --from 'bandit==1.9.4' bandit \
-            --recursive src scripts \
-            --severity-level high \
-            --confidence-level high \
-            --format json \
-            --output var/qualification/bandit.json
+            --recursive src scripts --severity-level high --confidence-level high \
+            --format json --output var/qualification/bandit.json
           uv run python scripts/measure_operation_counts.py \
             --output var/qualification/operation-counts.json
           uv run python scripts/run_benchmark_matrix.py \
-            --repo-root . \
-            --output var/qualification/benchmark-smoke.json \
-            --smoke
+            --repo-root . --output var/qualification/benchmark-smoke.json --smoke
           uv build
           git diff --check
 
-      - name: Write evidence, remove one-time workflow and publish
+      - name: Publish qualified result
         shell: bash
-        env:
-          QUALIFIED_SOURCE_BASELINE: 0e12306bc49985b6a2c71d9db04ab39ed13fa15d
         run: |
           set -euo pipefail
           uv run python - <<'PY'
@@ -412,59 +398,47 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
           import os
           from pathlib import Path
 
-          deepcopy_benchmark = json.loads(
-              Path("var/qualification/result-deepcopy-benchmark.json").read_text(
-                  encoding="utf-8"
-              )
+          deep = json.loads(
+              Path("var/qualification/result-deepcopy-benchmark.json").read_text()
           )
-          serialization_benchmark = json.loads(
-              Path("var/qualification/result-to-dict-benchmark.json").read_text(
-                  encoding="utf-8"
-              )
+          serial = json.loads(
+              Path("var/qualification/result-to-dict-benchmark.json").read_text()
           )
-          math_audit = json.loads(Path("/tmp/math-audit.json").read_text(encoding="utf-8"))
-          coverage = json.loads(
-              Path("var/qualification/coverage.json").read_text(encoding="utf-8")
-          )
-          operation_counts = json.loads(
-              Path("var/qualification/operation-counts.json").read_text(encoding="utf-8")
+          coverage = json.loads(Path("var/qualification/coverage.json").read_text())
+          operation = json.loads(
+              Path("var/qualification/operation-counts.json").read_text()
           )
           report = {
               "schema": "aspenops.math-performance-qualification/v1",
               "decision": "PASS",
-              "qualified_source_baseline": os.environ["QUALIFIED_SOURCE_BASELINE"],
+              "qualified_source_baseline": "0e12306bc49985b6a2c71d9db04ab39ed13fa15d",
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "aspen_executed": False,
               "boundary": (
-                  "Portable Python numerical, result-copy and serialization qualification; "
+                  "Portable Python numerical, copying and serialization qualification; "
                   "not licensed Aspen Plus/HYSYS physical solve evidence."
               ),
-              "changes": [
-                  "EvaluationResult has a memo-aware field-specific __deepcopy__ implementation.",
-                  "EvaluationResult.to_dict avoids generic dataclass traversal.",
-                  "Temporary optimization registration workflows and patch tooling are removed.",
-              ],
-              "deepcopy_benchmark": deepcopy_benchmark,
-              "serialization_benchmark": serialization_benchmark,
-              "math_audit": math_audit,
+              "deepcopy_benchmark": deep,
+              "serialization_benchmark": serial,
               "coverage_percent": coverage["totals"]["percent_covered"],
               "operation_counts": {
-                  "pool": operation_counts["pool"],
-                  "memory_cache": operation_counts["memory_cache"],
-                  "cache": operation_counts["cache"],
+                  "pool": operation["pool"],
+                  "memory_cache": operation["memory_cache"],
+                  "cache": operation["cache"],
               },
               "gates": {
-                  "focused_tests": "PASS",
+                  "math": "PASS",
+                  "focused": "PASS",
                   "python_3_11": "PASS",
                   "python_3_12": "PASS",
                   "python_3_13": "PASS",
                   "coverage": "PASS",
-                  "order_independence": "PASS",
+                  "order": "PASS",
                   "ruff": "PASS",
                   "format": "PASS",
-                  "mypy_strict": "PASS",
+                  "mypy": "PASS",
                   "compileall": "PASS",
-                  "source_tree_audit": "PASS",
+                  "source_audit": "PASS",
                   "bandit": "PASS",
                   "operation_counts": "PASS",
                   "benchmark_smoke": "PASS",
@@ -473,25 +447,21 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
               "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
           }
           docs = Path("docs")
-          docs.mkdir(exist_ok=True)
           (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.json").write_text(
               json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
           )
-          markdown = (
+          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.md").write_text(
               "# Math and Performance Qualification Result\n\n"
               "Decision: **PASS**\n\n"
-              f"- Result deepcopy speedup: `{deepcopy_benchmark['speedup']:.3f}x`\n"
-              f"- Result serialization speedup: `{serialization_benchmark['speedup']:.3f}x`\n"
-              f"- Serialization payload equality: `{serialization_benchmark['payload_equal']}`\n"
+              f"- Result deepcopy speedup: `{deep['speedup']:.3f}x`\n"
+              f"- Result serialization speedup: `{serial['speedup']:.3f}x`\n"
+              f"- Serialization payload equality: `{serial['payload_equal']}`\n"
               f"- Python 3.12 branch coverage: `{report['coverage_percent']:.3f}%`\n"
               "- Python 3.11 / 3.12 / 3.13 full suites: `PASS`\n"
-              "- Mathematical contracts, order, quality, security and build gates: `PASS`\n"
+              "- Mathematical, order, quality, security and build gates: `PASS`\n"
               "- Licensed Windows/Aspen engineering certification: `PENDING`\n\n"
-              "The performance measurements cover portable Python result copying and "
-              "serialization only; they are not Aspen solve-speed evidence.\n"
-          )
-          (docs / "MATH_PERFORMANCE_QUALIFICATION_RESULT.md").write_text(
-              markdown, encoding="utf-8"
+              "Performance measurements cover portable Python copying and serialization only.\n",
+              encoding="utf-8",
           )
           PY
           git rm .github/workflows/math-performance-qualification-once.yml
@@ -504,8 +474,21 @@ def test_evaluation_result_to_dict_is_equivalent_and_deeply_isolated() -> None:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "perf: accelerate result copying and serialization"
           git push origin HEAD:main
+          published_sha="$(git rev-parse HEAD)"
+          if [[ -n "${TRIGGER_ISSUE:-}" ]]; then
+            gh issue comment "$TRIGGER_ISSUE" --body \
+              "Qualification PASS. Published SHA: ${published_sha}. Run ID: ${GITHUB_RUN_ID}."
+            gh issue close "$TRIGGER_ISSUE" --reason completed
+          fi
 
-      - name: Upload qualification evidence
+      - name: Report failure to trigger issue
+        if: failure() && github.event_name == 'issues'
+        shell: bash
+        run: |
+          gh issue comment "$TRIGGER_ISSUE" --body \
+            "Qualification FAILED. Run ID: ${GITHUB_RUN_ID}. Inspect: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. No optimization was published."
+
+      - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
