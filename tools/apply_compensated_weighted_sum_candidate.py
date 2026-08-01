@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -9,6 +10,20 @@ def replace_once(path: Path, old: str, new: str) -> None:
     if count != 1:
         raise RuntimeError(f"Expected one patch target in {path}, found {count}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def normalize_generated_benchmarks() -> None:
+    """Repair source text emitted through nested triple-quoted generator strings."""
+    for path in (
+        Path("scripts/benchmark_result_deepcopy.py"),
+        Path("scripts/benchmark_result_serialization.py"),
+    ):
+        text = path.read_text(encoding="utf-8")
+        broken_literal = '+ "' + "\n" + '",'
+        escaped_literal = '+ "\\n",'
+        text = text.replace(broken_literal, escaped_literal)
+        first_line, remaining = text.split("\n", 1)
+        path.write_text(first_line + "\n" + dedent(remaining), encoding="utf-8")
 
 
 def patch_weighted_sum() -> None:
@@ -65,6 +80,7 @@ def test_finite_weighted_sum_retains_exact_overflow_saturation() -> None:
 
 
 def main() -> None:
+    normalize_generated_benchmarks()
     patch_weighted_sum()
     write_regression_tests()
 
