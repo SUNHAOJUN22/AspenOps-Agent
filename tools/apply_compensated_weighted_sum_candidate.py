@@ -26,6 +26,24 @@ def normalize_generated_benchmarks() -> None:
         path.write_text(first_line + "\n" + dedent(remaining), encoding="utf-8")
 
 
+def patch_benchmark_test_environments() -> None:
+    """Keep performance subprocesses independent from coverage and tracing instrumentation."""
+    for path in (
+        Path("tests/test_evaluation_result_deepcopy.py"),
+        Path("tests/test_evaluation_result_serialization.py"),
+    ):
+        replace_once(
+            path,
+            '        if key.startswith("COV_CORE") or key.startswith("COVERAGE"):\n',
+            """        if (
+            key.startswith("COV_CORE")
+            or key.startswith("COVERAGE")
+            or key == "PYTHONTRACEMALLOC"
+        ):
+""",
+        )
+
+
 def patch_result_payload_copy() -> None:
     path = Path("src/aspenops_nexus/models.py")
     replace_once(
@@ -122,6 +140,7 @@ def test_finite_weighted_sum_retains_exact_overflow_saturation() -> None:
 
 def main() -> None:
     normalize_generated_benchmarks()
+    patch_benchmark_test_environments()
     patch_result_payload_copy()
     patch_weighted_sum()
     write_regression_tests()
