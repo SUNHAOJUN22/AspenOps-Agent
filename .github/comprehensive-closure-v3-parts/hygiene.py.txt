@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+import ast
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+ROOT = Path.cwd()
+SOURCE_ROOTS = (ROOT / "src", ROOT / "scripts")
+MARKER = re.compile(r"\b(?:TODO|FIXME|XXX|HACK)\b", re.IGNORECASE)
+
+
+def mutable_default(node: ast.expr | None) -> bool:
+    return isinstance(node, (ast.List, ast.Dict, ast.Set))
+
+
+findings: list[dict[str, Any]] = []
+for source_root in SOURCE_ROOTS:
+    for path in sorted(source_root.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), 1):
+            if MARKER.search(line):
+                findings.append(
+                    {
+                        "kind": "unfinished_marker",
+                        "path": str(path.relative_to(ROOT)),
+                        "line": line_number,
+                        "text": line.strip(),
+                    }
+                )
+        tree = ast.parse(text, filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                findings.append(
+                    {
+                        "kind": "bare_except",
+                        "path": str(path.relative_to(ROOT)),
+                        "line": node.lineno,
+                    }
+                )
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                defaults = [*node.args.defaults, *node.args.kw_defaults]
+                for default in defaults:
+                    if mutable_default(default):
+                        findings.append(
+                            {
+                                "kind": "mutable_default",
+                                "path": str(path.relative_to(ROOT)),
+                                "line": node.lineno,
+                                "function": node.name,
+                            }
+                        )
+report = {
+    "schema": "aspenops.comprehensive-hygiene/v3",
+    "findings": findings,
+    "decision": "PASS" if not findings else "FAIL",
+}
+output = ROOT / "var/comprehensive-closure-v3/hygiene.json"
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if findings:
+    raise SystemExit(json.dumps(report, sort_keys=True))
