@@ -1,5 +1,7 @@
-from pathlib import Path
+from __future__ import annotations
+
 import re
+from pathlib import Path
 
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -37,9 +39,14 @@ pool = Path("src/aspenops_nexus/pool.py")
 replace_once(
     pool,
     "from dataclasses import dataclass, replace\n",
-    "from dataclasses import dataclass, replace as replace\n",
+    "from dataclasses import dataclass, replace as _dataclass_replace\n",
 )
 replace_once(pool, "from typing import Any\n", "from typing import Any, cast\n")
+replace_once(
+    pool,
+    ")\n\n\n@dataclass(slots=True)\nclass _InflightEvaluation:",
+    ")\n\n# Public compatibility hook used by operation-count and regression guards.\nreplace = _dataclass_replace\n\n\n@dataclass(slots=True)\nclass _InflightEvaluation:",
+)
 replace_once(
     pool,
     '''        for handle in handles:
@@ -191,7 +198,11 @@ replace_once(
 )
 
 optimization = Path("src/aspenops_nexus/optimization.py")
-replace_once(optimization, "import uuid\n", "import uuid\nfrom fractions import Fraction\nimport sys\n")
+replace_once(
+    optimization,
+    "import uuid\n",
+    "import uuid\nimport sys\nfrom fractions import Fraction\n",
+)
 replace_once(
     optimization,
     '''def _finite_output(value: object) -> float | None:
@@ -325,26 +336,26 @@ sqlite_test_paths = (
     Path("tests/test_scheduler_multiprocess_races.py"),
     Path("tests/test_scheduler_restart_fencing.py"),
 )
-replacements = 0
+pattern = re.compile(
+    r"(?m)^(?P<indent>\s*)with sqlite3\.connect\((?P<argument>[^\n]+)\) as connection:$"
+)
+replacement_count = 0
 for path in sqlite_test_paths:
     text = path.read_text(encoding="utf-8")
     if "from contextlib import closing\n" not in text:
-        if "import sqlite3\n" not in text:
-            raise RuntimeError(f"Missing sqlite3 import in {path}")
-        text = text.replace(
-            "import sqlite3\n",
-            "import sqlite3\nfrom contextlib import closing\n",
-            1,
-        )
-    text, count = re.subn(
-        r"with sqlite3\.connect\(([^\n]+)\) as connection:",
-        r"with closing(sqlite3.connect(\1)) as connection, connection:",
+        marker = "import sqlite3\n"
+        if text.count(marker) != 1:
+            raise RuntimeError(f"Expected one sqlite3 import in {path}")
+        text = text.replace(marker, marker + "from contextlib import closing\n", 1)
+    text, count = pattern.subn(
+        r"\g<indent>with closing(sqlite3.connect(\g<argument>)) as connection, connection:",
         text,
     )
-    replacements += count
+    if count == 0:
+        raise RuntimeError(f"No transaction-only sqlite context found in {path}")
+    replacement_count += count
     path.write_text(text, encoding="utf-8")
-if replacements != 12:
-    raise RuntimeError(f"Expected 12 SQLite test connection fixes, applied {replacements}")
-for path in sqlite_test_paths:
-    if "with sqlite3.connect(" in path.read_text(encoding="utf-8"):
-        raise RuntimeError(f"Unclosed SQLite test connection remains in {path}")
+if replacement_count != 12:
+    raise RuntimeError(
+        f"Expected 12 transaction-only sqlite contexts, replaced {replacement_count}"
+    )
