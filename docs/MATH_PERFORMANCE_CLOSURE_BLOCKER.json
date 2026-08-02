@@ -1,0 +1,11 @@
+{
+  "schema": "aspenops.math-performance-closure-blocker/v1",
+  "decision": "BLOCKED",
+  "source_baseline": "0e12306bc49985b6a2c71d9db04ab39ed13fa15d",
+  "registration_sha": "61d249d2cc9fb0dc971e7dd710cedcbbaf095a57",
+  "run_id": "30735248819",
+  "run_attempt": "1",
+  "failed_stage": "verify-baseline",
+  "source_changes_retained": false,
+  "aspen_executed": false
+}
