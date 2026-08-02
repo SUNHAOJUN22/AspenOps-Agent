@@ -561,9 +561,7 @@ def compile_process_design(
     capability_issues, capabilities = _capability_issues(design, profile)
     issues.extend(capability_issues)
     errors = [item for item in issues if item.severity == "ERROR"]
-    execution_blockers = [
-        item for item in issues if item.severity == "EXECUTION_BLOCKER"
-    ]
+    execution_blockers = [item for item in issues if item.severity == "EXECUTION_BLOCKER"]
     if errors:
         status: CompilationStatus = "BLOCKED"
     elif execution_blockers:
