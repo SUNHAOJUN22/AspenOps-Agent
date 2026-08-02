@@ -59,8 +59,8 @@ def test_worker_stages_both_artifacts_and_reports_verified_identity(tmp_path: Pa
         artifacts = handle.runtime["execution_artifacts"]
         assert artifacts["model_sha256"] == handle.model_sha256
         assert artifacts["registry_sha256"] == handle.registry_sha256
-        assert Path(artifacts["staged_model_path"]) == handle.staged_model
-        assert Path(artifacts["staged_registry_path"]) == handle.staged_registry
+        assert Path(artifacts["staged_model_path"]).samefile(handle.staged_model)
+        assert Path(artifacts["staged_registry_path"]).samefile(handle.staged_registry)
 
         result = evaluate_on_worker(handle, _request(model, registry))
         identity = result.diagnostics["execution_identity"]
