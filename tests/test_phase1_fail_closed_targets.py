@@ -42,6 +42,4 @@ def test_unknown_equipment_kind_is_an_engineering_blocker() -> None:
     payload["equipment"][1]["kind"] = "llm_invented_unit"
     report = validate_process_design(ProcessDesignIR.from_dict(payload))
     assert report.valid is False
-    assert any(
-        issue.code == "equipment.contract_unavailable" for issue in report.blockers
-    )
+    assert any(issue.code == "equipment.contract_unavailable" for issue in report.blockers)

@@ -51,9 +51,7 @@ def test_design_rejects_excessive_metadata_entries() -> None:
 
 def test_design_rejects_excessive_vendor_identifiers() -> None:
     value = load(DESIGN)
-    value["components"][0]["vendor_ids"] = {
-        f"vendor_{index}": f"ID_{index}" for index in range(17)
-    }
+    value["components"][0]["vendor_ids"] = {f"vendor_{index}": f"ID_{index}" for index in range(17)}
     with pytest.raises(ValueError, match="vendor_ids contains 17 entries"):
         ProcessDesignIR.from_dict(value)
 

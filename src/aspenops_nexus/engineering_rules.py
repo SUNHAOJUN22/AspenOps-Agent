@@ -325,7 +325,7 @@ def _validate_equipment_contract(
     else:
         issues.append(
             _issue(
-                "WARNING",
+                "ENGINEERING_BLOCKER",
                 "equipment.contract_unavailable",
                 path,
                 f"No deterministic equipment contract is registered for kind {kind}",

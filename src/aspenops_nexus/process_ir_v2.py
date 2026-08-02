@@ -63,6 +63,8 @@ _STREAM_KINDS = {
     "waste",
     "utility",
 }
+_TARGET_SIMULATORS = {"aspen_plus", "hysys"}
+_TARGET_VERSIONS = {"14", "15", "approved-version"}
 _REACTION_KINDS = {
     "stoichiometric",
     "yield",
@@ -92,6 +94,13 @@ def _object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a JSON object")
     return {str(key): item for key, item in value.items()}
+
+
+def _bounded_object(value: Any, label: str, *, maximum: int) -> dict[str, Any]:
+    mapping = _object(value, label)
+    if len(mapping) > maximum:
+        raise ValueError(f"{label} contains {len(mapping)} entries; limit is {maximum}")
+    return mapping
 
 
 def _array(value: Any, label: str, *, maximum: int) -> list[Any]:
@@ -207,7 +216,11 @@ class ComponentDefinition:
         unknown = sorted(set(mapping) - allowed)
         if unknown:
             raise ValueError(f"{label} contains unsupported fields: {', '.join(unknown)}")
-        vendor_mapping = _object(mapping.get("vendor_ids", {}), f"{label}.vendor_ids")
+        vendor_mapping = _bounded_object(
+            mapping.get("vendor_ids", {}),
+            f"{label}.vendor_ids",
+            maximum=16,
+        )
         vendor_ids = {
             _text(vendor, f"{label}.vendor name").casefold(): _text(
                 identifier,
@@ -608,7 +621,11 @@ class ReactionDefinition:
         kind = _text(mapping.get("kind"), f"{label}.kind").casefold()
         if kind not in _REACTION_KINDS:
             raise ValueError(f"{label}.kind is unsupported: {kind}")
-        raw_stoichiometry = _object(mapping.get("stoichiometry", {}), f"{label}.stoichiometry")
+        raw_stoichiometry = _bounded_object(
+            mapping.get("stoichiometry", {}),
+            f"{label}.stoichiometry",
+            maximum=MAX_COMPONENTS,
+        )
         stoichiometry = {
             _identifier(component, f"{label}.stoichiometry component"): _finite(
                 coefficient,
@@ -806,18 +823,31 @@ class ProcessDesignIR:
         ):
             if len(set(identifiers)) != len(identifiers):
                 raise ValueError(f"process design {label} must contain unique IDs")
-        metadata_mapping = _object(mapping.get("metadata", {}), "process design.metadata")
+        metadata_mapping = _bounded_object(
+            mapping.get("metadata", {}),
+            "process design.metadata",
+            maximum=1024,
+        )
         metadata = {
             _text(key, "metadata key"): _scalar(item, f"metadata.{key}")
             for key, item in metadata_mapping.items()
         }
+        target_simulator = _text(
+            mapping.get("target_simulator"),
+            "process design.target_simulator",
+        ).casefold()
+        if target_simulator not in _TARGET_SIMULATORS:
+            raise ValueError(f"Unsupported process design simulator: {target_simulator}")
+        target_version = _text(
+            mapping.get("target_version"),
+            "process design.target_version",
+        ).casefold()
+        if target_version not in _TARGET_VERSIONS:
+            raise ValueError(f"Unsupported process design version: {target_version}")
         return cls(
             name=_text(mapping.get("name"), "process design.name"),
-            target_simulator=_text(
-                mapping.get("target_simulator"),
-                "process design.target_simulator",
-            ).casefold(),
-            target_version=_text(mapping.get("target_version"), "process design.target_version"),
+            target_simulator=target_simulator,
+            target_version=target_version,
             requirement_hash=requirement_hash,
             components=components,
             property_method=PropertyMethodDefinition.from_dict(

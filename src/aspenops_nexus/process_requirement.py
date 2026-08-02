@@ -57,6 +57,12 @@ def _object(value: Any, label: str) -> dict[str, Any]:
     return {str(key): item for key, item in value.items()}
 
 
+def _reject_unknown(mapping: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(mapping) - allowed)
+    if unknown:
+        raise ValueError(f"{label} contains unsupported fields: {', '.join(unknown)}")
+
+
 def _array(value: Any, label: str, *, maximum: int) -> list[Any]:
     if not isinstance(value, list):
         raise ValueError(f"{label} must be a JSON array")
@@ -407,6 +413,11 @@ class ProcessRequirementDocument:
         if schema != REQUIREMENT_SCHEMA:
             raise ValueError(f"Unsupported process requirement schema: {schema}")
         project = _object(mapping.get("project"), "process requirement.project")
+        _reject_unknown(
+            project,
+            {"name", "target_simulator", "target_version", "language"},
+            "process requirement.project",
+        )
         simulator = _text(
             project.get("target_simulator"),
             "process requirement.project.target_simulator",
@@ -421,6 +432,11 @@ class ProcessRequirementDocument:
             raise ValueError(f"Unsupported target version: {version}")
         objective_mapping = _object(
             mapping.get("process_objective"),
+            "process requirement.process_objective",
+        )
+        _reject_unknown(
+            objective_mapping,
+            {"description"},
             "process requirement.process_objective",
         )
         feed_items = _array(
@@ -448,6 +464,11 @@ class ProcessRequirementDocument:
             if len(set(identifiers)) != len(identifiers):
                 raise ValueError(f"process requirement {label} must contain unique IDs")
         assumptions = _object(mapping.get("assumptions", {}), "process requirement.assumptions")
+        _reject_unknown(
+            assumptions,
+            {"accepted", "unresolved"},
+            "process requirement.assumptions",
+        )
         accepted = tuple(
             _text(item, f"accepted assumption[{index}]")
             for index, item in enumerate(
@@ -475,6 +496,11 @@ class ProcessRequirementDocument:
         if len(set(sections)) != len(sections):
             raise ValueError("required_sections must contain unique values")
         metadata_mapping = _object(mapping.get("metadata", {}), "process requirement.metadata")
+        if len(metadata_mapping) > 1024:
+            raise ValueError(
+                f"process requirement.metadata contains {len(metadata_mapping)} entries; "
+                "limit is 1024"
+            )
         metadata = {
             _text(key, "metadata key"): _safe_scalar(item, f"metadata.{key}")
             for key, item in metadata_mapping.items()
