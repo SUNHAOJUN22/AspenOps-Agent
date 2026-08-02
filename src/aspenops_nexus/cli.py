@@ -45,8 +45,25 @@ def _resource_path(name: str) -> Path:
         return Path(path)
 
 
+def _duplicate_key_rejected(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"Duplicate request JSON key: {key}")
+        output[key] = value
+    return output
+
+
+def _nonfinite_rejected(value: str) -> Any:
+    raise ValueError(f"Request JSON contains non-finite constant: {value}")
+
+
 def _load(path: str | Path) -> dict[str, Any]:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    value = json.loads(
+        Path(path).read_text(encoding="utf-8"),
+        parse_constant=_nonfinite_rejected,
+        object_pairs_hook=_duplicate_key_rejected,
+    )
     if not isinstance(value, dict):
         raise ValueError("Request root must be a JSON object")
     return value
@@ -364,7 +381,10 @@ def command_verify_licensed_bundle(args: argparse.Namespace) -> int:
 
 
 def command_verify_bundle(args: argparse.Namespace) -> int:
-    result = verify_run_bundle(args.bundle)
+    result = verify_run_bundle(
+        args.bundle,
+        verification_public_key=args.public_key,
+    )
     _json_print(result)
     return 0 if result["ok"] else 2
 
@@ -431,7 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
     optimize.add_argument("request")
-    optimize.add_argument("--output", default="var/optimization-result.json")
+    optimize.add_argument("--output")
     optimize.set_defaults(func=command_optimize)
 
     certify = sub.add_parser(
@@ -471,8 +491,9 @@ def build_parser() -> argparse.ArgumentParser:
     licensed_verify.add_argument("--public-key", required=True)
     licensed_verify.set_defaults(func=command_verify_licensed_bundle)
 
-    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes")
+    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes and signature")
     verify.add_argument("bundle")
+    verify.add_argument("--public-key")
     verify.set_defaults(func=command_verify_bundle)
 
     mcp = sub.add_parser("mcp", help="Run the local stdio MCP server")
