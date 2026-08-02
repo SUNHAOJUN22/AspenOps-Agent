@@ -192,16 +192,17 @@ def test_signing_metadata_rejects_ambiguous_shapes(value: Any, message: str) -> 
 
 
 def test_signing_metadata_accepts_unsigned_and_signed() -> None:
+    key_id = "a" * 32
     unsigned, unsigned_error = _validate_signing(
         {"status": "unsigned", "algorithm": None, "key_id": None}
     )
     signed, signed_error = _validate_signing(
-        {"status": "signed", "algorithm": "Ed25519", "key_id": "key"}
+        {"status": "signed", "algorithm": "Ed25519", "key_id": key_id}
     )
     assert unsigned_error is None
     assert unsigned == {"status": "unsigned", "algorithm": None, "key_id": None}
     assert signed_error is None
-    assert signed == {"status": "signed", "algorithm": "Ed25519", "key_id": "key"}
+    assert signed == {"status": "signed", "algorithm": "Ed25519", "key_id": key_id}
 
 
 def test_legacy_bundle_verification_covers_valid_and_invalid_hashes() -> None:
