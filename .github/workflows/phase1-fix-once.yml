@@ -1,0 +1,81 @@
+name: Phase 1 one-time correctness fix
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-natural-language-flowsheet-v3
+    paths:
+      - .github/workflows/phase1-fix-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-remove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-process-requirement-ir-v2
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply correctness fixes and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          requirement = Path("src/aspenops_nexus/process_requirement.py")
+          text = requirement.read_text(encoding="utf-8")
+          old = '''def _safe_scalar(value: Any, label: str) -> ScalarValue:
+              if isinstance(value, bool | str | int):
+                  return value
+              if isinstance(value, float) and math.isfinite(value):
+                  return value
+              raise ValueError(f"{label} must be a finite scalar JSON value")
+          '''
+          new = '''def _safe_scalar(value: Any, label: str) -> ScalarValue:
+              if isinstance(value, str):
+                  return _text(value, label)
+              if isinstance(value, bool | int):
+                  return value
+              if isinstance(value, float) and math.isfinite(value):
+                  return value
+              raise ValueError(f"{label} must be a finite scalar JSON value")
+          '''
+          if old not in text:
+              raise RuntimeError("ProcessRequirement scalar target not found")
+          requirement.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          rules = Path("src/aspenops_nexus/engineering_rules.py")
+          text = rules.read_text(encoding="utf-8")
+          old = '''        stream = stream_map.get(recycle.stream_id)
+              tear = stream_map.get(recycle.tear_stream_id)
+              if stream is None:
+          '''
+          new = '''        recycle_stream = stream_map.get(recycle.stream_id)
+              tear = stream_map.get(recycle.tear_stream_id)
+              if recycle_stream is None:
+          '''
+          if old not in text:
+              raise RuntimeError("Engineering rule Optional target not found")
+          rules.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format \
+            src/aspenops_nexus/process_requirement.py \
+            src/aspenops_nexus/engineering_rules.py
+          uv run ruff check .
+          uv run mypy src
+          rm .github/workflows/phase1-fix-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: close Phase 1 Unicode and typing gaps"
+          git push origin HEAD:feature/aspenops-process-requirement-ir-v2
