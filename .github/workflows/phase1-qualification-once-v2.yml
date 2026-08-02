@@ -1,4 +1,4 @@
-name: Phase 1 final build-contract qualification corrected
+name: Phase 1 final build-contract qualification Windows-alias closure
 
 on:
   pull_request:
