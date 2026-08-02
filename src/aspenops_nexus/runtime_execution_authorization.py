@@ -85,8 +85,7 @@ class RuntimeRevocationPolicy:
         required = {field.name for field in fields(cls)}
         if set(value) != required:
             raise ValueError(
-                "runtime revocation policy must contain exactly "
-                + str(sorted(required))
+                "runtime revocation policy must contain exactly " + str(sorted(required))
             )
         if value.get("schema") != REVOCATION_POLICY_SCHEMA:
             raise ValueError("unsupported runtime revocation-policy schema")
@@ -99,9 +98,7 @@ class RuntimeRevocationPolicy:
             "runtime revocation policy.expires_at",
         )
         if expires_at <= issued_at:
-            raise ValueError(
-                "runtime revocation policy expires_at must be after issued_at"
-            )
+            raise ValueError("runtime revocation policy expires_at must be after issued_at")
         return cls(
             policy_id=_text(value.get("policy_id"), "runtime revocation policy.policy_id"),
             issued_at=issued_at,
@@ -144,12 +141,8 @@ class RuntimeRevocationPolicy:
             ),
             "revoked_profile_ids": list(self.revoked_profile_ids),
             "revoked_profile_sha256": list(self.revoked_profile_sha256),
-            "revoked_adapter_code_sha256": list(
-                self.revoked_adapter_code_sha256
-            ),
-            "revoked_runtime_identity_sha256": list(
-                self.revoked_runtime_identity_sha256
-            ),
+            "revoked_adapter_code_sha256": list(self.revoked_adapter_code_sha256),
+            "revoked_runtime_identity_sha256": list(self.revoked_runtime_identity_sha256),
         }
 
     def digest(self) -> str:
@@ -170,24 +163,15 @@ class RuntimeRevocationPolicy:
     ) -> None:
         if qualification.signing_key_id in self.revoked_signing_key_ids:
             raise PermissionError("runtime qualification signing key is revoked")
-        if (
-            qualification.evidence_sha256
-            in self.revoked_qualification_evidence_sha256
-        ):
+        if qualification.evidence_sha256 in self.revoked_qualification_evidence_sha256:
             raise PermissionError("runtime qualification evidence is revoked")
         if profile.profile_id in self.revoked_profile_ids:
             raise PermissionError("runtime capability profile ID is revoked")
         if profile.digest() in self.revoked_profile_sha256:
             raise PermissionError("runtime capability profile hash is revoked")
-        if (
-            qualification.statement.adapter_code_sha256
-            in self.revoked_adapter_code_sha256
-        ):
+        if qualification.statement.adapter_code_sha256 in self.revoked_adapter_code_sha256:
             raise PermissionError("runtime adapter code is revoked")
-        if (
-            qualification.statement.runtime_identity_sha256
-            in self.revoked_runtime_identity_sha256
-        ):
+        if qualification.statement.runtime_identity_sha256 in self.revoked_runtime_identity_sha256:
             raise PermissionError("runtime identity is revoked")
 
 
@@ -263,9 +247,7 @@ def authorize_runtime_execution(
     if plan.profile_id != profile.profile_id or plan.profile_hash != profile.digest():
         raise ValueError("runtime-qualified plan does not match the current profile")
 
-    required_cases = tuple(
-        sorted({*plan.required_case_ids, *additional_required_case_ids})
-    )
+    required_cases = tuple(sorted({*plan.required_case_ids, *additional_required_case_ids}))
     current = _utc_now(now, "runtime execution authorization time")
     qualification = load_trusted_runtime_qualification(
         qualification_source,
@@ -284,10 +266,7 @@ def authorize_runtime_execution(
         raise ValueError("runtime qualification signing key changed")
     if qualification.statement.adapter_code_sha256 != plan.adapter_code_sha256:
         raise ValueError("runtime qualification adapter-code hash changed")
-    if (
-        qualification.statement.runtime_identity_sha256
-        != plan.runtime_identity_sha256
-    ):
+    if qualification.statement.runtime_identity_sha256 != plan.runtime_identity_sha256:
         raise ValueError("runtime qualification identity hash changed")
 
     policy = load_trusted_runtime_revocation_policy(
