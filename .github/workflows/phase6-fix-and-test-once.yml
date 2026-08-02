@@ -1,0 +1,95 @@
+name: Phase 6 fix and targeted gate
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-fresh-runtime-authorization
+    paths:
+      - .github/workflows/phase6-fix-and-test-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-test-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-signed-revocation-policy
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          test_path = Path("tests/test_runtime_execution_authorization.py")
+          text = test_path.read_text(encoding="utf-8")
+          old = '''    verified = verify_revocation_policy(
+              envelope,
+              trusted_public_key=public_pem,
+              now=NOW,
+          )
+          '''
+          new = '''    verified = verify_revocation_policy(
+              envelope,
+              trusted_public_key=public_pem,
+              now=statement.policy.issued_at,
+          )
+          '''
+          if text.count(old) != 1:
+              raise RuntimeError("Expected one revocation fixture verification target")
+          test_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          source_path = Path("src/aspenops_nexus/signed_revocation_policy.py")
+          text = source_path.read_text(encoding="utf-8")
+          old = '        raise ValueError("trusted revocation authority fingerprint does not match the policy key ID")\n'
+          new = '''        raise ValueError(
+              "trusted revocation authority fingerprint does not match the policy key ID"
+          )
+          '''
+          if text.count(old) != 1:
+              raise RuntimeError("Expected one revocation authority error target")
+          source_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix \
+            src/aspenops_nexus/signed_revocation_policy.py \
+            src/aspenops_nexus/runtime_execution_authorization.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_signed_revocation_policy.py \
+            tests/test_runtime_execution_authorization.py \
+            tests/test_native_builder_contract.py
+          uv run ruff format \
+            src/aspenops_nexus/signed_revocation_policy.py \
+            src/aspenops_nexus/runtime_execution_authorization.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_signed_revocation_policy.py \
+            tests/test_runtime_execution_authorization.py \
+            tests/test_native_builder_contract.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning \
+            tests/test_signed_revocation_policy.py \
+            tests/test_runtime_execution_authorization.py \
+            tests/test_native_builder_contract.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/aspenops_nexus/signed_revocation_policy.py \
+            src/aspenops_nexus/runtime_execution_authorization.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_signed_revocation_policy.py \
+            tests/test_runtime_execution_authorization.py \
+            tests/test_native_builder_contract.py
+          git commit -m "fix: close signed revocation policy test failures"
+          git push origin HEAD:feature/aspenops-signed-revocation-policy
