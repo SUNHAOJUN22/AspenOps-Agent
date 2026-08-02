@@ -69,7 +69,7 @@ def _require_supported_mcp_sdk() -> str:
 
     match = _MCP_VERSION_RE.match(installed)
     if match is None:
-        raise RuntimeError(f"Cannot determine MCP SDK version from {installed!r}")
+        raise RuntimeError(f"Cannot determine MCP SDK major version from {installed!r}")
     major = int(match.group("major"))
     minor = int(match.group("minor"))
     if major != SUPPORTED_MCP_MAJOR or minor < SUPPORTED_MCP_MIN_MINOR:
