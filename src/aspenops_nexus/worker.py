@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from .backends.factory import create_backend
 from .evaluation import evaluate
+from .hashing import sha256_file
 from .models import EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry
 from .windows_job import WindowsJobScope
@@ -43,6 +44,18 @@ class WorkerHandle:
     generation: int = 0
     evaluations: int = 0
     started_monotonic: float = field(default_factory=time.monotonic)
+    staged_registry: Path | None = None
+    model_sha256: str = ""
+    registry_sha256: str = ""
+
+    def execution_identity(self) -> dict[str, Any]:
+        return {
+            "model_sha256": self.model_sha256,
+            "registry_sha256": self.registry_sha256,
+            "backend": self.runtime.get("backend"),
+            "runtime_identity": deepcopy(self.runtime),
+            "worker_generation": self.generation,
+        }
 
 
 def _bounded_text(value: Any, limit: int) -> str:
@@ -61,6 +74,21 @@ def _message_summary(value: Any) -> dict[str, Any]:
     }
 
 
+def _artifact_identity(
+    *,
+    model_path: Path,
+    registry_path: Path,
+    model_sha256: str,
+    registry_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "model_sha256": model_sha256,
+        "registry_sha256": registry_sha256,
+        "staged_model_path": str(model_path),
+        "staged_registry_path": str(registry_path),
+    }
+
+
 def _worker_main(
     worker_id: int,
     generation: int,
@@ -69,22 +97,52 @@ def _worker_main(
     source_model: str,
     registry_path: str,
     visible: bool,
+    expected_model_sha256: str | None = None,
+    expected_registry_sha256: str | None = None,
 ) -> None:
     backend: Any = None
     job_scope: WindowsJobScope | None = None
     try:
+        model = Path(source_model).expanduser().resolve()
+        registry_file = Path(registry_path).expanduser().resolve()
+        observed_model_sha256 = sha256_file(model)
+        observed_registry_sha256 = sha256_file(registry_file)
+        if expected_model_sha256 is not None and observed_model_sha256 != expected_model_sha256:
+            raise RuntimeError("Worker staged model digest does not match the approved snapshot")
+        if (
+            expected_registry_sha256 is not None
+            and observed_registry_sha256 != expected_registry_sha256
+        ):
+            raise RuntimeError("Worker staged registry digest does not match the approved snapshot")
+
         backend = create_backend(backend_name)
-        registry = NodeRegistry(registry_path)
+        registry = NodeRegistry(registry_file)
+        if registry.sha256 != observed_registry_sha256:
+            raise RuntimeError("Registry bytes changed while the Worker was loading them")
+
         job_scope = WindowsJobScope()
         job_scope.start()
+        if backend_name != "mock" and not job_scope.managed:
+            raise RuntimeError(
+                "Real simulator workers require Windows Job Object supervision; "
+                f"setup failed: {job_scope.error or 'unknown error'}"
+            )
         backend.set_process_supervision(job_scope.managed)
-        backend.open(Path(source_model), visible=visible)
+        backend.open(model, visible=visible)
+        if sha256_file(model) != observed_model_sha256:
+            raise RuntimeError("Staged model changed while the simulator was opening it")
         backend.configure_convergence_nodes(registry.convergence_nodes(backend_name))
         runtime = backend.runtime_identity()
         if not isinstance(runtime, dict):
             raise TypeError("Backend runtime identity must be an object")
         runtime = dict(runtime)
         runtime["process_supervision"] = job_scope.identity()
+        runtime["execution_artifacts"] = _artifact_identity(
+            model_path=model,
+            registry_path=registry_file,
+            model_sha256=observed_model_sha256,
+            registry_sha256=observed_registry_sha256,
+        )
         connection.send(
             {
                 "protocol": IPC_PROTOCOL,
@@ -142,6 +200,12 @@ def _worker_main(
                     continue
                 request = EvaluationRequest.from_dict(request_payload)
                 result = evaluate(backend, registry, request, worker_id=worker_id)
+                result.diagnostics["execution_identity"] = {
+                    "model_sha256": observed_model_sha256,
+                    "registry_sha256": observed_registry_sha256,
+                    "backend": backend_name,
+                    "worker_generation": generation,
+                }
                 connection.send(
                     {
                         "protocol": IPC_PROTOCOL,
@@ -151,12 +215,16 @@ def _worker_main(
                     }
                 )
             elif action == "ping":
+                ping_runtime = backend.runtime_identity()
+                if isinstance(ping_runtime, dict):
+                    ping_runtime = dict(ping_runtime)
+                    ping_runtime["execution_artifacts"] = runtime["execution_artifacts"]
                 connection.send(
                     {
                         "protocol": IPC_PROTOCOL,
                         "kind": "pong",
                         "request_id": request_id,
-                        "runtime": backend.runtime_identity(),
+                        "runtime": ping_runtime,
                     }
                 )
             else:
@@ -238,6 +306,8 @@ def _validate_ready_message(
     *,
     worker_id: int,
     generation: int,
+    expected_model_sha256: str | None = None,
+    expected_registry_sha256: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(message, dict):
         raise RuntimeError(f"Worker {worker_id} returned a non-object ready message")
@@ -251,6 +321,19 @@ def _validate_ready_message(
     runtime = message.get("runtime")
     if not isinstance(runtime, dict):
         raise RuntimeError(f"Worker {worker_id} returned an invalid runtime identity")
+    artifacts = runtime.get("execution_artifacts")
+    if not isinstance(artifacts, dict):
+        raise RuntimeError(f"Worker {worker_id} omitted execution artifact identity")
+    if (
+        expected_model_sha256 is not None
+        and artifacts.get("model_sha256") != expected_model_sha256
+    ):
+        raise RuntimeError(f"Worker {worker_id} ready model digest mismatch")
+    if (
+        expected_registry_sha256 is not None
+        and artifacts.get("registry_sha256") != expected_registry_sha256
+    ):
+        raise RuntimeError(f"Worker {worker_id} ready registry digest mismatch")
     return dict(runtime)
 
 
@@ -263,14 +346,27 @@ def start_worker(
     visible: bool,
     startup_timeout_s: float = 90.0,
     generation: int = 0,
+    expected_model_sha256: str | None = None,
+    expected_registry_sha256: str | None = None,
 ) -> WorkerHandle:
     stage_dir = Path(tempfile.mkdtemp(prefix=f"aspenops-w{worker_id}-g{generation}-"))
-    staged_model = stage_dir / model_path.name
+    staged_model = stage_dir / f"model-{model_path.name}"
+    staged_registry = stage_dir / f"registry-{registry_path.name}"
     parent: Any = None
     child: Any = None
     process: Any = None
     try:
+        approved_model_sha256 = expected_model_sha256 or sha256_file(model_path)
+        approved_registry_sha256 = expected_registry_sha256 or sha256_file(registry_path)
         shutil.copy2(model_path, staged_model)
+        shutil.copy2(registry_path, staged_registry)
+        staged_model_sha256 = sha256_file(staged_model)
+        staged_registry_sha256 = sha256_file(staged_registry)
+        if staged_model_sha256 != approved_model_sha256:
+            raise RuntimeError("Model changed while the private Worker snapshot was being created")
+        if staged_registry_sha256 != approved_registry_sha256:
+            raise RuntimeError("Registry changed while the private Worker snapshot was being created")
+
         context = mp.get_context("spawn")
         parent, child = context.Pipe(duplex=True)
         process = context.Process(
@@ -281,8 +377,10 @@ def start_worker(
                 child,
                 backend_name,
                 str(staged_model),
-                str(registry_path),
+                str(staged_registry),
                 visible,
+                approved_model_sha256,
+                approved_registry_sha256,
             ),
             daemon=True,
             name=f"aspenops-worker-{worker_id}-g{generation}",
@@ -297,6 +395,8 @@ def start_worker(
             message,
             worker_id=worker_id,
             generation=generation,
+            expected_model_sha256=approved_model_sha256,
+            expected_registry_sha256=approved_registry_sha256,
         )
     except BaseException:
         _cleanup_startup(
@@ -313,6 +413,9 @@ def start_worker(
         staged_model=staged_model,
         runtime=runtime,
         generation=generation,
+        staged_registry=staged_registry,
+        model_sha256=approved_model_sha256,
+        registry_sha256=approved_registry_sha256,
     )
 
 
@@ -327,7 +430,7 @@ def _cleanup_handle(handle: WorkerHandle) -> None:
 
 
 def abort_worker(handle: WorkerHandle) -> None:
-    """Immediately recycle this AspenOps-owned worker and its staged model."""
+    """Immediately recycle this AspenOps-owned worker and its private artifacts."""
     _terminate(handle)
     _cleanup_handle(handle)
 
@@ -370,6 +473,17 @@ def _failure_result(
     violation: str,
     diagnostics: dict[str, Any],
 ) -> EvaluationResult:
+    normalized_diagnostics = dict(diagnostics)
+    if handle.model_sha256 and handle.registry_sha256:
+        normalized_diagnostics.setdefault(
+            "execution_identity",
+            {
+                "model_sha256": handle.model_sha256,
+                "registry_sha256": handle.registry_sha256,
+                "backend": handle.runtime.get("backend"),
+                "worker_generation": handle.generation,
+            },
+        )
     return EvaluationResult(
         ok=False,
         communication_ok=False,
@@ -379,8 +493,8 @@ def _failure_result(
         values={},
         units={},
         violations=[violation],
-        diagnostics=diagnostics,
-        elapsed_s=float(diagnostics.get("timeout_s", 0.0)),
+        diagnostics=normalized_diagnostics,
+        elapsed_s=float(normalized_diagnostics.get("timeout_s", 0.0)),
         worker_id=handle.worker_id,
     )
 
@@ -470,6 +584,12 @@ def evaluate_on_worker(handle: WorkerHandle, request: EvaluationRequest) -> Eval
         )
     result.worker_id = handle.worker_id
     handle.evaluations += 1
+    result.diagnostics["execution_identity"] = {
+        "model_sha256": handle.model_sha256,
+        "registry_sha256": handle.registry_sha256,
+        "backend": handle.runtime.get("backend"),
+        "worker_generation": handle.generation,
+    }
     worker_diagnostics = result.diagnostics.get("worker")
     if not isinstance(worker_diagnostics, dict):
         worker_diagnostics = {}
