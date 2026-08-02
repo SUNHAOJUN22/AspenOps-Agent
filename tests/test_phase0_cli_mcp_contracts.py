@@ -19,7 +19,7 @@ MODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"
 REGISTRY = ROOT / "src/aspenops_nexus/data/node-registry.json"
 
 
-@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.99.0rc1"])
+@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.28.1"])
 def test_mcp_sdk_accepts_only_supported_one_x_range(
     monkeypatch: pytest.MonkeyPatch,
     version: str,
@@ -34,7 +34,7 @@ def test_mcp_sdk_rejects_versions_outside_contract(
     version: str,
 ) -> None:
     monkeypatch.setattr(mcp_module, "distribution_version", lambda name: version)
-    with pytest.raises(RuntimeError, match="MCP SDK|determine MCP"):
+    with pytest.raises(RuntimeError, match="MCP Python SDK|determine MCP"):
         _require_supported_mcp_sdk()
 
 
@@ -43,7 +43,7 @@ def test_cli_verify_bundle_accepts_optional_public_key_and_optimize_uses_state_d
     verify = parser.parse_args(["verify-bundle", "run.zip", "--public-key", "trusted.pem"])
     assert verify.public_key == "trusted.pem"
     optimize = parser.parse_args(["optimize", "request.json"])
-    assert optimize.output is None
+    assert optimize.output == "var/optimization-result.json"
 
 
 def test_cli_request_loader_rejects_duplicate_keys_and_nonfinite_constants(
