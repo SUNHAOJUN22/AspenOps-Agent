@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .hashing import canonical_hash
 from .qualified_compilation import RuntimeQualifiedCompilationPlan
@@ -12,16 +12,20 @@ from .runtime_qualification import (
     _digest,
     _key_id,
     _parse_time,
-    _strict_json,
     _text,
     _time_text,
     load_trusted_runtime_qualification,
 )
 from .simulator_capabilities import SimulatorCapabilityProfile
 
+if TYPE_CHECKING:
+    from .signed_revocation_policy import (
+        RevocationPolicyCheckpoint,
+        VerifiedSignedRevocationPolicy,
+    )
+
 REVOCATION_POLICY_SCHEMA = "aspenops.runtime-revocations/v1"
-RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v1"
-REVOCATION_POLICY_FILENAME = "revocations.json"
+RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v2"
 _MAX_REVOCATIONS_PER_KIND = 10_000
 
 
@@ -184,6 +188,9 @@ class FreshRuntimeAuthorization:
     adapter_code_sha256: str
     runtime_identity_sha256: str
     revocation_policy_sha256: str
+    revocation_policy_signing_key_id: str
+    revocation_policy_sequence: int
+    revocation_checkpoint_sha256: str
     authorized_at: datetime
     expires_at: datetime
     required_case_ids: tuple[str, ...]
@@ -199,6 +206,9 @@ class FreshRuntimeAuthorization:
             "adapter_code_sha256": self.adapter_code_sha256,
             "runtime_identity_sha256": self.runtime_identity_sha256,
             "revocation_policy_sha256": self.revocation_policy_sha256,
+            "revocation_policy_signing_key_id": self.revocation_policy_signing_key_id,
+            "revocation_policy_sequence": self.revocation_policy_sequence,
+            "revocation_checkpoint_sha256": self.revocation_checkpoint_sha256,
             "authorized_at": _time_text(self.authorized_at),
             "expires_at": _time_text(self.expires_at),
             "required_case_ids": list(self.required_case_ids),
@@ -212,24 +222,10 @@ def load_trusted_runtime_revocation_policy(
     trusted_key_dir: str | Path,
     *,
     now: datetime | None = None,
-) -> RuntimeRevocationPolicy:
-    root = Path(trusted_key_dir).expanduser()
-    if not root.is_absolute():
-        raise ValueError("runtime authorization trusted key directory must be absolute")
-    resolved_root = root.resolve()
-    policy_path = (resolved_root / REVOCATION_POLICY_FILENAME).resolve()
-    try:
-        policy_path.relative_to(resolved_root)
-    except ValueError as exc:
-        raise PermissionError(
-            "runtime revocation policy resolved outside the trusted key directory"
-        ) from exc
-    if not policy_path.is_file():
-        raise FileNotFoundError("runtime revocation policy is unavailable")
-    value = _strict_json(policy_path.read_bytes())
-    policy = RuntimeRevocationPolicy.from_dict(value)
-    policy.assert_current(now)
-    return policy
+) -> tuple[VerifiedSignedRevocationPolicy, RevocationPolicyCheckpoint]:
+    from .signed_revocation_policy import load_trusted_signed_revocation_policy
+
+    return load_trusted_signed_revocation_policy(trusted_key_dir, now=now)
 
 
 def authorize_runtime_execution(
@@ -269,12 +265,12 @@ def authorize_runtime_execution(
     if qualification.statement.runtime_identity_sha256 != plan.runtime_identity_sha256:
         raise ValueError("runtime qualification identity hash changed")
 
-    policy = load_trusted_runtime_revocation_policy(
+    signed_policy, checkpoint = load_trusted_runtime_revocation_policy(
         trusted_key_dir,
         now=current,
     )
-    policy.assert_allows(qualification, profile)
-    expires_at = min(qualification.statement.expires_at, policy.expires_at)
+    signed_policy.assert_allows(qualification, profile)
+    expires_at = min(qualification.statement.expires_at, signed_policy.policy.expires_at)
     return FreshRuntimeAuthorization(
         qualified_plan_sha256=plan.digest(),
         qualification_evidence_sha256=qualification.evidence_sha256,
@@ -282,7 +278,10 @@ def authorize_runtime_execution(
         profile_sha256=profile.digest(),
         adapter_code_sha256=qualification.statement.adapter_code_sha256,
         runtime_identity_sha256=qualification.statement.runtime_identity_sha256,
-        revocation_policy_sha256=policy.digest(),
+        revocation_policy_sha256=signed_policy.evidence_sha256,
+        revocation_policy_signing_key_id=signed_policy.signing_key_id,
+        revocation_policy_sequence=signed_policy.sequence,
+        revocation_checkpoint_sha256=checkpoint.digest(),
         authorized_at=current,
         expires_at=expires_at,
         required_case_ids=required_cases,
