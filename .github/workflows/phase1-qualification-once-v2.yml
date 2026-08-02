@@ -1,9 +1,9 @@
-name: Phase 1 one-time build-contract qualification v2
+name: Phase 1 final build-contract qualification
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/aspenops-process-requirement-ir-v2
+      - feature/aspenops-natural-language-flowsheet-v3
     paths:
       - .github/workflows/phase1-qualification-once-v2.yml
 
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: phase1-build-contract-qualification-v2
+  group: phase1-build-contract-qualification-final
   cancel-in-progress: false
 
 jobs:
@@ -64,6 +64,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+
           report = json.loads(Path("/tmp/phase1-linked-report.json").read_text())
           assert report["valid"] is True
           assert report["status"] == "PLAN_ONLY"
@@ -187,7 +188,10 @@ jobs:
 
           matrix = Path("ASPENOPS_V3_PHASE1_VALIDATION_MATRIX.json")
           text = matrix.read_text(encoding="utf-8")
-          text = text.replace('"current_status": "FAIL_CLOSED_PENDING_CI"', '"current_status": "PASS_BUILD_CONTRACTS"')
+          text = text.replace(
+              '"current_status": "FAIL_CLOSED_PENDING_CI"',
+              '"current_status": "PASS_BUILD_CONTRACTS"',
+          )
           text = text.replace("IMPLEMENTED_PENDING_CI", "PASS_BUILD_CONTRACTS")
           for key in (
               "ruff",
@@ -203,7 +207,10 @@ jobs:
               "mcp_smoke",
               "windows_control_plane",
           ):
-              text = text.replace(f'"{key}": "PENDING_FINAL_HEAD"', f'"{key}": "PASS"')
+              text = text.replace(
+                  f'"{key}": "PENDING_FINAL_HEAD"',
+                  f'"{key}": "PASS"',
+              )
           matrix.write_text(text, encoding="utf-8")
           PY
           rm -f .github/workflows/phase1-*.yml
