@@ -12,7 +12,7 @@ from .models import (
     VariableWrite,
 )
 from .policy import Policy
-from .registry import NodeRegistry, ResolvedNode
+from .registry import NodeRegistry, RegistryError, ResolvedNode
 
 
 def _semantic_identity(key: str, identifiers: dict[str, str]) -> str:
@@ -109,6 +109,8 @@ class EvaluationPlanCompiler:
             if node is None:
                 node = registry.resolve(key, identifiers)
                 registry.validate_backend(node, request.backend)
+                if node.access not in {"read", "readwrite"}:
+                    raise RegistryError(f"Semantic key is write-only: {node.key}")
                 unique_reads[identity] = node
             return node, identity
 
