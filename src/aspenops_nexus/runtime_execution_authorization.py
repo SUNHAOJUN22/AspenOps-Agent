@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     )
 
 REVOCATION_POLICY_SCHEMA = "aspenops.runtime-revocations/v1"
-RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v2"
+RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v3"
 _MAX_REVOCATIONS_PER_KIND = 10_000
 
 
@@ -191,6 +191,10 @@ class FreshRuntimeAuthorization:
     revocation_policy_signing_key_id: str
     revocation_policy_sequence: int
     revocation_checkpoint_sha256: str
+    revocation_witness_sha256: str
+    revocation_witness_signing_key_id: str
+    revocation_witness_id: str
+    revocation_witness_expires_at: datetime
     authorized_at: datetime
     expires_at: datetime
     required_case_ids: tuple[str, ...]
@@ -209,6 +213,12 @@ class FreshRuntimeAuthorization:
             "revocation_policy_signing_key_id": self.revocation_policy_signing_key_id,
             "revocation_policy_sequence": self.revocation_policy_sequence,
             "revocation_checkpoint_sha256": self.revocation_checkpoint_sha256,
+            "revocation_witness_sha256": self.revocation_witness_sha256,
+            "revocation_witness_signing_key_id": self.revocation_witness_signing_key_id,
+            "revocation_witness_id": self.revocation_witness_id,
+            "revocation_witness_expires_at": _time_text(
+                self.revocation_witness_expires_at
+            ),
             "authorized_at": _time_text(self.authorized_at),
             "expires_at": _time_text(self.expires_at),
             "required_case_ids": list(self.required_case_ids),
@@ -237,6 +247,8 @@ def authorize_runtime_execution(
     now: datetime | None = None,
     additional_required_case_ids: tuple[str, ...] = (),
 ) -> FreshRuntimeAuthorization:
+    from .revocation_witness import load_trusted_revocation_witness
+
     plan.assert_executable()
     if profile.qualification == "REVOKED":
         raise PermissionError("runtime capability profile is revoked")
@@ -270,7 +282,17 @@ def authorize_runtime_execution(
         now=current,
     )
     signed_policy.assert_allows(qualification, profile)
-    expires_at = min(qualification.statement.expires_at, signed_policy.policy.expires_at)
+    witness = load_trusted_revocation_witness(
+        trusted_key_dir,
+        signed_policy,
+        checkpoint,
+        now=current,
+    )
+    expires_at = min(
+        qualification.statement.expires_at,
+        signed_policy.policy.expires_at,
+        witness.statement.expires_at,
+    )
     return FreshRuntimeAuthorization(
         qualified_plan_sha256=plan.digest(),
         qualification_evidence_sha256=qualification.evidence_sha256,
@@ -282,6 +304,10 @@ def authorize_runtime_execution(
         revocation_policy_signing_key_id=signed_policy.signing_key_id,
         revocation_policy_sequence=signed_policy.sequence,
         revocation_checkpoint_sha256=checkpoint.digest(),
+        revocation_witness_sha256=witness.evidence_sha256,
+        revocation_witness_signing_key_id=witness.signing_key_id,
+        revocation_witness_id=witness.statement.witness_id,
+        revocation_witness_expires_at=witness.statement.expires_at,
         authorized_at=current,
         expires_at=expires_at,
         required_case_ids=required_cases,
