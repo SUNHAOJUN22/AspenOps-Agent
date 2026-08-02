@@ -100,18 +100,14 @@ def execute_compilation_plan(
     adapter: NativeBuildAdapter,
 ) -> NativeBuildExecutionRecord:
     if not isinstance(plan, RuntimeQualifiedCompilationPlan):
-        raise NativeBuildError(
-            "RuntimeQualifiedCompilationPlan is required for native execution"
-        )
+        raise NativeBuildError("RuntimeQualifiedCompilationPlan is required for native execution")
     plan.assert_executable()
     if adapter.profile_id != plan.profile_id:
         raise NativeBuildError("Native adapter profile_id does not match the compilation plan")
     if adapter.profile_hash != plan.profile_hash:
         raise NativeBuildError("Native adapter profile_hash does not match the compilation plan")
     if adapter.adapter_code_sha256 != plan.adapter_code_sha256:
-        raise NativeBuildError(
-            "Native adapter code hash does not match the runtime qualification"
-        )
+        raise NativeBuildError("Native adapter code hash does not match the runtime qualification")
     if adapter.runtime_identity_sha256 != plan.runtime_identity_sha256:
         raise NativeBuildError(
             "Native adapter runtime identity does not match the runtime qualification"

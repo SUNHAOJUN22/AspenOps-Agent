@@ -65,14 +65,18 @@ def _text(value: Any, label: str) -> str:
 
 def _digest(value: Any, label: str) -> str:
     text = _text(value, label).casefold()
-    if len(text) != _SHA256_LENGTH or any(character not in "0123456789abcdef" for character in text):
+    if len(text) != _SHA256_LENGTH or any(
+        character not in "0123456789abcdef" for character in text
+    ):
         raise ValueError(f"{label} must be a lowercase SHA-256 digest")
     return text
 
 
 def _key_id(value: Any, label: str) -> str:
     text = _text(value, label).casefold()
-    if len(text) != _KEY_ID_LENGTH or any(character not in "0123456789abcdef" for character in text):
+    if len(text) != _KEY_ID_LENGTH or any(
+        character not in "0123456789abcdef" for character in text
+    ):
         raise ValueError(f"{label} must be a 32-character public-key fingerprint")
     return text
 
@@ -146,7 +150,7 @@ class GoldenCaseQualification:
     passed: bool
 
     @classmethod
-    def from_dict(cls, value: Any, *, label: str) -> GoldenCaseQualification:
+    def from_dict(cls, value: Any, *, label: str = "golden case") -> GoldenCaseQualification:
         if not isinstance(value, dict):
             raise ValueError(f"{label} must be an object")
         required = {
@@ -338,7 +342,7 @@ def sign_runtime_qualification(
 ) -> dict[str, Any]:
     key = _load_private_key(private_key)
     key_id = _public_key_id(key.public_key())
-    statement_dict = statement.to_dict()
+    statement_dict = RuntimeQualificationStatement.from_dict(statement.to_dict()).to_dict()
     signature = base64.b64encode(key.sign(_canonical_bytes(statement_dict))).decode("ascii")
     return {
         "schema": ENVELOPE_SCHEMA,
@@ -436,7 +440,9 @@ def load_trusted_runtime_qualification(
     try:
         public_key.relative_to(resolved_root)
     except ValueError as exc:
-        raise PermissionError("runtime qualification key resolved outside the trust directory") from exc
+        raise PermissionError(
+            "runtime qualification key resolved outside the trust directory"
+        ) from exc
     if not public_key.is_file():
         raise FileNotFoundError(
             f"Trusted runtime qualification key is unavailable for key_id={key_id}"
