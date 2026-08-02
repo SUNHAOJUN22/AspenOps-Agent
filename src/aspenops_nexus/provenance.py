@@ -25,8 +25,17 @@ from .hashing import canonical_hash, sha256_file
 
 KeySource: TypeAlias = str | Path | bytes
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_KEY_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _RESERVED_MEMBERS = {"manifest.json", "manifest.sig", "signing-key-id.txt"}
 _MAX_KEY_ID_LENGTH = 128
+_STABLE_RUNTIME_IGNORED_KEYS = {
+    "model_path",
+    "staged_model_path",
+    "staged_registry_path",
+    "worker_pid",
+    "pid",
+    "error",
+}
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -47,6 +56,27 @@ def _json_bytes(value: Any) -> bytes:
         ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in output:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        output[key] = value
+    return output
+
+
+def _reject_json_constant(value: str) -> Any:
+    raise ValueError(f"Non-finite JSON constant is not allowed: {value}")
+
+
+def _strict_json(payload: bytes) -> Any:
+    return json.loads(
+        payload,
+        parse_constant=_reject_json_constant,
+        object_pairs_hook=_unique_json_object,
+    )
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -128,6 +158,65 @@ def _environment() -> dict[str, Any]:
     }
 
 
+def _stable_runtime_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _stable_runtime_value(item)
+            for key, item in value.items()
+            if str(key) not in _STABLE_RUNTIME_IGNORED_KEYS
+        }
+    if isinstance(value, list):
+        return [_stable_runtime_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_stable_runtime_value(item) for item in value)
+    return value
+
+
+def _result_identity(result: Any) -> dict[str, Any] | None:
+    if not isinstance(result, dict):
+        return None
+    diagnostics = result.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        return None
+    identity = diagnostics.get("execution_identity")
+    if not isinstance(identity, dict):
+        return None
+    model_sha256 = identity.get("model_sha256")
+    registry_sha256 = identity.get("registry_sha256")
+    backend = identity.get("backend")
+    if not isinstance(model_sha256, str) or _SHA256_PATTERN.fullmatch(model_sha256) is None:
+        return None
+    if not isinstance(registry_sha256, str) or _SHA256_PATTERN.fullmatch(registry_sha256) is None:
+        return None
+    if not isinstance(backend, str) or not backend:
+        return None
+    worker = diagnostics.get("worker")
+    runtime = worker.get("runtime") if isinstance(worker, dict) else None
+    if not isinstance(runtime, dict):
+        return None
+    stable_runtime = _stable_runtime_value(runtime)
+    return {
+        "model_sha256": model_sha256,
+        "registry_sha256": registry_sha256,
+        "backend": backend,
+        "runtime_identity_sha256": canonical_hash(stable_runtime),
+    }
+
+
+def _derive_execution_identity(results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not results:
+        return None
+    identities = [_result_identity(result) for result in results]
+    if any(identity is None for identity in identities):
+        return None
+    concrete = [identity for identity in identities if identity is not None]
+    first = concrete[0]
+    for identity in concrete[1:]:
+        if identity != first:
+            raise ValueError("Results contain different execution artifact or runtime identities")
+    return dict(first)
+
+
 def write_run_bundle(
     *,
     request: dict[str, Any],
@@ -135,21 +224,34 @@ def write_run_bundle(
     output_path: str | Path,
     signing_private_key: KeySource | None = None,
     signing_key_id: str | None = None,
+    execution_identity: dict[str, Any] | None = None,
 ) -> Path:
-    """Write a self-checking integrity bundle, optionally signed with Ed25519."""
+    """Write a self-checking bundle and bind actual Worker artifacts when available.
+
+    Runtime-generated results carry a verified execution identity and therefore produce a v3
+    bundle. Legacy callers that supply result documents without Worker identity continue to produce
+    a v2 self-checking bundle; that compatibility path must not be represented as proof of the
+    bytes actually opened by a simulator.
+    """
     output = Path(output_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    model_path = Path(str(request["model_path"])).expanduser().resolve()
-    registry_path = Path(str(request["registry_path"])).expanduser().resolve()
+    derived_identity = _derive_execution_identity(results)
+    if execution_identity is not None:
+        explicit = dict(execution_identity)
+        if derived_identity is not None and explicit != derived_identity:
+            raise ValueError("Explicit execution identity does not match result execution identity")
+        derived_identity = explicit
 
+    environment = _environment()
     members = {
         "request.json": _json_bytes(request),
         "results.json": _json_bytes(results),
-        "environment.json": _json_bytes(_environment()),
+        "environment.json": _json_bytes(environment),
         "README.txt": (
             b"This archive is a self-checking AspenOps integrity bundle. Internal hashes detect "
             b"accidental or unsophisticated modification. Cryptographic authenticity requires a "
-            b"valid Ed25519 signature from a trusted key.\n"
+            b"valid Ed25519 signature from a trusted key. A v3 bundle additionally binds the "
+            b"verified Worker artifact and stable runtime identity recorded in every result.\n"
         ),
     }
     signing: dict[str, Any] = {
@@ -160,31 +262,62 @@ def write_run_bundle(
     private_key: Any = None
     if signing_private_key is not None:
         private_key = _load_private_key(signing_private_key)
-        key_id = (
-            _key_id(private_key.public_key())
-            if signing_key_id is None
-            else _bounded_key_id(signing_key_id)
-        )
+        derived_key_id = _key_id(private_key.public_key())
+        if signing_key_id is not None and _bounded_key_id(signing_key_id) != derived_key_id:
+            raise ValueError("signing_key_id must equal the Ed25519 public-key fingerprint")
         signing = {
             "status": "signed",
             "algorithm": "Ed25519",
-            "key_id": key_id,
+            "key_id": derived_key_id,
         }
 
-    manifest = {
-        "format": "aspenops.integrity-bundle/v2",
-        "runtime_schema": RUNTIME_SCHEMA,
-        "runtime_version": __version__,
-        "created_at": datetime.now(UTC).isoformat(),
-        "request_sha256": canonical_hash(request),
-        "results_sha256": canonical_hash(results),
-        "model_sha256": sha256_file(model_path),
-        "registry_sha256": sha256_file(registry_path),
-        "result_count": len(results),
-        "all_ok": _results_all_ok(results),
-        "members": {name: _member_record(payload) for name, payload in members.items()},
-        "signing": signing,
-    }
+    if derived_identity is None:
+        model_path = Path(str(request["model_path"])).expanduser().resolve()
+        registry_path = Path(str(request["registry_path"])).expanduser().resolve()
+        manifest: dict[str, Any] = {
+            "format": "aspenops.integrity-bundle/v2",
+            "runtime_schema": RUNTIME_SCHEMA,
+            "runtime_version": __version__,
+            "created_at": datetime.now(UTC).isoformat(),
+            "request_sha256": canonical_hash(request),
+            "results_sha256": canonical_hash(results),
+            "model_sha256": sha256_file(model_path),
+            "registry_sha256": sha256_file(registry_path),
+            "result_count": len(results),
+            "all_ok": _results_all_ok(results),
+            "members": {name: _member_record(payload) for name, payload in members.items()},
+            "signing": signing,
+            "execution_identity_bound": False,
+        }
+    else:
+        for field in ("model_sha256", "registry_sha256"):
+            value = derived_identity.get(field)
+            if not isinstance(value, str) or _SHA256_PATTERN.fullmatch(value) is None:
+                raise ValueError(f"execution_identity.{field} must be a SHA-256 digest")
+        runtime_digest = derived_identity.get("runtime_identity_sha256")
+        if not isinstance(runtime_digest, str) or _SHA256_PATTERN.fullmatch(runtime_digest) is None:
+            raise ValueError("execution_identity.runtime_identity_sha256 must be a SHA-256 digest")
+        backend = derived_identity.get("backend")
+        if not isinstance(backend, str) or not backend:
+            raise ValueError("execution_identity.backend must be a non-empty string")
+        manifest = {
+            "format": "aspenops.integrity-bundle/v3",
+            "runtime_schema": RUNTIME_SCHEMA,
+            "runtime_version": __version__,
+            "created_at": datetime.now(UTC).isoformat(),
+            "request_sha256": canonical_hash(request),
+            "results_sha256": canonical_hash(results),
+            "model_sha256": derived_identity["model_sha256"],
+            "registry_sha256": derived_identity["registry_sha256"],
+            "backend": backend,
+            "runtime_identity_sha256": runtime_digest,
+            "result_count": len(results),
+            "all_ok": _results_all_ok(results),
+            "members": {name: _member_record(payload) for name, payload in members.items()},
+            "signing": signing,
+            "execution_identity_bound": True,
+            "git_commit": environment.get("git_commit"),
+        }
     manifest_payload = _json_bytes(manifest)
     signature_payload: bytes | None = None
     if private_key is not None:
@@ -203,7 +336,7 @@ def write_run_bundle(
                 archive.writestr(name, payload)
             if signature_payload is not None:
                 archive.writestr("manifest.sig", signature_payload)
-                archive.writestr("signing-key-id.txt", str(signing["key_id"]).encode("utf-8"))
+                archive.writestr("signing-key-id.txt", str(signing["key_id"]).encode("ascii"))
         os.replace(temporary, output)
     finally:
         temporary.unlink(missing_ok=True)
@@ -274,10 +407,8 @@ def _validate_signing(value: Any) -> tuple[dict[str, Any] | None, str | None]:
     elif status == "signed":
         if algorithm != "Ed25519":
             return None, "signed bundle must use Ed25519"
-        if not isinstance(key_id, str) or not key_id or len(key_id) > _MAX_KEY_ID_LENGTH:
-            return None, "signed bundle key_id must be a non-empty bounded string"
-        if any(character in key_id for character in ("\x00", "\r", "\n")):
-            return None, "signed bundle key_id must be one safe text line"
+        if not isinstance(key_id, str) or _KEY_ID_PATTERN.fullmatch(key_id) is None:
+            return None, "signed bundle key_id must be a 32-character public-key fingerprint"
     else:
         return None, "manifest signing status must be unsigned or signed"
     return {"status": status, "algorithm": algorithm, "key_id": key_id}, None
@@ -297,7 +428,7 @@ def _verify_signature(
             archive,
             infos["signing-key-id.txt"],
             limits,
-        ).decode("utf-8")
+        ).decode("ascii")
     except (ArchiveSafetyError, UnicodeDecodeError, KeyError) as exc:
         return False, f"{type(exc).__name__}: {exc}"
     manifest_key_id = str(signing["key_id"])
@@ -323,6 +454,33 @@ def _verify_signature(
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def _v3_identity_checks(manifest: dict[str, Any], results: list[Any]) -> dict[str, bool]:
+    typed_results = [result for result in results if isinstance(result, dict)]
+    if len(typed_results) != len(results):
+        return {
+            "execution_identity_present": False,
+            "model_sha256": False,
+            "registry_sha256": False,
+            "backend": False,
+            "runtime_identity_sha256": False,
+        }
+    try:
+        identity = _derive_execution_identity(typed_results)
+    except (TypeError, ValueError):
+        identity = None
+    return {
+        "execution_identity_present": identity is not None,
+        "model_sha256": identity is not None
+        and identity.get("model_sha256") == manifest.get("model_sha256"),
+        "registry_sha256": identity is not None
+        and identity.get("registry_sha256") == manifest.get("registry_sha256"),
+        "backend": identity is not None and identity.get("backend") == manifest.get("backend"),
+        "runtime_identity_sha256": identity is not None
+        and identity.get("runtime_identity_sha256")
+        == manifest.get("runtime_identity_sha256"),
+    }
+
+
 def verify_run_bundle(
     path: str | Path,
     *,
@@ -339,10 +497,10 @@ def verify_run_bundle(
             if missing:
                 return _structure_invalid("required archive members are missing", missing=missing)
 
-            manifest = json.loads(read_member_bounded(archive, infos["manifest.json"], limits))
-            request = json.loads(read_member_bounded(archive, infos["request.json"], limits))
-            results = json.loads(read_member_bounded(archive, infos["results.json"], limits))
-            environment = json.loads(
+            manifest = _strict_json(read_member_bounded(archive, infos["manifest.json"], limits))
+            request = _strict_json(read_member_bounded(archive, infos["request.json"], limits))
+            results = _strict_json(read_member_bounded(archive, infos["results.json"], limits))
+            environment = _strict_json(
                 read_member_bounded(archive, infos["environment.json"], limits)
             )
             if not isinstance(manifest, dict):
@@ -354,7 +512,11 @@ def verify_run_bundle(
             if not isinstance(environment, dict):
                 return _structure_invalid("environment.json root must be an object")
 
-            if manifest.get("format") != "aspenops.integrity-bundle/v2":
+            bundle_format = manifest.get("format")
+            if bundle_format not in {
+                "aspenops.integrity-bundle/v2",
+                "aspenops.integrity-bundle/v3",
+            }:
                 return _verify_v1(manifest, request, results)
 
             declared_members, declaration_error = _validate_member_declarations(
@@ -395,7 +557,7 @@ def verify_run_bundle(
                 )
 
             manifest_all_ok = manifest.get("all_ok")
-            semantic_checks = {
+            semantic_checks: dict[str, Any] = {
                 "request_sha256": canonical_hash(request) == manifest.get("request_sha256"),
                 "results_sha256": canonical_hash(results) == manifest.get("results_sha256"),
                 "result_count": len(results) == manifest.get("result_count"),
@@ -404,11 +566,25 @@ def verify_run_bundle(
                     and _results_all_ok(results) is manifest_all_ok
                 ),
             }
+            if bundle_format == "aspenops.integrity-bundle/v3":
+                semantic_checks["execution_identity"] = _v3_identity_checks(manifest, results)
+                identity_valid = all(semantic_checks["execution_identity"].values())
+                semantic_checks["execution_identity_bound"] = (
+                    manifest.get("execution_identity_bound") is True
+                )
+            else:
+                identity_valid = True
+
             content_valid = (
                 not unexpected
                 and not undeclared_missing
                 and all(member_checks.values())
-                and all(semantic_checks.values())
+                and all(
+                    value
+                    for key, value in semantic_checks.items()
+                    if key != "execution_identity"
+                )
+                and identity_valid
             )
 
             signature_valid: bool | None = None
@@ -429,6 +605,9 @@ def verify_run_bundle(
         json.JSONDecodeError,
         UnicodeDecodeError,
         KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
     ) as exc:
         return _structure_invalid(f"{type(exc).__name__}: {exc}")
 
@@ -463,6 +642,8 @@ def verify_run_bundle(
         "manifest": manifest,
         "boundary": (
             "Unsigned bundles provide self-checking integrity only. A signed-valid result proves "
-            "that the manifest was signed by the supplied trusted Ed25519 public key."
+            "that the manifest was signed by the supplied trusted Ed25519 public key. A valid v3 "
+            "bundle additionally proves consistency between its result documents and the verified "
+            "Worker artifact/runtime identity recorded by AspenOps."
         ),
     }
