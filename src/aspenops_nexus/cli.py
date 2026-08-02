@@ -282,10 +282,13 @@ def command_benchmark(args: argparse.Namespace) -> int:
 def command_optimize(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     document = _load(args.request)
-    output = _controlled_path(
-        args.output or settings.state_dir / "optimization-result.json",
-        settings,
+    configured_output = getattr(args, "output", None)
+    output_target = (
+        settings.state_dir / "optimization-result.json"
+        if configured_output in {None, "var/optimization-result.json"}
+        else configured_output
     )
+    output = _controlled_path(output_target, settings)
     with PoolManager(
         cache_path=settings.state_dir / "cache.sqlite3",
         license_slots=settings.license_slots,
@@ -381,10 +384,14 @@ def command_verify_licensed_bundle(args: argparse.Namespace) -> int:
 
 
 def command_verify_bundle(args: argparse.Namespace) -> int:
-    result = verify_run_bundle(
-        args.bundle,
-        verification_public_key=args.public_key,
-    )
+    public_key = getattr(args, "public_key", None)
+    if public_key is None:
+        result = verify_run_bundle(args.bundle)
+    else:
+        result = verify_run_bundle(
+            args.bundle,
+            verification_public_key=public_key,
+        )
     _json_print(result)
     return 0 if result["ok"] else 2
 
@@ -451,7 +458,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
     optimize.add_argument("request")
-    optimize.add_argument("--output")
+    optimize.add_argument("--output", default="var/optimization-result.json")
     optimize.set_defaults(func=command_optimize)
 
     certify = sub.add_parser(
@@ -491,7 +498,10 @@ def build_parser() -> argparse.ArgumentParser:
     licensed_verify.add_argument("--public-key", required=True)
     licensed_verify.set_defaults(func=command_verify_licensed_bundle)
 
-    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes and signature")
+    verify = sub.add_parser(
+        "verify-bundle",
+        help="Verify evidence-bundle hashes and signature",
+    )
     verify.add_argument("bundle")
     verify.add_argument("--public-key")
     verify.set_defaults(func=command_verify_bundle)
