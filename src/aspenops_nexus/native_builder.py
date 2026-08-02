@@ -66,6 +66,9 @@ class NativeBuildExecutionRecord:
     runtime_identity_sha256: str
     runtime_authorization_sha256: str
     revocation_policy_sha256: str
+    revocation_policy_signing_key_id: str
+    revocation_policy_sequence: int
+    revocation_checkpoint_sha256: str
     authorized_at: str
     authorization_expires_at: str
     completed: bool
@@ -84,6 +87,9 @@ class NativeBuildExecutionRecord:
             "runtime_identity_sha256": self.runtime_identity_sha256,
             "runtime_authorization_sha256": self.runtime_authorization_sha256,
             "revocation_policy_sha256": self.revocation_policy_sha256,
+            "revocation_policy_signing_key_id": self.revocation_policy_signing_key_id,
+            "revocation_policy_sequence": self.revocation_policy_sequence,
+            "revocation_checkpoint_sha256": self.revocation_checkpoint_sha256,
             "authorized_at": self.authorized_at,
             "authorization_expires_at": self.authorization_expires_at,
             "completed": self.completed,
@@ -204,6 +210,9 @@ def execute_compilation_plan(
         runtime_identity_sha256=authorization.runtime_identity_sha256,
         runtime_authorization_sha256=authorization.digest(),
         revocation_policy_sha256=authorization.revocation_policy_sha256,
+        revocation_policy_signing_key_id=authorization.revocation_policy_signing_key_id,
+        revocation_policy_sequence=authorization.revocation_policy_sequence,
+        revocation_checkpoint_sha256=authorization.revocation_checkpoint_sha256,
         authorized_at=_time_text(authorization.authorized_at),
         authorization_expires_at=_time_text(authorization.expires_at),
         completed=True,
@@ -212,7 +221,8 @@ def execute_compilation_plan(
         layout_hashes=tuple(layout_hashes),
         boundary=(
             "This execution record proves only that a freshly authorized adapter honored the "
-            "AspenOps compilation and readback contracts. Real Aspen certification additionally "
-            "requires licensed runtime evidence and human engineering acceptance."
+            "AspenOps compilation and readback contracts under a signed, checkpoint-validated "
+            "revocation policy. Real Aspen certification additionally requires licensed runtime "
+            "evidence and human engineering acceptance."
         ),
     )
