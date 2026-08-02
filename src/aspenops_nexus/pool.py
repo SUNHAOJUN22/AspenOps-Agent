@@ -90,7 +90,9 @@ class CasePool:
                     self._generation[worker_id] = 0
                     handle = self._new_handle(worker_id)
                     if handle.model_sha256 != self.model_sha256:
-                        raise RuntimeError("Worker model snapshot digest differs from CasePool identity")
+                        raise RuntimeError(
+                            "Worker model snapshot digest differs from CasePool identity"
+                        )
                     if handle.registry_sha256 != self.registry_sha256:
                         raise RuntimeError(
                             "Worker registry snapshot digest differs from CasePool identity"
