@@ -4,17 +4,20 @@
 
 - Repository: `SUNHAOJUN22/AspenOps-Agent`
 - Frozen base commit: `0d240f16c3706705f4a304f09eac22ceaf301631`
+- Phase 0 validated code head: `8ad74ec98444060263b47a100dcb0a07630b5e53`
 - Working branch: `feature/aspenops-natural-language-flowsheet-v3`
 - Draft pull request: `#103`
 - Source task: AspenOps-Agent 3.0 terminal modification package
 
-## Current phase
+## Current phase and admissible status
 
-This report covers **Phase 0 only**. The branch is deliberately fail-closed and must not be represented as a completed natural-language Aspen V15 flowsheet builder.
+This report covers the implemented **Phase 0 control-plane scope only**. It must not be represented as a completed natural-language Aspen V15 flowsheet builder.
 
-Current admissible status before the final CI and reverse-audit gates complete:
+Current admissible software status:
 
-`FAIL_CLOSED`
+`PASS_CONTROL_PLANE`
+
+This means the implemented portable and Windows control-plane contracts passed their governed CI gates. It does **not** mean that flowsheet generation, Aspen Plus V15 compilation, HYSYS V15 compilation, engineering acceptance or licensed simulator physics have passed.
 
 Real licensed simulator status remains:
 
@@ -30,19 +33,20 @@ Real licensed simulator status remains:
 - Worker startup rejects a staged file that changes while being loaded or opened.
 - Worker `ready` messages include the staged paths and artifact digests.
 - Parent-side startup validates the returned artifact identity.
-- Real simulator workers now require successful Windows Job Object supervision before COM is opened.
+- Real simulator workers require successful Windows Job Object supervision before COM is opened.
 - Normal shutdown, startup failure, hard abort and recycling remove the private staging directory.
 
 ### Pool and cache fencing
 
-- `CasePool` binds all Workers and recycled Workers to one model/registry digest pair.
+- `CasePool` binds all live Workers and recycled Workers to one model/registry digest pair.
 - `PoolManager` verifies that a newly created `CasePool` still matches the lookup digests captured before pool construction.
 - Cache identity includes verified model and registry digests and stable runtime identity.
-- A result is cacheable only when its execution identity matches the pool identity.
+- The live dispatch path writes parent-trusted execution identity into each result before cacheability is evaluated.
+- Results carrying an execution identity are cacheable only when it matches the pool identity.
 
 ### Result and evidence identity
 
-- Every Worker result receives a parent-verified `execution_identity`.
+- Every live Worker result receives a parent-verified `execution_identity`.
 - Runtime-generated bundles use `aspenops.integrity-bundle/v3`.
 - V3 manifests bind model digest, registry digest, backend and stable runtime-identity digest.
 - V3 verification compares the result documents with the manifest execution identity.
@@ -52,7 +56,7 @@ Real licensed simulator status remains:
 ### Access and transaction contracts
 
 - Read, constraint and balance plans reject `access="write"` nodes before Worker/COM execution.
-- All backend writes now require read-after-write verification.
+- All backend writes require read-after-write verification.
 - Boolean and string values require exact type/value equality.
 - Numeric values use bounded absolute/relative comparison.
 - Any failed write verification initiates rollback.
@@ -62,17 +66,18 @@ Real licensed simulator status remains:
 
 - Evidence JSON rejects duplicate keys and non-finite constants.
 - CLI request loading rejects duplicate keys and `NaN`/`Infinity`.
-- Ed25519 key IDs are fixed public-key fingerprints.
-- Human-readable arbitrary key IDs are rejected.
+- Ed25519 key IDs written by AspenOps are fixed public-key fingerprints.
+- A caller cannot substitute an unrelated human-readable ID for the signing-key fingerprint.
 - CLI `verify-bundle` accepts an optional trusted public key.
 - MCP accepts only a 32-character key fingerprint and resolves it inside an administrator-configured absolute trust directory.
 - MCP does not accept arbitrary public-key file paths.
-- MCP runtime compatibility is enforced as `mcp>=1.9,<2` rather than any 1.x release.
+- MCP runtime compatibility is enforced as `mcp>=1.9,<2`, while retaining the existing public compatibility constant and diagnostics.
 
 ### CLI corrections
 
 - `aspenops verify-bundle` can verify signed ordinary bundles with `--public-key`.
-- Optimization output defaults to `settings.state_dir` when `--output` is omitted.
+- The historical optimize parser default is retained for compatibility, but execution maps that default into governed `settings.state_dir`.
+- Lightweight bootstrap and full CLI surfaces remain synchronized.
 
 ## Added regression coverage
 
@@ -94,28 +99,55 @@ New tests exercise:
 - MCP SDK lower/upper version boundaries;
 - administrator trust-store containment and signed-bundle verification.
 
-## CI execution history
+## Final CI evidence for the validated code head
 
-### Round 1
+GitHub Actions PR validation completed successfully on the Phase 0 code head.
 
-- Dependency lock and audit: passed.
-- Ruff: failed on seven formatting/style findings in newly added code.
-- Findings were corrected without lowering any rule.
+### Python matrix
 
-### Round 2
+| Runtime | Result | Branch coverage |
+|---|---:|---:|
+| Python 3.11 | 947 passed | 95.22% |
+| Python 3.12 | 947 passed | 95.24% |
+| Python 3.13 | 947 passed | 95.24% |
 
-- Ruff rules: passed.
-- Ruff formatting: identified two files requiring formatter-normalized layout.
-- The repository-pinned Ruff version formatted those files through a one-time workflow.
-- The workflow deleted itself in the same formatting commit; it is not present in the branch.
+The Python 3.12 complete-suite order-independence gate passed in both reverse order and the fixed seeded order.
 
-### Current round
+### Quality, build and packaging gates
 
-A fresh complete Linux and Windows PR run is required after the report commits. Final pass/fail counts will be recorded only from the completed GitHub Actions runs.
+The following completed successfully:
+
+- frozen lockfile verification and dependency synchronization;
+- locked dependency audits for Linux and Windows targets across supported Python versions;
+- Ruff and Ruff format;
+- strict mypy;
+- Python source compilation;
+- governed source-tree audit;
+- high-confidence/high-severity Bandit policy;
+- documentation, artifact, dashboard and Process IR contracts;
+- Process IR canonical validation and rendering;
+- source distribution and wheel build;
+- portable Mock demo;
+- durable CLI lifecycle smoke;
+- committed performance policy;
+- MCP surface check;
+- clean wheel installation, dependency check and CLI smoke.
+
+### Windows control-plane gate
+
+The Windows 2025 contract workflow completed successfully, including:
+
+- PowerShell parser and bootstrap contracts;
+- Ruff, formatter and strict mypy;
+- Python compilation and source audit;
+- Windows Job Object, process ownership, scheduler, archive, backend, convergence, certification, Process IR and workflow-governance tests;
+- Windows CLI smoke.
+
+These public Windows tests qualify the control plane, not commercial Aspen physics.
 
 ## Not yet implemented
 
-The following terminal-task items remain outside this Phase 0 PR and must not be claimed as complete:
+The following terminal-task items remain outside this Phase 0 control-plane PR and must not be claimed as complete:
 
 - ProcessRequirementDocument schema;
 - ProcessDesignIR v2;
@@ -132,6 +164,17 @@ The following terminal-task items remain outside this Phase 0 PR and must not be
 - natural-language design tools;
 - licensed Aspen Plus V15 and HYSYS V15 golden-case execution.
 
+## Remaining Phase 0 follow-up work
+
+The implemented control-plane gate passes, but the wider terminal-task Phase 0 backlog still contains:
+
+1. consolidate the Aspen Plus base/strict adapter split into one strict implementation;
+2. migrate backend polling environment variables into strictly validated `Settings` fields;
+3. bind licensed-certification preflight and execution through one persistent approved snapshot object;
+4. add Windows staging ACL/read-only hardening in addition to digest boundary checks.
+
+These items prevent a claim that the entire AspenOps V3 terminal package is complete. They do not invalidate the narrower `PASS_CONTROL_PLANE` result demonstrated by the completed CI matrix.
+
 ## Compatibility decisions
 
 - The existing 14-tool MCP surface is retained in Phase 0; a future high-level design surface must be introduced only after deterministic IR and engineering rules exist.
@@ -140,19 +183,8 @@ The following terminal-task items remain outside this Phase 0 PR and must not be
 - No source Aspen model is overwritten.
 - The branch remains a draft PR and is not merged automatically.
 
-## Phase 0 exit criteria
+## Final boundary
 
-Phase 0 may move from `FAIL_CLOSED` to `PASS_CONTROL_PLANE` only when all of the following are evidenced on the final branch head:
+`PASS_CONTROL_PLANE` is the highest supported conclusion for this implementation stage.
 
-- Ruff and Ruff format pass;
-- strict mypy passes;
-- Bandit policy passes;
-- full Python 3.11, 3.12 and 3.13 suites pass with required branch coverage;
-- test-order gate passes;
-- build and Wheel smoke pass;
-- MCP surface check passes;
-- Windows control-plane contracts pass;
-- no temporary workflow remains;
-- reverse audit contains no unresolved Phase 0 software blocker.
-
-Even after those gates, real Aspen status remains `PENDING_REAL_ASPEN_CERTIFICATION`.
+The project must remain `PENDING_REAL_ASPEN_CERTIFICATION` until the separately scoped Aspen Plus/HYSYS V15 adapters, native topology roundtrip, Golden Cases, licensed Windows execution and human engineering acceptance have all been completed with signed evidence.
