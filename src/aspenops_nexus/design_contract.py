@@ -82,12 +82,22 @@ def validate_design_against_requirement(
         component_id for feed in requirement.feeds for component_id in feed.components
     }
     missing_components = sorted(required_components - design_components)
+    unapproved_components = sorted(design_components - required_components)
     if missing_components:
         issues.append(
             _issue(
                 "components.missing",
                 "design.components",
                 "Design omits required components: " + ", ".join(missing_components),
+            )
+        )
+    if unapproved_components:
+        issues.append(
+            _issue(
+                "components.unapproved",
+                "design.components",
+                "Design introduces components absent from the approved requirement: "
+                + ", ".join(unapproved_components),
             )
         )
 
