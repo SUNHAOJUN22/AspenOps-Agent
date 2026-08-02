@@ -1,0 +1,314 @@
+name: Phase 3 final signed-runtime qualification
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-v15-compilation-contracts
+    paths:
+      - .github/workflows/phase3-final-qualification-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase3-final-signed-runtime-qualification
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -f PHASE3_DIAGNOSTIC.md PHASE3_TARGETED_QUALIFICATION.json
+          rm -f .github/workflows/phase3-*.yml
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix \
+            src/aspenops_nexus/runtime_qualification.py \
+            src/aspenops_nexus/qualified_compilation.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_runtime_qualification.py \
+            tests/test_qualified_compilation.py \
+            tests/test_native_builder_contract.py
+          uv run ruff format \
+            src/aspenops_nexus/runtime_qualification.py \
+            src/aspenops_nexus/qualified_compilation.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_runtime_qualification.py \
+            tests/test_qualified_compilation.py \
+            tests/test_native_builder_contract.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py --output /tmp/phase3-source-audit.json
+          uv build
+
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            coverage-floor: "94.5"
+          - python-version: "3.12"
+            coverage-floor: "95.0"
+          - python-version: "3.13"
+            coverage-floor: "94.5"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -f PHASE3_DIAGNOSTIC.md PHASE3_TARGETED_QUALIFICATION.json
+          rm -f .github/workflows/phase3-*.yml
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:/tmp/phase3-coverage-${{ matrix.python-version }}.json \
+            --cov-fail-under=${{ matrix.coverage-floor }}
+      - if: ${{ matrix.python-version == '3.12' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir /tmp/phase3-order
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: pwsh
+        run: |
+          Remove-Item PHASE3_DIAGNOSTIC.md,PHASE3_TARGETED_QUALIFICATION.json -Force -ErrorAction SilentlyContinue
+          Get-ChildItem .github/workflows -Filter 'phase3-*.yml' |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+          uv lock --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv sync --frozen --extra dev --extra windows --extra agent --extra signing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run ruff check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run ruff format --check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run mypy src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run pytest -W error::ResourceWarning
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  finalize:
+    needs: [quality, tests, windows]
+    if: ${{ success() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Record Phase 3 qualification and clean temporary files
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix \
+            src/aspenops_nexus/runtime_qualification.py \
+            src/aspenops_nexus/qualified_compilation.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_runtime_qualification.py \
+            tests/test_qualified_compilation.py \
+            tests/test_native_builder_contract.py
+          uv run ruff format \
+            src/aspenops_nexus/runtime_qualification.py \
+            src/aspenops_nexus/qualified_compilation.py \
+            src/aspenops_nexus/native_builder.py \
+            tests/test_runtime_qualification.py \
+            tests/test_qualified_compilation.py \
+            tests/test_native_builder_contract.py
+          cat > ASPENOPS_V3_PHASE3_IMPLEMENTATION_REPORT.md <<'EOF'
+          # AspenOps V3 Phase 3 Implementation Report
+
+          ## Scope and result
+
+          Phase 3 introduces signed runtime-profile qualification contracts on top of the Phase 2 offline compilation contracts.
+
+          Current status:
+
+          `PASS_BUILD_CONTRACTS`
+
+          Qualification scope:
+
+          `SIGNED_RUNTIME_QUALIFICATION_CONTRACTS`
+
+          Real simulator status remains:
+
+          `PENDING_REAL_ASPEN_CERTIFICATION`
+
+          ## Implemented contracts
+
+          - strict qualification statement and signed-envelope schemas;
+          - duplicate-key and non-finite JSON rejection;
+          - Ed25519 signatures and public-key fingerprint binding;
+          - issued-at and expires-at validation;
+          - capability profile ID and SHA-256 binding;
+          - simulator, marketing version and adapter-contract binding;
+          - adapter-code SHA-256 binding;
+          - runtime-identity SHA-256 binding;
+          - passed Golden Case evidence digests and required-case checks;
+          - signed approver identity and approval scope;
+          - administrator-controlled trusted-key directory;
+          - `RuntimeQualifiedCompilationPlan` wrapper over the unchanged Phase 2 base plan;
+          - native execution restricted to the signed wrapper type;
+          - exact adapter profile, code and runtime-identity checks before the first native step;
+          - qualification evidence identity carried into the native execution record.
+
+          ## Security conclusion
+
+          Merely changing a capability profile enum to `VERIFIED_ON_TARGET_RUNTIME` is insufficient. A plain `CompilationPlan`, including one whose in-memory profile enum was altered, is rejected by the native execution boundary. Execution requires a verified signed qualification and the resulting runtime-qualified wrapper.
+
+          ## Validation
+
+          The Phase 3 qualification matrix completed Linux quality/build gates, Python 3.11/3.12/3.13 full suites with required branch coverage, Python 3.12 reverse and fixed-seed order independence, and the Windows full test suite.
+
+          ## Explicit boundary
+
+          All signing tests use synthetic temporary Ed25519 keys and synthetic Golden Case digests. No production trust key, licensed runtime qualification, native Aspen Plus/HYSYS adapter, commercial solver run, save/reopen roundtrip or human engineering approval was created in this phase.
+
+          Therefore Phase 3 does not grant `PASS_REAL_V15_CASE_SCOPE`, `PASS_WITH_REMAINING_EXTERNAL_ENGINEERING_GATE` or `REAL_ASPEN_CERTIFIED`.
+          EOF
+
+          cat > ASPENOPS_V3_PHASE3_VALIDATION_MATRIX.json <<'EOF'
+          {
+            "schema": "aspenops.v3-phase3-validation-matrix/v1",
+            "branch": "feature/aspenops-runtime-profile-qualification",
+            "pull_request": 106,
+            "current_status": "PASS_BUILD_CONTRACTS",
+            "qualification_scope": "SIGNED_RUNTIME_QUALIFICATION_CONTRACTS",
+            "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+            "contracts": {
+              "strict_json": "PASS",
+              "ed25519_signature": "PASS",
+              "public_key_fingerprint": "PASS",
+              "validity_window": "PASS",
+              "profile_id_and_hash_binding": "PASS",
+              "simulator_version_adapter_contract_binding": "PASS",
+              "adapter_code_hash_binding": "PASS",
+              "runtime_identity_hash_binding": "PASS",
+              "golden_case_required_set": "PASS",
+              "trusted_key_directory": "PASS",
+              "plain_base_plan_execution_rejected": "PASS",
+              "runtime_qualified_wrapper_required": "PASS",
+              "adapter_identity_rechecked_before_execution": "PASS"
+            },
+            "ci": {
+              "python_3_11": "PASS",
+              "python_3_12": "PASS",
+              "python_3_13": "PASS",
+              "order_independence": "PASS",
+              "branch_coverage": "PASS",
+              "ruff": "PASS",
+              "ruff_format": "PASS",
+              "mypy": "PASS",
+              "build": "PASS",
+              "windows": "PASS"
+            },
+            "external_gates": {
+              "production_trust_key": "NOT_CREATED",
+              "real_runtime_qualification": "NOT_CREATED",
+              "licensed_aspen_plus_execution": "NOT_EXECUTED",
+              "licensed_hysys_execution": "NOT_EXECUTED",
+              "native_save_close_reopen": "NOT_EXECUTED",
+              "real_golden_cases": "NOT_EXECUTED",
+              "human_engineering_acceptance": "NOT_EXECUTED"
+            }
+          }
+          EOF
+
+          cat > ASPENOPS_V3_PHASE3_REVERSE_AUDIT.md <<'EOF'
+          # AspenOps V3 Phase 3 Reverse Audit
+
+          ## Decision
+
+          `PASS_BUILD_CONTRACTS` for `SIGNED_RUNTIME_QUALIFICATION_CONTRACTS`.
+
+          Real simulator status remains `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+          ## Adversarial checks
+
+          The implemented tests reject:
+
+          - duplicate or non-finite qualification JSON;
+          - malformed statement or envelope shapes;
+          - wrong signature algorithm;
+          - invalid base64 or invalid Ed25519 signature;
+          - document tampering after signing;
+          - wrong trusted public key;
+          - not-yet-valid or expired qualifications;
+          - naive verification time without timezone;
+          - failed or duplicate Golden Cases;
+          - missing required Golden Cases;
+          - profile ID, hash, simulator, version or adapter-contract mismatch;
+          - revoked profiles;
+          - blocked base compilation plans;
+          - plain base-plan execution even when its profile enum says verified;
+          - adapter profile-ID or profile-hash substitution;
+          - adapter-code hash substitution;
+          - runtime-identity hash substitution;
+          - missing mandatory readback;
+          - topology or layout mismatch.
+
+          ## Remaining trust boundary
+
+          Python code executing inside the trusted AspenOps process is part of the trusted computing base. The signed qualification API prevents untrusted request documents and ordinary serialized data from authorizing execution; it is not a sandbox against a malicious administrator who can replace Python modules, trusted keys or adapter code. Production qualification must therefore bind signed evidence to an immutable release, exact adapter code, exact runtime identity and controlled trust store.
+
+          ## Remaining external gates
+
+          No production qualification exists. No licensed Aspen Plus/HYSYS native adapter or commercial-runtime Golden Case was executed. Human engineering acceptance remains mandatory.
+          EOF
+
+          rm -f PHASE3_DIAGNOSTIC.md PHASE3_TARGETED_QUALIFICATION.json
+          rm -f .github/workflows/phase3-*.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: qualify Phase 3 signed runtime contracts"
+          git push origin HEAD:feature/aspenops-runtime-profile-qualification
