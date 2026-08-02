@@ -211,12 +211,15 @@ def test_policy_and_checkpoint_mismatch_fail_closed() -> None:
 def test_trusted_loader_and_missing_inputs(tmp_path: Path) -> None:
     policy, checkpoint, item, envelope, _, public_pem = verified_witness()
     install(tmp_path, envelope, public_pem)
-    assert load_trusted_revocation_witness(
-        tmp_path,
-        policy,
-        checkpoint,
-        now=NOW,
-    ) == item
+    assert (
+        load_trusted_revocation_witness(
+            tmp_path,
+            policy,
+            checkpoint,
+            now=NOW,
+        )
+        == item
+    )
 
     (tmp_path / WITNESS_RECEIPT_FILENAME).unlink()
     with pytest.raises(FileNotFoundError, match="receipt is unavailable"):

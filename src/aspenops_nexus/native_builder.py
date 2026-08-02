@@ -222,13 +222,9 @@ def execute_compilation_plan(
         revocation_policy_sequence=authorization.revocation_policy_sequence,
         revocation_checkpoint_sha256=authorization.revocation_checkpoint_sha256,
         revocation_witness_sha256=authorization.revocation_witness_sha256,
-        revocation_witness_signing_key_id=(
-            authorization.revocation_witness_signing_key_id
-        ),
+        revocation_witness_signing_key_id=(authorization.revocation_witness_signing_key_id),
         revocation_witness_id=authorization.revocation_witness_id,
-        revocation_witness_expires_at=_time_text(
-            authorization.revocation_witness_expires_at
-        ),
+        revocation_witness_expires_at=_time_text(authorization.revocation_witness_expires_at),
         authorized_at=_time_text(authorization.authorized_at),
         authorization_expires_at=_time_text(authorization.expires_at),
         completed=True,

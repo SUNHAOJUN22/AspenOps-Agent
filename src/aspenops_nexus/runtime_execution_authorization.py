@@ -216,9 +216,7 @@ class FreshRuntimeAuthorization:
             "revocation_witness_sha256": self.revocation_witness_sha256,
             "revocation_witness_signing_key_id": self.revocation_witness_signing_key_id,
             "revocation_witness_id": self.revocation_witness_id,
-            "revocation_witness_expires_at": _time_text(
-                self.revocation_witness_expires_at
-            ),
+            "revocation_witness_expires_at": _time_text(self.revocation_witness_expires_at),
             "authorized_at": _time_text(self.authorized_at),
             "expires_at": _time_text(self.expires_at),
             "required_case_ids": list(self.required_case_ids),

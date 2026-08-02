@@ -8,8 +8,6 @@ from typing import Any
 
 import pytest
 
-from tests.revocation_witness_support import install_revocation_witness
-
 from aspenops_nexus.process_ir_v2 import ProcessDesignIR
 from aspenops_nexus.qualified_compilation import (
     RuntimeQualifiedCompilationPlan,
@@ -41,6 +39,7 @@ from aspenops_nexus.simulator_capabilities import (
     SimulatorCapabilityProfile,
     get_builtin_capability_profile,
 )
+from tests.revocation_witness_support import install_revocation_witness
 
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "examples/process-design-v2.example.json"

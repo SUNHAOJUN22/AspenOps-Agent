@@ -78,8 +78,7 @@ class RevocationWitnessStatement:
         }
         if set(value) != required:
             raise ValueError(
-                "revocation witness statement must contain exactly "
-                + str(sorted(required))
+                "revocation witness statement must contain exactly " + str(sorted(required))
             )
         schema = _text(value.get("schema"), "revocation witness statement.schema")
         if schema != WITNESS_STATEMENT_SCHEMA:
@@ -271,9 +270,7 @@ def load_trusted_revocation_witness(
     except ValueError as exc:
         raise PermissionError("revocation witness key escaped its authority directory") from exc
     if not public_key.is_file():
-        raise FileNotFoundError(
-            f"trusted revocation witness is unavailable for key_id={key_id}"
-        )
+        raise FileNotFoundError(f"trusted revocation witness is unavailable for key_id={key_id}")
     verified = verify_revocation_witness(
         envelope,
         trusted_public_key=public_key,
