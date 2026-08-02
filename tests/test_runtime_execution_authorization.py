@@ -109,7 +109,7 @@ def write_policy(
     verified = verify_revocation_policy(
         envelope,
         trusted_public_key=public_pem,
-        now=NOW,
+        now=statement.policy.issued_at,
     )
     checkpoint = advance_revocation_policy_checkpoint(verified)
     signing = envelope["signing"]

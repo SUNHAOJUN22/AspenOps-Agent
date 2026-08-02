@@ -74,8 +74,7 @@ class SignedRevocationPolicyStatement:
         required = {"schema", "sequence", "previous_policy_sha256", "policy"}
         if set(value) != required:
             raise ValueError(
-                "signed revocation-policy statement must contain exactly "
-                + str(sorted(required))
+                "signed revocation-policy statement must contain exactly " + str(sorted(required))
             )
         schema = _text(value.get("schema"), "signed revocation-policy statement.schema")
         if schema != SIGNED_POLICY_STATEMENT_SCHEMA:
@@ -226,7 +225,9 @@ def verify_revocation_policy(
     statement = SignedRevocationPolicyStatement.from_dict(envelope.get("statement"))
     public_key = _load_public_key(trusted_public_key)
     if _public_key_id(public_key) != key_id:
-        raise ValueError("trusted revocation authority fingerprint does not match the policy key ID")
+        raise ValueError(
+            "trusted revocation authority fingerprint does not match the policy key ID"
+        )
     try:
         from cryptography.exceptions import InvalidSignature
     except ImportError as exc:
@@ -258,10 +259,7 @@ def validate_revocation_policy_checkpoint(
         return
     if policy.sequence != checkpoint.accepted_sequence + 1:
         raise PermissionError("signed revocation-policy sequence skipped the trusted checkpoint")
-    if (
-        policy.statement.previous_policy_sha256
-        != checkpoint.accepted_policy_evidence_sha256
-    ):
+    if policy.statement.previous_policy_sha256 != checkpoint.accepted_policy_evidence_sha256:
         raise PermissionError("signed revocation-policy chain does not extend the checkpoint")
 
 
@@ -317,9 +315,7 @@ def load_trusted_signed_revocation_policy(
     except ValueError as exc:
         raise PermissionError("revocation authority key escaped its trust directory") from exc
     if not public_key.is_file():
-        raise FileNotFoundError(
-            f"trusted revocation authority is unavailable for key_id={key_id}"
-        )
+        raise FileNotFoundError(f"trusted revocation authority is unavailable for key_id={key_id}")
     verified = verify_revocation_policy(
         envelope,
         trusted_public_key=public_key,

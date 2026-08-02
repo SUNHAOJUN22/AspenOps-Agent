@@ -287,6 +287,4 @@ def test_checkpoint_parser_rejects_unknown_fields_and_bad_values() -> None:
         RevocationPolicyCheckpoint.from_dict(forged)
 
     with pytest.raises(ValueError, match="initial.*sequence 1"):
-        advance_revocation_policy_checkpoint(
-            verified(sequence=2, previous="a" * 64)[0]
-        )
+        advance_revocation_policy_checkpoint(verified(sequence=2, previous="a" * 64)[0])
