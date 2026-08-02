@@ -1,0 +1,223 @@
+name: Math and performance closure once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/math-performance-closure-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: math-performance-closure-once
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BASE_SHA: 0e12306bc49985b6a2c71d9db04ab39ed13fa15d
+      WORKFLOW_PATH: .github/workflows/math-performance-closure-once.yml
+      HELPER_DIR: .github/math-performance-closure
+    steps:
+      - name: Checkout registration commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify trusted baseline and helper scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo verify-baseline > /tmp/math-performance-stage
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          actual="$(git diff --name-only "$BASE_SHA" HEAD | sort)"
+          expected="$(printf '%s\n' \
+            '.github/math-performance-closure/benchmark.py' \
+            '.github/math-performance-closure/closure.py' \
+            '.github/workflows/math-performance-closure-once.yml' | sort)"
+          test "$actual" = "$expected"
+          git diff --check "$BASE_SHA" HEAD
+          cp "$HELPER_DIR/benchmark.py" /tmp/math-performance-benchmark.py
+          cp "$HELPER_DIR/closure.py" /tmp/math-performance-closure.py
+          python -m py_compile \
+            /tmp/math-performance-benchmark.py \
+            /tmp/math-performance-closure.py
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync frozen baseline environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo sync-baseline > /tmp/math-performance-stage
+          uv lock --check
+          uv sync --python 3.12 --frozen --extra dev --extra agent --extra signing
+
+      - name: Measure current dispatch baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo benchmark-baseline > /tmp/math-performance-stage
+          uv run python /tmp/math-performance-benchmark.py \
+            --output /tmp/dispatch-before.json
+          cat /tmp/dispatch-before.json
+
+      - name: Apply mathematical and dispatch improvements
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo apply-improvements > /tmp/math-performance-stage
+          uv run python /tmp/math-performance-closure.py apply
+          uv run ruff format \
+            src/aspenops_nexus/pool.py \
+            src/aspenops_nexus/evaluation.py \
+            tests/test_math_performance_closure.py
+          rm -rf "$HELPER_DIR"
+          git diff --check
+
+      - name: Measure optimized dispatch and enforce improvement
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo benchmark-optimized > /tmp/math-performance-stage
+          uv run python /tmp/math-performance-benchmark.py \
+            --output /tmp/dispatch-after.json
+          uv run python /tmp/math-performance-closure.py compare \
+            --before /tmp/dispatch-before.json \
+            --after /tmp/dispatch-after.json \
+            --output /tmp/performance.json
+          cat /tmp/performance.json
+
+      - name: Run focused mathematical and runtime tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo focused-tests > /tmp/math-performance-stage
+          uv run pytest \
+            -W error::ResourceWarning \
+            -W error::pytest.PytestUnraisableExceptionWarning \
+            tests/test_math_performance_closure.py \
+            tests/test_finite_aggregation.py \
+            tests/test_runtime_closure.py \
+            tests/test_cache.py \
+            tests/test_scheduler_edge_cases.py \
+            --junitxml=/tmp/focused.xml
+
+      - name: Run formatting, typing, compile and security gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo quality-gates > /tmp/math-performance-stage
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run python -m compileall -q src tests scripts
+          uvx --from bandit==1.8.6 bandit -q -r src/aspenops_nexus
+
+      - name: Run full test matrix with coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo full-test-matrix > /tmp/math-performance-stage
+          for version in 3.11 3.12 3.13; do
+            uv python install "$version"
+            rm -rf .venv
+            uv sync --python "$version" --frozen \
+              --extra dev --extra agent --extra signing
+            PYTHONTRACEMALLOC=10 uv run pytest \
+              -W error::ResourceWarning \
+              -W error::pytest.PytestUnraisableExceptionWarning \
+              --cov=aspenops_nexus \
+              --cov-report="json:/tmp/coverage-$version.json" \
+              --junitxml="/tmp/junit-$version.xml"
+          done
+
+      - name: Audit dependencies, build and smoke-test wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo package-security > /tmp/math-performance-stage
+          rm -rf .venv dist build
+          uv sync --python 3.12 --frozen \
+            --extra dev --extra agent --extra signing
+          uv export --python 3.12 --frozen --all-extras --no-dev \
+            --format requirements-txt --no-hashes \
+            > /tmp/runtime-requirements.txt
+          uvx --from pip-audit==2.9.0 pip-audit \
+            -r /tmp/runtime-requirements.txt
+          uv run python -m build
+          uv venv --python 3.12 /tmp/aspenops-wheel-smoke
+          uv pip install --python /tmp/aspenops-wheel-smoke/bin/python \
+            --no-deps dist/*.whl
+          /tmp/aspenops-wheel-smoke/bin/aspenops --help \
+            > /tmp/aspenops-help.txt
+          /tmp/aspenops-wheel-smoke/bin/aspenops-mcp --help \
+            > /tmp/aspenops-mcp-help.txt
+
+      - name: Generate evidence and publish qualified changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo publish-qualified > /tmp/math-performance-stage
+          uv run python /tmp/math-performance-closure.py report \
+            --performance /tmp/performance.json
+          rm -f "$WORKFLOW_PATH"
+          rm -f docs/MATH_PERFORMANCE_CLOSURE_BLOCKER.json
+          allowed='^(src/aspenops_nexus/(pool|evaluation)\.py|tests/test_math_performance_closure\.py|docs/MATH_PERFORMANCE_CLOSURE_RESULT\.(json|md)|\.github/math-performance-closure/(benchmark|closure)\.py|\.github/workflows/math-performance-closure-once\.yml)$'
+          unexpected="$(git diff --name-only | grep -Ev "$allowed" || true)"
+          test -z "$unexpected"
+          git diff --check
+          git add -A
+          git commit -m "perf: harden math and reduce dispatch overhead"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git push origin HEAD:main
+
+      - name: Publish fail-closed blocker
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(cat /tmp/math-performance-stage 2>/dev/null || echo unknown)"
+          export FAILED_STAGE="$stage"
+          git reset --hard "$GITHUB_SHA"
+          rm -rf "$HELPER_DIR"
+          rm -f "$WORKFLOW_PATH"
+          mkdir -p docs
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema": "aspenops.math-performance-closure-blocker/v1",
+              "decision": "BLOCKED",
+              "source_baseline": os.environ["BASE_SHA"],
+              "registration_sha": os.environ["GITHUB_SHA"],
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+              "failed_stage": os.environ["FAILED_STAGE"],
+              "source_changes_retained": False,
+              "aspen_executed": False,
+          }
+          Path("docs/MATH_PERFORMANCE_CLOSURE_BLOCKER.json").write_text(
+              json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git add -A
+          git commit -m "test: record math performance closure blocker"
+          git fetch --no-tags origin main
+          if test "$(git rev-parse origin/main)" = "$GITHUB_SHA"; then
+            git push origin HEAD:main
+          fi
