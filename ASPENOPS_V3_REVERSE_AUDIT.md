@@ -1,12 +1,18 @@
 # AspenOps V3 Phase 0 Reverse Audit
 
-## Audit boundary
+## Audit boundary and decision
 
 This audit challenges only the Phase 0 controls implemented in draft PR #103. It does not certify natural-language flowsheet construction or licensed Aspen V15 engineering behavior.
 
-Current decision before the final CI evidence is complete:
+Current decision for the implemented Phase 0 control-plane scope:
 
-`FAIL_CLOSED`
+`PASS_CONTROL_PLANE`
+
+This decision is supported by successful Linux quality/build/Wheel/MCP gates, 947 passing tests on each of Python 3.11, 3.12 and 3.13, complete-suite order-independence on Python 3.12, and the Windows control-plane contract workflow.
+
+Real licensed simulator status remains:
+
+`PENDING_REAL_ASPEN_CERTIFICATION`
 
 ## Attack and failure matrix
 
@@ -38,7 +44,7 @@ Current decision before the final CI evidence is complete:
 
 **Expected result:** Fatal Worker startup, parent cleanup and no execution.
 
-**Remaining limitation:** There is no operating-system read-only ACL applied to the staging directory. Digest checks detect changes at defined boundaries but do not make the files physically immutable. A future hardening step should restrict ACLs and file handles on Windows.
+**Remaining limitation:** No operating-system read-only ACL is applied to the staging directory. Digest checks detect changes at defined boundaries but do not make the files physically immutable. Windows ACL/file-handle hardening remains follow-up work.
 
 ### 4. Worker forges a ready digest
 
@@ -54,7 +60,7 @@ Current decision before the final CI evidence is complete:
 
 **Attack:** Child result payload includes a different model or registry identity.
 
-**Control:** Parent `evaluate_on_worker()` replaces result execution identity with the trusted `WorkerHandle` values.
+**Control:** Parent `evaluate_on_worker()` and the live `CasePool` dispatch path replace/bind result execution identity with trusted pool and `WorkerHandle` values before cacheability or evidence creation.
 
 **Expected result:** Child-supplied identity cannot become authoritative.
 
@@ -62,7 +68,7 @@ Current decision before the final CI evidence is complete:
 
 **Attack:** Register a pool under digest A while actual Workers run artifact B.
 
-**Control:** PoolManager-to-CasePool digest comparison, Worker handshake, result identity check in `_cacheable()`, and stable runtime identity in the cache key.
+**Control:** PoolManager-to-CasePool digest comparison, Worker handshake, live parent result binding, result identity check in `_cacheable()`, and stable runtime identity in the cache key.
 
 **Expected result:** Mismatch fails or result is not cacheable.
 
@@ -138,9 +144,9 @@ Current decision before the final CI evidence is complete:
 
 **Attack:** Sign with one key while assigning `production-key` or another arbitrary label as the key ID.
 
-**Control:** Key ID is required to equal the derived Ed25519 public-key fingerprint.
+**Control:** The writer requires the supplied ID, when present, to equal the derived Ed25519 public-key fingerprint. The verifier checks the manifest ID, ID member and trusted public key.
 
-**Expected result:** Writer rejects mismatch; verifier checks manifest ID, ID member and trusted public key.
+**Expected result:** Writer rejects mismatch or verifier rejects the bundle.
 
 ### 15. MCP client supplies an arbitrary verification-key path
 
@@ -154,7 +160,7 @@ Current decision before the final CI evidence is complete:
 
 **Attack:** Run with MCP 1.0 or 1.8 and rely on major-only compatibility.
 
-**Control:** Runtime parser requires major 1 and minor at least 9; 2.x is rejected.
+**Control:** Runtime parser requires major 1 and minor at least 9; 2.x and malformed versions are rejected while existing public constants and diagnostics remain compatible.
 
 **Expected result:** Server refuses startup with an actionable dependency error.
 
@@ -162,23 +168,23 @@ Current decision before the final CI evidence is complete:
 
 **Attack/failure:** Windows Job Object cannot manage the Worker, leaving COM child processes outside guaranteed kill-on-close containment.
 
-**Control:** Non-Mock Worker startup now requires `job_scope.managed` before backend open.
+**Control:** Non-Mock Worker startup requires `job_scope.managed` before backend open.
 
 **Expected result:** Real simulator is not opened.
 
-**Compatibility impact:** Hosts where nested Job Objects are prohibited will now fail closed. This is intentional but must be validated on the approved self-hosted Windows runner.
+**Compatibility impact:** Hosts where nested Job Objects are prohibited fail closed. This is intentional and must still be validated on the approved licensed self-hosted runner.
 
 ### 18. Scheduler lease is lost during execution
 
 **Existing control:** Heartbeat failure forces pool recycling and owner-fenced job-store updates.
 
-**Phase 0 interaction:** Forced recycling also removes private staged model and registry copies.
+**Phase 0 interaction:** Forced recycling removes private staged model and registry copies.
 
 **Expected result:** Lost owner cannot commit a successful result.
 
 ### 19. Cancellation races completion
 
-**Existing control:** Completion/final-cancellation updates require a valid owner and unexpired lease. Bundle adoption is checked; unadopted bundle is deleted.
+**Existing control:** Completion/final-cancellation updates require a valid owner and unexpired lease. Bundle adoption is checked; an unadopted bundle is deleted.
 
 **Phase 0 interaction:** Cancel deadline can force Worker recycling without leaving staged artifacts.
 
@@ -188,15 +194,34 @@ Current decision before the final CI evidence is complete:
 
 **Control:** V2 manifest includes `execution_identity_bound=false`; V3 has a distinct format and semantic identity checks.
 
-**Remaining requirement:** User documentation and downstream policy must require V3 for any real execution claim.
+**Remaining policy requirement:** Downstream policy must require V3 for any claim about the bytes actually opened by a simulator.
 
-## Unresolved Phase 0 blockers
+## CI evidence
 
-1. Final Linux and Windows CI evidence is not yet complete on the final branch head.
-2. Aspen Plus still has a base/strict adapter split that should be consolidated.
-3. Backend polling environment variables have not yet been migrated into strict `Settings` fields.
-4. Licensed-certification preflight and execution should be bound through one persistent approved snapshot, not only rechecked by normal pool creation.
-5. Windows staging ACL/read-only hardening is not yet implemented.
-6. No licensed Aspen Plus V15 or HYSYS V15 runtime test has executed.
+The implemented controls passed the governed PR matrix:
 
-Because these items remain, this audit does not grant `PASS_BUILD_CONTRACTS` or any real V15 status.
+- Python 3.11: 947 passed, 95.22% branch coverage;
+- Python 3.12: 947 passed, 95.24% branch coverage;
+- Python 3.13: 947 passed, 95.24% branch coverage;
+- reverse and fixed-seed complete-suite order gates passed on Python 3.12;
+- Ruff, formatter, strict mypy, Bandit, dependency audit and source audit passed;
+- build, Wheel installation, dependency check, CLI and MCP smoke passed;
+- Windows control-plane contracts passed.
+
+## Remaining follow-up and external gates
+
+The following do not overturn `PASS_CONTROL_PLANE`, but they block stronger conclusions:
+
+1. Aspen Plus still has a base/strict adapter split that should be consolidated.
+2. Backend polling environment variables have not yet been migrated into strict `Settings` fields.
+3. Licensed-certification preflight and execution should be bound through one persistent approved snapshot, not only normal pool revalidation.
+4. Windows staging ACL/read-only hardening is not implemented.
+5. ProcessRequirement, ProcessDesignIR v2, equipment contracts, deterministic compilers, topology roundtrip and natural-language design layers are not implemented.
+6. No licensed Aspen Plus V15 or HYSYS V15 Golden Case has executed.
+7. No human engineering acceptance has been recorded.
+
+Therefore this audit grants only:
+
+`PASS_CONTROL_PLANE`
+
+It does not grant `PASS_BUILD_CONTRACTS`, `PASS_REAL_V15_CASE_SCOPE`, `PASS_WITH_REMAINING_EXTERNAL_ENGINEERING_GATE` or `REAL_ASPEN_CERTIFIED`.
