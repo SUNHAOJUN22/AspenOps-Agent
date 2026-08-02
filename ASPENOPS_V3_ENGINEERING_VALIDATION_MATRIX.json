@@ -1,0 +1,86 @@
+{
+  "schema": "aspenops.v3-engineering-validation-matrix/v1",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "base_commit": "0d240f16c3706705f4a304f09eac22ceaf301631",
+  "branch": "feature/aspenops-natural-language-flowsheet-v3",
+  "pull_request": 103,
+  "current_status": "FAIL_CLOSED",
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "phase0": {
+    "immutable_model_snapshot": "IMPLEMENTED_PENDING_FINAL_CI",
+    "immutable_registry_snapshot": "IMPLEMENTED_PENDING_FINAL_CI",
+    "worker_digest_handshake": "IMPLEMENTED_PENDING_FINAL_CI",
+    "pool_manager_digest_fencing": "IMPLEMENTED_PENDING_FINAL_CI",
+    "cache_execution_identity": "IMPLEMENTED_PENDING_FINAL_CI",
+    "v3_evidence_identity_binding": "IMPLEMENTED_PENDING_FINAL_CI",
+    "strict_evidence_json": "IMPLEMENTED_PENDING_FINAL_CI",
+    "semantic_read_access": "IMPLEMENTED_PENDING_FINAL_CI",
+    "verified_write_and_rollback": "IMPLEMENTED_PENDING_FINAL_CI",
+    "real_worker_job_object_gate": "IMPLEMENTED_PENDING_WINDOWS_CI",
+    "ordinary_bundle_trusted_key_cli": "IMPLEMENTED_PENDING_FINAL_CI",
+    "mcp_admin_trust_store": "IMPLEMENTED_PENDING_FINAL_CI",
+    "mcp_version_range": "IMPLEMENTED_PENDING_FINAL_CI",
+    "aspen_plus_single_strict_adapter": "NOT_IMPLEMENTED",
+    "backend_polling_settings_migration": "NOT_IMPLEMENTED",
+    "licensed_certification_snapshot_recheck": "PARTIAL_REQUIRES_FOLLOWUP"
+  },
+  "phase1": {
+    "process_requirement_schema": "NOT_IMPLEMENTED",
+    "process_design_ir_v2": "NOT_IMPLEMENTED",
+    "engineering_rule_engine": "NOT_IMPLEMENTED",
+    "plant_template_catalog": "NOT_IMPLEMENTED",
+    "sfiles2_interchange": "NOT_IMPLEMENTED"
+  },
+  "phase2": {
+    "aspen_plus_v15_capability_profile": "NOT_IMPLEMENTED",
+    "aspen_plus_v15_compiler": "NOT_IMPLEMENTED",
+    "aspen_plus_native_topology_readback": "NOT_IMPLEMENTED",
+    "aspen_plus_golden_cases": "NOT_EXECUTED"
+  },
+  "phase3": {
+    "hysys_v15_capability_profile": "NOT_IMPLEMENTED",
+    "hysys_v15_compiler": "NOT_IMPLEMENTED",
+    "hysys_native_topology_readback": "NOT_IMPLEMENTED",
+    "hysys_golden_cases": "NOT_EXECUTED"
+  },
+  "phase4": {
+    "convergence_orchestrator": "NOT_IMPLEMENTED",
+    "component_balance_engine": "NOT_IMPLEMENTED",
+    "element_balance_engine": "NOT_IMPLEMENTED",
+    "energy_balance_engine": "NOT_IMPLEMENTED",
+    "bounded_ir_repair": "NOT_IMPLEMENTED"
+  },
+  "phase5": {
+    "natural_language_requirement_parser": "NOT_IMPLEMENTED",
+    "guided_plan_confirmation": "NOT_IMPLEMENTED",
+    "high_level_mcp_design_tools": "NOT_IMPLEMENTED"
+  },
+  "phase6": {
+    "licensed_windows_aspen_plus_v15": "NOT_EXECUTED",
+    "licensed_windows_hysys_v15": "NOT_EXECUTED",
+    "save_close_reopen_topology_hash": "NOT_EXECUTED",
+    "native_layout_visual_identity": "NOT_EXECUTED",
+    "human_engineering_acceptance": "NOT_EXECUTED"
+  },
+  "ci": {
+    "python_3_11": "PENDING_FINAL_HEAD",
+    "python_3_12": "PENDING_FINAL_HEAD",
+    "python_3_13": "PENDING_FINAL_HEAD",
+    "ruff": "PENDING_FINAL_HEAD",
+    "ruff_format": "PENDING_FINAL_HEAD",
+    "mypy": "PENDING_FINAL_HEAD",
+    "bandit": "PENDING_FINAL_HEAD",
+    "branch_coverage": "PENDING_FINAL_HEAD",
+    "test_order": "PENDING_FINAL_HEAD",
+    "wheel_smoke": "PENDING_FINAL_HEAD",
+    "mcp_smoke": "PENDING_FINAL_HEAD",
+    "windows_control_plane": "PENDING_FINAL_HEAD"
+  },
+  "allowed_final_states": [
+    "FAIL_CLOSED",
+    "PASS_CONTROL_PLANE",
+    "PASS_BUILD_CONTRACTS",
+    "PASS_REAL_V15_CASE_SCOPE",
+    "PASS_WITH_REMAINING_EXTERNAL_ENGINEERING_GATE"
+  ]
+}
