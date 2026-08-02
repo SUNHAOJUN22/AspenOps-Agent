@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError
@@ -17,8 +19,9 @@ from .provenance import verify_run_bundle
 from .registry import NodeRegistry
 from .scheduler import BackgroundScheduler
 
-SUPPORTED_MCP_MAJOR = 1
 MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
+_MCP_VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?")
+_KEY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 INSTRUCTIONS = """
 AspenOps is a deterministic execution fabric, not an unrestricted COM shell.
@@ -62,17 +65,37 @@ def _require_supported_mcp_sdk() -> str:
     except PackageNotFoundError as exc:
         raise RuntimeError("Install the 'agent' extra: uv sync --frozen --extra agent") from exc
 
-    major_text = installed.split(".", 1)[0]
-    try:
-        major = int(major_text)
-    except ValueError as exc:
-        raise RuntimeError(f"Cannot determine MCP SDK major version from {installed!r}") from exc
-    if major != SUPPORTED_MCP_MAJOR:
+    match = _MCP_VERSION_RE.match(installed)
+    if match is None:
+        raise RuntimeError(f"Cannot determine MCP SDK version from {installed!r}")
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    if major != 1 or minor < 9:
         raise RuntimeError(
-            "AspenOps 2.0 requires MCP Python SDK 1.x; install "
+            "AspenOps 2.0 requires MCP Python SDK >=1.9,<2; install "
             f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
         )
     return installed
+
+
+def _trusted_public_key(key_id: str) -> Path:
+    if _KEY_ID_RE.fullmatch(key_id) is None:
+        raise ValueError("key_id must be a 32-character lowercase public-key fingerprint")
+    configured = os.getenv("ASPENOPS_TRUSTED_KEY_DIR", "").strip()
+    if not configured:
+        raise RuntimeError("ASPENOPS_TRUSTED_KEY_DIR is not configured")
+    root = Path(configured).expanduser()
+    if not root.is_absolute():
+        raise RuntimeError("ASPENOPS_TRUSTED_KEY_DIR must be an absolute path")
+    resolved_root = root.resolve()
+    candidate = (resolved_root / f"{key_id}.pem").resolve()
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError as exc:
+        raise PermissionError("Trusted key resolved outside ASPENOPS_TRUSTED_KEY_DIR") from exc
+    if not candidate.is_file():
+        raise FileNotFoundError(f"Trusted verification key is unavailable for key_id={key_id}")
+    return candidate
 
 
 @asynccontextmanager
@@ -207,10 +230,15 @@ class AspenOpsTools:
         """Cancel pending work or enforce a deadline on an active isolated worker call."""
         return {"cancel_requested": self.scheduler.cancel(job_id)}
 
-    def verify_evidence_bundle(self, bundle_path: str) -> dict[str, Any]:
-        """Verify request/result hashes and structural integrity of a run bundle."""
+    def verify_evidence_bundle(
+        self,
+        bundle_path: str,
+        key_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Verify an evidence bundle using an optional administrator-trusted key ID."""
         path = Policy(self.settings.mode, self.settings.allowed_roots).assert_path(bundle_path)
-        return verify_run_bundle(path)
+        public_key = None if key_id is None else _trusted_public_key(key_id)
+        return verify_run_bundle(path, verification_public_key=public_key)
 
 
 def build_server(
@@ -223,7 +251,7 @@ def build_server(
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
         raise RuntimeError(
-            "The installed MCP 1.x SDK is incomplete; reinstall the 'agent' extra"
+            "The installed MCP SDK is incomplete; reinstall the supported 'agent' extra"
         ) from exc
 
     active_settings = settings or Settings.from_env()
