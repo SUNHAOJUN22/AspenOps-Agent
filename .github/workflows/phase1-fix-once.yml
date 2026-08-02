@@ -71,6 +71,7 @@ jobs:
           qualification.write_text(text, encoding="utf-8")
           PY
           uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix --exit-zero tests/test_phase1_schema_coverage.py
           uv run ruff format \
             src/aspenops_nexus/process_requirement.py \
             src/aspenops_nexus/engineering_rules.py \
