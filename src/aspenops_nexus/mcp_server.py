@@ -19,6 +19,8 @@ from .provenance import verify_run_bundle
 from .registry import NodeRegistry
 from .scheduler import BackgroundScheduler
 
+SUPPORTED_MCP_MAJOR = 1
+SUPPORTED_MCP_MIN_MINOR = 9
 MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
 _MCP_VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?")
 _KEY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -70,9 +72,10 @@ def _require_supported_mcp_sdk() -> str:
         raise RuntimeError(f"Cannot determine MCP SDK version from {installed!r}")
     major = int(match.group("major"))
     minor = int(match.group("minor"))
-    if major != 1 or minor < 9:
+    if major != SUPPORTED_MCP_MAJOR or minor < SUPPORTED_MCP_MIN_MINOR:
         raise RuntimeError(
-            "AspenOps 2.0 requires MCP Python SDK >=1.9,<2; install "
+            "AspenOps 2.0 requires MCP Python SDK 1.x in the supported range "
+            ">=1.9,<2; install "
             f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
         )
     return installed
