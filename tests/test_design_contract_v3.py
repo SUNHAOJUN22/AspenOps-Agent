@@ -54,7 +54,9 @@ def test_design_contract_rejects_target_and_property_method_changes() -> None:
         target_version="14",
         property_method=changed_method,
     )
-    codes = {item.code for item in validate_design_against_requirement(requirement, changed).issues}
+    codes = {
+        item.code for item in validate_design_against_requirement(requirement, changed).issues
+    }
     assert codes == {
         "target.simulator_mismatch",
         "target.version_mismatch",
@@ -71,8 +73,27 @@ def test_design_contract_rejects_missing_components_and_boundaries() -> None:
             item for item in design.equipment if item.id not in {"FEED_001", "LIQ_PROD_001"}
         ),
     )
-    codes = {item.code for item in validate_design_against_requirement(requirement, changed).issues}
+    codes = {
+        item.code for item in validate_design_against_requirement(requirement, changed).issues
+    }
     assert codes == {"components.missing", "feeds.missing", "products.missing"}
+
+
+def test_design_contract_rejects_unapproved_extra_component() -> None:
+    requirement, design = linked_documents()
+    extra = replace(
+        design.components[0],
+        id="METHANOL",
+        display_name="Methanol",
+        vendor_ids={"aspen_plus": "METHANOL"},
+        cas="67-56-1",
+        formula="CH4O",
+        molecular_weight=32.04186,
+    )
+    changed = replace(design, components=(*design.components, extra))
+    report = validate_design_against_requirement(requirement, changed)
+    assert report.valid is False
+    assert {item.code for item in report.issues} == {"components.unapproved"}
 
 
 def test_design_contract_rejects_unapproved_extra_boundaries() -> None:
@@ -83,7 +104,9 @@ def test_design_contract_rejects_unapproved_extra_boundaries() -> None:
         design,
         equipment=(*design.equipment, extra_feed, extra_product),
     )
-    codes = {item.code for item in validate_design_against_requirement(requirement, changed).issues}
+    codes = {
+        item.code for item in validate_design_against_requirement(requirement, changed).issues
+    }
     assert {"feeds.unapproved", "products.unapproved"}.issubset(codes)
 
 
