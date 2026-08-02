@@ -1,4 +1,4 @@
-name: Phase 1 final build-contract qualification final
+name: Phase 1 final build-contract qualification corrected
 
 on:
   pull_request:
@@ -40,7 +40,7 @@ jobs:
           uv run python -m compileall -q src scripts
           uv run python scripts/audit_source_tree.py --output /tmp/phase1-source-audit.json
           uv build
-          python - <<'PY'
+          uv run python - <<'PY'
           import json
           from pathlib import Path
           from aspenops_nexus.process_requirement import ProcessRequirementDocument
@@ -61,7 +61,7 @@ jobs:
             --report-output /tmp/phase1-linked-report.json \
             --graph-output /tmp/phase1-linked-graph.json \
             --svg-output /tmp/phase1-linked-preview.svg
-          python - <<'PY'
+          uv run python - <<'PY'
           import json
           from pathlib import Path
 
