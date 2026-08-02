@@ -1,0 +1,253 @@
+{
+  "schema": "aspenops.flowsheet/v2",
+  "name": "Ethanol-water heater flash",
+  "target_simulator": "aspen_plus",
+  "target_version": "15",
+  "requirement_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "components": [
+    {
+      "id": "ETHANOL",
+      "display_name": "Ethanol",
+      "vendor_ids": {
+        "aspen_plus": "ETHANOL"
+      },
+      "cas": "64-17-5",
+      "formula": "C2H6O",
+      "molecular_weight": 46.06844,
+      "status": "USER_PROVIDED"
+    },
+    {
+      "id": "WATER",
+      "display_name": "Water",
+      "vendor_ids": {
+        "aspen_plus": "WATER"
+      },
+      "cas": "7732-18-5",
+      "formula": "H2O",
+      "molecular_weight": 18.01528,
+      "status": "USER_PROVIDED"
+    }
+  ],
+  "property_method": {
+    "id": "NRTL",
+    "vendor": "aspen_plus",
+    "supported_versions": ["15"],
+    "phase_scope": ["vapor-liquid"],
+    "rationale": "Approved draft method for the ethanol-water demonstration only.",
+    "status": "APPROVED_DEFAULT"
+  },
+  "equipment": [
+    {
+      "id": "FEED_001",
+      "display_name": "乙醇水进料",
+      "kind": "feed",
+      "vendor_type": null,
+      "ports": [
+        {
+          "id": "OUT",
+          "direction": "out",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "parameters": [],
+      "design_specs": [],
+      "contract_version": "1"
+    },
+    {
+      "id": "HTR_001",
+      "display_name": "Feed heater",
+      "kind": "heater",
+      "vendor_type": "HEATER",
+      "ports": [
+        {
+          "id": "IN",
+          "direction": "in",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        },
+        {
+          "id": "OUT",
+          "direction": "out",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "parameters": [
+        {
+          "name": "OUTLET_TEMPERATURE",
+          "value": 90.0,
+          "unit": "degC",
+          "status": "USER_PROVIDED"
+        }
+      ],
+      "design_specs": [],
+      "contract_version": "1"
+    },
+    {
+      "id": "SEP_001",
+      "display_name": "Flash separator",
+      "kind": "flash2",
+      "vendor_type": "FLASH2",
+      "ports": [
+        {
+          "id": "IN",
+          "direction": "in",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        },
+        {
+          "id": "VAP",
+          "direction": "out",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        },
+        {
+          "id": "LIQ",
+          "direction": "out",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "parameters": [
+        {
+          "name": "PRESSURE",
+          "value": 1.0,
+          "unit": "bar",
+          "status": "USER_PROVIDED"
+        }
+      ],
+      "design_specs": [],
+      "contract_version": "1"
+    },
+    {
+      "id": "VAP_PROD_001",
+      "display_name": "Vapor product",
+      "kind": "product",
+      "vendor_type": null,
+      "ports": [
+        {
+          "id": "IN",
+          "direction": "in",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "parameters": [],
+      "design_specs": [],
+      "contract_version": "1"
+    },
+    {
+      "id": "LIQ_PROD_001",
+      "display_name": "Liquid product",
+      "kind": "product",
+      "vendor_type": null,
+      "ports": [
+        {
+          "id": "IN",
+          "direction": "in",
+          "domain": "material",
+          "required": true,
+          "multiple": false
+        }
+      ],
+      "parameters": [],
+      "design_specs": [],
+      "contract_version": "1"
+    }
+  ],
+  "streams": [
+    {
+      "id": "S001",
+      "display_name": "Feed to heater",
+      "kind": "feed",
+      "source": {
+        "equipment_id": "FEED_001",
+        "port_id": "OUT"
+      },
+      "target": {
+        "equipment_id": "HTR_001",
+        "port_id": "IN"
+      },
+      "components": ["ETHANOL", "WATER"],
+      "parameters": [
+        {
+          "name": "TOTAL_FLOW",
+          "value": 100.0,
+          "unit": "kmol/h",
+          "status": "USER_PROVIDED"
+        },
+        {
+          "name": "TEMPERATURE",
+          "value": 25.0,
+          "unit": "degC",
+          "status": "USER_PROVIDED"
+        },
+        {
+          "name": "PRESSURE",
+          "value": 1.2,
+          "unit": "bar",
+          "status": "USER_PROVIDED"
+        }
+      ]
+    },
+    {
+      "id": "S002",
+      "display_name": "Heater outlet",
+      "kind": "material",
+      "source": {
+        "equipment_id": "HTR_001",
+        "port_id": "OUT"
+      },
+      "target": {
+        "equipment_id": "SEP_001",
+        "port_id": "IN"
+      },
+      "components": ["ETHANOL", "WATER"],
+      "parameters": []
+    },
+    {
+      "id": "S003",
+      "display_name": "Vapor product stream",
+      "kind": "product",
+      "source": {
+        "equipment_id": "SEP_001",
+        "port_id": "VAP"
+      },
+      "target": {
+        "equipment_id": "VAP_PROD_001",
+        "port_id": "IN"
+      },
+      "components": ["ETHANOL", "WATER"],
+      "parameters": []
+    },
+    {
+      "id": "S004",
+      "display_name": "Liquid product stream",
+      "kind": "product",
+      "source": {
+        "equipment_id": "SEP_001",
+        "port_id": "LIQ"
+      },
+      "target": {
+        "equipment_id": "LIQ_PROD_001",
+        "port_id": "IN"
+      },
+      "components": ["ETHANOL", "WATER"],
+      "parameters": []
+    }
+  ],
+  "reactions": [],
+  "recycles": [],
+  "metadata": {
+    "qualification": "DRAFT_ONLY",
+    "native_simulator_built": false
+  }
+}
