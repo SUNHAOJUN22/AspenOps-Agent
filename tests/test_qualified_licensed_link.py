@@ -92,7 +92,9 @@ def qualification_for(
     )
 
 
-def licensed_plan(*, case_id: str = CASE_ID, backend: str = "aspen_plus") -> LicensedCertificationPlan:
+def licensed_plan(
+    *, case_id: str = CASE_ID, backend: str = "aspen_plus"
+) -> LicensedCertificationPlan:
     return LicensedCertificationPlan.from_document(
         {
             "schema": "aspenops.licensed-certification-plan/v1",
@@ -115,9 +117,7 @@ def licensed_plan(*, case_id: str = CASE_ID, backend: str = "aspen_plus") -> Lic
                 "repeats": 3,
                 "workers": [1],
                 "default_tolerance": {"abs_tol": 1e-6, "rel_tol": 1e-6},
-                "output_tolerances": {
-                    "product.purity": {"abs_tol": 1e-5, "rel_tol": 1e-5}
-                },
+                "output_tolerances": {"product.purity": {"abs_tol": 1e-5, "rel_tol": 1e-5}},
             },
             "engineering_acceptance": {
                 "status": "approved",

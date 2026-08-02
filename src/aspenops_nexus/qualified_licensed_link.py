@@ -113,9 +113,7 @@ class QualifiedLicensedCertificationLink:
         if value.get("real_aspen_status") != PENDING_REAL_ASPEN_CERTIFICATION:
             raise ValueError("qualified licensed link must remain pending real certification")
         return cls(
-            licensed_plan_sha256=_digest(
-                value.get("licensed_plan_sha256"), "licensed_plan_sha256"
-            ),
+            licensed_plan_sha256=_digest(value.get("licensed_plan_sha256"), "licensed_plan_sha256"),
             case_id=_text(value.get("case_id"), "case_id"),
             approved_commit=_commit(value.get("approved_commit")),
             backend=_text(value.get("backend"), "backend").casefold(),
@@ -132,15 +130,11 @@ class QualifiedLicensedCertificationLink:
                 value.get("qualification_evidence_sha256"),
                 "qualification_evidence_sha256",
             ),
-            qualification_key_id=_key_id(
-                value.get("qualification_key_id"), "qualification_key_id"
-            ),
+            qualification_key_id=_key_id(value.get("qualification_key_id"), "qualification_key_id"),
             profile_id=_text(value.get("profile_id"), "profile_id"),
             profile_sha256=_digest(value.get("profile_sha256"), "profile_sha256"),
             adapter_contract=_text(value.get("adapter_contract"), "adapter_contract"),
-            adapter_code_sha256=_digest(
-                value.get("adapter_code_sha256"), "adapter_code_sha256"
-            ),
+            adapter_code_sha256=_digest(value.get("adapter_code_sha256"), "adapter_code_sha256"),
             runtime_identity_sha256=_digest(
                 value.get("runtime_identity_sha256"), "runtime_identity_sha256"
             ),
@@ -203,8 +197,7 @@ class QualifiedLicensedCertificationLink:
         ]
         if mismatches:
             raise ValueError(
-                "qualified licensed link does not match current inputs: "
-                + ", ".join(mismatches)
+                "qualified licensed link does not match current inputs: " + ", ".join(mismatches)
             )
 
 
@@ -225,9 +218,7 @@ def link_qualified_compilation_to_licensed_plan(
         raise ValueError("runtime-qualified plan profile hash does not match capability profile")
 
     passed_cases = {
-        item.case_id
-        for item in qualified_plan.qualification.statement.golden_cases
-        if item.passed
+        item.case_id for item in qualified_plan.qualification.statement.golden_cases if item.passed
     }
     required = tuple(
         sorted(
