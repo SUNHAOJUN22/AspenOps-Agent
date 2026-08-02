@@ -1,4 +1,4 @@
-name: Phase 1 final build-contract qualification rerun
+name: Phase 1 final build-contract qualification final
 
 on:
   pull_request:
