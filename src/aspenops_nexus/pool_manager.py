@@ -147,11 +147,13 @@ class PoolManager:
             pool.start()
             if pool.model_sha256 != model_digest:
                 raise RuntimeError(
-                    "Model changed between PoolManager identity capture and Worker snapshot creation"
+                    "Model changed between PoolManager identity capture "
+                    "and Worker snapshot creation"
                 )
             if pool.registry_sha256 != registry_digest:
                 raise RuntimeError(
-                    "Registry changed between PoolManager identity capture and Worker snapshot creation"
+                    "Registry changed between PoolManager identity capture "
+                    "and Worker snapshot creation"
                 )
             key = CaseKey(
                 backend=backend_name,
