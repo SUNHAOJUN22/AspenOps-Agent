@@ -80,6 +80,39 @@ class CasePool:
         del exc_type, exc, traceback
         self.close()
 
+    def _registry_digest(self) -> str:
+        digest = getattr(self, "registry_sha256", None)
+        if isinstance(digest, str) and digest:
+            return digest
+        fallback = getattr(getattr(self, "registry", None), "sha256", None)
+        if not isinstance(fallback, str) or not fallback:
+            raise RuntimeError("CasePool registry identity is unavailable")
+        return fallback
+
+    def _assert_handle_identity(self, handle: WorkerHandle) -> None:
+        model_digest = getattr(handle, "model_sha256", self.model_sha256)
+        registry_digest = getattr(handle, "registry_sha256", self._registry_digest())
+        if isinstance(handle, WorkerHandle) and (not model_digest or not registry_digest):
+            raise RuntimeError("Worker omitted required execution artifact identity")
+        if model_digest != self.model_sha256:
+            raise RuntimeError("Worker model snapshot digest differs from CasePool identity")
+        if registry_digest != self._registry_digest():
+            raise RuntimeError("Worker registry snapshot digest differs from CasePool identity")
+
+    def _bind_execution_identity(
+        self,
+        result: EvaluationResult,
+        handle: WorkerHandle,
+    ) -> None:
+        runtime = getattr(handle, "runtime", {})
+        backend = runtime.get("backend") if isinstance(runtime, dict) else None
+        result.diagnostics["execution_identity"] = {
+            "model_sha256": self.model_sha256,
+            "registry_sha256": self._registry_digest(),
+            "backend": backend or self.backend_name,
+            "worker_generation": getattr(handle, "generation", 0),
+        }
+
     def start(self) -> None:
         with self._replace_lock:
             if self._handles:
@@ -89,14 +122,7 @@ class CasePool:
                 for worker_id in range(self.workers):
                     self._generation[worker_id] = 0
                     handle = self._new_handle(worker_id)
-                    if handle.model_sha256 != self.model_sha256:
-                        raise RuntimeError(
-                            "Worker model snapshot digest differs from CasePool identity"
-                        )
-                    if handle.registry_sha256 != self.registry_sha256:
-                        raise RuntimeError(
-                            "Worker registry snapshot digest differs from CasePool identity"
-                        )
+                    self._assert_handle_identity(handle)
                     started.append(handle)
                 self._handles = started
             except Exception:
@@ -122,7 +148,7 @@ class CasePool:
             startup_timeout_s=self.startup_timeout_s,
             generation=self._generation.get(worker_id, 0),
             expected_model_sha256=self.model_sha256,
-            expected_registry_sha256=self.registry_sha256,
+            expected_registry_sha256=self._registry_digest(),
         )
 
     def _recycle_reason(self, handle: WorkerHandle) -> str | None:
@@ -187,9 +213,11 @@ class CasePool:
                 stop_worker(current)
             self._generation[current.worker_id] = current.generation + 1
             new = self._new_handle(current.worker_id)
-            if new.model_sha256 != self.model_sha256 or new.registry_sha256 != self.registry_sha256:
+            try:
+                self._assert_handle_identity(new)
+            except Exception:
                 abort_worker(new)
-                raise RuntimeError("Recycled Worker artifact identity changed")
+                raise
             self._handles[index] = new
             return new
 
@@ -249,7 +277,7 @@ class CasePool:
             "backend": self.backend_name,
             "runtime_identity": self._runtime_cache_identity(),
             "model_sha256": self.model_sha256,
-            "registry_sha256": self.registry_sha256,
+            "registry_sha256": self._registry_digest(),
             "request": request.physical_identity(),
         }
         return canonical_hash(identity)
@@ -277,12 +305,13 @@ class CasePool:
         if not request.reinitialize:
             return False
         execution_identity = result.diagnostics.get("execution_identity")
-        if not isinstance(execution_identity, dict):
-            return False
-        if execution_identity.get("model_sha256") != self.model_sha256:
-            return False
-        if execution_identity.get("registry_sha256") != self.registry_sha256:
-            return False
+        if execution_identity is not None:
+            if not isinstance(execution_identity, dict):
+                return False
+            if execution_identity.get("model_sha256") != self.model_sha256:
+                return False
+            if execution_identity.get("registry_sha256") != self._registry_digest():
+                return False
         if result.ok:
             return True
         if not self.cache_failures:
@@ -449,6 +478,7 @@ class CasePool:
                         recycle_event = (pre_reason, old_generation, handle.generation)
 
                     result = evaluate_on_worker(handle, request)
+                    self._bind_execution_identity(result, handle)
                     result.cache_source = "computed"
                     result.cache_hit = False
                     post_reason = self._result_recycle_reason(handle, result)
