@@ -365,7 +365,9 @@ def start_worker(
         if staged_model_sha256 != approved_model_sha256:
             raise RuntimeError("Model changed while the private Worker snapshot was being created")
         if staged_registry_sha256 != approved_registry_sha256:
-            raise RuntimeError("Registry changed while the private Worker snapshot was being created")
+            raise RuntimeError(
+                "Registry changed while the private Worker snapshot was being created"
+            )
 
         context = mp.get_context("spawn")
         parent, child = context.Pipe(duplex=True)
