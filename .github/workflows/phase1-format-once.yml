@@ -6,12 +6,18 @@ on:
       - feature/aspenops-process-requirement-ir-v2
     paths:
       - .github/workflows/phase1-format-once.yml
+  pull_request:
+    branches:
+      - feature/aspenops-natural-language-flowsheet-v3
+    paths:
+      - .github/workflows/phase1-format-once.yml
 
 permissions:
   contents: write
 
 jobs:
   format-and-remove:
+    if: github.event_name == 'push' || github.head_ref == 'feature/aspenops-process-requirement-ir-v2'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
