@@ -1,0 +1,44 @@
+name: Phase 2 exact compilation plan formatter
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-process-requirement-ir-v2
+    paths:
+      - .github/workflows/phase2-format-plan-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format-test-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-v15-compilation-contracts
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format src/aspenops_nexus/compilation_plan.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest \
+            tests/test_simulator_capabilities_v15.py \
+            tests/test_native_topology_contract.py \
+            tests/test_compilation_plan_v15.py \
+            tests/test_native_builder_contract.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/aspenops_nexus/compilation_plan.py
+          git commit -m "style: apply exact Ruff formatting to compilation plan"
+          git push origin HEAD:feature/aspenops-v15-compilation-contracts
