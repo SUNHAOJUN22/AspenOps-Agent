@@ -154,7 +154,9 @@ def _positive(value: Any, label: str) -> float:
 
 
 def _scalar(value: Any, label: str) -> ScalarValue:
-    if isinstance(value, bool | str | int):
+    if isinstance(value, str):
+        return _text(value, label)
+    if isinstance(value, bool | int):
         return value
     if isinstance(value, float) and math.isfinite(value):
         return value
@@ -231,7 +233,9 @@ class ComponentDefinition:
 
         return cls(
             id=_identifier(mapping.get("id"), f"{label}.id"),
-            display_name=_text(mapping.get("display_name", mapping.get("id")), f"{label}.display_name"),
+            display_name=_text(
+                mapping.get("display_name", mapping.get("id")), f"{label}.display_name"
+            ),
             vendor_ids=vendor_ids,
             cas=cas,
             formula=_optional_text(mapping.get("formula"), f"{label}.formula"),
@@ -466,7 +470,9 @@ class EquipmentDefinition:
                 raise ValueError(f"{label}.{item_label} must contain unique IDs")
         return cls(
             id=_identifier(mapping.get("id"), f"{label}.id"),
-            display_name=_text(mapping.get("display_name", mapping.get("id")), f"{label}.display_name"),
+            display_name=_text(
+                mapping.get("display_name", mapping.get("id")), f"{label}.display_name"
+            ),
             kind=_text(mapping.get("kind"), f"{label}.kind").casefold(),
             vendor_type=_optional_text(mapping.get("vendor_type"), f"{label}.vendor_type"),
             ports=ports,
@@ -553,7 +559,9 @@ class StreamDefinition:
             raise ValueError(f"{label}.parameters must contain unique names")
         return cls(
             id=_identifier(mapping.get("id"), f"{label}.id"),
-            display_name=_text(mapping.get("display_name", mapping.get("id")), f"{label}.display_name"),
+            display_name=_text(
+                mapping.get("display_name", mapping.get("id")), f"{label}.display_name"
+            ),
             kind=cast(StreamKind, kind),
             source=Endpoint.from_dict(mapping.get("source"), label=f"{label}.source"),
             target=Endpoint.from_dict(mapping.get("target"), label=f"{label}.target"),
@@ -691,7 +699,9 @@ class RecycleDefinition:
             convergence_variables=variables,
             tolerance=_positive(mapping.get("tolerance", 1e-6), f"{label}.tolerance"),
             max_iterations=max_iterations,
-            acceleration=_text(mapping.get("acceleration", "wegstein"), f"{label}.acceleration").casefold(),
+            acceleration=_text(
+                mapping.get("acceleration", "wegstein"), f"{label}.acceleration"
+            ).casefold(),
             status=_status(mapping.get("status", "UNKNOWN"), f"{label}.status"),
         )
 
@@ -752,13 +762,19 @@ class ProcessDesignIR:
         components = tuple(
             ComponentDefinition.from_dict(item, label=f"process design.components[{index}]")
             for index, item in enumerate(
-                _array(mapping.get("components", []), "process design.components", maximum=MAX_COMPONENTS)
+                _array(
+                    mapping.get("components", []),
+                    "process design.components",
+                    maximum=MAX_COMPONENTS,
+                )
             )
         )
         equipment = tuple(
             EquipmentDefinition.from_dict(item, label=f"process design.equipment[{index}]")
             for index, item in enumerate(
-                _array(mapping.get("equipment", []), "process design.equipment", maximum=MAX_EQUIPMENT)
+                _array(
+                    mapping.get("equipment", []), "process design.equipment", maximum=MAX_EQUIPMENT
+                )
             )
         )
         streams = tuple(
@@ -770,7 +786,9 @@ class ProcessDesignIR:
         reactions = tuple(
             ReactionDefinition.from_dict(item, label=f"process design.reactions[{index}]")
             for index, item in enumerate(
-                _array(mapping.get("reactions", []), "process design.reactions", maximum=MAX_REACTIONS)
+                _array(
+                    mapping.get("reactions", []), "process design.reactions", maximum=MAX_REACTIONS
+                )
             )
         )
         recycles = tuple(

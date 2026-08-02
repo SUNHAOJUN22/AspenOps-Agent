@@ -24,7 +24,9 @@ def test_process_requirement_roundtrip_is_ready_and_deterministic() -> None:
     assert requirement.readiness().status == "READY_FOR_DESIGN"
     assert requirement.readiness().blockers == ()
     assert requirement.feeds[0].display_name == "乙醇水进料"
-    assert ProcessRequirementDocument.from_dict(requirement.to_dict()).digest() == requirement.digest()
+    assert (
+        ProcessRequirementDocument.from_dict(requirement.to_dict()).digest() == requirement.digest()
+    )
 
 
 def test_process_requirement_pending_values_fail_closed() -> None:

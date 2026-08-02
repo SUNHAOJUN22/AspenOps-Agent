@@ -56,7 +56,11 @@ def _layout_layers(design: ProcessDesignIR) -> dict[str, int]:
             continue
         source = stream.source.equipment_id
         target = stream.target.equipment_id
-        if source not in equipment_ids or target not in equipment_ids or target in adjacency[source]:
+        if (
+            source not in equipment_ids
+            or target not in equipment_ids
+            or target in adjacency[source]
+        ):
             continue
         adjacency[source].add(target)
         indegree[target] += 1

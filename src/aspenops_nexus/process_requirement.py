@@ -145,9 +145,7 @@ class QualifiedScalar:
         scalar = None if raw_value is None else _safe_scalar(raw_value, f"{label}.value")
         uncertainty_raw = mapping.get("uncertainty")
         uncertainty = (
-            None
-            if uncertainty_raw is None
-            else _finite(uncertainty_raw, f"{label}.uncertainty")
+            None if uncertainty_raw is None else _finite(uncertainty_raw, f"{label}.uncertainty")
         )
         if uncertainty is not None and uncertainty < 0:
             raise ValueError(f"{label}.uncertainty must be non-negative")
@@ -281,7 +279,9 @@ class FeedRequirement:
             raise ValueError(f"{label}.phase is unsupported: {phase}")
         return cls(
             id=_identifier(mapping.get("id"), f"{label}.id"),
-            display_name=_text(mapping.get("display_name", mapping.get("id")), f"{label}.display_name"),
+            display_name=_text(
+                mapping.get("display_name", mapping.get("id")), f"{label}.display_name"
+            ),
             components=components,
             composition=composition,
             total_flow=QualifiedScalar.from_dict(
@@ -324,7 +324,9 @@ class ProductRequirement:
         unknown = sorted(set(mapping) - {"id", "display_name", "specifications"})
         if unknown:
             raise ValueError(f"{label} contains unsupported fields: {', '.join(unknown)}")
-        specification_mapping = _object(mapping.get("specifications", {}), f"{label}.specifications")
+        specification_mapping = _object(
+            mapping.get("specifications", {}), f"{label}.specifications"
+        )
         specifications: dict[str, QualifiedScalar] = {}
         for raw_name, raw_value in specification_mapping.items():
             name = _text(raw_name, f"{label}.specification name")
@@ -334,7 +336,9 @@ class ProductRequirement:
             )
         return cls(
             id=_identifier(mapping.get("id"), f"{label}.id"),
-            display_name=_text(mapping.get("display_name", mapping.get("id")), f"{label}.display_name"),
+            display_name=_text(
+                mapping.get("display_name", mapping.get("id")), f"{label}.display_name"
+            ),
             specifications=specifications,
         )
 

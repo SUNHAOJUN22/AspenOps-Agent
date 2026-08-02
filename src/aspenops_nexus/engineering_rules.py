@@ -396,7 +396,9 @@ def _validate_reaction(
             )
         )
     coefficients = tuple(reaction.stoichiometry.values())
-    if coefficients and not (any(item < 0 for item in coefficients) and any(item > 0 for item in coefficients)):
+    if coefficients and not (
+        any(item < 0 for item in coefficients) and any(item > 0 for item in coefficients)
+    ):
         issues.append(
             _issue(
                 "ENGINEERING_BLOCKER",
@@ -436,11 +438,18 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
 
     if not design.components:
         issues.append(
-            _issue("HARD_ERROR", "components.empty", "components", "At least one component is required")
+            _issue(
+                "HARD_ERROR", "components.empty", "components", "At least one component is required"
+            )
         )
     if not design.equipment:
         issues.append(
-            _issue("HARD_ERROR", "equipment.empty", "equipment", "At least one equipment item is required")
+            _issue(
+                "HARD_ERROR",
+                "equipment.empty",
+                "equipment",
+                "At least one equipment item is required",
+            )
         )
     if not design.property_method.approved:
         issues.append(
@@ -703,7 +712,8 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
                     "ENGINEERING_BLOCKER",
                     "topology.recycle_contract_missing",
                     "streams",
-                    "Directed material cycle has no approved recycle contract: " + " -> ".join(cycle),
+                    "Directed material cycle has no approved recycle contract: "
+                    + " -> ".join(cycle),
                 )
             )
     if design.recycles and not cycles:
@@ -716,7 +726,9 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
             )
         )
     undeclared_tears = sorted(
-        stream.id for stream in design.streams if stream.kind == "tear" and stream.id not in recycle_streams
+        stream.id
+        for stream in design.streams
+        if stream.kind == "tear" and stream.id not in recycle_streams
     )
     if undeclared_tears:
         issues.append(

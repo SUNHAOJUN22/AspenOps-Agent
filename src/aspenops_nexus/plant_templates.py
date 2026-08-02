@@ -186,7 +186,12 @@ _TEMPLATES = (
             ("S004", "SEP_001", "GAS_PROD_001", "material"),
             ("S005", "SEP_001", "LIQ_PROD_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "discharge pressure", "compressor efficiency", "cooler outlet temperature"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "discharge pressure",
+            "compressor efficiency",
+            "cooler outlet temperature",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "shaft work"),
         initialization_sequence=("feed", "compressor", "cooler", "separator"),
         unsupported_conditions=("liquid-dominant compressor feed", "surge/control dynamics"),
@@ -222,8 +227,17 @@ _TEMPLATES = (
             "tear initial values and convergence tolerances",
         ),
         balance_scopes=(*_COMMON_BALANCES, "elemental reaction balance", "recycle boundary"),
-        initialization_sequence=("fresh feed", "open-loop reaction", "separator", "tear initialization", "recycle"),
-        unsupported_conditions=("unapproved kinetics", "multiple coupled recycles without staged plan"),
+        initialization_sequence=(
+            "fresh feed",
+            "open-loop reaction",
+            "separator",
+            "tear initialization",
+            "recycle",
+        ),
+        unsupported_conditions=(
+            "unapproved kinetics",
+            "multiple coupled recycles without staged plan",
+        ),
     ),
     PlantTemplate(
         id="TWO_COLUMN_SEQUENCE",
@@ -254,7 +268,13 @@ _TEMPLATES = (
             "column pressure profiles",
         ),
         balance_scopes=(*_COMMON_BALANCES, "column 1", "column 2"),
-        initialization_sequence=("feed", "shortcut estimates", "column 1", "column 2", "full sequence"),
+        initialization_sequence=(
+            "feed",
+            "shortcut estimates",
+            "column 1",
+            "column 2",
+            "full sequence",
+        ),
         unsupported_conditions=("reactive distillation", "unapproved azeotropic entrainer"),
     ),
     PlantTemplate(
@@ -279,10 +299,18 @@ _TEMPLATES = (
             ("S005", "REG_001", "ACID_PROD_001", "material"),
             ("TEAR_001", "REG_001", "ABS_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "solvent loading model", "absorber and regenerator specifications", "solvent recycle initialization"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "solvent loading model",
+            "absorber and regenerator specifications",
+            "solvent recycle initialization",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "absorber", "regenerator", "solvent loop"),
         initialization_sequence=("open solvent loop", "absorber", "regenerator", "solvent recycle"),
-        unsupported_conditions=("electrolyte chemistry without approved model", "solvent degradation chemistry"),
+        unsupported_conditions=(
+            "electrolyte chemistry without approved model",
+            "solvent degradation chemistry",
+        ),
     ),
     PlantTemplate(
         id="GAS_DEHYDRATION",
@@ -304,9 +332,21 @@ _TEMPLATES = (
             ("S004", "REGEN_001", "WATER_PROD_001", "material"),
             ("TEAR_001", "REGEN_001", "CONTACTOR_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "solvent identity and purity", "water specification", "solvent circulation rate", "recycle initialization"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "solvent identity and purity",
+            "water specification",
+            "solvent circulation rate",
+            "recycle initialization",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "water", "solvent loop"),
-        initialization_sequence=("wet gas", "open solvent loop", "contactor", "regenerator", "recycle"),
+        initialization_sequence=(
+            "wet gas",
+            "open solvent loop",
+            "contactor",
+            "regenerator",
+            "recycle",
+        ),
         unsupported_conditions=("hydrate formation assessment", "solvent degradation"),
     ),
     PlantTemplate(
@@ -326,7 +366,14 @@ _TEMPLATES = (
             ("S002", "COL_001", "DIST_001", "material"),
             ("S003", "COL_001", "BTM_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "stage count", "feed stage", "condenser and reboiler types", "two independent column specifications", "pressure profile"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "stage count",
+            "feed stage",
+            "condenser and reboiler types",
+            "two independent column specifications",
+            "pressure profile",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "column"),
         initialization_sequence=("feed flash", "shortcut estimate", "rigorous column"),
         unsupported_conditions=("reactive distillation", "unapproved rate-based model"),
@@ -353,9 +400,21 @@ _TEMPLATES = (
             ("S004", "SEP_001", "PROD_001", "material"),
             ("S005", "SEP_001", "RECYCLE_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "approved reaction model", "separator specifications", "purge policy when required", "tear initialization"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "approved reaction model",
+            "separator specifications",
+            "purge policy when required",
+            "tear initialization",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "elemental reaction balance", "recycle boundary"),
-        initialization_sequence=("fresh feed", "open-loop reactor", "separator", "tear values", "recycle"),
+        initialization_sequence=(
+            "fresh feed",
+            "open-loop reactor",
+            "separator",
+            "tear values",
+            "recycle",
+        ),
         unsupported_conditions=("unapproved reaction mechanism", "uncontrolled inert accumulation"),
     ),
     PlantTemplate(
@@ -381,10 +440,26 @@ _TEMPLATES = (
             ("S005", "KO_001", "GAS_PROD_001", "material"),
             ("S006", "INLET_SEP_001", "LIQ_PROD_001", "material"),
         ),
-        required_inputs=(*_COMMON_INPUTS, "HYSYS fluid package", "compressor pressure and efficiency", "cooler temperature", "liquid product routing"),
+        required_inputs=(
+            *_COMMON_INPUTS,
+            "HYSYS fluid package",
+            "compressor pressure and efficiency",
+            "cooler temperature",
+            "liquid product routing",
+        ),
         balance_scopes=(*_COMMON_BALANCES, "inlet separator", "compression train"),
-        initialization_sequence=("raw gas", "inlet separator", "compressor", "aftercooler", "knockout drum"),
-        unsupported_conditions=("acid-gas treatment", "hydrate control", "dynamic anti-surge controls"),
+        initialization_sequence=(
+            "raw gas",
+            "inlet separator",
+            "compressor",
+            "aftercooler",
+            "knockout drum",
+        ),
+        unsupported_conditions=(
+            "acid-gas treatment",
+            "hydrate control",
+            "dynamic anti-surge controls",
+        ),
     ),
 )
 
@@ -421,9 +496,7 @@ def instantiate_template_plan(
     if version not in template.versions:
         raise ValueError(f"Template {template.id} is not qualified for version {version}")
     approved = {item.strip().casefold() for item in approved_inputs}
-    unresolved = tuple(
-        item for item in template.required_inputs if item.casefold() not in approved
-    )
+    unresolved = tuple(item for item in template.required_inputs if item.casefold() not in approved)
     status = "PLAN_ONLY" if not unresolved else "NEEDS_ENGINEERING_INPUT"
     return TemplateInstantiationPlan(
         template_id=template.id,

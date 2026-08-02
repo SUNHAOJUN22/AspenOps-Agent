@@ -97,9 +97,7 @@ def test_rule_engine_rejects_unqualified_property_method_version() -> None:
     value["property_method"]["supported_versions"] = ["14"]
     report = validate_process_design(ProcessDesignIR.from_dict(value))
     assert report.valid is False
-    assert any(
-        issue.code == "property_method.version_unqualified" for issue in report.blockers
-    )
+    assert any(issue.code == "property_method.version_unqualified" for issue in report.blockers)
 
 
 def test_rule_engine_rejects_column_with_open_degrees_of_freedom() -> None:
@@ -107,11 +105,5 @@ def test_rule_engine_rejects_column_with_open_degrees_of_freedom() -> None:
     column = value["equipment"][2]
     column["kind"] = "distillation_column"
     column["ports"] = [
-        {
-            "id": "FEED",
-            "direction": "in",
-            "domain": "material",
-            "required": true,
-            "multiple": false
-        }
+        {"id": "FEED", "direction": "in", "domain": "material", "required": true, "multiple": false}
     ]
