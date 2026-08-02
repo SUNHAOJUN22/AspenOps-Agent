@@ -92,11 +92,13 @@ class SimulatorBackend(ABC):
         return absolute <= self.rollback_abs_tol or absolute / scale <= self.rollback_rel_tol
 
     def bulk_write(self, items: list[tuple[ResolvedNode, Any]]) -> None:
-        """Apply writes with verified best-effort rollback.
+        """Apply writes with mandatory read-after-write and verified rollback.
 
-        Every original is captured before any mutation. If a write or its backend-specific
-        read-after-write verification fails, all nodes that may have been touched are restored and
-        verified. A failed verification taints the worker and must trigger recycling upstream.
+        Every original is captured before any mutation. Each successful backend write is read back
+        and compared with exact semantics for discrete values and bounded numeric tolerance for
+        continuous values. If a write or verification fails, every node that may have been touched
+        is restored and verified. A failed rollback verification taints the worker and must trigger
+        recycling upstream.
         """
         if not items:
             return
@@ -112,6 +114,11 @@ class SimulatorBackend(ABC):
             for node, value in items:
                 touched += 1
                 self.write(node, value)
+                observed = self.read(node)
+                if not self.values_equal(observed, value):
+                    raise BackendError(
+                        f"{node.key}: write verification mismatch {observed!r} != {value!r}"
+                    )
         except Exception as exc:
             rollback_errors: list[str] = []
             for node, original in reversed(originals[:touched]):
