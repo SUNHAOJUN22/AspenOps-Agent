@@ -7,7 +7,7 @@ Phase 1 adds the deterministic simulator-neutral engineering design layer requir
 - Branch: `feature/aspenops-process-requirement-ir-v2`
 - Stacked draft PR: `#104`
 - Base: `feature/aspenops-natural-language-flowsheet-v3`
-- Current status: `FAIL_CLOSED_PENDING_CI`
+- Current status: `PASS_BUILD_CONTRACTS`
 - Real simulator status: `PENDING_REAL_ASPEN_CERTIFICATION`
 
 This phase contains no COM calls and makes no claim that an Aspen Plus V15 or HYSYS V15 native flowsheet has been built.
@@ -172,7 +172,7 @@ Phase 1 does not implement:
 
 ## Phase exit criteria
 
-Phase 1 can advance to `PASS_BUILD_CONTRACTS` only when the stacked PR completes:
+Phase 1 achieved `PASS_BUILD_CONTRACTS` after the stacked qualification completed:
 
 - Ruff and formatter;
 - strict mypy;
@@ -184,4 +184,4 @@ Phase 1 can advance to `PASS_BUILD_CONTRACTS` only when the stacked PR completes
 - source-tree and workflow-governance checks;
 - Phase 1 reverse audit with no unresolved design-layer software blocker.
 
-Until then, status remains `FAIL_CLOSED_PENDING_CI`.
+Until then, status remains `PASS_BUILD_CONTRACTS`.

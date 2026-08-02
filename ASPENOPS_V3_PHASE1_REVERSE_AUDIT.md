@@ -6,7 +6,7 @@ This audit covers only the simulator-neutral requirement, ProcessDesignIR, engin
 
 Current status:
 
-`FAIL_CLOSED_PENDING_CI`
+`PASS_BUILD_CONTRACTS`
 
 Real simulator status:
 
@@ -98,3 +98,7 @@ ProcessDesignIR canonicalization sorts components, equipment, streams, reactions
 8. CI and order-independence must complete on the final Phase 1 head before this phase can advance.
 
 Because of these limitations, the audit cannot grant `PASS_REAL_V15_CASE_SCOPE` or any engineering certification.
+
+## Qualification result
+
+The one-time Phase 1 qualification completed Linux quality/build gates, Python 3.11/3.12/3.13 full suites with branch coverage, Python 3.12 order independence, and Windows full tests. This grants only `PASS_BUILD_CONTRACTS`; it does not grant native simulator or engineering certification.

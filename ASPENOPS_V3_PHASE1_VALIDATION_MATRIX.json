@@ -4,19 +4,19 @@
   "branch": "feature/aspenops-process-requirement-ir-v2",
   "pull_request": 104,
   "base_branch": "feature/aspenops-natural-language-flowsheet-v3",
-  "current_status": "FAIL_CLOSED_PENDING_CI",
+  "current_status": "PASS_BUILD_CONTRACTS",
   "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
   "implemented": {
-    "process_requirement_v1": "IMPLEMENTED_PENDING_CI",
-    "requirement_readiness_gate": "IMPLEMENTED_PENDING_CI",
-    "process_design_ir_v2": "IMPLEMENTED_PENDING_CI",
-    "requirement_design_hash_binding": "IMPLEMENTED_PENDING_CI",
-    "unicode_and_ascii_identity_contract": "IMPLEMENTED_PENDING_CI",
-    "engineering_rule_engine": "IMPLEMENTED_PENDING_CI",
-    "equipment_contract_initial_set": "IMPLEMENTED_PENDING_CI",
-    "reaction_and_recycle_contracts": "IMPLEMENTED_PENDING_CI",
-    "plant_template_catalog_10": "IMPLEMENTED_PENDING_CI",
-    "deterministic_graph_and_svg_preview": "IMPLEMENTED_PENDING_CI"
+    "process_requirement_v1": "PASS_BUILD_CONTRACTS",
+    "requirement_readiness_gate": "PASS_BUILD_CONTRACTS",
+    "process_design_ir_v2": "PASS_BUILD_CONTRACTS",
+    "requirement_design_hash_binding": "PASS_BUILD_CONTRACTS",
+    "unicode_and_ascii_identity_contract": "PASS_BUILD_CONTRACTS",
+    "engineering_rule_engine": "PASS_BUILD_CONTRACTS",
+    "equipment_contract_initial_set": "PASS_BUILD_CONTRACTS",
+    "reaction_and_recycle_contracts": "PASS_BUILD_CONTRACTS",
+    "plant_template_catalog_10": "PASS_BUILD_CONTRACTS",
+    "deterministic_graph_and_svg_preview": "PASS_BUILD_CONTRACTS"
   },
   "not_implemented": {
     "natural_language_parser": "NOT_IMPLEMENTED",
@@ -39,18 +39,18 @@
     "human_engineering_acceptance": "NOT_EXECUTED"
   },
   "ci": {
-    "ruff": "PENDING_FINAL_HEAD",
-    "ruff_format": "PENDING_FINAL_HEAD",
-    "mypy": "PENDING_FINAL_HEAD",
-    "python_3_11": "PENDING_FINAL_HEAD",
-    "python_3_12": "PENDING_FINAL_HEAD",
-    "python_3_13": "PENDING_FINAL_HEAD",
-    "order_independence": "PENDING_FINAL_HEAD",
-    "branch_coverage": "PENDING_FINAL_HEAD",
-    "build": "PENDING_FINAL_HEAD",
-    "wheel_smoke": "PENDING_FINAL_HEAD",
-    "mcp_smoke": "PENDING_FINAL_HEAD",
-    "windows_control_plane": "PENDING_FINAL_HEAD"
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "mypy": "PASS",
+    "python_3_11": "PASS",
+    "python_3_12": "PASS",
+    "python_3_13": "PASS",
+    "order_independence": "PASS",
+    "branch_coverage": "PASS",
+    "build": "PASS",
+    "wheel_smoke": "PASS",
+    "mcp_smoke": "PASS",
+    "windows_control_plane": "PASS"
   },
   "boundary": "Phase 1 qualifies only simulator-neutral build contracts after CI. It cannot prove native Aspen/HYSYS topology, convergence or engineering correctness."
 }
