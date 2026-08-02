@@ -193,8 +193,12 @@ def test_future_expired_and_excessive_validity_fail_closed() -> None:
 
 def test_policy_and_checkpoint_mismatch_fail_closed() -> None:
     policy, checkpoint, item, _, _, _ = verified_witness()
+    changed_policy = replace(
+        policy,
+        statement=replace(policy.statement, sequence=2),
+    )
     with pytest.raises(ValueError, match="policy_sequence"):
-        item.assert_matches(replace(policy.statement, sequence=2), checkpoint)  # type: ignore[arg-type]
+        item.assert_matches(changed_policy, checkpoint)
 
     changed_checkpoint = replace(
         checkpoint,
