@@ -35,7 +35,7 @@ class _InflightEvaluation:
 
 
 class CasePool:
-    """Persistent, process-isolated simulator pool."""
+    """Persistent, process-isolated simulator pool bound to immutable artifact digests."""
 
     def __init__(
         self,
@@ -62,7 +62,9 @@ class CasePool:
         self.startup_timeout_s = max(0.001, startup_timeout_s)
         self.cache_failures = cache_failures
         self.registry = NodeRegistry(self.registry_path)
+        # These are approval digests. Every private Worker copy must match them before COM opens.
         self.model_sha256 = sha256_file(self.model_path)
+        self.registry_sha256 = self.registry.sha256
         self._handles: list[WorkerHandle] = []
         self._generation: dict[int, int] = {}
         self._replace_lock = threading.RLock()
@@ -87,6 +89,12 @@ class CasePool:
                 for worker_id in range(self.workers):
                     self._generation[worker_id] = 0
                     handle = self._new_handle(worker_id)
+                    if handle.model_sha256 != self.model_sha256:
+                        raise RuntimeError("Worker model snapshot digest differs from CasePool identity")
+                    if handle.registry_sha256 != self.registry_sha256:
+                        raise RuntimeError(
+                            "Worker registry snapshot digest differs from CasePool identity"
+                        )
                     started.append(handle)
                 self._handles = started
             except Exception:
@@ -111,6 +119,8 @@ class CasePool:
             visible=self.visible,
             startup_timeout_s=self.startup_timeout_s,
             generation=self._generation.get(worker_id, 0),
+            expected_model_sha256=self.model_sha256,
+            expected_registry_sha256=self.registry_sha256,
         )
 
     def _recycle_reason(self, handle: WorkerHandle) -> str | None:
@@ -175,6 +185,9 @@ class CasePool:
                 stop_worker(current)
             self._generation[current.worker_id] = current.generation + 1
             new = self._new_handle(current.worker_id)
+            if new.model_sha256 != self.model_sha256 or new.registry_sha256 != self.registry_sha256:
+                abort_worker(new)
+                raise RuntimeError("Recycled Worker artifact identity changed")
             self._handles[index] = new
             return new
 
@@ -203,7 +216,15 @@ class CasePool:
             return {
                 str(key): CasePool._stable_runtime_value(item)
                 for key, item in value.items()
-                if key not in {"model_path", "worker_pid", "pid", "error"}
+                if key
+                not in {
+                    "model_path",
+                    "staged_model_path",
+                    "staged_registry_path",
+                    "worker_pid",
+                    "pid",
+                    "error",
+                }
             }
         if isinstance(value, list):
             return [CasePool._stable_runtime_value(item) for item in value]
@@ -226,7 +247,7 @@ class CasePool:
             "backend": self.backend_name,
             "runtime_identity": self._runtime_cache_identity(),
             "model_sha256": self.model_sha256,
-            "registry_sha256": self.registry.sha256,
+            "registry_sha256": self.registry_sha256,
             "request": request.physical_identity(),
         }
         return canonical_hash(identity)
@@ -252,6 +273,13 @@ class CasePool:
 
     def _cacheable(self, request: EvaluationRequest, result: EvaluationResult) -> bool:
         if not request.reinitialize:
+            return False
+        execution_identity = result.diagnostics.get("execution_identity")
+        if not isinstance(execution_identity, dict):
+            return False
+        if execution_identity.get("model_sha256") != self.model_sha256:
+            return False
+        if execution_identity.get("registry_sha256") != self.registry_sha256:
             return False
         if result.ok:
             return True
