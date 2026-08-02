@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 
@@ -40,6 +41,15 @@ def test_snapshot_from_design_roundtrip_and_digest() -> None:
     assert len(restored.edges) == 4
     assert restored.nodes == tuple(sorted(restored.nodes))
     assert restored.edges == tuple(sorted(restored.edges))
+
+
+def test_topology_source_metadata_does_not_change_identity() -> None:
+    expected = snapshot()
+    observed = replace(expected, source="native-readback")
+    assert observed.to_dict()["source"] == "native-readback"
+    assert observed.identity_dict() == expected.identity_dict()
+    assert observed.digest() == expected.digest()
+    assert compare_topology(expected, observed).matches is True
 
 
 def test_topology_exact_match() -> None:

@@ -79,7 +79,7 @@ def _contains_expected(observed: Any, expected: Any) -> bool:
         )
     if isinstance(expected, list):
         return isinstance(observed, list) and observed == expected
-    return observed == expected
+    return bool(observed == expected)
 
 
 def execute_compilation_plan(

@@ -11,9 +11,9 @@ import pytest
 from aspenops_nexus.compilation_plan import (
     CompilationIssue,
     CompilationStep,
-    _StepBuilder,
     _canonical_hash,
     _equipment_order,
+    _StepBuilder,
     compile_process_design,
 )
 from aspenops_nexus.process_ir_v2 import ProcessDesignIR
@@ -106,10 +106,13 @@ def test_compilation_order_is_topological_and_stable() -> None:
         get_builtin_capability_profile("aspen_plus", "15"),
         qualification="VERIFIED_ON_TARGET_RUNTIME",
     )
-    assert compile_process_design(reordered, profile).digest() == compile_process_design(
-        process_design,
-        profile,
-    ).digest()
+    assert (
+        compile_process_design(reordered, profile).digest()
+        == compile_process_design(
+            process_design,
+            profile,
+        ).digest()
+    )
 
 
 def test_blocked_design_has_no_steps() -> None:
@@ -241,6 +244,8 @@ def test_step_serialization_issue_ordering_and_builder() -> None:
 
 def test_recycle_design_adds_closed_loop_steps() -> None:
     value = document()
+    value["streams"] = [item for item in value["streams"] if item["id"] != "S004"]
+    value["equipment"] = [item for item in value["equipment"] if item["id"] != "LIQ_PROD_001"]
     recycle_equipment = deepcopy(value["equipment"][1])
     recycle_equipment["id"] = "RECYCLE_001"
     recycle_equipment["display_name"] = "Recycle return"
@@ -304,6 +309,7 @@ def test_recycle_design_adds_closed_loop_steps() -> None:
         qualification="VERIFIED_ON_TARGET_RUNTIME",
     )
     plan = compile_process_design(process_design, profile)
+    assert plan.status == "EXECUTABLE"
     operations = [item.operation for item in plan.steps]
     assert "configure_recycle" in operations
     assert "initialize_tear_stream" in operations

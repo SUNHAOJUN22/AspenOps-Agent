@@ -231,13 +231,9 @@ class SimulatorCapabilityProfile:
 
     def assert_matches_design(self, design: ProcessDesignIR) -> None:
         if design.target_simulator != self.simulator:
-            raise ValueError(
-                "Capability profile simulator does not match ProcessDesignIR target"
-            )
+            raise ValueError("Capability profile simulator does not match ProcessDesignIR target")
         if design.target_version != self.marketing_version:
-            raise ValueError(
-                "Capability profile version does not match ProcessDesignIR target"
-            )
+            raise ValueError("Capability profile version does not match ProcessDesignIR target")
 
 
 _COMMON_STREAM_KINDS = (
@@ -398,6 +394,8 @@ def _offline_profile(
     simulator: SimulatorFamily,
     version: str,
 ) -> SimulatorCapabilityProfile:
+    extensions: tuple[str, ...]
+    equipment: tuple[EquipmentCapability, ...]
     if simulator == "aspen_plus":
         extensions = (".bkp", ".apw", ".apwz")
         equipment = _ASPEN_PLUS_EQUIPMENT

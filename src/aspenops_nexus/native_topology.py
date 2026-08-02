@@ -120,8 +120,7 @@ class NativeTopologySnapshot:
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise ValueError(
-                "native topology snapshot contains unsupported fields: "
-                + ", ".join(unknown)
+                "native topology snapshot contains unsupported fields: " + ", ".join(unknown)
             )
         schema = _text(value.get("schema", TOPOLOGY_SCHEMA), "native topology.schema")
         if schema != TOPOLOGY_SCHEMA:
@@ -159,9 +158,7 @@ class NativeTopologySnapshot:
         return cls(
             simulator=design.target_simulator,
             marketing_version=design.target_version,
-            nodes=tuple(
-                sorted(TopologyNode(item.id, item.kind) for item in design.equipment)
-            ),
+            nodes=tuple(sorted(TopologyNode(item.id, item.kind) for item in design.equipment)),
             edges=tuple(
                 sorted(
                     TopologyEdge(
@@ -178,18 +175,20 @@ class NativeTopologySnapshot:
             source="ProcessDesignIR",
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def identity_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "simulator": self.simulator,
             "marketing_version": self.marketing_version,
             "nodes": [item.to_dict() for item in self.nodes],
             "edges": [item.to_dict() for item in self.edges],
-            "source": self.source,
         }
 
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.identity_dict(), "source": self.source}
+
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return _canonical_hash(self.identity_dict())
 
 
 @dataclass(frozen=True, slots=True, order=True)
