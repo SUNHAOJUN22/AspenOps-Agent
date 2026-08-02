@@ -11,7 +11,6 @@ from .process_ir_v2 import (
     PortDefinition,
     ProcessDesignIR,
     ReactionDefinition,
-    StreamDefinition,
 )
 
 IssueSeverity = Literal["HARD_ERROR", "ENGINEERING_BLOCKER", "WARNING", "INFORMATION"]

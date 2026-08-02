@@ -59,9 +59,7 @@ def test_preview_graph_has_all_nodes_edges_and_integer_positions() -> None:
     preview = render_flowsheet_preview(design)
     assert len(preview.graph["nodes"]) == len(design.equipment)
     assert len(preview.graph["edges"]) == len(design.streams)
-    assert {item["id"] for item in preview.graph["nodes"]} == {
-        item.id for item in design.equipment
-    }
+    assert {item["id"] for item in preview.graph["nodes"]} == {item.id for item in design.equipment}
     assert all(isinstance(item.x, int) and isinstance(item.y, int) for item in preview.positions)
 
 

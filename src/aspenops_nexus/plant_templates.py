@@ -199,7 +199,9 @@ _TEMPLATES = (
     PlantTemplate(
         id="REACTOR_COOLER_FLASH_RECYCLE",
         title="Reactor–Cooler–Flash–Recycle",
-        description="Reaction and separation loop with an explicit tear stream and recycle contract.",
+        description=(
+            "Reaction and separation loop with an explicit tear stream and recycle contract."
+        ),
         simulators=("aspen_plus", "hysys"),
         versions=("14", "15"),
         equipment=_equipment(
@@ -381,7 +383,9 @@ _TEMPLATES = (
     PlantTemplate(
         id="REACTION_SEPARATION_RECYCLE",
         title="Reaction–Separation–Recycle",
-        description="Generic reaction and product-separation loop with explicit recycle governance.",
+        description=(
+            "Generic reaction and product-separation loop with explicit recycle governance."
+        ),
         simulators=("aspen_plus", "hysys"),
         versions=("14", "15"),
         equipment=_equipment(
@@ -420,7 +424,9 @@ _TEMPLATES = (
     PlantTemplate(
         id="HYSYS_NATURAL_GAS_PRETREATMENT",
         title="HYSYS natural-gas pretreatment",
-        description="Inlet separation, compression/cooling and liquid removal for a HYSYS gas case.",
+        description=(
+            "Inlet separation, compression/cooling and liquid removal for a HYSYS gas case."
+        ),
         simulators=("hysys",),
         versions=("14", "15"),
         equipment=_equipment(
