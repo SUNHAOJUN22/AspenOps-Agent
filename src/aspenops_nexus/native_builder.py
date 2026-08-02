@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from .compilation_plan import CompilationStep
@@ -10,6 +12,8 @@ from .native_topology import (
     compare_topology,
 )
 from .qualified_compilation import RuntimeQualifiedCompilationPlan
+from .runtime_execution_authorization import authorize_runtime_execution
+from .simulator_capabilities import SimulatorCapabilityProfile
 
 
 class NativeBuildError(RuntimeError):
@@ -60,6 +64,10 @@ class NativeBuildExecutionRecord:
     qualification_evidence_sha256: str
     adapter_code_sha256: str
     runtime_identity_sha256: str
+    runtime_authorization_sha256: str
+    revocation_policy_sha256: str
+    authorized_at: str
+    authorization_expires_at: str
     completed: bool
     step_records: tuple[StepExecutionRecord, ...]
     topology_reports: tuple[TopologyComparisonReport, ...]
@@ -74,12 +82,20 @@ class NativeBuildExecutionRecord:
             "qualification_evidence_sha256": self.qualification_evidence_sha256,
             "adapter_code_sha256": self.adapter_code_sha256,
             "runtime_identity_sha256": self.runtime_identity_sha256,
+            "runtime_authorization_sha256": self.runtime_authorization_sha256,
+            "revocation_policy_sha256": self.revocation_policy_sha256,
+            "authorized_at": self.authorized_at,
+            "authorization_expires_at": self.authorization_expires_at,
             "completed": self.completed,
             "step_records": [item.to_dict() for item in self.step_records],
             "topology_reports": [item.to_dict() for item in self.topology_reports],
             "layout_hashes": list(self.layout_hashes),
             "boundary": self.boundary,
         }
+
+
+def _time_text(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _contains_expected(observed: Any, expected: Any) -> bool:
@@ -98,17 +114,34 @@ def _contains_expected(observed: Any, expected: Any) -> bool:
 def execute_compilation_plan(
     plan: RuntimeQualifiedCompilationPlan,
     adapter: NativeBuildAdapter,
+    *,
+    profile: SimulatorCapabilityProfile,
+    qualification_source: str | Path | bytes | dict[str, Any],
+    trusted_key_dir: str | Path,
+    now: datetime | None = None,
+    additional_required_case_ids: tuple[str, ...] = (),
 ) -> NativeBuildExecutionRecord:
     if not isinstance(plan, RuntimeQualifiedCompilationPlan):
         raise NativeBuildError("RuntimeQualifiedCompilationPlan is required for native execution")
-    plan.assert_executable()
+    try:
+        authorization = authorize_runtime_execution(
+            plan,
+            profile,
+            qualification_source,
+            trusted_key_dir=trusted_key_dir,
+            now=now,
+            additional_required_case_ids=additional_required_case_ids,
+        )
+    except (FileNotFoundError, PermissionError, ValueError) as exc:
+        raise NativeBuildError(f"Fresh runtime authorization failed: {exc}") from exc
+
     if adapter.profile_id != plan.profile_id:
         raise NativeBuildError("Native adapter profile_id does not match the compilation plan")
-    if adapter.profile_hash != plan.profile_hash:
+    if adapter.profile_hash != authorization.profile_sha256:
         raise NativeBuildError("Native adapter profile_hash does not match the compilation plan")
-    if adapter.adapter_code_sha256 != plan.adapter_code_sha256:
+    if adapter.adapter_code_sha256 != authorization.adapter_code_sha256:
         raise NativeBuildError("Native adapter code hash does not match the runtime qualification")
-    if adapter.runtime_identity_sha256 != plan.runtime_identity_sha256:
+    if adapter.runtime_identity_sha256 != authorization.runtime_identity_sha256:
         raise NativeBuildError(
             "Native adapter runtime identity does not match the runtime qualification"
         )
@@ -161,17 +194,21 @@ def execute_compilation_plan(
     return NativeBuildExecutionRecord(
         plan_hash=plan.digest(),
         profile_id=plan.profile_id,
-        profile_hash=plan.profile_hash,
-        qualification_evidence_sha256=plan.qualification_evidence_sha256,
-        adapter_code_sha256=plan.adapter_code_sha256,
-        runtime_identity_sha256=plan.runtime_identity_sha256,
+        profile_hash=authorization.profile_sha256,
+        qualification_evidence_sha256=authorization.qualification_evidence_sha256,
+        adapter_code_sha256=authorization.adapter_code_sha256,
+        runtime_identity_sha256=authorization.runtime_identity_sha256,
+        runtime_authorization_sha256=authorization.digest(),
+        revocation_policy_sha256=authorization.revocation_policy_sha256,
+        authorized_at=_time_text(authorization.authorized_at),
+        authorization_expires_at=_time_text(authorization.expires_at),
         completed=True,
         step_records=tuple(step_records),
         topology_reports=tuple(topology_reports),
         layout_hashes=tuple(layout_hashes),
         boundary=(
-            "This execution record proves only that an adapter honored the AspenOps compilation "
-            "and readback contracts. Real Aspen certification additionally requires an approved "
-            "licensed runtime profile, signed evidence and human engineering acceptance."
+            "This execution record proves only that a freshly authorized adapter honored the "
+            "AspenOps compilation and readback contracts. Real Aspen certification additionally "
+            "requires licensed runtime evidence and human engineering acceptance."
         ),
     )
