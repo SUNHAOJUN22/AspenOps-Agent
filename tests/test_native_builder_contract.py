@@ -8,6 +8,8 @@ from typing import Any
 
 import pytest
 
+from tests.revocation_witness_support import install_revocation_witness
+
 from aspenops_nexus.compilation_plan import CompilationStep, compile_process_design
 from aspenops_nexus.native_builder import (
     NativeBuildError,
@@ -149,12 +151,16 @@ def authorization_context(
         json.dumps(policy_envelope, sort_keys=True),
         encoding="utf-8",
     )
+    checkpoint = advance_revocation_policy_checkpoint(verified_policy)
     (tmp_path / REVOCATION_CHECKPOINT_FILENAME).write_text(
-        json.dumps(
-            advance_revocation_policy_checkpoint(verified_policy).to_dict(),
-            sort_keys=True,
-        ),
+        json.dumps(checkpoint.to_dict(), sort_keys=True),
         encoding="utf-8",
+    )
+    install_revocation_witness(
+        tmp_path,
+        verified_policy,
+        checkpoint,
+        now=NOW,
     )
 
     verified = verify_runtime_qualification(
@@ -254,13 +260,17 @@ def test_execute_compilation_plan_success(tmp_path: Path) -> None:
     assert len(record.revocation_policy_signing_key_id) == 32
     assert record.revocation_policy_sequence == 1
     assert len(record.revocation_checkpoint_sha256) == 64
+    assert len(record.revocation_witness_sha256) == 64
+    assert len(record.revocation_witness_signing_key_id) == 32
+    assert record.revocation_witness_id == "test-witness"
+    assert record.revocation_witness_expires_at == "2026-08-02T13:00:00Z"
     assert record.authorized_at == "2026-08-02T12:00:00Z"
-    assert record.authorization_expires_at == "2026-08-03T12:00:00Z"
+    assert record.authorization_expires_at == "2026-08-02T13:00:00Z"
     assert len(record.step_records) == len(plan.steps)
     assert len(record.topology_reports) == 2
     assert all(item.matches for item in record.topology_reports)
     assert record.layout_hashes == (plan.expected_layout_hash, plan.expected_layout_hash)
-    assert "checkpoint-validated" in record.boundary
+    assert "independent current witness" in record.boundary
     assert record.to_dict()["completed"] is True
 
 
