@@ -24,7 +24,7 @@ jobs:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Apply correctness fixes and remove this workflow
+      - name: Apply source and test fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -60,15 +60,6 @@ jobs:
           if "        recycle_stream = stream_map.get(recycle.stream_id)" not in text:
               raise RuntimeError("Engineering rule Optional fix was not applied")
           rules.write_text(text, encoding="utf-8")
-
-          qualification = Path(".github/workflows/phase1-qualification-once-v2.yml")
-          text = qualification.read_text(encoding="utf-8")
-          text = text.replace(
-              "          Remove-Item .github/workflows/phase1-*.yml -Force -ErrorAction SilentlyContinue",
-              "          Get-ChildItem .github/workflows -Filter 'phase1-*.yml' | "
-              "Remove-Item -Force -ErrorAction SilentlyContinue",
-          )
-          qualification.write_text(text, encoding="utf-8")
           PY
           uv sync --frozen --extra dev --extra agent --extra signing
           uv run ruff check --fix --exit-zero tests/test_phase1_schema_coverage.py
@@ -82,6 +73,11 @@ jobs:
           rm .github/workflows/phase1-fix-once.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: close Phase 1 Unicode typing and Windows gaps"
+          git add \
+            src/aspenops_nexus/process_requirement.py \
+            src/aspenops_nexus/engineering_rules.py \
+            tests/test_phase1_schema_coverage.py \
+            tests/test_phase1_rule_coverage.py \
+            .github/workflows/phase1-fix-once.yml
+          git commit -m "fix: close Phase 1 Unicode and typing gaps"
           git push origin HEAD:feature/aspenops-process-requirement-ir-v2
