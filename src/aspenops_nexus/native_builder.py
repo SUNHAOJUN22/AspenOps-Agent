@@ -69,6 +69,10 @@ class NativeBuildExecutionRecord:
     revocation_policy_signing_key_id: str
     revocation_policy_sequence: int
     revocation_checkpoint_sha256: str
+    revocation_witness_sha256: str
+    revocation_witness_signing_key_id: str
+    revocation_witness_id: str
+    revocation_witness_expires_at: str
     authorized_at: str
     authorization_expires_at: str
     completed: bool
@@ -90,6 +94,10 @@ class NativeBuildExecutionRecord:
             "revocation_policy_signing_key_id": self.revocation_policy_signing_key_id,
             "revocation_policy_sequence": self.revocation_policy_sequence,
             "revocation_checkpoint_sha256": self.revocation_checkpoint_sha256,
+            "revocation_witness_sha256": self.revocation_witness_sha256,
+            "revocation_witness_signing_key_id": self.revocation_witness_signing_key_id,
+            "revocation_witness_id": self.revocation_witness_id,
+            "revocation_witness_expires_at": self.revocation_witness_expires_at,
             "authorized_at": self.authorized_at,
             "authorization_expires_at": self.authorization_expires_at,
             "completed": self.completed,
@@ -213,6 +221,14 @@ def execute_compilation_plan(
         revocation_policy_signing_key_id=authorization.revocation_policy_signing_key_id,
         revocation_policy_sequence=authorization.revocation_policy_sequence,
         revocation_checkpoint_sha256=authorization.revocation_checkpoint_sha256,
+        revocation_witness_sha256=authorization.revocation_witness_sha256,
+        revocation_witness_signing_key_id=(
+            authorization.revocation_witness_signing_key_id
+        ),
+        revocation_witness_id=authorization.revocation_witness_id,
+        revocation_witness_expires_at=_time_text(
+            authorization.revocation_witness_expires_at
+        ),
         authorized_at=_time_text(authorization.authorized_at),
         authorization_expires_at=_time_text(authorization.expires_at),
         completed=True,
@@ -222,7 +238,8 @@ def execute_compilation_plan(
         boundary=(
             "This execution record proves only that a freshly authorized adapter honored the "
             "AspenOps compilation and readback contracts under a signed, checkpoint-validated "
-            "revocation policy. Real Aspen certification additionally requires licensed runtime "
-            "evidence and human engineering acceptance."
+            "revocation policy with an independent current witness receipt. Real Aspen "
+            "certification additionally requires licensed runtime evidence and human engineering "
+            "acceptance."
         ),
     )
