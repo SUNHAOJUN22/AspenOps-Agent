@@ -10,7 +10,12 @@ import aspenops_nexus.worker as worker_module
 from aspenops_nexus.hashing import sha256_file
 from aspenops_nexus.models import EvaluationRequest
 from aspenops_nexus.pool import CasePool
-from aspenops_nexus.worker import _validate_ready_message, evaluate_on_worker, start_worker, stop_worker
+from aspenops_nexus.worker import (
+    _validate_ready_message,
+    evaluate_on_worker,
+    start_worker,
+    stop_worker,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"
