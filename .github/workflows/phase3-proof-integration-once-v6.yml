@@ -1,0 +1,226 @@
+name: Phase 3 signed qualification integration v6
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-v15-compilation-contracts
+    paths:
+      - .github/workflows/phase3-proof-integration-once-v6.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/compilation_plan.py")
+          lines = path.read_text(encoding="utf-8").splitlines()
+
+          def find_exact(text: str, start: int = 0) -> int:
+              for index in range(start, len(lines)):
+                  if lines[index].strip() == text:
+                      return index
+              raise RuntimeError(f"Line not found: {text!r}")
+
+          def find_contains(text: str, start: int = 0) -> int:
+              for index in range(start, len(lines)):
+                  if text in lines[index]:
+                      return index
+              raise RuntimeError(f"Text not found: {text!r}")
+
+          if not any("runtime_qualification import VerifiedRuntimeQualification" in line for line in lines):
+              index = find_exact("from .process_ir_v2 import EquipmentDefinition, ProcessDesignIR")
+              lines.insert(index + 1, "from .runtime_qualification import VerifiedRuntimeQualification")
+
+          if not any("qualification_evidence_sha256:" in line for line in lines):
+              index = find_exact("adapter_contract: str")
+              lines[index + 1:index + 1] = [
+                  "    qualification_evidence_sha256: str | None",
+                  "    qualification_key_id: str | None",
+                  "    adapter_code_sha256: str | None",
+                  "    runtime_identity_sha256: str | None",
+              ]
+
+          if not any('"qualification_evidence_sha256": self.qualification_evidence_sha256' in line for line in lines):
+              index = find_contains('"adapter_contract": self.adapter_contract,')
+              lines[index + 1:index + 1] = [
+                  '            "qualification_evidence_sha256": self.qualification_evidence_sha256,',
+                  '            "qualification_key_id": self.qualification_key_id,',
+                  '            "adapter_code_sha256": self.adapter_code_sha256,',
+                  '            "runtime_identity_sha256": self.runtime_identity_sha256,',
+              ]
+
+          legacy = next(
+              (index for index, line in enumerate(lines) if line.strip() == "if not profile.executable:"),
+              None,
+          )
+          if legacy is not None:
+              end = find_exact("return issues, capabilities", legacy)
+              del lines[legacy:end]
+
+          build_start = find_exact("def _build_steps(")
+          build_end = find_contains(") -> tuple[CompilationStep, ...]:", build_start)
+          if not any("qualification_evidence_sha256:" in lines[index] for index in range(build_start, build_end)):
+              index = find_exact("expected_layout_hash: str,", build_start)
+              lines[index + 1:index + 1] = [
+                  "    qualification_evidence_sha256: str | None,",
+                  "    adapter_code_sha256: str | None,",
+                  "    runtime_identity_sha256: str | None,",
+              ]
+
+          # Replace the full identity builder.add call using parenthesis depth.
+          identity_operation = find_contains('operation="assert_profile_identity"', build_start)
+          identity_start = identity_operation
+          while identity_start >= build_start and lines[identity_start].strip() != "builder.add(":
+              identity_start -= 1
+          if identity_start < build_start:
+              raise RuntimeError("Identity builder.add start not found")
+          depth = 0
+          identity_end = None
+          for index in range(identity_start, len(lines)):
+              depth += lines[index].count("(") - lines[index].count(")")
+              if index > identity_start and depth == 0:
+                  identity_end = index + 1
+                  break
+          if identity_end is None:
+              raise RuntimeError("Identity builder.add end not found")
+          lines[identity_start:identity_end] = '''    builder.add(
+              phase="identity",
+              operation="assert_profile_identity",
+              target_id=profile.profile_id,
+              adapter_key="control.assert_profile_identity",
+              payload={
+                  "design_hash": design.digest(),
+                  "profile_hash": profile.digest(),
+                  "simulator": profile.simulator,
+                  "marketing_version": profile.marketing_version,
+                  "qualification_evidence_sha256": qualification_evidence_sha256,
+                  "adapter_code_sha256": adapter_code_sha256,
+                  "runtime_identity_sha256": runtime_identity_sha256,
+              },
+              expected_readback={
+                  "profile_hash": profile.digest(),
+                  "qualification_evidence_sha256": qualification_evidence_sha256,
+                  "adapter_code_sha256": adapter_code_sha256,
+                  "runtime_identity_sha256": runtime_identity_sha256,
+              },
+          )'''.splitlines()
+
+          compile_start = find_exact("def compile_process_design(")
+          compile_close = find_contains(") -> CompilationPlan:", compile_start)
+          if not any("qualification:" in lines[index] for index in range(compile_start, compile_close)):
+              profile_line = find_exact("profile: SimulatorCapabilityProfile,", compile_start)
+              lines[profile_line + 1:profile_line + 1] = [
+                  "    *,",
+                  "    qualification: VerifiedRuntimeQualification | None = None,",
+              ]
+
+          issues_line = find_exact("issues.extend(capability_issues)", compile_start)
+          if not any("profile.qualification_proof_missing" in line for line in lines):
+              block = '''    qualification_evidence_sha256: str | None = None
+              qualification_key_id: str | None = None
+              adapter_code_sha256: str | None = None
+              runtime_identity_sha256: str | None = None
+              if profile.qualification == "REVOKED":
+                  issues.append(
+                      CompilationIssue(
+                          "ERROR",
+                          "profile.revoked",
+                          "capability_profile.qualification",
+                          "Capability profile is revoked and cannot be used",
+                      )
+                  )
+              if qualification is None:
+                  issues.append(
+                      CompilationIssue(
+                          "EXECUTION_BLOCKER",
+                          "profile.qualification_proof_missing",
+                          "runtime_qualification",
+                          "A verified signed runtime qualification is required for execution",
+                      )
+                  )
+              else:
+                  try:
+                      qualification.assert_matches_profile(profile)
+                  except ValueError as exc:
+                      issues.append(
+                          CompilationIssue(
+                              "ERROR",
+                              "profile.qualification_mismatch",
+                              "runtime_qualification",
+                              str(exc),
+                          )
+                      )
+                  else:
+                      qualification_evidence_sha256 = qualification.evidence_sha256
+                      qualification_key_id = qualification.signing_key_id
+                      adapter_code_sha256 = qualification.statement.adapter_code_sha256
+                      runtime_identity_sha256 = qualification.statement.runtime_identity_sha256'''.splitlines()
+              lines[issues_line + 1:issues_line + 1] = block
+
+          steps_start = find_contains("steps = (", compile_start)
+          build_call = find_contains("else _build_steps(", steps_start)
+          call_end = find_exact(")", build_call)
+          if not any("qualification_evidence_sha256" in lines[index] for index in range(build_call, call_end)):
+              layout_line = find_contains("preview.layout_hash,", build_call)
+              lines[layout_line + 1:layout_line + 1] = [
+                  "            qualification_evidence_sha256,",
+                  "            adapter_code_sha256,",
+                  "            runtime_identity_sha256,",
+              ]
+
+          return_start = find_contains("return CompilationPlan(", compile_start)
+          if not any("qualification_evidence_sha256=" in lines[index] for index in range(return_start, len(lines))):
+              adapter_line = find_contains("adapter_contract=profile.adapter_contract,", return_start)
+              lines[adapter_line + 1:adapter_line + 1] = [
+                  "        qualification_evidence_sha256=qualification_evidence_sha256,",
+                  "        qualification_key_id=qualification_key_id,",
+                  "        adapter_code_sha256=adapter_code_sha256,",
+                  "        runtime_identity_sha256=runtime_identity_sha256,",
+              ]
+
+          text = "\n".join(lines) + "\n"
+          old = (
+              '            "This plan is deterministic and simulator-neutral. COM execution is authorized only "\n'
+              '            "when the capability profile is VERIFIED_ON_TARGET_RUNTIME and every adapter step "\n'
+              '            "performs mandatory readback, topology comparison, save/reopen and roundtrip checks."\n'
+          )
+          new = (
+              '            "This plan is deterministic and simulator-neutral. COM execution is authorized only "\n'
+              '            "when a trusted Ed25519 runtime qualification binds the exact profile, adapter code, "\n'
+              '            "runtime identity and Golden Cases, and every adapter step performs mandatory "\n'
+              '            "readback, topology comparison, save/reopen and roundtrip checks."\n'
+          )
+          if old not in text:
+              raise RuntimeError("Plan boundary target not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format src/aspenops_nexus/compilation_plan.py
+          uv run ruff check \
+            src/aspenops_nexus/compilation_plan.py \
+            src/aspenops_nexus/native_builder.py \
+            src/aspenops_nexus/runtime_qualification.py
+          uv run mypy src
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/aspenops_nexus/compilation_plan.py
+          git commit -m "feat: require signed runtime qualification in compilation plans"
+          git push origin HEAD:feature/aspenops-runtime-profile-qualification
