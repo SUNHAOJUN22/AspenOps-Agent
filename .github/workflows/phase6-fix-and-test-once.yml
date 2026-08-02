@@ -32,21 +32,20 @@ jobs:
 
           test_path = Path("tests/test_runtime_execution_authorization.py")
           text = test_path.read_text(encoding="utf-8")
-          old = '''    verified = verify_revocation_policy(
-              envelope,
-              trusted_public_key=public_pem,
-              now=NOW,
+          start = text.index("    verified = verify_revocation_policy(\n")
+          end = text.index(
+              "    checkpoint = advance_revocation_policy_checkpoint(verified)\n",
+              start,
           )
-          '''
-          new = '''    verified = verify_revocation_policy(
-              envelope,
-              trusted_public_key=public_pem,
-              now=statement.policy.issued_at,
+          block = text[start:end]
+          if block.count("now=NOW,") != 1:
+              raise RuntimeError("Expected one current-time verification in policy fixture")
+          block = block.replace(
+              "now=NOW,",
+              "now=statement.policy.issued_at,",
+              1,
           )
-          '''
-          if text.count(old) != 1:
-              raise RuntimeError("Expected one revocation fixture verification target")
-          test_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          test_path.write_text(text[:start] + block + text[end:], encoding="utf-8")
 
           source_path = Path("src/aspenops_nexus/signed_revocation_policy.py")
           text = source_path.read_text(encoding="utf-8")
