@@ -20,11 +20,21 @@ from aspenops_nexus.qualified_compilation import (
     RuntimeQualifiedCompilationPlan,
     qualify_compilation_plan,
 )
+from aspenops_nexus.runtime_execution_authorization import RuntimeRevocationPolicy
 from aspenops_nexus.runtime_qualification import (
     GoldenCaseQualification,
     RuntimeQualificationStatement,
     sign_runtime_qualification,
     verify_runtime_qualification,
+)
+from aspenops_nexus.signed_revocation_policy import (
+    REVOCATION_AUTHORITY_DIRECTORY,
+    REVOCATION_CHECKPOINT_FILENAME,
+    SIGNED_POLICY_FILENAME,
+    SignedRevocationPolicyStatement,
+    advance_revocation_policy_checkpoint,
+    sign_revocation_policy,
+    verify_revocation_policy,
 )
 from aspenops_nexus.simulator_capabilities import (
     SimulatorCapabilityProfile,
@@ -88,27 +98,65 @@ def authorization_context(
         ),
     )
     envelope = sign_runtime_qualification(statement, private_pem)
-    key_id = envelope["signing"]["key_id"]
+    signing = envelope["signing"]
+    assert isinstance(signing, dict)
+    key_id = signing["key_id"]
     assert isinstance(key_id, str)
     (tmp_path / f"{key_id}.pem").write_bytes(public_pem)
-    (tmp_path / "revocations.json").write_text(
+
+    authority_private = Ed25519PrivateKey.generate()
+    authority_private_pem = authority_private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    authority_public_pem = authority_private.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    policy = RuntimeRevocationPolicy(
+        policy_id="test-policy",
+        issued_at=NOW - timedelta(hours=1),
+        expires_at=NOW + timedelta(days=1),
+        revoked_signing_key_ids=(),
+        revoked_qualification_evidence_sha256=(),
+        revoked_profile_ids=(),
+        revoked_profile_sha256=(),
+        revoked_adapter_code_sha256=(),
+        revoked_runtime_identity_sha256=(),
+    )
+    policy_envelope = sign_revocation_policy(
+        SignedRevocationPolicyStatement(
+            sequence=1,
+            previous_policy_sha256=None,
+            policy=policy,
+        ),
+        authority_private_pem,
+    )
+    verified_policy = verify_revocation_policy(
+        policy_envelope,
+        trusted_public_key=authority_public_pem,
+        now=NOW,
+    )
+    policy_signing = policy_envelope["signing"]
+    assert isinstance(policy_signing, dict)
+    authority_key_id = policy_signing["key_id"]
+    assert isinstance(authority_key_id, str)
+    authority_dir = tmp_path / REVOCATION_AUTHORITY_DIRECTORY
+    authority_dir.mkdir(parents=True, exist_ok=True)
+    (authority_dir / f"{authority_key_id}.pem").write_bytes(authority_public_pem)
+    (tmp_path / SIGNED_POLICY_FILENAME).write_text(
+        json.dumps(policy_envelope, sort_keys=True),
+        encoding="utf-8",
+    )
+    (tmp_path / REVOCATION_CHECKPOINT_FILENAME).write_text(
         json.dumps(
-            {
-                "schema": "aspenops.runtime-revocations/v1",
-                "policy_id": "test-policy",
-                "issued_at": (NOW - timedelta(hours=1)).isoformat(),
-                "expires_at": (NOW + timedelta(days=1)).isoformat(),
-                "revoked_signing_key_ids": [],
-                "revoked_qualification_evidence_sha256": [],
-                "revoked_profile_ids": [],
-                "revoked_profile_sha256": [],
-                "revoked_adapter_code_sha256": [],
-                "revoked_runtime_identity_sha256": [],
-            },
+            advance_revocation_policy_checkpoint(verified_policy).to_dict(),
             sort_keys=True,
         ),
         encoding="utf-8",
     )
+
     verified = verify_runtime_qualification(
         envelope,
         trusted_public_key=public_pem,
@@ -203,13 +251,16 @@ def test_execute_compilation_plan_success(tmp_path: Path) -> None:
     assert record.runtime_identity_sha256 == plan.runtime_identity_sha256
     assert len(record.runtime_authorization_sha256) == 64
     assert len(record.revocation_policy_sha256) == 64
+    assert len(record.revocation_policy_signing_key_id) == 32
+    assert record.revocation_policy_sequence == 1
+    assert len(record.revocation_checkpoint_sha256) == 64
     assert record.authorized_at == "2026-08-02T12:00:00Z"
     assert record.authorization_expires_at == "2026-08-03T12:00:00Z"
     assert len(record.step_records) == len(plan.steps)
     assert len(record.topology_reports) == 2
     assert all(item.matches for item in record.topology_reports)
     assert record.layout_hashes == (plan.expected_layout_hash, plan.expected_layout_hash)
-    assert "freshly authorized" in record.boundary
+    assert "checkpoint-validated" in record.boundary
     assert record.to_dict()["completed"] is True
 
 
@@ -229,14 +280,14 @@ def test_plain_base_plan_cannot_execute(tmp_path: Path) -> None:
 
 def test_authorization_fails_before_adapter_access(tmp_path: Path) -> None:
     plan, profile, envelope = authorization_context(tmp_path)
-    (tmp_path / "revocations.json").unlink()
+    (tmp_path / SIGNED_POLICY_FILENAME).unlink()
 
     class ExplodingAdapter:
         @property
         def profile_id(self) -> str:
             raise AssertionError("adapter must not be accessed before authorization")
 
-    with pytest.raises(NativeBuildError, match="revocation policy is unavailable"):
+    with pytest.raises(NativeBuildError, match="signed revocation policy is unavailable"):
         execute_compilation_plan(
             plan,
             ExplodingAdapter(),  # type: ignore[arg-type]
