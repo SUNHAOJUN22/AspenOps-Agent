@@ -1,0 +1,108 @@
+{
+  "schema": "aspenops.v3-phase2-validation-matrix/v1",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "base_branch": "feature/aspenops-process-requirement-ir-v2",
+  "branch": "feature/aspenops-v15-compilation-contracts",
+  "pull_request": 105,
+  "validated_code_head": "3d37a736b6ad1eda90194debd84fd42ee77f3587",
+  "current_status": "PASS_BUILD_CONTRACTS",
+  "qualification_scope": "OFFLINE_COMPILATION_CONTRACTS",
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "capability_profiles": {
+    "schema": "PASS_BUILD_CONTRACTS",
+    "aspen_plus_14": "OFFLINE_CONTRACT_ONLY",
+    "aspen_plus_15": "OFFLINE_CONTRACT_ONLY",
+    "hysys_14": "OFFLINE_CONTRACT_ONLY",
+    "hysys_15": "OFFLINE_CONTRACT_ONLY",
+    "runtime_verified_profile": "NOT_AVAILABLE",
+    "raw_com_paths_exposed": false
+  },
+  "compilation_contracts": {
+    "deterministic_plan": "PASS_BUILD_CONTRACTS",
+    "profile_identity_binding": "PASS_BUILD_CONTRACTS",
+    "equipment_capability_checks": "PASS_BUILD_CONTRACTS",
+    "stream_capability_checks": "PASS_BUILD_CONTRACTS",
+    "parameter_capability_checks": "PASS_BUILD_CONTRACTS",
+    "port_domain_checks": "PASS_BUILD_CONTRACTS",
+    "recycle_initialization_steps": "PASS_BUILD_CONTRACTS",
+    "open_loop_solve_step": "PASS_BUILD_CONTRACTS",
+    "closed_loop_solve_step": "PASS_BUILD_CONTRACTS",
+    "pre_save_topology_readback_step": "PASS_BUILD_CONTRACTS",
+    "pre_save_layout_readback_step": "PASS_BUILD_CONTRACTS",
+    "private_save_step": "PASS_BUILD_CONTRACTS",
+    "close_reopen_steps": "PASS_BUILD_CONTRACTS",
+    "post_reopen_topology_readback_step": "PASS_BUILD_CONTRACTS",
+    "post_reopen_layout_readback_step": "PASS_BUILD_CONTRACTS"
+  },
+  "native_topology_contract": {
+    "schema": "PASS_BUILD_CONTRACTS",
+    "source_metadata_excluded_from_identity": "PASS_BUILD_CONTRACTS",
+    "missing_node_detection": "PASS_BUILD_CONTRACTS",
+    "extra_node_detection": "PASS_BUILD_CONTRACTS",
+    "changed_node_kind_detection": "PASS_BUILD_CONTRACTS",
+    "missing_edge_detection": "PASS_BUILD_CONTRACTS",
+    "extra_edge_detection": "PASS_BUILD_CONTRACTS",
+    "changed_edge_endpoint_or_port_detection": "PASS_BUILD_CONTRACTS"
+  },
+  "native_builder_boundary": {
+    "protocol_defined": "PASS_BUILD_CONTRACTS",
+    "plan_must_be_executable": "PASS_BUILD_CONTRACTS",
+    "profile_id_must_match": "PASS_BUILD_CONTRACTS",
+    "profile_hash_must_match": "PASS_BUILD_CONTRACTS",
+    "step_result_must_be_object": "PASS_BUILD_CONTRACTS",
+    "mandatory_readback_subset": "PASS_BUILD_CONTRACTS",
+    "topology_mismatch_fails_closed": "PASS_BUILD_CONTRACTS",
+    "layout_mismatch_fails_closed": "PASS_BUILD_CONTRACTS",
+    "actual_aspen_plus_adapter": "NOT_IMPLEMENTED",
+    "actual_hysys_adapter": "NOT_IMPLEMENTED"
+  },
+  "ci": {
+    "python_3_11": {
+      "status": "PASS",
+      "tests": 1116,
+      "coverage_percent": 95.79
+    },
+    "python_3_12": {
+      "status": "PASS",
+      "tests": 1116,
+      "coverage_percent": 95.77,
+      "order_independence": "PASS_REVERSE_AND_SEEDED"
+    },
+    "python_3_13": {
+      "status": "PASS",
+      "tests": 1116,
+      "coverage_percent": 95.77
+    },
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "mypy": "PASS",
+    "bandit": "PASS",
+    "dependency_audit": "PASS",
+    "source_tree_audit": "PASS",
+    "build": "PASS",
+    "wheel_smoke": "PASS",
+    "mcp_smoke": "PASS",
+    "performance_policy": "PASS",
+    "windows_control_plane": "PASS"
+  },
+  "licensed_runtime_gates": {
+    "aspen_plus_14_native_build": "NOT_EXECUTED",
+    "aspen_plus_15_native_build": "NOT_EXECUTED",
+    "hysys_14_native_build": "NOT_EXECUTED",
+    "hysys_15_native_build": "NOT_EXECUTED",
+    "native_object_and_port_mapping": "NOT_VERIFIED",
+    "commercial_solver_execution": "NOT_EXECUTED",
+    "native_save_close_reopen": "NOT_EXECUTED",
+    "native_topology_readback": "NOT_EXECUTED",
+    "native_layout_readback": "NOT_EXECUTED",
+    "signed_runtime_profile": "NOT_CREATED",
+    "golden_cases": "NOT_EXECUTED",
+    "human_engineering_acceptance": "NOT_EXECUTED"
+  },
+  "boundary": {
+    "offline_compilation_contracts": "QUALIFIED",
+    "native_v15_builder": "NOT_QUALIFIED",
+    "real_v15_case_scope": "NOT_EXECUTED",
+    "engineering_certification": "PENDING_REAL_ASPEN_CERTIFICATION"
+  }
+}
