@@ -22,6 +22,12 @@ class NativeBuildAdapter(Protocol):
     @property
     def profile_hash(self) -> str: ...
 
+    @property
+    def adapter_code_sha256(self) -> str: ...
+
+    @property
+    def runtime_identity_sha256(self) -> str: ...
+
     def apply_step(self, step: CompilationStep) -> dict[str, Any]: ...
 
     def read_topology(self) -> NativeTopologySnapshot: ...
@@ -50,6 +56,9 @@ class NativeBuildExecutionRecord:
     plan_hash: str
     profile_id: str
     profile_hash: str
+    qualification_evidence_sha256: str
+    adapter_code_sha256: str
+    runtime_identity_sha256: str
     completed: bool
     step_records: tuple[StepExecutionRecord, ...]
     topology_reports: tuple[TopologyComparisonReport, ...]
@@ -61,6 +70,9 @@ class NativeBuildExecutionRecord:
             "plan_hash": self.plan_hash,
             "profile_id": self.profile_id,
             "profile_hash": self.profile_hash,
+            "qualification_evidence_sha256": self.qualification_evidence_sha256,
+            "adapter_code_sha256": self.adapter_code_sha256,
+            "runtime_identity_sha256": self.runtime_identity_sha256,
             "completed": self.completed,
             "step_records": [item.to_dict() for item in self.step_records],
             "topology_reports": [item.to_dict() for item in self.topology_reports],
@@ -91,6 +103,20 @@ def execute_compilation_plan(
         raise NativeBuildError("Native adapter profile_id does not match the compilation plan")
     if adapter.profile_hash != plan.profile_hash:
         raise NativeBuildError("Native adapter profile_hash does not match the compilation plan")
+    if (
+        plan.qualification_evidence_sha256 is None
+        or plan.adapter_code_sha256 is None
+        or plan.runtime_identity_sha256 is None
+    ):
+        raise NativeBuildError("Executable plan omitted runtime qualification identity")
+    if adapter.adapter_code_sha256 != plan.adapter_code_sha256:
+        raise NativeBuildError(
+            "Native adapter code hash does not match the runtime qualification"
+        )
+    if adapter.runtime_identity_sha256 != plan.runtime_identity_sha256:
+        raise NativeBuildError(
+            "Native adapter runtime identity does not match the runtime qualification"
+        )
 
     step_records: list[StepExecutionRecord] = []
     topology_reports: list[TopologyComparisonReport] = []
@@ -141,6 +167,9 @@ def execute_compilation_plan(
         plan_hash=plan.digest(),
         profile_id=plan.profile_id,
         profile_hash=plan.profile_hash,
+        qualification_evidence_sha256=plan.qualification_evidence_sha256,
+        adapter_code_sha256=plan.adapter_code_sha256,
+        runtime_identity_sha256=plan.runtime_identity_sha256,
         completed=True,
         step_records=tuple(step_records),
         topology_reports=tuple(topology_reports),
