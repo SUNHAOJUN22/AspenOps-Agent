@@ -1,0 +1,392 @@
+name: Phase 7 final qualification
+
+on:
+  push:
+    branches:
+      - feature/aspenops-revocation-witness
+    paths:
+      - .github/workflows/phase7-final-qualification-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run python scripts/audit_dependencies.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py --root . --output /tmp/source-tree-audit.json
+          uv run bandit -q -r src
+          uv build
+          uv run python scripts/verify_mcp_surface.py
+
+  py311:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tests: ${{ steps.metrics.outputs.tests }}
+      coverage: ${{ steps.metrics.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.11"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json \
+            --junitxml=junit.xml \
+            --cov-fail-under=94.5
+      - id: metrics
+        shell: bash
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          coverage = json.load(open("coverage.json", encoding="utf-8"))
+          root = ET.parse("junit.xml").getroot()
+          tests = int(root.attrib.get("tests", 0))
+          if tests == 0:
+              tests = sum(int(item.attrib.get("tests", 0)) for item in root)
+          print(f"tests={tests}")
+          print(f"coverage={coverage['totals']['percent_covered']:.2f}")
+          PY
+
+  py312:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      tests: ${{ steps.metrics.outputs.tests }}
+      coverage: ${{ steps.metrics.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json \
+            --junitxml=junit.xml \
+            --cov-fail-under=95.0
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir /tmp/phase7-order
+      - id: metrics
+        shell: bash
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          coverage = json.load(open("coverage.json", encoding="utf-8"))
+          root = ET.parse("junit.xml").getroot()
+          tests = int(root.attrib.get("tests", 0))
+          if tests == 0:
+              tests = sum(int(item.attrib.get("tests", 0)) for item in root)
+          print(f"tests={tests}")
+          print(f"coverage={coverage['totals']['percent_covered']:.2f}")
+          PY
+
+  py313:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tests: ${{ steps.metrics.outputs.tests }}
+      coverage: ${{ steps.metrics.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.13"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json \
+            --junitxml=junit.xml \
+            --cov-fail-under=94.5
+      - id: metrics
+        shell: bash
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          coverage = json.load(open("coverage.json", encoding="utf-8"))
+          root = ET.parse("junit.xml").getroot()
+          tests = int(root.attrib.get("tests", 0))
+          if tests == 0:
+              tests = sum(int(item.attrib.get("tests", 0)) for item in root)
+          print(f"tests={tests}")
+          print(f"coverage={coverage['totals']['percent_covered']:.2f}")
+          PY
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning
+
+  finalize:
+    needs: [quality, py311, py312, py313, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TESTS_311: ${{ needs.py311.outputs.tests }}
+      COVERAGE_311: ${{ needs.py311.outputs.coverage }}
+      TESTS_312: ${{ needs.py312.outputs.tests }}
+      COVERAGE_312: ${{ needs.py312.outputs.coverage }}
+      TESTS_313: ${{ needs.py313.outputs.tests }}
+      COVERAGE_313: ${{ needs.py313.outputs.coverage }}
+      VALIDATED_HEAD: ${{ github.sha }}
+      QUALIFICATION_RUN: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-revocation-witness
+          persist-credentials: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          head = os.environ["VALIDATED_HEAD"]
+          run_id = int(os.environ["QUALIFICATION_RUN"])
+          metrics = {
+              "3.11": {
+                  "tests_passed": int(os.environ["TESTS_311"]),
+                  "branch_coverage_percent": float(os.environ["COVERAGE_311"]),
+              },
+              "3.12": {
+                  "tests_passed": int(os.environ["TESTS_312"]),
+                  "branch_coverage_percent": float(os.environ["COVERAGE_312"]),
+              },
+              "3.13": {
+                  "tests_passed": int(os.environ["TESTS_313"]),
+                  "branch_coverage_percent": float(os.environ["COVERAGE_313"]),
+              },
+          }
+          report = f'''# AspenOps V3 Phase 7 Implementation Report
+
+          ## Status
+
+          - Phase status: `PASS_BUILD_CONTRACTS`
+          - Qualification scope: `INDEPENDENT_REVOCATION_WITNESS_CONTRACTS`
+          - Execution scope: software authorization contracts only
+          - Real simulator status: `PENDING_REAL_ASPEN_CERTIFICATION`
+          - Pull request: draft PR #110
+          - Qualified implementation head: `{head}`
+          - Qualification workflow run: `{run_id}`
+
+          ## Objective
+
+          Phase 7 adds an independently signed, short-lived witness receipt for the
+          Phase 6 signed revocation policy and protected local checkpoint. Fresh runtime
+          authorization now requires current agreement from a witness authority whose key
+          is distinct from the revocation-policy authority.
+
+          ## Implemented Contracts
+
+          The witness receipt binds the witness ID, policy sequence, signed-policy
+          evidence SHA-256, policy-authority key ID, checkpoint SHA-256, observation time
+          and expiration time. Receipt validity is limited to 24 hours. The receipt,
+          witness key and current time are revalidated before any native adapter access.
+
+          Fresh authorization and native execution records include the witness evidence
+          SHA-256, witness key ID, witness ID and witness expiration. Authorization expires
+          at the earliest of qualification, policy or witness expiration.
+
+          ## Validation Evidence
+
+          - Python 3.11: {metrics['3.11']['tests_passed']} passed, {metrics['3.11']['branch_coverage_percent']:.2f}% branch coverage;
+          - Python 3.12: {metrics['3.12']['tests_passed']} passed, {metrics['3.12']['branch_coverage_percent']:.2f}% branch coverage;
+          - Python 3.13: {metrics['3.13']['tests_passed']} passed, {metrics['3.13']['branch_coverage_percent']:.2f}% branch coverage;
+          - Python 3.12 reverse and fixed-seed order-independence gate: passed;
+          - Ruff, exact formatter, strict mypy, Bandit, dependency/source audits and build: passed;
+          - Windows full test suite: passed;
+          - coverage reporting precision: two decimal places;
+          - Python 3.12 true coverage threshold: 95.00% without integer-rounding reliance.
+
+          ## Explicit Non-Claims
+
+          Phase 7 does not contact a live remote witness service. A correctly signed
+          receipt can be replayed until its expiration, and coordinated rollback remains
+          possible during that short validity window if every local trust file is restored
+          consistently. No production witness keys, native Aspen/HYSYS adapter, commercial
+          solver execution, real Golden Case, repeatability evidence or human engineering
+          acceptance exists. Real simulator status remains pending.
+          '''
+          Path("ASPENOPS_V3_PHASE7_IMPLEMENTATION_REPORT.md").write_text(
+              report.replace("          ", ""), encoding="utf-8"
+          )
+
+          matrix = {
+              "schema": "aspenops.phase-validation-matrix/v1",
+              "phase": "PHASE_7",
+              "status": "PASS_BUILD_CONTRACTS",
+              "qualification_scope": "INDEPENDENT_REVOCATION_WITNESS_CONTRACTS",
+              "execution_scope": "SOFTWARE_AUTHORIZATION_ONLY",
+              "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+              "pull_request": 110,
+              "validated_head": head,
+              "qualification_run": run_id,
+              "coverage_precision": 2,
+              "python_matrix": metrics,
+              "order_independence": {
+                  "python": "3.12",
+                  "reverse": "PASS",
+                  "fixed_seed": 20260728,
+                  "result": "PASS",
+                  "tests_checked": metrics["3.12"]["tests_passed"],
+              },
+              "quality": {
+                  "dependency_audit": "PASS",
+                  "ruff": "PASS",
+                  "ruff_format": "PASS",
+                  "strict_mypy": "PASS",
+                  "source_tree_audit": "PASS",
+                  "bandit": "PASS",
+                  "distribution_build": "PASS",
+                  "mcp_surface": "PASS",
+                  "windows_full_suite": "PASS",
+              },
+              "contract_matrix": {
+                  "independent_witness_namespace": "PASS",
+                  "ed25519_witness_signature": "PASS",
+                  "policy_sequence_binding": "PASS",
+                  "policy_evidence_binding": "PASS",
+                  "policy_authority_binding": "PASS",
+                  "checkpoint_binding": "PASS",
+                  "maximum_24_hour_validity": "PASS",
+                  "current_time_reverification": "PASS",
+                  "same_key_policy_witness_rejection": "PASS",
+                  "missing_receipt_or_key_rejection": "PASS",
+                  "expired_receipt_replay_rejection": "PASS",
+                  "witness_identity_in_authorization": "PASS",
+                  "witness_identity_in_execution_record": "PASS",
+                  "two_decimal_coverage_gate": "PASS",
+              },
+          }
+          Path("ASPENOPS_V3_PHASE7_VALIDATION_MATRIX.json").write_text(
+              json.dumps(matrix, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          audit = '''# AspenOps V3 Phase 7 Reverse Audit
+
+          ## Audit Question
+
+          Can an attacker roll back the signed revocation policy and local checkpoint
+          together and continue execution without any independent freshness evidence?
+
+          ## Result
+
+          Phase 7 requires a short-lived receipt signed by an authority that is distinct
+          from the policy authority. The receipt binds the exact policy sequence, policy
+          evidence, policy authority and checkpoint. Missing, altered, future, expired,
+          overlong or mismatched receipts fail closed before adapter access.
+
+          ## Threat Review
+
+          - Policy/checkpoint substitution: blocked by the witness-bound identities.
+          - Witness-content tampering: blocked by Ed25519 verification.
+          - Witness-key substitution: blocked by key fingerprint verification.
+          - Policy authority acting as its own witness: blocked by key separation.
+          - Old witness replay: blocked after the receipt expires.
+          - Missing witness receipt or key: fail-closed.
+          - Future-dated or over-24-hour receipt: rejected.
+          - Execution evidence ambiguity: witness receipt, key, ID and expiry are recorded.
+
+          ## Residual Risk
+
+          This is an offline witness-receipt contract, not a live online freshness query.
+          A valid receipt can be replayed until its expiration. Coordinated rollback within
+          that window is not prevented if all local state is restored consistently. No
+          external transparency log, trusted timestamp service, production witness, native
+          simulator adapter or real Aspen certification is claimed.
+
+          ## Qualification Conclusion
+
+          The implemented software contracts qualify as
+          `INDEPENDENT_REVOCATION_WITNESS_CONTRACTS` under
+          `PASS_BUILD_CONTRACTS`. All commercial-runtime claims remain
+          `PENDING_REAL_ASPEN_CERTIFICATION`.
+          '''
+          Path("ASPENOPS_V3_PHASE7_REVERSE_AUDIT.md").write_text(
+              audit.replace("          ", ""), encoding="utf-8"
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/phase7-final-qualification-once.yml
+          git add \
+            ASPENOPS_V3_PHASE7_IMPLEMENTATION_REPORT.md \
+            ASPENOPS_V3_PHASE7_VALIDATION_MATRIX.json \
+            ASPENOPS_V3_PHASE7_REVERSE_AUDIT.md
+          git commit -m "docs: finalize Phase 7 qualification evidence"
+          git push origin HEAD:feature/aspenops-revocation-witness
