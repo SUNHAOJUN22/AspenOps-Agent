@@ -47,15 +47,17 @@ def test_pool_manager_rejects_casepool_digest_drift(
         license_slots=1,
     )
     try:
-        with pytest.raises(RuntimeError, match="changed between PoolManager"):
-            with manager.acquire(
+        with (
+            pytest.raises(RuntimeError, match="changed between PoolManager"),
+            manager.acquire(
                 backend_name="mock",
                 model_path=model,
                 registry_path=registry,
                 workers=1,
                 visible=False,
-            ):
-                pytest.fail("mismatched pool must not be leased")
+            ),
+        ):
+            pytest.fail("mismatched pool must not be leased")
     finally:
         manager.close()
     assert created and created[0].closed is True
