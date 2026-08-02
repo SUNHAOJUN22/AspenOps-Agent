@@ -1,0 +1,37 @@
+name: Phase 1 exact test formatter
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-natural-language-flowsheet-v3
+    paths:
+      - .github/workflows/phase1-test-format-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-process-requirement-ir-v2
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format tests/test_design_contract_v3.py
+          uv run ruff check tests/test_design_contract_v3.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_design_contract_v3.py
+          git commit -m "style: apply exact Ruff formatting to design contract tests"
+          git push origin HEAD:feature/aspenops-process-requirement-ir-v2
