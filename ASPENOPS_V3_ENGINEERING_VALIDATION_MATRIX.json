@@ -2,27 +2,29 @@
   "schema": "aspenops.v3-engineering-validation-matrix/v1",
   "repository": "SUNHAOJUN22/AspenOps-Agent",
   "base_commit": "0d240f16c3706705f4a304f09eac22ceaf301631",
+  "validated_code_head": "8ad74ec98444060263b47a100dcb0a07630b5e53",
   "branch": "feature/aspenops-natural-language-flowsheet-v3",
   "pull_request": 103,
-  "current_status": "FAIL_CLOSED",
+  "current_status": "PASS_CONTROL_PLANE",
   "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
   "phase0": {
-    "immutable_model_snapshot": "IMPLEMENTED_PENDING_FINAL_CI",
-    "immutable_registry_snapshot": "IMPLEMENTED_PENDING_FINAL_CI",
-    "worker_digest_handshake": "IMPLEMENTED_PENDING_FINAL_CI",
-    "pool_manager_digest_fencing": "IMPLEMENTED_PENDING_FINAL_CI",
-    "cache_execution_identity": "IMPLEMENTED_PENDING_FINAL_CI",
-    "v3_evidence_identity_binding": "IMPLEMENTED_PENDING_FINAL_CI",
-    "strict_evidence_json": "IMPLEMENTED_PENDING_FINAL_CI",
-    "semantic_read_access": "IMPLEMENTED_PENDING_FINAL_CI",
-    "verified_write_and_rollback": "IMPLEMENTED_PENDING_FINAL_CI",
-    "real_worker_job_object_gate": "IMPLEMENTED_PENDING_WINDOWS_CI",
-    "ordinary_bundle_trusted_key_cli": "IMPLEMENTED_PENDING_FINAL_CI",
-    "mcp_admin_trust_store": "IMPLEMENTED_PENDING_FINAL_CI",
-    "mcp_version_range": "IMPLEMENTED_PENDING_FINAL_CI",
-    "aspen_plus_single_strict_adapter": "NOT_IMPLEMENTED",
-    "backend_polling_settings_migration": "NOT_IMPLEMENTED",
-    "licensed_certification_snapshot_recheck": "PARTIAL_REQUIRES_FOLLOWUP"
+    "immutable_model_snapshot": "PASS_CONTROL_PLANE",
+    "immutable_registry_snapshot": "PASS_CONTROL_PLANE",
+    "worker_digest_handshake": "PASS_CONTROL_PLANE",
+    "pool_manager_digest_fencing": "PASS_CONTROL_PLANE",
+    "cache_execution_identity": "PASS_CONTROL_PLANE",
+    "v3_evidence_identity_binding": "PASS_CONTROL_PLANE",
+    "strict_evidence_json": "PASS_CONTROL_PLANE",
+    "semantic_read_access": "PASS_CONTROL_PLANE",
+    "verified_write_and_rollback": "PASS_CONTROL_PLANE",
+    "real_worker_job_object_gate": "PASS_WINDOWS_CONTROL_PLANE",
+    "ordinary_bundle_trusted_key_cli": "PASS_CONTROL_PLANE",
+    "mcp_admin_trust_store": "PASS_CONTROL_PLANE",
+    "mcp_version_range": "PASS_CONTROL_PLANE",
+    "aspen_plus_single_strict_adapter": "FOLLOWUP_REQUIRED",
+    "backend_polling_settings_migration": "FOLLOWUP_REQUIRED",
+    "licensed_certification_snapshot_recheck": "PARTIAL_REQUIRES_FOLLOWUP",
+    "windows_staging_acl_hardening": "FOLLOWUP_REQUIRED"
   },
   "phase1": {
     "process_requirement_schema": "NOT_IMPLEMENTED",
@@ -63,18 +65,39 @@
     "human_engineering_acceptance": "NOT_EXECUTED"
   },
   "ci": {
-    "python_3_11": "PENDING_FINAL_HEAD",
-    "python_3_12": "PENDING_FINAL_HEAD",
-    "python_3_13": "PENDING_FINAL_HEAD",
-    "ruff": "PENDING_FINAL_HEAD",
-    "ruff_format": "PENDING_FINAL_HEAD",
-    "mypy": "PENDING_FINAL_HEAD",
-    "bandit": "PENDING_FINAL_HEAD",
-    "branch_coverage": "PENDING_FINAL_HEAD",
-    "test_order": "PENDING_FINAL_HEAD",
-    "wheel_smoke": "PENDING_FINAL_HEAD",
-    "mcp_smoke": "PENDING_FINAL_HEAD",
-    "windows_control_plane": "PENDING_FINAL_HEAD"
+    "python_3_11": {
+      "status": "PASS",
+      "tests": 947,
+      "coverage_percent": 95.22
+    },
+    "python_3_12": {
+      "status": "PASS",
+      "tests": 947,
+      "coverage_percent": 95.24,
+      "order_independence": "PASS_REVERSE_AND_SEEDED"
+    },
+    "python_3_13": {
+      "status": "PASS",
+      "tests": 947,
+      "coverage_percent": 95.24
+    },
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "mypy": "PASS",
+    "bandit": "PASS",
+    "dependency_audit": "PASS",
+    "source_tree_audit": "PASS",
+    "build": "PASS",
+    "wheel_smoke": "PASS",
+    "mcp_smoke": "PASS",
+    "performance_policy": "PASS",
+    "windows_control_plane": "PASS"
+  },
+  "boundary": {
+    "control_plane": "QUALIFIED_FOR_IMPLEMENTED_PHASE0_SCOPE",
+    "flowsheet_build_contracts": "NOT_QUALIFIED",
+    "real_v15_case_scope": "NOT_EXECUTED",
+    "engineering_certification": "PENDING_REAL_ASPEN_CERTIFICATION"
   },
   "allowed_final_states": [
     "FAIL_CLOSED",
