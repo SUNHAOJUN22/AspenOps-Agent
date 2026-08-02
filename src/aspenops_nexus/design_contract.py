@@ -120,8 +120,7 @@ def validate_design_against_requirement(
             _issue(
                 "products.missing",
                 "design.equipment",
-                "Design omits required product boundary objects: "
-                + ", ".join(missing_products),
+                "Design omits required product boundary objects: " + ", ".join(missing_products),
             )
         )
     if extra_products:
