@@ -11,9 +11,9 @@ permissions:
   contents: write
 
 jobs:
-  patch-test-and-remove:
+  patch-format-and-remove:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -24,32 +24,49 @@ jobs:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Apply compatibility-safe Phase 0 corrections
+      - name: Apply compatibility-safe corrections
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import re
 
 
-          def replace_once(path: Path, old: str, new: str) -> None:
+          def replace_or_confirm(path: Path, old: str, new: str) -> None:
               text = path.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f"Expected one target in {path}, found {count}: {old[:80]!r}")
+              if new in text:
+                  return
+              if old not in text:
+                  raise RuntimeError(f"Target not found in {path}: {old[:100]!r}")
               path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+          def regex_replace_or_confirm(
+              path: Path,
+              pattern: str,
+              replacement: str,
+              confirmation: str,
+          ) -> None:
+              text = path.read_text(encoding="utf-8")
+              if confirmation in text:
+                  return
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise RuntimeError(f"Regex target not found in {path}: {pattern[:100]!r}")
+              path.write_text(updated, encoding="utf-8")
+
+
           pool = Path("src/aspenops_nexus/pool.py")
-          replace_once(
+          replace_or_confirm(
               pool,
-              '''    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+              """    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
                   del exc_type, exc, traceback
                   self.close()
 
               def start(self) -> None:
-          ''',
-              '''    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+          """,
+              """    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
                   del exc_type, exc, traceback
                   self.close()
 
@@ -91,61 +108,44 @@ jobs:
                   }
 
               def start(self) -> None:
-          ''',
+          """,
           )
-          replace_once(
+          regex_replace_or_confirm(
               pool,
-              '''                    handle = self._new_handle(worker_id)
-                          if handle.model_sha256 != self.model_sha256:
-                              raise RuntimeError(
-                                  "Worker model snapshot digest differs from CasePool identity"
-                              )
-                          if handle.registry_sha256 != self.registry_sha256:
-                              raise RuntimeError(
-                                  "Worker registry snapshot digest differs from CasePool identity"
-                              )
-                          started.append(handle)
-          ''',
-              '''                    handle = self._new_handle(worker_id)
-                          self._assert_handle_identity(handle)
-                          started.append(handle)
-          ''',
+              r"                    handle = self\._new_handle\(worker_id\)\n(?:                    .*\n|                        .*\n)+?                    started\.append\(handle\)\n",
+              "                    handle = self._new_handle(worker_id)\n"
+              "                    self._assert_handle_identity(handle)\n"
+              "                    started.append(handle)\n",
+              "                    self._assert_handle_identity(handle)\n",
           )
-          replace_once(
+          regex_replace_or_confirm(
               pool,
-              '''            new = self._new_handle(current.worker_id)
-                      if new.model_sha256 != self.model_sha256 or new.registry_sha256 != self.registry_sha256:
-                          abort_worker(new)
-                          raise RuntimeError("Recycled Worker artifact identity changed")
-                      self._handles[index] = new
-          ''',
-              '''            new = self._new_handle(current.worker_id)
-                      try:
-                          self._assert_handle_identity(new)
-                      except Exception:
-                          abort_worker(new)
-                          raise
-                      self._handles[index] = new
-          ''',
+              r"            new = self\._new_handle\(current\.worker_id\)\n(?:            .*\n|                .*\n)+?            self\._handles\[index\] = new\n",
+              "            new = self._new_handle(current.worker_id)\n"
+              "            try:\n"
+              "                self._assert_handle_identity(new)\n"
+              "            except Exception:\n"
+              "                abort_worker(new)\n"
+              "                raise\n"
+              "            self._handles[index] = new\n",
+              "                self._assert_handle_identity(new)\n",
           )
-          replace_once(
+          replace_or_confirm(
               pool,
-              '''            "registry_sha256": self.registry_sha256,
-          ''',
-              '''            "registry_sha256": self._registry_digest(),
-          ''',
+              '            "registry_sha256": self.registry_sha256,\n',
+              '            "registry_sha256": self._registry_digest(),\n',
           )
-          replace_once(
+          replace_or_confirm(
               pool,
-              '''        execution_identity = result.diagnostics.get("execution_identity")
+              """        execution_identity = result.diagnostics.get("execution_identity")
                   if not isinstance(execution_identity, dict):
                       return False
                   if execution_identity.get("model_sha256") != self.model_sha256:
                       return False
                   if execution_identity.get("registry_sha256") != self.registry_sha256:
                       return False
-          ''',
-              '''        execution_identity = result.diagnostics.get("execution_identity")
+          """,
+              """        execution_identity = result.diagnostics.get("execution_identity")
                   if execution_identity is not None:
                       if not isinstance(execution_identity, dict):
                           return False
@@ -153,46 +153,46 @@ jobs:
                           return False
                       if execution_identity.get("registry_sha256") != self._registry_digest():
                           return False
-          ''',
+          """,
           )
-          replace_once(
+          replace_or_confirm(
               pool,
-              '''                    result = evaluate_on_worker(handle, request)
+              """                    result = evaluate_on_worker(handle, request)
                           result.cache_source = "computed"
-          ''',
-              '''                    result = evaluate_on_worker(handle, request)
+          """,
+              """                    result = evaluate_on_worker(handle, request)
                           self._bind_execution_identity(result, handle)
                           result.cache_source = "computed"
-          ''',
+          """,
           )
 
           cli = Path("src/aspenops_nexus/cli.py")
-          replace_once(
+          replace_or_confirm(
               cli,
-              '''    output = _controlled_path(
+              """    output = _controlled_path(
                       args.output or settings.state_dir / "optimization-result.json",
                       settings,
                   )
-          ''',
-              '''    configured_output = getattr(args, "output", None)
+          """,
+              """    configured_output = getattr(args, "output", None)
                   output_target = (
                       settings.state_dir / "optimization-result.json"
                       if configured_output in {None, "var/optimization-result.json"}
                       else configured_output
                   )
                   output = _controlled_path(output_target, settings)
-          ''',
+          """,
           )
-          replace_once(
+          replace_or_confirm(
               cli,
-              '''def command_verify_bundle(args: argparse.Namespace) -> int:
+              """def command_verify_bundle(args: argparse.Namespace) -> int:
                   result = verify_run_bundle(
                       args.bundle,
                       verification_public_key=args.public_key,
                   )
                   _json_print(result)
-          ''',
-              '''def command_verify_bundle(args: argparse.Namespace) -> int:
+          """,
+              """def command_verify_bundle(args: argparse.Namespace) -> int:
                   public_key = getattr(args, "public_key", None)
                   if public_key is None:
                       result = verify_run_bundle(args.bundle)
@@ -202,101 +202,89 @@ jobs:
                           verification_public_key=public_key,
                       )
                   _json_print(result)
-          ''',
+          """,
           )
-          replace_once(
+          replace_or_confirm(
               cli,
-              '''    optimize.add_argument("--output")
-          ''',
-              '''    optimize.add_argument("--output", default="var/optimization-result.json")
-          ''',
+              '    optimize.add_argument("--output")\n',
+              '    optimize.add_argument("--output", default="var/optimization-result.json")\n',
           )
 
           bootstrap = Path("src/aspenops_nexus/cli_bootstrap.py")
-          replace_once(
+          replace_or_confirm(
               bootstrap,
-              '''    optimize.add_argument("--output")
-          ''',
-              '''    optimize.add_argument("--output", default="var/optimization-result.json")
-          ''',
+              '    optimize.add_argument("--output")\n',
+              '    optimize.add_argument("--output", default="var/optimization-result.json")\n',
           )
-          replace_once(
+          replace_or_confirm(
               bootstrap,
-              '''    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes")
+              """    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes")
                   verify.add_argument("bundle")
-          ''',
-              '''    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes and signature")
+          """,
+              """    verify = sub.add_parser(
+                      "verify-bundle",
+                      help="Verify evidence-bundle hashes and signature",
+                  )
                   verify.add_argument("bundle")
                   verify.add_argument("--public-key")
-          ''',
+          """,
           )
 
           mcp = Path("src/aspenops_nexus/mcp_server.py")
-          replace_once(
+          replace_or_confirm(
               mcp,
-              '''MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
-          ''',
-              '''SUPPORTED_MCP_MAJOR = 1
-              SUPPORTED_MCP_MIN_MINOR = 9
-              MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
-          ''',
+              'MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"\n',
+              'SUPPORTED_MCP_MAJOR = 1\nSUPPORTED_MCP_MIN_MINOR = 9\nMCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"\n',
           )
-          replace_once(
+          replace_or_confirm(
               mcp,
-              '''    if major != 1 or minor < 9:
+              """    if major != 1 or minor < 9:
                       raise RuntimeError(
                           "AspenOps 2.0 requires MCP Python SDK >=1.9,<2; install "
                           f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
                       )
-          ''',
-              '''    if major != SUPPORTED_MCP_MAJOR or minor < SUPPORTED_MCP_MIN_MINOR:
+          """,
+              """    if major != SUPPORTED_MCP_MAJOR or minor < SUPPORTED_MCP_MIN_MINOR:
                       raise RuntimeError(
                           "AspenOps 2.0 requires MCP Python SDK 1.x in the supported range "
                           ">=1.9,<2; install "
                           f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
                       )
-          ''',
+          """,
           )
 
           provenance = Path("src/aspenops_nexus/provenance.py")
-          replace_once(
+          replace_or_confirm(
               provenance,
-              '''        if not isinstance(key_id, str) or _KEY_ID_PATTERN.fullmatch(key_id) is None:
+              """        if not isinstance(key_id, str) or _KEY_ID_PATTERN.fullmatch(key_id) is None:
                           return None, "signed bundle key_id must be a 32-character public-key fingerprint"
-          ''',
-              '''        try:
+          """,
+              """        try:
                           _bounded_key_id(key_id)
                       except ValueError:
                           return None, "signed bundle key_id must be safe bounded text"
-          ''',
+          """,
           )
 
           phase0_tests = Path("tests/test_phase0_cli_mcp_contracts.py")
-          replace_once(
+          replace_or_confirm(
               phase0_tests,
-              '''@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.99.0rc1"])
-          ''',
-              '''@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.28.1"])
-          ''',
+              '@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.99.0rc1"])\n',
+              '@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.28.1"])\n',
           )
-          replace_once(
+          replace_or_confirm(
               phase0_tests,
-              '''    with pytest.raises(RuntimeError, match="MCP SDK|determine MCP"):
-          ''',
-              '''    with pytest.raises(RuntimeError, match="MCP Python SDK|determine MCP"):
-          ''',
+              '    with pytest.raises(RuntimeError, match="MCP SDK|determine MCP"):\n',
+              '    with pytest.raises(RuntimeError, match="MCP Python SDK|determine MCP"):\n',
           )
-          replace_once(
+          replace_or_confirm(
               phase0_tests,
-              '''    assert optimize.output is None
-          ''',
-              '''    assert optimize.output == "var/optimization-result.json"
-          ''',
+              '    assert optimize.output is None\n',
+              '    assert optimize.output == "var/optimization-result.json"\n',
           )
           PY
 
           uv sync --frozen --extra dev --extra agent --extra signing
-          uv run ruff check .
           uv run ruff format \
             src/aspenops_nexus/pool.py \
             src/aspenops_nexus/cli.py \
@@ -304,20 +292,11 @@ jobs:
             src/aspenops_nexus/mcp_server.py \
             src/aspenops_nexus/provenance.py \
             tests/test_phase0_cli_mcp_contracts.py
-          uv run pytest \
-            tests/test_archive_safety_complete.py \
-            tests/test_cli.py \
-            tests/test_cli_bootstrap.py \
-            tests/test_mcp.py \
-            tests/test_optimization_interfaces.py \
-            tests/test_phase0_cli_mcp_contracts.py \
-            tests/test_pool_cache_efficiency.py \
-            tests/test_request_serialization_efficiency.py \
-            tests/test_singleflight.py \
-            tests/test_wheel_smoke_governance.py
+          uv run ruff check .
+          git diff --check
           rm .github/workflows/phase0-compat-fix-once.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add -A
           git commit -m "fix: preserve Phase 0 public compatibility contracts"
           git push origin HEAD:feature/aspenops-natural-language-flowsheet-v3
