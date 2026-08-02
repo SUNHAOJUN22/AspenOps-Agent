@@ -23,7 +23,6 @@ from aspenops_nexus.qualified_compilation import (
 from aspenops_nexus.runtime_qualification import (
     GoldenCaseQualification,
     RuntimeQualificationStatement,
-    VerifiedRuntimeQualification,
     sign_runtime_qualification,
     verify_runtime_qualification,
 )
@@ -35,6 +34,7 @@ from aspenops_nexus.simulator_capabilities import (
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "examples/process-design-v2.example.json"
 NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
+CASE_ID = "HEATER_FLASH_V15"
 
 
 def design() -> ProcessDesignIR:
@@ -43,11 +43,18 @@ def design() -> ProcessDesignIR:
     return ProcessDesignIR.from_dict(value)
 
 
-def proof_for(profile: SimulatorCapabilityProfile) -> VerifiedRuntimeQualification:
+def authorization_context(
+    tmp_path: Path,
+) -> tuple[
+    RuntimeQualifiedCompilationPlan,
+    SimulatorCapabilityProfile,
+    dict[str, Any],
+]:
     pytest.importorskip("cryptography")
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+    profile = get_builtin_capability_profile("aspen_plus", "15")
     private = Ed25519PrivateKey.generate()
     private_pem = private.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -72,7 +79,7 @@ def proof_for(profile: SimulatorCapabilityProfile) -> VerifiedRuntimeQualificati
         approval_scope="Synthetic native-builder contract test",
         golden_cases=(
             GoldenCaseQualification(
-                case_id="HEATER_FLASH_V15",
+                case_id=CASE_ID,
                 evidence_bundle_sha256="c" * 64,
                 topology_sha256="d" * 64,
                 layout_sha256="e" * 64,
@@ -80,22 +87,41 @@ def proof_for(profile: SimulatorCapabilityProfile) -> VerifiedRuntimeQualificati
             ),
         ),
     )
-    return verify_runtime_qualification(
-        sign_runtime_qualification(statement, private_pem),
+    envelope = sign_runtime_qualification(statement, private_pem)
+    key_id = envelope["signing"]["key_id"]
+    assert isinstance(key_id, str)
+    (tmp_path / f"{key_id}.pem").write_bytes(public_pem)
+    (tmp_path / "revocations.json").write_text(
+        json.dumps(
+            {
+                "schema": "aspenops.runtime-revocations/v1",
+                "policy_id": "test-policy",
+                "issued_at": (NOW - timedelta(hours=1)).isoformat(),
+                "expires_at": (NOW + timedelta(days=1)).isoformat(),
+                "revoked_signing_key_ids": [],
+                "revoked_qualification_evidence_sha256": [],
+                "revoked_profile_ids": [],
+                "revoked_profile_sha256": [],
+                "revoked_adapter_code_sha256": [],
+                "revoked_runtime_identity_sha256": [],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    verified = verify_runtime_qualification(
+        envelope,
         trusted_public_key=public_pem,
         now=NOW,
-        required_case_ids=("HEATER_FLASH_V15",),
+        required_case_ids=(CASE_ID,),
     )
-
-
-def executable_plan() -> RuntimeQualifiedCompilationPlan:
-    profile = get_builtin_capability_profile("aspen_plus", "15")
-    return qualify_compilation_plan(
+    plan = qualify_compilation_plan(
         design(),
         profile,
-        proof_for(profile),
-        required_case_ids=("HEATER_FLASH_V15",),
+        verified,
+        required_case_ids=(CASE_ID,),
     )
+    return plan, profile, envelope
 
 
 class FakeAdapter:
@@ -147,10 +173,27 @@ class FakeAdapter:
         return self.layout_hash
 
 
-def test_execute_compilation_plan_success() -> None:
-    plan = executable_plan()
+def execute(
+    plan: RuntimeQualifiedCompilationPlan,
+    adapter: FakeAdapter,
+    profile: SimulatorCapabilityProfile,
+    envelope: dict[str, Any],
+    trusted_key_dir: Path,
+):
+    return execute_compilation_plan(
+        plan,
+        adapter,
+        profile=profile,
+        qualification_source=envelope,
+        trusted_key_dir=trusted_key_dir,
+        now=NOW,
+    )
+
+
+def test_execute_compilation_plan_success(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     adapter = FakeAdapter(plan)
-    record = execute_compilation_plan(plan, adapter)
+    record = execute(plan, adapter, profile, envelope, tmp_path)
     assert record.completed is True
     assert record.plan_hash == plan.digest()
     assert record.profile_id == plan.profile_id
@@ -158,68 +201,109 @@ def test_execute_compilation_plan_success() -> None:
     assert record.qualification_evidence_sha256 == plan.qualification_evidence_sha256
     assert record.adapter_code_sha256 == plan.adapter_code_sha256
     assert record.runtime_identity_sha256 == plan.runtime_identity_sha256
+    assert len(record.runtime_authorization_sha256) == 64
+    assert len(record.revocation_policy_sha256) == 64
+    assert record.authorized_at == "2026-08-02T12:00:00Z"
+    assert record.authorization_expires_at == "2026-08-03T12:00:00Z"
     assert len(record.step_records) == len(plan.steps)
     assert len(record.topology_reports) == 2
     assert all(item.matches for item in record.topology_reports)
     assert record.layout_hashes == (plan.expected_layout_hash, plan.expected_layout_hash)
-    assert "licensed runtime profile" in record.boundary
+    assert "freshly authorized" in record.boundary
     assert record.to_dict()["completed"] is True
 
 
-def test_plain_base_plan_cannot_execute() -> None:
-    base = compile_process_design(
-        design(),
-        get_builtin_capability_profile("aspen_plus", "15"),
-    )
+def test_plain_base_plan_cannot_execute(tmp_path: Path) -> None:
+    _, profile, envelope = authorization_context(tmp_path)
+    base = compile_process_design(design(), profile)
     with pytest.raises(NativeBuildError, match="RuntimeQualifiedCompilationPlan"):
-        execute_compilation_plan(base, object())  # type: ignore[arg-type]
+        execute_compilation_plan(
+            base,  # type: ignore[arg-type]
+            object(),  # type: ignore[arg-type]
+            profile=profile,
+            qualification_source=envelope,
+            trusted_key_dir=tmp_path,
+            now=NOW,
+        )
 
 
-def test_adapter_profile_identity_must_match() -> None:
-    plan = executable_plan()
+def test_authorization_fails_before_adapter_access(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    (tmp_path / "revocations.json").unlink()
+
+    class ExplodingAdapter:
+        @property
+        def profile_id(self) -> str:
+            raise AssertionError("adapter must not be accessed before authorization")
+
+    with pytest.raises(NativeBuildError, match="revocation policy is unavailable"):
+        execute_compilation_plan(
+            plan,
+            ExplodingAdapter(),  # type: ignore[arg-type]
+            profile=profile,
+            qualification_source=envelope,
+            trusted_key_dir=tmp_path,
+            now=NOW,
+        )
+
+
+def test_adapter_profile_identity_must_match(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     adapter = FakeAdapter(plan)
     adapter._profile_id = "wrong"
     with pytest.raises(NativeBuildError, match="profile_id"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
     adapter = FakeAdapter(plan)
     adapter._profile_hash = "0" * 64
     with pytest.raises(NativeBuildError, match="profile_hash"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
 
-def test_adapter_code_and_runtime_identity_must_match() -> None:
-    plan = executable_plan()
+def test_adapter_code_and_runtime_identity_must_match(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     adapter = FakeAdapter(plan)
     adapter._adapter_code_sha256 = "0" * 64
     with pytest.raises(NativeBuildError, match="code hash"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
     adapter = FakeAdapter(plan)
     adapter._runtime_identity_sha256 = "0" * 64
     with pytest.raises(NativeBuildError, match="runtime identity"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
 
-def test_topology_mismatch_fails_closed() -> None:
-    plan = executable_plan()
+def test_topology_mismatch_fails_closed(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     changed = replace(
         plan.expected_topology,
         nodes=(*plan.expected_topology.nodes, TopologyNode("EXTRA_001", "heater")),
         source="native-readback",
     )
     with pytest.raises(NativeBuildError, match="Topology readback mismatch"):
-        execute_compilation_plan(plan, FakeAdapter(plan, topology=changed))
+        execute(
+            plan,
+            FakeAdapter(plan, topology=changed),
+            profile,
+            envelope,
+            tmp_path,
+        )
 
 
-def test_layout_mismatch_fails_closed() -> None:
-    plan = executable_plan()
+def test_layout_mismatch_fails_closed(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     with pytest.raises(NativeBuildError, match="Layout readback mismatch"):
-        execute_compilation_plan(plan, FakeAdapter(plan, layout_hash="0" * 64))
+        execute(
+            plan,
+            FakeAdapter(plan, layout_hash="0" * 64),
+            profile,
+            envelope,
+            tmp_path,
+        )
 
 
-def test_non_object_step_result_fails_closed() -> None:
-    plan = executable_plan()
+def test_non_object_step_result_fails_closed(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     adapter = FakeAdapter(plan)
     first_apply = next(
         item
@@ -234,16 +318,16 @@ def test_non_object_step_result_fails_closed() -> None:
     )
     adapter.override_results[first_apply.step_id] = "not-an-object"
     with pytest.raises(NativeBuildError, match="non-object"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
 
-def test_missing_mandatory_readback_fails_closed() -> None:
-    plan = executable_plan()
+def test_missing_mandatory_readback_fails_closed(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
     adapter = FakeAdapter(plan)
     first_apply = next(item for item in plan.steps if item.expected_readback)
     adapter.override_results[first_apply.step_id] = {}
     with pytest.raises(NativeBuildError, match="Mandatory readback failed"):
-        execute_compilation_plan(plan, adapter)
+        execute(plan, adapter, profile, envelope, tmp_path)
 
 
 def test_expected_subset_comparison() -> None:
