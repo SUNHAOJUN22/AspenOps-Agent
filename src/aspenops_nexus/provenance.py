@@ -476,8 +476,7 @@ def _v3_identity_checks(manifest: dict[str, Any], results: list[Any]) -> dict[st
         and identity.get("registry_sha256") == manifest.get("registry_sha256"),
         "backend": identity is not None and identity.get("backend") == manifest.get("backend"),
         "runtime_identity_sha256": identity is not None
-        and identity.get("runtime_identity_sha256")
-        == manifest.get("runtime_identity_sha256"),
+        and identity.get("runtime_identity_sha256") == manifest.get("runtime_identity_sha256"),
     }
 
 
@@ -580,9 +579,7 @@ def verify_run_bundle(
                 and not undeclared_missing
                 and all(member_checks.values())
                 and all(
-                    value
-                    for key, value in semantic_checks.items()
-                    if key != "execution_identity"
+                    value for key, value in semantic_checks.items() if key != "execution_identity"
                 )
                 and identity_valid
             )

@@ -324,10 +324,7 @@ def _validate_ready_message(
     artifacts = runtime.get("execution_artifacts")
     if not isinstance(artifacts, dict):
         raise RuntimeError(f"Worker {worker_id} omitted execution artifact identity")
-    if (
-        expected_model_sha256 is not None
-        and artifacts.get("model_sha256") != expected_model_sha256
-    ):
+    if expected_model_sha256 is not None and artifacts.get("model_sha256") != expected_model_sha256:
         raise RuntimeError(f"Worker {worker_id} ready model digest mismatch")
     if (
         expected_registry_sha256 is not None
