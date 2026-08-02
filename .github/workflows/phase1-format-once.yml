@@ -35,9 +35,40 @@ jobs:
         run: |
           set -euo pipefail
           uv sync --frozen --extra dev --extra agent --extra signing
-          uv run ruff check --fix \
+          uv run ruff check --fix --exit-zero \
             src/aspenops_nexus/engineering_rules.py \
             src/aspenops_nexus/plant_templates.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/plant_templates.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              '        description="Reaction and separation loop with an explicit tear stream and recycle contract.",': (
+                  '        description=(\n'
+                  '            "Reaction and separation loop with an explicit tear stream "\n'
+                  '            "and recycle contract."\n'
+                  '        ),'
+              ),
+              '        description="Generic reaction and product-separation loop with explicit recycle governance.",': (
+                  '        description=(\n'
+                  '            "Generic reaction and product-separation loop with explicit "\n'
+                  '            "recycle governance."\n'
+                  '        ),'
+              ),
+              '        description="Inlet separation, compression/cooling and liquid removal for a HYSYS gas case.",': (
+                  '        description=(\n'
+                  '            "Inlet separation, compression/cooling and liquid removal "\n'
+                  '            "for a HYSYS gas case."\n'
+                  '        ),'
+              ),
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise RuntimeError(f"Expected formatter target not found: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
           uv run ruff format \
             src/aspenops_nexus/process_requirement.py \
             src/aspenops_nexus/process_ir_v2.py \
