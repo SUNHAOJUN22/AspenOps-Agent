@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .compilation_plan import CompilationPlan, CompilationStep
+from .compilation_plan import CompilationStep
 from .native_topology import (
     NativeTopologySnapshot,
     TopologyComparisonReport,
     compare_topology,
 )
+from .qualified_compilation import RuntimeQualifiedCompilationPlan
 
 
 class NativeBuildError(RuntimeError):
@@ -95,20 +96,18 @@ def _contains_expected(observed: Any, expected: Any) -> bool:
 
 
 def execute_compilation_plan(
-    plan: CompilationPlan,
+    plan: RuntimeQualifiedCompilationPlan,
     adapter: NativeBuildAdapter,
 ) -> NativeBuildExecutionRecord:
+    if not isinstance(plan, RuntimeQualifiedCompilationPlan):
+        raise NativeBuildError(
+            "RuntimeQualifiedCompilationPlan is required for native execution"
+        )
     plan.assert_executable()
     if adapter.profile_id != plan.profile_id:
         raise NativeBuildError("Native adapter profile_id does not match the compilation plan")
     if adapter.profile_hash != plan.profile_hash:
         raise NativeBuildError("Native adapter profile_hash does not match the compilation plan")
-    if (
-        plan.qualification_evidence_sha256 is None
-        or plan.adapter_code_sha256 is None
-        or plan.runtime_identity_sha256 is None
-    ):
-        raise NativeBuildError("Executable plan omitted runtime qualification identity")
     if adapter.adapter_code_sha256 != plan.adapter_code_sha256:
         raise NativeBuildError(
             "Native adapter code hash does not match the runtime qualification"
