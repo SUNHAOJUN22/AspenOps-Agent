@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     optimize = sub.add_parser("optimize", help="Run a budgeted batch constrained optimization")
     optimize.add_argument("request")
-    optimize.add_argument("--output")
+    optimize.add_argument("--output", default="var/optimization-result.json")
 
     certify = sub.add_parser(
         "certify",
@@ -118,8 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
     licensed_verify.add_argument("bundle")
     licensed_verify.add_argument("--public-key", required=True)
 
-    verify = sub.add_parser("verify-bundle", help="Verify evidence-bundle hashes")
+    verify = sub.add_parser(
+        "verify-bundle",
+        help="Verify evidence-bundle hashes and signature",
+    )
     verify.add_argument("bundle")
+    verify.add_argument("--public-key")
 
     sub.add_parser("mcp", help="Run the local stdio MCP server")
     return parser
