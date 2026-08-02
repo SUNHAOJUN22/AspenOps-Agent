@@ -128,7 +128,8 @@ jobs:
           enable-cache: true
       - shell: pwsh
         run: |
-          Remove-Item .github/workflows/phase1-*.yml -Force -ErrorAction SilentlyContinue
+          Get-ChildItem .github/workflows -Filter 'phase1-*.yml' |
+            Remove-Item -Force -ErrorAction SilentlyContinue
           uv lock --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv sync --frozen --extra dev --extra windows --extra agent --extra signing
