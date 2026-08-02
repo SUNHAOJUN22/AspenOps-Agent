@@ -42,7 +42,9 @@ def test_design_contract_rejects_requirement_hash_mismatch() -> None:
         replace(design, requirement_hash="0" * 64),
     )
     assert report.valid is False
-    assert {item.code for item in report.issues} == {"identity.requirement_hash_mismatch"}
+    assert {item.code for item in report.issues} == {
+        "identity.requirement_hash_mismatch"
+    }
 
 
 def test_design_contract_rejects_target_and_property_method_changes() -> None:
