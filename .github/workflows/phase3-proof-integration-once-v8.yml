@@ -1,0 +1,66 @@
+name: Phase 3 signed qualification integration v8
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-v15-compilation-contracts
+    paths:
+      - .github/workflows/phase3-proof-integration-once-v8.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path(".github/workflows/phase3-proof-integration-once-v7.yml")
+          payload = workflow.read_text(encoding="utf-8")
+          marker = "          python - <<'PY'\n"
+          start = payload.index(marker) + len(marker)
+          end = payload.index("\n          PY", start)
+          script = textwrap.dedent(payload[start:end])
+          old = '''              r"def compile_process_design\\(\\n"
+              r"    design: ProcessDesignIR,\\n"
+              r"    profile: SimulatorCapabilityProfile,\\n"
+              r"\\) -> CompilationPlan:\\n",
+          '''
+          new = '''              r"def compile_process_design\\(\\s*"
+              r"design: ProcessDesignIR,\\s*"
+              r"profile: SimulatorCapabilityProfile\\s*"
+              r"\\) -> CompilationPlan:\\n",
+          '''
+          if old not in script:
+              raise RuntimeError("v7 compiler signature pattern not found")
+          script = script.replace(old, new, 1)
+          exec(compile(script, "phase3-v8-patch", "exec"), {})
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format src/aspenops_nexus/compilation_plan.py
+          uv run ruff check \
+            src/aspenops_nexus/compilation_plan.py \
+            src/aspenops_nexus/native_builder.py \
+            src/aspenops_nexus/runtime_qualification.py
+          uv run mypy src
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/aspenops_nexus/compilation_plan.py
+          git commit -m "feat: require signed runtime qualification in compilation plans"
+          git push origin HEAD:feature/aspenops-runtime-profile-qualification
