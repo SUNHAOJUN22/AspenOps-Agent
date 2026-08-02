@@ -25,6 +25,15 @@ from aspenops_nexus.runtime_qualification import (
     sign_runtime_qualification,
     verify_runtime_qualification,
 )
+from aspenops_nexus.signed_revocation_policy import (
+    REVOCATION_AUTHORITY_DIRECTORY,
+    REVOCATION_CHECKPOINT_FILENAME,
+    SIGNED_POLICY_FILENAME,
+    SignedRevocationPolicyStatement,
+    advance_revocation_policy_checkpoint,
+    sign_revocation_policy,
+    verify_revocation_policy,
+)
 from aspenops_nexus.simulator_capabilities import (
     SimulatorCapabilityProfile,
     get_builtin_capability_profile,
@@ -34,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "examples/process-design-v2.example.json"
 NOW = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
 CASE_ID = "HEATER_FLASH_V15"
+_PRIVATE_AUTHORITY_KEY = ".test-revocation-authority-private.pem"
+_PUBLIC_AUTHORITY_KEY = ".test-revocation-authority-public.pem"
 
 
 def design() -> ProcessDesignIR:
@@ -42,16 +53,42 @@ def design() -> ProcessDesignIR:
     return ProcessDesignIR.from_dict(value)
 
 
+def authority_keys(root: Path) -> tuple[bytes, bytes]:
+    pytest.importorskip("cryptography")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    private_path = root / _PRIVATE_AUTHORITY_KEY
+    public_path = root / _PUBLIC_AUTHORITY_KEY
+    if private_path.is_file() and public_path.is_file():
+        return private_path.read_bytes(), public_path.read_bytes()
+    private = Ed25519PrivateKey.generate()
+    private_pem = private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_pem = private.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    private_path.write_bytes(private_pem)
+    public_path.write_bytes(public_pem)
+    return private_pem, public_pem
+
+
 def write_policy(
     root: Path,
     *,
     issued_at: datetime | None = None,
     expires_at: datetime | None = None,
+    sequence: int = 1,
+    previous_policy_sha256: str | None = None,
     **revocations: list[str],
 ) -> dict[str, Any]:
-    document: dict[str, Any] = {
+    policy_document: dict[str, Any] = {
         "schema": REVOCATION_POLICY_SCHEMA,
-        "policy_id": "policy-001",
+        "policy_id": f"policy-{sequence:03d}",
         "issued_at": (issued_at or NOW - timedelta(hours=1)).isoformat(),
         "expires_at": (expires_at or NOW + timedelta(hours=2)).isoformat(),
         "revoked_signing_key_ids": [],
@@ -61,12 +98,36 @@ def write_policy(
         "revoked_adapter_code_sha256": [],
         "revoked_runtime_identity_sha256": [],
     }
-    document.update(revocations)
-    (root / "revocations.json").write_text(
-        json.dumps(document, sort_keys=True),
+    policy_document.update(revocations)
+    private_pem, public_pem = authority_keys(root)
+    statement = SignedRevocationPolicyStatement(
+        sequence=sequence,
+        previous_policy_sha256=previous_policy_sha256,
+        policy=RuntimeRevocationPolicy.from_dict(policy_document),
+    )
+    envelope = sign_revocation_policy(statement, private_pem)
+    verified = verify_revocation_policy(
+        envelope,
+        trusted_public_key=public_pem,
+        now=NOW,
+    )
+    checkpoint = advance_revocation_policy_checkpoint(verified)
+    signing = envelope["signing"]
+    assert isinstance(signing, dict)
+    key_id = signing["key_id"]
+    assert isinstance(key_id, str)
+    authority = root / REVOCATION_AUTHORITY_DIRECTORY
+    authority.mkdir(parents=True, exist_ok=True)
+    (authority / f"{key_id}.pem").write_bytes(public_pem)
+    (root / SIGNED_POLICY_FILENAME).write_text(
+        json.dumps(envelope, sort_keys=True),
         encoding="utf-8",
     )
-    return document
+    (root / REVOCATION_CHECKPOINT_FILENAME).write_text(
+        json.dumps(checkpoint.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+    return policy_document
 
 
 def context(
@@ -152,7 +213,10 @@ def test_policy_round_trip_current_and_digest(tmp_path: Path) -> None:
     assert RuntimeRevocationPolicy.from_dict(policy.to_dict()) == policy
     assert len(policy.digest()) == 64
     assert policy.assert_current(NOW) == NOW
-    assert load_trusted_runtime_revocation_policy(tmp_path, now=NOW) == policy
+    verified, checkpoint = load_trusted_runtime_revocation_policy(tmp_path, now=NOW)
+    assert verified.policy == policy
+    assert verified.sequence == 1
+    assert checkpoint.accepted_policy_evidence_sha256 == verified.evidence_sha256
 
 
 def test_fresh_authorization_is_deterministic_and_bounded(tmp_path: Path) -> None:
@@ -179,6 +243,10 @@ def test_fresh_authorization_is_deterministic_and_bounded(tmp_path: Path) -> Non
     assert first.authorized_at == NOW
     assert first.expires_at == NOW + timedelta(hours=2)
     assert first.required_case_ids == (CASE_ID,)
+    assert len(first.revocation_policy_sha256) == 64
+    assert len(first.revocation_policy_signing_key_id) == 32
+    assert first.revocation_policy_sequence == 1
+    assert len(first.revocation_checkpoint_sha256) == 64
 
 
 def test_previously_verified_qualification_cannot_execute_after_expiry(
@@ -218,7 +286,7 @@ def test_future_qualification_is_rejected_at_execution(tmp_path: Path) -> None:
         )
 
 
-def test_missing_current_key_or_policy_fails_closed(tmp_path: Path) -> None:
+def test_missing_current_key_or_signed_policy_fails_closed(tmp_path: Path) -> None:
     plan, profile, envelope, key_id = context(tmp_path)
     (tmp_path / f"{key_id}.pem").unlink()
     with pytest.raises(FileNotFoundError, match="key is unavailable"):
@@ -231,8 +299,8 @@ def test_missing_current_key_or_policy_fails_closed(tmp_path: Path) -> None:
         )
 
     plan, profile, envelope, _ = context(tmp_path)
-    (tmp_path / "revocations.json").unlink()
-    with pytest.raises(FileNotFoundError, match="policy is unavailable"):
+    (tmp_path / SIGNED_POLICY_FILENAME).unlink()
+    with pytest.raises(FileNotFoundError, match="signed revocation policy is unavailable"):
         authorize_runtime_execution(
             plan,
             profile,
@@ -242,7 +310,7 @@ def test_missing_current_key_or_policy_fails_closed(tmp_path: Path) -> None:
         )
 
 
-def test_future_and_expired_revocation_policies_fail_closed(tmp_path: Path) -> None:
+def test_future_and_expired_signed_policies_fail_closed(tmp_path: Path) -> None:
     plan, profile, envelope, _ = context(tmp_path)
     write_policy(
         tmp_path,
@@ -389,3 +457,21 @@ def test_policy_parser_is_exact_bounded_and_timezone_safe(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="absolute"):
         load_trusted_runtime_revocation_policy(Path("relative"), now=NOW)
+
+
+def test_unsigned_legacy_policy_is_not_accepted(tmp_path: Path) -> None:
+    plan, profile, envelope, _ = context(tmp_path)
+    policy = RuntimeRevocationPolicy.from_dict(write_policy(tmp_path))
+    (tmp_path / SIGNED_POLICY_FILENAME).unlink()
+    (tmp_path / "revocations.json").write_text(
+        json.dumps(policy.to_dict()),
+        encoding="utf-8",
+    )
+    with pytest.raises(FileNotFoundError, match="signed revocation policy"):
+        authorize_runtime_execution(
+            plan,
+            profile,
+            envelope,
+            trusted_key_dir=tmp_path,
+            now=NOW,
+        )
