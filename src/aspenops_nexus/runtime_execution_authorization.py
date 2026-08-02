@@ -1,0 +1,310 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, fields
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from .hashing import canonical_hash
+from .qualified_compilation import RuntimeQualifiedCompilationPlan
+from .runtime_qualification import (
+    VerifiedRuntimeQualification,
+    _digest,
+    _key_id,
+    _parse_time,
+    _strict_json,
+    _text,
+    _time_text,
+    load_trusted_runtime_qualification,
+)
+from .simulator_capabilities import SimulatorCapabilityProfile
+
+REVOCATION_POLICY_SCHEMA = "aspenops.runtime-revocations/v1"
+RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v1"
+REVOCATION_POLICY_FILENAME = "revocations.json"
+_MAX_REVOCATIONS_PER_KIND = 10_000
+
+
+def _utc_now(value: datetime | None, label: str) -> datetime:
+    current = value or datetime.now(UTC)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError(f"{label} must include a timezone")
+    return current.astimezone(UTC)
+
+
+def _bounded_unique_texts(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_text(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
+        raise ValueError(f"{label} must contain unique values")
+    return items
+
+
+def _bounded_unique_digests(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_digest(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
+        raise ValueError(f"{label} must contain unique values")
+    return items
+
+
+def _bounded_unique_key_ids(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_key_id(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
+        raise ValueError(f"{label} must contain unique values")
+    return items
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeRevocationPolicy:
+    policy_id: str
+    issued_at: datetime
+    expires_at: datetime
+    revoked_signing_key_ids: tuple[str, ...]
+    revoked_qualification_evidence_sha256: tuple[str, ...]
+    revoked_profile_ids: tuple[str, ...]
+    revoked_profile_sha256: tuple[str, ...]
+    revoked_adapter_code_sha256: tuple[str, ...]
+    revoked_runtime_identity_sha256: tuple[str, ...]
+    schema: str = REVOCATION_POLICY_SCHEMA
+
+    @classmethod
+    def from_dict(cls, value: Any) -> RuntimeRevocationPolicy:
+        if not isinstance(value, dict):
+            raise ValueError("runtime revocation policy must be an object")
+        required = {field.name for field in fields(cls)}
+        if set(value) != required:
+            raise ValueError(
+                "runtime revocation policy must contain exactly "
+                + str(sorted(required))
+            )
+        if value.get("schema") != REVOCATION_POLICY_SCHEMA:
+            raise ValueError("unsupported runtime revocation-policy schema")
+        issued_at = _parse_time(
+            value.get("issued_at"),
+            "runtime revocation policy.issued_at",
+        )
+        expires_at = _parse_time(
+            value.get("expires_at"),
+            "runtime revocation policy.expires_at",
+        )
+        if expires_at <= issued_at:
+            raise ValueError(
+                "runtime revocation policy expires_at must be after issued_at"
+            )
+        return cls(
+            policy_id=_text(value.get("policy_id"), "runtime revocation policy.policy_id"),
+            issued_at=issued_at,
+            expires_at=expires_at,
+            revoked_signing_key_ids=_bounded_unique_key_ids(
+                value.get("revoked_signing_key_ids"),
+                "revoked_signing_key_ids",
+            ),
+            revoked_qualification_evidence_sha256=_bounded_unique_digests(
+                value.get("revoked_qualification_evidence_sha256"),
+                "revoked_qualification_evidence_sha256",
+            ),
+            revoked_profile_ids=_bounded_unique_texts(
+                value.get("revoked_profile_ids"),
+                "revoked_profile_ids",
+            ),
+            revoked_profile_sha256=_bounded_unique_digests(
+                value.get("revoked_profile_sha256"),
+                "revoked_profile_sha256",
+            ),
+            revoked_adapter_code_sha256=_bounded_unique_digests(
+                value.get("revoked_adapter_code_sha256"),
+                "revoked_adapter_code_sha256",
+            ),
+            revoked_runtime_identity_sha256=_bounded_unique_digests(
+                value.get("revoked_runtime_identity_sha256"),
+                "revoked_runtime_identity_sha256",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "policy_id": self.policy_id,
+            "issued_at": _time_text(self.issued_at),
+            "expires_at": _time_text(self.expires_at),
+            "revoked_signing_key_ids": list(self.revoked_signing_key_ids),
+            "revoked_qualification_evidence_sha256": list(
+                self.revoked_qualification_evidence_sha256
+            ),
+            "revoked_profile_ids": list(self.revoked_profile_ids),
+            "revoked_profile_sha256": list(self.revoked_profile_sha256),
+            "revoked_adapter_code_sha256": list(
+                self.revoked_adapter_code_sha256
+            ),
+            "revoked_runtime_identity_sha256": list(
+                self.revoked_runtime_identity_sha256
+            ),
+        }
+
+    def digest(self) -> str:
+        return canonical_hash(self.to_dict())
+
+    def assert_current(self, now: datetime | None = None) -> datetime:
+        current = _utc_now(now, "runtime revocation-policy validation time")
+        if current < self.issued_at:
+            raise ValueError("runtime revocation policy is not valid yet")
+        if current >= self.expires_at:
+            raise ValueError("runtime revocation policy has expired")
+        return current
+
+    def assert_allows(
+        self,
+        qualification: VerifiedRuntimeQualification,
+        profile: SimulatorCapabilityProfile,
+    ) -> None:
+        if qualification.signing_key_id in self.revoked_signing_key_ids:
+            raise PermissionError("runtime qualification signing key is revoked")
+        if (
+            qualification.evidence_sha256
+            in self.revoked_qualification_evidence_sha256
+        ):
+            raise PermissionError("runtime qualification evidence is revoked")
+        if profile.profile_id in self.revoked_profile_ids:
+            raise PermissionError("runtime capability profile ID is revoked")
+        if profile.digest() in self.revoked_profile_sha256:
+            raise PermissionError("runtime capability profile hash is revoked")
+        if (
+            qualification.statement.adapter_code_sha256
+            in self.revoked_adapter_code_sha256
+        ):
+            raise PermissionError("runtime adapter code is revoked")
+        if (
+            qualification.statement.runtime_identity_sha256
+            in self.revoked_runtime_identity_sha256
+        ):
+            raise PermissionError("runtime identity is revoked")
+
+
+@dataclass(frozen=True, slots=True)
+class FreshRuntimeAuthorization:
+    qualified_plan_sha256: str
+    qualification_evidence_sha256: str
+    qualification_key_id: str
+    profile_sha256: str
+    adapter_code_sha256: str
+    runtime_identity_sha256: str
+    revocation_policy_sha256: str
+    authorized_at: datetime
+    expires_at: datetime
+    required_case_ids: tuple[str, ...]
+    schema: str = RUNTIME_AUTHORIZATION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "qualified_plan_sha256": self.qualified_plan_sha256,
+            "qualification_evidence_sha256": self.qualification_evidence_sha256,
+            "qualification_key_id": self.qualification_key_id,
+            "profile_sha256": self.profile_sha256,
+            "adapter_code_sha256": self.adapter_code_sha256,
+            "runtime_identity_sha256": self.runtime_identity_sha256,
+            "revocation_policy_sha256": self.revocation_policy_sha256,
+            "authorized_at": _time_text(self.authorized_at),
+            "expires_at": _time_text(self.expires_at),
+            "required_case_ids": list(self.required_case_ids),
+        }
+
+    def digest(self) -> str:
+        return canonical_hash(self.to_dict())
+
+
+def load_trusted_runtime_revocation_policy(
+    trusted_key_dir: str | Path,
+    *,
+    now: datetime | None = None,
+) -> RuntimeRevocationPolicy:
+    root = Path(trusted_key_dir).expanduser()
+    if not root.is_absolute():
+        raise ValueError("runtime authorization trusted key directory must be absolute")
+    resolved_root = root.resolve()
+    policy_path = (resolved_root / REVOCATION_POLICY_FILENAME).resolve()
+    try:
+        policy_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise PermissionError(
+            "runtime revocation policy resolved outside the trusted key directory"
+        ) from exc
+    if not policy_path.is_file():
+        raise FileNotFoundError("runtime revocation policy is unavailable")
+    value = _strict_json(policy_path.read_bytes())
+    policy = RuntimeRevocationPolicy.from_dict(value)
+    policy.assert_current(now)
+    return policy
+
+
+def authorize_runtime_execution(
+    plan: RuntimeQualifiedCompilationPlan,
+    profile: SimulatorCapabilityProfile,
+    qualification_source: str | Path | bytes | dict[str, Any],
+    *,
+    trusted_key_dir: str | Path,
+    now: datetime | None = None,
+    additional_required_case_ids: tuple[str, ...] = (),
+) -> FreshRuntimeAuthorization:
+    plan.assert_executable()
+    if profile.qualification == "REVOKED":
+        raise PermissionError("runtime capability profile is revoked")
+    if plan.profile_id != profile.profile_id or plan.profile_hash != profile.digest():
+        raise ValueError("runtime-qualified plan does not match the current profile")
+
+    required_cases = tuple(
+        sorted({*plan.required_case_ids, *additional_required_case_ids})
+    )
+    current = _utc_now(now, "runtime execution authorization time")
+    qualification = load_trusted_runtime_qualification(
+        qualification_source,
+        trusted_key_dir=trusted_key_dir,
+        now=current,
+        required_case_ids=required_cases,
+    )
+    qualification.assert_matches_profile(profile)
+    if qualification != plan.qualification:
+        raise ValueError(
+            "fresh runtime qualification does not match the qualified compilation plan"
+        )
+    if qualification.evidence_sha256 != plan.qualification_evidence_sha256:
+        raise ValueError("runtime qualification evidence hash changed")
+    if qualification.signing_key_id != plan.qualification_key_id:
+        raise ValueError("runtime qualification signing key changed")
+    if qualification.statement.adapter_code_sha256 != plan.adapter_code_sha256:
+        raise ValueError("runtime qualification adapter-code hash changed")
+    if (
+        qualification.statement.runtime_identity_sha256
+        != plan.runtime_identity_sha256
+    ):
+        raise ValueError("runtime qualification identity hash changed")
+
+    policy = load_trusted_runtime_revocation_policy(
+        trusted_key_dir,
+        now=current,
+    )
+    policy.assert_allows(qualification, profile)
+    expires_at = min(qualification.statement.expires_at, policy.expires_at)
+    return FreshRuntimeAuthorization(
+        qualified_plan_sha256=plan.digest(),
+        qualification_evidence_sha256=qualification.evidence_sha256,
+        qualification_key_id=qualification.signing_key_id,
+        profile_sha256=profile.digest(),
+        adapter_code_sha256=qualification.statement.adapter_code_sha256,
+        runtime_identity_sha256=qualification.statement.runtime_identity_sha256,
+        revocation_policy_sha256=policy.digest(),
+        authorized_at=current,
+        expires_at=expires_at,
+        required_case_ids=required_cases,
+    )
