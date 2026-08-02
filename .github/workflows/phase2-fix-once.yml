@@ -65,6 +65,34 @@ jobs:
               raise RuntimeError("Native topology digest target not found")
           topology.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+          capabilities = Path("src/aspenops_nexus/simulator_capabilities.py")
+          text = capabilities.read_text(encoding="utf-8")
+          old = '''def _offline_profile(
+              simulator: SimulatorFamily,
+              version: str,
+          ) -> SimulatorCapabilityProfile:
+              if simulator == "aspen_plus":
+          '''
+          new = '''def _offline_profile(
+              simulator: SimulatorFamily,
+              version: str,
+          ) -> SimulatorCapabilityProfile:
+              extensions: tuple[str, ...]
+              equipment: tuple[EquipmentCapability, ...]
+              if simulator == "aspen_plus":
+          '''
+          if old not in text:
+              raise RuntimeError("Capability tuple annotation target not found")
+          capabilities.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          builder = Path("src/aspenops_nexus/native_builder.py")
+          text = builder.read_text(encoding="utf-8")
+          old = "    return observed == expected\n"
+          new = "    return bool(observed == expected)\n"
+          if old not in text:
+              raise RuntimeError("Native builder boolean target not found")
+          builder.write_text(text.replace(old, new, 1), encoding="utf-8")
+
           compilation_test = Path("tests/test_compilation_plan_v15.py")
           text = compilation_test.read_text(encoding="utf-8")
           marker = '''def test_recycle_design_adds_closed_loop_steps() -> None:
@@ -117,6 +145,8 @@ jobs:
             tests/test_simulator_capabilities_v15.py
           uv run ruff format \
             src/aspenops_nexus/native_topology.py \
+            src/aspenops_nexus/simulator_capabilities.py \
+            src/aspenops_nexus/native_builder.py \
             tests/test_compilation_plan_v15.py \
             tests/test_native_topology_contract.py \
             tests/test_simulator_capabilities_v15.py
@@ -131,8 +161,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             src/aspenops_nexus/native_topology.py \
+            src/aspenops_nexus/simulator_capabilities.py \
+            src/aspenops_nexus/native_builder.py \
             tests/test_compilation_plan_v15.py \
             tests/test_native_topology_contract.py \
             tests/test_simulator_capabilities_v15.py
-          git commit -m "fix: close Phase 2 topology and recycle contracts"
+          git commit -m "fix: close Phase 2 topology recycle and typing contracts"
           git push origin HEAD:feature/aspenops-v15-compilation-contracts
