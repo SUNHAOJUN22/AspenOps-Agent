@@ -92,8 +92,7 @@ def equipment(
 
 def codes(item: EquipmentDefinition, reaction_count: int = 0) -> set[str]:
     return {
-        issue.code
-        for issue in _validate_equipment_contract(item, "equipment[0]", reaction_count)
+        issue.code for issue in _validate_equipment_contract(item, "equipment[0]", reaction_count)
     }
 
 
@@ -102,9 +101,7 @@ def test_equipment_contract_failure_branches() -> None:
     assert "equipment.product_ports" in codes(equipment("product", [port("OUT", "out")]))
     assert "equipment.mixer_ports" in codes(equipment("mixer", [port("OUT", "out")]))
 
-    splitter = codes(
-        equipment("splitter", [port("IN", "in"), port("OUT", "out")])
-    )
+    splitter = codes(equipment("splitter", [port("IN", "in"), port("OUT", "out")]))
     assert {"equipment.splitter_ports", "equipment.specification_missing"}.issubset(splitter)
 
     thermal = codes(
@@ -265,9 +262,7 @@ def test_parameter_and_reaction_helper_branches() -> None:
         status="UNKNOWN",
         parameters=(pending,),
     )
-    reaction_codes = {
-        issue.code for issue in _validate_reaction(invalid, {"A", "B"}, "reaction")
-    }
+    reaction_codes = {issue.code for issue in _validate_reaction(invalid, {"A", "B"}, "reaction")}
     assert {
         "reaction.unknown_component",
         "reaction.stoichiometry_direction",

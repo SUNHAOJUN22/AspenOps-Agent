@@ -112,7 +112,9 @@ def _finite(value: Any, label: str) -> float:
 
 
 def _safe_scalar(value: Any, label: str) -> ScalarValue:
-    if isinstance(value, bool | str | int):
+    if isinstance(value, str):
+        return _text(value, label)
+    if isinstance(value, bool | int):
         return value
     if isinstance(value, float) and math.isfinite(value):
         return value

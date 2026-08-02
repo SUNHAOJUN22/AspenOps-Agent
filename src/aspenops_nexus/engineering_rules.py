@@ -672,9 +672,9 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
     recycle_streams: set[str] = set()
     for recycle_index, recycle in enumerate(design.recycles):
         path = f"recycles[{recycle_index}]"
-        stream = stream_map.get(recycle.stream_id)
+        recycle_stream = stream_map.get(recycle.stream_id)
         tear = stream_map.get(recycle.tear_stream_id)
-        if stream is None:
+        if recycle_stream is None:
             issues.append(
                 _issue(
                     "HARD_ERROR",
