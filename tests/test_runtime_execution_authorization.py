@@ -8,11 +8,14 @@ from typing import Any
 
 import pytest
 
+from tests.revocation_witness_support import install_revocation_witness
+
 from aspenops_nexus.process_ir_v2 import ProcessDesignIR
 from aspenops_nexus.qualified_compilation import (
     RuntimeQualifiedCompilationPlan,
     qualify_compilation_plan,
 )
+from aspenops_nexus.revocation_witness import WITNESS_RECEIPT_FILENAME
 from aspenops_nexus.runtime_execution_authorization import (
     REVOCATION_POLICY_SCHEMA,
     RuntimeRevocationPolicy,
@@ -127,6 +130,7 @@ def write_policy(
         json.dumps(checkpoint.to_dict(), sort_keys=True),
         encoding="utf-8",
     )
+    install_revocation_witness(root, verified, checkpoint, now=NOW)
     return policy_document
 
 
@@ -241,12 +245,16 @@ def test_fresh_authorization_is_deterministic_and_bounded(tmp_path: Path) -> Non
     assert first.qualification_evidence_sha256 == plan.qualification_evidence_sha256
     assert first.profile_sha256 == profile.digest()
     assert first.authorized_at == NOW
-    assert first.expires_at == NOW + timedelta(hours=2)
+    assert first.expires_at == NOW + timedelta(hours=1)
     assert first.required_case_ids == (CASE_ID,)
     assert len(first.revocation_policy_sha256) == 64
     assert len(first.revocation_policy_signing_key_id) == 32
     assert first.revocation_policy_sequence == 1
     assert len(first.revocation_checkpoint_sha256) == 64
+    assert len(first.revocation_witness_sha256) == 64
+    assert len(first.revocation_witness_signing_key_id) == 32
+    assert first.revocation_witness_id == "test-witness"
+    assert first.revocation_witness_expires_at == NOW + timedelta(hours=1)
 
 
 def test_previously_verified_qualification_cannot_execute_after_expiry(
@@ -301,6 +309,19 @@ def test_missing_current_key_or_signed_policy_fails_closed(tmp_path: Path) -> No
     plan, profile, envelope, _ = context(tmp_path)
     (tmp_path / SIGNED_POLICY_FILENAME).unlink()
     with pytest.raises(FileNotFoundError, match="signed revocation policy is unavailable"):
+        authorize_runtime_execution(
+            plan,
+            profile,
+            envelope,
+            trusted_key_dir=tmp_path,
+            now=NOW,
+        )
+
+
+def test_missing_witness_receipt_fails_closed(tmp_path: Path) -> None:
+    plan, profile, envelope, _ = context(tmp_path)
+    (tmp_path / WITNESS_RECEIPT_FILENAME).unlink()
+    with pytest.raises(FileNotFoundError, match="witness receipt is unavailable"):
         authorize_runtime_execution(
             plan,
             profile,
