@@ -115,14 +115,18 @@ def execute_compilation_plan(
     plan: RuntimeQualifiedCompilationPlan,
     adapter: NativeBuildAdapter,
     *,
-    profile: SimulatorCapabilityProfile,
-    qualification_source: str | Path | bytes | dict[str, Any],
-    trusted_key_dir: str | Path,
+    profile: SimulatorCapabilityProfile | None = None,
+    qualification_source: str | Path | bytes | dict[str, Any] | None = None,
+    trusted_key_dir: str | Path | None = None,
     now: datetime | None = None,
     additional_required_case_ids: tuple[str, ...] = (),
 ) -> NativeBuildExecutionRecord:
     if not isinstance(plan, RuntimeQualifiedCompilationPlan):
         raise NativeBuildError("RuntimeQualifiedCompilationPlan is required for native execution")
+    if profile is None or qualification_source is None or trusted_key_dir is None:
+        raise NativeBuildError(
+            "Fresh runtime authorization inputs are required for native execution"
+        )
     try:
         authorization = authorize_runtime_execution(
             plan,
