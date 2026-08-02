@@ -1,0 +1,232 @@
+name: Phase 3 signed qualification integration v5
+
+on:
+  pull_request:
+    branches:
+      - feature/aspenops-v15-compilation-contracts
+    paths:
+      - .github/workflows/phase3-proof-integration-once-v5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/aspenops-runtime-profile-qualification
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/aspenops_nexus/compilation_plan.py")
+          text = path.read_text(encoding="utf-8")
+
+          def once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one {label} target, found {count}")
+              text = text.replace(old, new, 1)
+
+          once(
+              "from .process_ir_v2 import EquipmentDefinition, ProcessDesignIR\n",
+              "from .process_ir_v2 import EquipmentDefinition, ProcessDesignIR\n"
+              "from .runtime_qualification import VerifiedRuntimeQualification\n",
+              "qualification import",
+          )
+          once(
+              "    adapter_contract: str\n    expected_topology: NativeTopologySnapshot\n",
+              "    adapter_contract: str\n"
+              "    qualification_evidence_sha256: str | None\n"
+              "    qualification_key_id: str | None\n"
+              "    adapter_code_sha256: str | None\n"
+              "    runtime_identity_sha256: str | None\n"
+              "    expected_topology: NativeTopologySnapshot\n",
+              "plan fields",
+          )
+          once(
+              '            "adapter_contract": self.adapter_contract,\n'
+              '            "expected_topology": self.expected_topology.to_dict(),\n',
+              '            "adapter_contract": self.adapter_contract,\n'
+              '            "qualification_evidence_sha256": self.qualification_evidence_sha256,\n'
+              '            "qualification_key_id": self.qualification_key_id,\n'
+              '            "adapter_code_sha256": self.adapter_code_sha256,\n'
+              '            "runtime_identity_sha256": self.runtime_identity_sha256,\n'
+              '            "expected_topology": self.expected_topology.to_dict(),\n',
+              "plan serialization",
+          )
+
+          legacy_start = text.index("    if not profile.executable:\n")
+          legacy_end = text.index("    return issues, capabilities\n", legacy_start)
+          text = text[:legacy_start] + text[legacy_end:]
+
+          once(
+              "    expected_topology: NativeTopologySnapshot,\n"
+              "    expected_layout_hash: str,\n"
+              ") -> tuple[CompilationStep, ...]:\n",
+              "    expected_topology: NativeTopologySnapshot,\n"
+              "    expected_layout_hash: str,\n"
+              "    qualification_evidence_sha256: str | None,\n"
+              "    adapter_code_sha256: str | None,\n"
+              "    runtime_identity_sha256: str | None,\n"
+              ") -> tuple[CompilationStep, ...]:\n",
+              "step builder signature",
+          )
+
+          old_identity = '''    builder.add(
+              phase="identity",
+              operation="assert_profile_identity",
+              target_id=profile.profile_id,
+              adapter_key="control.assert_profile_identity",
+              payload={
+                  "design_hash": design.digest(),
+                  "profile_hash": profile.digest(),
+                  "simulator": profile.simulator,
+                  "marketing_version": profile.marketing_version,
+              },
+              expected_readback={"profile_hash": profile.digest()},
+          )
+          '''
+          new_identity = '''    builder.add(
+              phase="identity",
+              operation="assert_profile_identity",
+              target_id=profile.profile_id,
+              adapter_key="control.assert_profile_identity",
+              payload={
+                  "design_hash": design.digest(),
+                  "profile_hash": profile.digest(),
+                  "simulator": profile.simulator,
+                  "marketing_version": profile.marketing_version,
+                  "qualification_evidence_sha256": qualification_evidence_sha256,
+                  "adapter_code_sha256": adapter_code_sha256,
+                  "runtime_identity_sha256": runtime_identity_sha256,
+              },
+              expected_readback={
+                  "profile_hash": profile.digest(),
+                  "qualification_evidence_sha256": qualification_evidence_sha256,
+                  "adapter_code_sha256": adapter_code_sha256,
+                  "runtime_identity_sha256": runtime_identity_sha256,
+              },
+          )
+          '''
+          once(old_identity, new_identity, "identity step")
+
+          once(
+              "def compile_process_design(\n"
+              "    design: ProcessDesignIR,\n"
+              "    profile: SimulatorCapabilityProfile,\n"
+              ") -> CompilationPlan:\n",
+              "def compile_process_design(\n"
+              "    design: ProcessDesignIR,\n"
+              "    profile: SimulatorCapabilityProfile,\n"
+              "    *,\n"
+              "    qualification: VerifiedRuntimeQualification | None = None,\n"
+              ") -> CompilationPlan:\n",
+              "compiler signature",
+          )
+          once(
+              '    issues.extend(capability_issues)\n'
+              '    errors = [item for item in issues if item.severity == "ERROR"]\n',
+              '''    issues.extend(capability_issues)
+              qualification_evidence_sha256: str | None = None
+              qualification_key_id: str | None = None
+              adapter_code_sha256: str | None = None
+              runtime_identity_sha256: str | None = None
+              if profile.qualification == "REVOKED":
+                  issues.append(
+                      CompilationIssue(
+                          "ERROR",
+                          "profile.revoked",
+                          "capability_profile.qualification",
+                          "Capability profile is revoked and cannot be used",
+                      )
+                  )
+              if qualification is None:
+                  issues.append(
+                      CompilationIssue(
+                          "EXECUTION_BLOCKER",
+                          "profile.qualification_proof_missing",
+                          "runtime_qualification",
+                          "A verified signed runtime qualification is required for execution",
+                      )
+                  )
+              else:
+                  try:
+                      qualification.assert_matches_profile(profile)
+                  except ValueError as exc:
+                      issues.append(
+                          CompilationIssue(
+                              "ERROR",
+                              "profile.qualification_mismatch",
+                              "runtime_qualification",
+                              str(exc),
+                          )
+                      )
+                  else:
+                      qualification_evidence_sha256 = qualification.evidence_sha256
+                      qualification_key_id = qualification.signing_key_id
+                      adapter_code_sha256 = qualification.statement.adapter_code_sha256
+                      runtime_identity_sha256 = qualification.statement.runtime_identity_sha256
+              errors = [item for item in issues if item.severity == "ERROR"]
+              ''',
+              "qualification logic",
+          )
+          once(
+              "            expected_topology,\n"
+              "            preview.layout_hash,\n"
+              "        )\n",
+              "            expected_topology,\n"
+              "            preview.layout_hash,\n"
+              "            qualification_evidence_sha256,\n"
+              "            adapter_code_sha256,\n"
+              "            runtime_identity_sha256,\n"
+              "        )\n",
+              "build steps call",
+          )
+          once(
+              "        adapter_contract=profile.adapter_contract,\n"
+              "        expected_topology=expected_topology,\n",
+              "        adapter_contract=profile.adapter_contract,\n"
+              "        qualification_evidence_sha256=qualification_evidence_sha256,\n"
+              "        qualification_key_id=qualification_key_id,\n"
+              "        adapter_code_sha256=adapter_code_sha256,\n"
+              "        runtime_identity_sha256=runtime_identity_sha256,\n"
+              "        expected_topology=expected_topology,\n",
+              "plan return fields",
+          )
+          old_boundary = '''            "This plan is deterministic and simulator-neutral. COM execution is authorized only "
+              "when the capability profile is VERIFIED_ON_TARGET_RUNTIME and every adapter step "
+              "performs mandatory readback, topology comparison, save/reopen and roundtrip checks."
+          '''
+          new_boundary = '''            "This plan is deterministic and simulator-neutral. COM execution is authorized only "
+              "when a trusted Ed25519 runtime qualification binds the exact profile, adapter code, "
+              "runtime identity and Golden Cases, and every adapter step performs mandatory "
+              "readback, topology comparison, save/reopen and roundtrip checks."
+          '''
+          once(old_boundary, new_boundary, "boundary")
+          path.write_text(text, encoding="utf-8")
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format src/aspenops_nexus/compilation_plan.py
+          uv run ruff check \
+            src/aspenops_nexus/compilation_plan.py \
+            src/aspenops_nexus/native_builder.py \
+            src/aspenops_nexus/runtime_qualification.py
+          uv run mypy src
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/aspenops_nexus/compilation_plan.py
+          git commit -m "feat: require signed runtime qualification in compilation plans"
+          git push origin HEAD:feature/aspenops-runtime-profile-qualification
