@@ -1,8 +1,8 @@
 # AspenOps single-main qualification blocker
 
 - decision: `FAIL_WITH_BLOCKERS`;
-- registration SHA: `5631c9beb81473eb8f0c2a63931d6edc1b2f5981`;
-- workflow run: `30936085613`;
+- registration SHA: `d1fb7e941237cfdd4597a29a472a0a30b4a320b6`;
+- workflow run: `30937569787`;
 - Linux result: `failure`;
 - Windows result: `success`;
 - real simulator executed: `false`;
@@ -11,6 +11,6 @@
 ## Failed logs
 
 ```text
-run 30936085613 is still in progress; logs will be available when it is complete
+run 30937569787 is still in progress; logs will be available when it is complete
 
 ```
