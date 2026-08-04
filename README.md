@@ -40,6 +40,21 @@
 | MCP SDK | 冻结环境 `1.28.1`；Wheel 合同 `mcp>=1.9,<2` |
 | 真实 Aspen 认证 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
+<!-- MAIN_SINGLE_BRANCH_QUALIFICATION:START -->
+
+### 最新单一主干自动资格
+
+- 验证源码提交：`c66300e38a5d3ce2d595c01398ba912627dfe90c`；
+- 标准 Linux CI：`30938876928`；标准 Windows control plane：`30938874028`；
+- Python 3.11：1186 passed，0 failed，0 skipped，95.20% branch coverage；
+- Python 3.12：1186 passed，0 failed，0 skipped，95.20% branch coverage，并通过反序与固定种子顺序独立性；
+- Python 3.13：1186 passed，0 failed，0 skipped，95.20% branch coverage；
+- 六组合冻结依赖审计、Ruff、formatter、strict mypy、Bandit、build、clean Wheel、MCP 与 Windows control plane：通过；
+- 详细证据：[single-main qualification](docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md)；
+- 真实 Aspen/HYSYS：`PENDING_REAL_ASPEN_CERTIFICATION`。
+
+<!-- MAIN_SINGLE_BRANCH_QUALIFICATION:END -->
+
 **已验证归档基线**只证明对应提交和对应 Actions 运行。历史 JUnit、coverage JSON、Windows 日志和签名证据**不是对任意后续提交的自动声明**；当前 `main` 是否通过，以顶部徽章和该提交最新 Actions 为准。
 
 公共 CI 可以证明软件控制面、数据合同、配置与路径策略、IPC、进程隔离、调度、缓存、优化、非有限数 fail-closed、证据归档、离线编译合同、签名与撤销验证。它不能证明商业 Aspen 安装、许可证席位、物性方法、反应动力学、设备选型、流程拓扑或工程结果已经合格。
