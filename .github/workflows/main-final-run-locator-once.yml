@@ -1,0 +1,100 @@
+name: Main final run locator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/main-final-run-locator-once.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 937f960e1a8fa5c741c5f7fc69e50743bf474758
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Wait for final standard runs and publish their exact state
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=waiting
+          for attempt in $(seq 1 150); do
+            gh run list --repo "$GITHUB_REPOSITORY" \
+              --commit "$TARGET_SHA" \
+              --limit 30 \
+              --json databaseId,workflowName,status,conclusion,event,createdAt,updatedAt,url \
+              > /tmp/runs.json
+            state="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          runs = json.loads(Path("/tmp/runs.json").read_text(encoding="utf-8"))
+          required = {"CI", "Windows control-plane contracts"}
+          selected = {
+              item["workflowName"]: item
+              for item in runs
+              if item["workflowName"] in required and item.get("event") == "push"
+          }
+          if set(selected) != required:
+              print("waiting")
+          elif any(item["status"] != "completed" for item in selected.values()):
+              print("waiting")
+          elif all(item["conclusion"] == "success" for item in selected.values()):
+              print("success")
+          else:
+              print("failure")
+          PY
+            )"
+            if [[ "$state" != "waiting" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          runs = json.loads(Path("/tmp/runs.json").read_text(encoding="utf-8"))
+          required = {"CI", "Windows control-plane contracts"}
+          selected = {
+              item["workflowName"]: item
+              for item in runs
+              if item["workflowName"] in required and item.get("event") == "push"
+          }
+          if set(selected) != required:
+              decision = "TIMEOUT_MISSING_RUNS"
+          elif any(item["status"] != "completed" for item in selected.values()):
+              decision = "TIMEOUT_INCOMPLETE_RUNS"
+          elif all(item["conclusion"] == "success" for item in selected.values()):
+              decision = "PASS"
+          else:
+              decision = "FAIL"
+          payload = {
+              "schema": "aspenops.final-main-run-locator/v1",
+              "target_sha": os.environ["TARGET_SHA"],
+              "locator_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "decision": decision,
+              "runs": selected,
+          }
+          Path("docs/MAIN_FINAL_RUNS.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/main-final-run-locator-once.yml
+          git add docs/MAIN_FINAL_RUNS.json
+          git commit -m "test: record final standard main workflow results"
+          git push origin HEAD:main
+          test "$state" = "success"
