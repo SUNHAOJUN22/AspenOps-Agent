@@ -1,0 +1,52 @@
+name: Main standard run locator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/main-standard-run-locator-once.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: c66300e38a5d3ce2d595c01398ba912627dfe90c
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Record standard runs and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            gh run list --repo "$GITHUB_REPOSITORY" \
+              --commit "$TARGET_SHA" \
+              --limit 30 \
+              --json databaseId,workflowName,status,conclusion,event,createdAt,updatedAt,url \
+              > /tmp/runs.json
+            count="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(len(json.loads(Path("/tmp/runs.json").read_text())))
+          PY
+            )"
+            if [[ "$count" -gt 0 ]]; then
+              break
+            fi
+            sleep 5
+          done
+          cp /tmp/runs.json docs/MAIN_STANDARD_RUN_LOCATOR.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/main-standard-run-locator-once.yml
+          git add docs/MAIN_STANDARD_RUN_LOCATOR.json
+          git commit -m "test: record repaired standard main workflow runs"
+          git push origin HEAD:main
