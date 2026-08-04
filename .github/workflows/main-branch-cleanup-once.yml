@@ -1,0 +1,90 @@
+name: Main-only branch cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/main-branch-cleanup-once.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: aspenops-main-only-branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VALIDATED_TREE_COMMIT: 937f960e1a8fa5c741c5f7fc69e50743bf474758
+      VALIDATED_CI_RUN: "30939503725"
+      VALIDATED_WINDOWS_RUN: "30939503726"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Close the stacked draft PRs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pr in 103 104 105 106 107 108 109 110; do
+            state="$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+            if [[ "$state" == "OPEN" ]]; then
+              gh pr close "$pr" --repo "$GITHUB_REPOSITORY" \
+                --comment "Consolidated, tested and retained on the single main branch. Validated tree: ${VALIDATED_TREE_COMMIT}; Linux CI: ${VALIDATED_CI_RUN}; Windows: ${VALIDATED_WINDOWS_RUN}."
+            fi
+          done
+      - name: Delete every feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            feature/aspenops-fresh-runtime-authorization
+            feature/aspenops-natural-language-flowsheet-v3
+            feature/aspenops-process-requirement-ir-v2
+            feature/aspenops-qualified-licensed-link
+            feature/aspenops-revocation-witness
+            feature/aspenops-runtime-profile-qualification
+            feature/aspenops-signed-revocation-policy
+            feature/aspenops-v15-compilation-contracts
+          )
+          for branch in "${branches[@]}"; do
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+          done
+      - name: Restore the exact validated tree and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/main-branch-cleanup-once.yml
+          rm -f docs/MAIN_FINAL_RUNS.json
+          git add -A
+          test -z "$(git diff --name-only "$VALIDATED_TREE_COMMIT")"
+          git commit -m "chore: enforce the single main branch"
+          git push origin HEAD:main
+      - name: Verify repository branch and PR state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t branches < <(
+            git ls-remote --heads origin |
+              awk '{print $2}' |
+              sed 's#refs/heads/##' |
+              sort
+          )
+          printf 'Remaining branches: %s\n' "${branches[*]}"
+          test "${#branches[@]}" -eq 1
+          test "${branches[0]}" = "main"
+          for pr in 103 104 105 106 107 108 109 110; do
+            test "$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json state --jq .state)" = "CLOSED"
+          done
+          test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse "$VALIDATED_TREE_COMMIT^{tree}")"
