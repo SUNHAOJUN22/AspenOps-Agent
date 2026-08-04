@@ -1,23 +1,32 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .hashing import canonical_hash
 from .qualified_compilation import RuntimeQualifiedCompilationPlan
-from .runtime_qualification import VerifiedRuntimeQualification, verify_runtime_qualification
-from .signed_revocation_policy import (
-    RevocationPolicyCheckpoint,
-    VerifiedSignedRevocationPolicy,
+from .runtime_qualification import (
+    VerifiedRuntimeQualification,
+    _digest,
+    _key_id,
+    _parse_time,
+    _text,
+    _time_text,
+    load_trusted_runtime_qualification,
 )
 from .simulator_capabilities import SimulatorCapabilityProfile
 
-REVOCATION_POLICY_SCHEMA = "aspenops.runtime-revocation-policy/v1"
-RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v1"
-_MAX_ITEMS = 10_000
+if TYPE_CHECKING:
+    from .signed_revocation_policy import (
+        RevocationPolicyCheckpoint,
+        VerifiedSignedRevocationPolicy,
+    )
+
+REVOCATION_POLICY_SCHEMA = "aspenops.runtime-revocations/v1"
+RUNTIME_AUTHORIZATION_SCHEMA = "aspenops.fresh-runtime-authorization/v3"
+_MAX_REVOCATIONS_PER_KIND = 10_000
 
 
 def _utc_now(value: datetime | None, label: str) -> datetime:
@@ -27,56 +36,37 @@ def _utc_now(value: datetime | None, label: str) -> datetime:
     return current.astimezone(UTC)
 
 
-def _time_text(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _parse_time(value: Any, label: str) -> datetime:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{label} must be a non-empty ISO-8601 timestamp")
-    text = value.strip()
-    normalized = f"{text[:-1]}+00:00" if text.endswith("Z") else text
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError as exc:
-        raise ValueError(f"{label} must be an ISO-8601 timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError(f"{label} must include a timezone")
-    return parsed.astimezone(UTC)
-
-
 def _bounded_unique_texts(value: Any, label: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ValueError(f"{label} must be an array")
-    if len(value) > _MAX_ITEMS:
-        raise ValueError(f"{label} exceeds {_MAX_ITEMS} items")
-    output: list[str] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"{label}[{index}] must be a non-empty string")
-        text = item.strip()
-        if "\x00" in text or "\r" in text or "\n" in text:
-            raise ValueError(f"{label}[{index}] must be one safe text line")
-        output.append(text)
-    if len(set(output)) != len(output):
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_text(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
         raise ValueError(f"{label} must contain unique values")
-    return tuple(sorted(output))
+    return items
 
 
 def _bounded_unique_digests(value: Any, label: str) -> tuple[str, ...]:
-    values = _bounded_unique_texts(value, label)
-    for item in values:
-        if len(item) != 64 or any(character not in "0123456789abcdef" for character in item):
-            raise ValueError(f"{label} must contain lowercase SHA-256 digests")
-    return values
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_digest(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
+        raise ValueError(f"{label} must contain unique values")
+    return items
 
 
 def _bounded_unique_key_ids(value: Any, label: str) -> tuple[str, ...]:
-    values = _bounded_unique_texts(value, label)
-    for item in values:
-        if len(item) != 32 or any(character not in "0123456789abcdef" for character in item):
-            raise ValueError(f"{label} must contain 32-character public-key fingerprints")
-    return values
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    if len(value) > _MAX_REVOCATIONS_PER_KIND:
+        raise ValueError(f"{label} exceeds the revocation-policy limit")
+    items = tuple(sorted(_key_id(item, f"{label} item") for item in value))
+    if len(items) != len(set(items)):
+        raise ValueError(f"{label} must contain unique values")
+    return items
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,34 +86,25 @@ class RuntimeRevocationPolicy:
     def from_dict(cls, value: Any) -> RuntimeRevocationPolicy:
         if not isinstance(value, dict):
             raise ValueError("runtime revocation policy must be an object")
-        required = {
-            "schema",
-            "policy_id",
-            "issued_at",
-            "expires_at",
-            "revoked_signing_key_ids",
-            "revoked_qualification_evidence_sha256",
-            "revoked_profile_ids",
-            "revoked_profile_sha256",
-            "revoked_adapter_code_sha256",
-            "revoked_runtime_identity_sha256",
-        }
+        required = {field.name for field in fields(cls)}
         if set(value) != required:
             raise ValueError(
                 "runtime revocation policy must contain exactly " + str(sorted(required))
             )
-        schema = value.get("schema")
-        if schema != REVOCATION_POLICY_SCHEMA:
-            raise ValueError(f"Unsupported runtime revocation policy schema: {schema}")
-        policy_id = value.get("policy_id")
-        if not isinstance(policy_id, str) or not policy_id.strip():
-            raise ValueError("runtime revocation policy_id must be a non-empty string")
-        issued_at = _parse_time(value.get("issued_at"), "runtime revocation issued_at")
-        expires_at = _parse_time(value.get("expires_at"), "runtime revocation expires_at")
+        if value.get("schema") != REVOCATION_POLICY_SCHEMA:
+            raise ValueError("unsupported runtime revocation-policy schema")
+        issued_at = _parse_time(
+            value.get("issued_at"),
+            "runtime revocation policy.issued_at",
+        )
+        expires_at = _parse_time(
+            value.get("expires_at"),
+            "runtime revocation policy.expires_at",
+        )
         if expires_at <= issued_at:
-            raise ValueError("runtime revocation expires_at must be later than issued_at")
+            raise ValueError("runtime revocation policy expires_at must be after issued_at")
         return cls(
-            policy_id=policy_id.strip(),
+            policy_id=_text(value.get("policy_id"), "runtime revocation policy.policy_id"),
             issued_at=issued_at,
             expires_at=expires_at,
             revoked_signing_key_ids=_bounded_unique_key_ids(
@@ -150,7 +131,6 @@ class RuntimeRevocationPolicy:
                 value.get("revoked_runtime_identity_sha256"),
                 "revoked_runtime_identity_sha256",
             ),
-            schema=schema,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -173,12 +153,30 @@ class RuntimeRevocationPolicy:
         return canonical_hash(self.to_dict())
 
     def assert_current(self, now: datetime | None = None) -> datetime:
-        current = _utc_now(now, "runtime revocation verification time")
+        current = _utc_now(now, "runtime revocation-policy validation time")
         if current < self.issued_at:
             raise ValueError("runtime revocation policy is not valid yet")
         if current >= self.expires_at:
             raise ValueError("runtime revocation policy has expired")
         return current
+
+    def assert_allows(
+        self,
+        qualification: VerifiedRuntimeQualification,
+        profile: SimulatorCapabilityProfile,
+    ) -> None:
+        if qualification.signing_key_id in self.revoked_signing_key_ids:
+            raise PermissionError("runtime qualification signing key is revoked")
+        if qualification.evidence_sha256 in self.revoked_qualification_evidence_sha256:
+            raise PermissionError("runtime qualification evidence is revoked")
+        if profile.profile_id in self.revoked_profile_ids:
+            raise PermissionError("runtime capability profile ID is revoked")
+        if profile.digest() in self.revoked_profile_sha256:
+            raise PermissionError("runtime capability profile hash is revoked")
+        if qualification.statement.adapter_code_sha256 in self.revoked_adapter_code_sha256:
+            raise PermissionError("runtime adapter code is revoked")
+        if qualification.statement.runtime_identity_sha256 in self.revoked_runtime_identity_sha256:
+            raise PermissionError("runtime identity is revoked")
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,39 +226,6 @@ class FreshRuntimeAuthorization:
         return canonical_hash(self.to_dict())
 
 
-def load_trusted_runtime_qualification(
-    source: str | Path | bytes | dict[str, Any],
-    *,
-    trusted_key_dir: str | Path,
-    now: datetime | None,
-    required_case_ids: tuple[str, ...],
-) -> VerifiedRuntimeQualification:
-    envelope = source if isinstance(source, dict) else None
-    if envelope is None:
-        if isinstance(source, bytes):
-            value = json.loads(source)
-        else:
-            value = json.loads(Path(source).expanduser().read_text(encoding="utf-8"))
-        if not isinstance(value, dict):
-            raise ValueError("runtime qualification envelope root must be an object")
-        envelope = value
-    signing = envelope.get("signing")
-    if not isinstance(signing, dict):
-        raise ValueError("runtime qualification signing metadata is invalid")
-    key_id = signing.get("key_id")
-    if not isinstance(key_id, str):
-        raise ValueError("runtime qualification signing key ID is invalid")
-    trusted_key = Path(trusted_key_dir).expanduser().resolve() / f"{key_id}.pem"
-    if not trusted_key.is_file():
-        raise FileNotFoundError(f"Trusted runtime qualification key is unavailable: {key_id}")
-    return verify_runtime_qualification(
-        envelope,
-        trusted_public_key=trusted_key,
-        now=now,
-        required_case_ids=required_case_ids,
-    )
-
-
 def load_trusted_runtime_revocation_policy(
     trusted_key_dir: str | Path,
     *,
@@ -297,9 +262,6 @@ def authorize_runtime_execution(
         required_case_ids=required_cases,
     )
     qualification.assert_matches_profile(profile)
-
-    # Compare the explicit security identities before the aggregate dataclass comparison. This
-    # preserves precise failure diagnostics and ensures each identity drift path remains testable.
     if qualification.evidence_sha256 != plan.qualification_evidence_sha256:
         raise ValueError("runtime qualification evidence hash changed")
     if qualification.signing_key_id != plan.qualification_key_id:
