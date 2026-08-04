@@ -6,6 +6,8 @@ from datetime import UTC
 from pathlib import Path
 
 import pytest
+from test_revocation_witness import NOW, verified_witness
+from test_runtime_execution_authorization import context
 
 from aspenops_nexus.revocation_witness import (
     RevocationWitnessStatement,
@@ -18,8 +20,6 @@ from aspenops_nexus.runtime_execution_authorization import (
     _utc_now,
     authorize_runtime_execution,
 )
-from test_revocation_witness import NOW, verified_witness
-from test_runtime_execution_authorization import context
 
 
 def _forge_plan_identity(plan: object, field: str, replacement: str) -> object:
