@@ -1,1 +1,0 @@
-Delete this file through a trusted connector commit to trigger final standard CI.
