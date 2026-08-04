@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from test_revocation_witness import NOW, verified_witness
-from test_runtime_execution_authorization import context
-
 from aspenops_nexus.revocation_witness import (
     RevocationWitnessStatement,
     verify_revocation_witness,
@@ -21,6 +18,25 @@ from aspenops_nexus.runtime_execution_authorization import (
     _utc_now,
     authorize_runtime_execution,
 )
+from test_revocation_witness import NOW, verified_witness
+from test_runtime_execution_authorization import context
+
+
+def _forge_plan_identity(plan: object, field: str, replacement: str) -> object:
+    qualification = plan.qualification  # type: ignore[attr-defined]
+    if field == "qualification_evidence_sha256":
+        forged_qualification = replace(qualification, evidence_sha256=replacement)
+    elif field == "qualification_key_id":
+        forged_qualification = replace(qualification, signing_key_id=replacement)
+    elif field in {"adapter_code_sha256", "runtime_identity_sha256"}:
+        forged_statement = replace(
+            qualification.statement,
+            **{field: replacement},
+        )
+        forged_qualification = replace(qualification, statement=forged_statement)
+    else:  # pragma: no cover - the parametrization is intentionally closed.
+        raise AssertionError(f"Unsupported identity field: {field}")
+    return replace(plan, qualification=forged_qualification)
 
 
 @pytest.mark.parametrize(
@@ -55,10 +71,10 @@ def test_fresh_authorization_rechecks_plan_identity_fields(
     message: str,
 ) -> None:
     plan, profile, envelope, _ = context(tmp_path)
-    forged = replace(plan, **{field: replacement})
+    forged = _forge_plan_identity(plan, field, replacement)
     with pytest.raises(ValueError, match=message):
         authorize_runtime_execution(
-            forged,
+            forged,  # type: ignore[arg-type]
             profile,
             envelope,
             trusted_key_dir=tmp_path,
