@@ -551,6 +551,25 @@ AspenOps 不直接连接或写入生产 DCS。
 
 ## 自动测试与质量门
 
+### 可重跑、失败关闭的测试证据
+
+标准 workflow 使用以下稳定令牌和命名合同：
+
+```text
+github.run_id
+github.run_attempt
+if-no-files-found: error
+scripts/render_test_dashboard.py
+test-dashboard-quality.html
+test-dashboard-windows.html
+test-dashboard-licensed.html
+```
+
+artifact 名称绑定 `github.run_id` 与 `github.run_attempt`，避免不同 rerun/attempt
+相互覆盖；缺少证据时 `if-no-files-found: error` 必须失败。测试仪表板由
+`scripts/render_test_dashboard.py` 生成，分别输出 Linux quality、Windows 和
+licensed Mock 范围的 HTML/SVG 证据。
+
 ![自动测试矩阵](docs/assets/readme/test-matrix.svg)
 
 四个权威 workflow：

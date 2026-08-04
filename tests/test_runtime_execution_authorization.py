@@ -444,7 +444,7 @@ def test_different_valid_envelope_cannot_replace_plan_qualification(
 ) -> None:
     plan, profile, _, _ = context(tmp_path)
     _, _, second_envelope, _ = context(tmp_path)
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match="evidence hash changed"):
         authorize_runtime_execution(
             plan,
             profile,
