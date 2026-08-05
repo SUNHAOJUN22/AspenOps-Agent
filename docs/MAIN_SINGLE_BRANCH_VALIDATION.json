@@ -1,52 +1,71 @@
 {
-  "branch_policy": "MAIN_ONLY",
-  "ci_run_id": 30938876928,
+  "schema": "aspenops.main-single-branch-qualification/v2",
   "decision": "PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS",
-  "native_aspen_hysys_builder": "NOT_IMPLEMENTED_PRODUCTION_SCOPE",
-  "python_312_order_independence": {
-    "fixed_seed": 20260728,
-    "result": "PASS",
-    "reverse": "PASS"
-  },
+  "branch_policy": "MAIN_ONLY",
+  "validated_source_sha": "974a7f125fad6f7a5628295cc2c4157d22a41ad4",
+  "qualification_orchestration_sha": "5757ac51254b21480068166e5c7fbca87415d765",
+  "qualification_run_id": 30967716901,
+  "qualification_run_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716901",
+  "ci_run_id": 30967716901,
+  "windows_run_id": 30967716901,
   "python_matrix": {
     "3.11": {
-      "branch_coverage_percent": 95.2,
-      "errors": 0,
+      "tests_passed": 1186,
       "failures": 0,
+      "errors": 0,
       "skipped": 0,
-      "tests_passed": 1186
+      "branch_coverage_percent": 95.2
     },
     "3.12": {
-      "branch_coverage_percent": 95.2,
-      "errors": 0,
+      "tests_passed": 1186,
       "failures": 0,
+      "errors": 0,
       "skipped": 0,
-      "tests_passed": 1186
+      "branch_coverage_percent": 95.2
     },
     "3.13": {
-      "branch_coverage_percent": 95.2,
-      "errors": 0,
+      "tests_passed": 1186,
       "failures": 0,
+      "errors": 0,
       "skipped": 0,
-      "tests_passed": 1186
+      "branch_coverage_percent": 95.2
     }
   },
+  "python_312_order_independence": {
+    "tests": 1186,
+    "reverse": "PASS",
+    "fixed_seed": 20260728,
+    "result": "PASS"
+  },
+  "windows": {
+    "runner": "windows-2025",
+    "python": "3.12",
+    "tests_passed": 1186,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
   "quality": {
-    "bandit_high_high": "PASS",
-    "clean_wheel_install": "PASS",
-    "cli_demo": "PASS",
-    "cryptography_version": "50.0.0",
-    "distribution_build": "PASS",
-    "mcp_surface": "PASS",
+    "six_target_dependency_audit": "PASS",
     "ruff": "PASS",
     "ruff_format": "PASS",
-    "six_target_dependency_audit": "PASS",
-    "source_tree_audit": "PASS",
     "strict_mypy": "PASS",
-    "windows_control_plane": "PASS"
+    "compileall": "PASS",
+    "source_tree_audit": "PASS",
+    "bandit_high_high": "PASS",
+    "distribution_build": "PASS",
+    "clean_wheel_install": "PASS",
+    "cli_demo": "PASS",
+    "mcp_surface": "PASS",
+    "windows_control_plane": "PASS",
+    "cryptography_version": "50.0.0"
   },
-  "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION",
-  "schema": "aspenops.main-single-branch-qualification/v1",
-  "validated_source_sha": "c66300e38a5d3ce2d595c01398ba912627dfe90c",
-  "windows_run_id": 30938874028
+  "readme_visuals": {
+    "svg_assets": 22,
+    "visual_atlas_core_diagrams": 12,
+    "self_contained": true,
+    "external_scripts_fonts_images": false
+  },
+  "native_aspen_hysys_builder": "NOT_IMPLEMENTED_PRODUCTION_SCOPE",
+  "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION"
 }
