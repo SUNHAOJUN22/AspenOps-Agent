@@ -1,0 +1,82 @@
+{
+  "source_sha": "cbd2eb1b838c041496f8fdda34fc4db1d3b0cb8d",
+  "runs": [
+    {
+      "id": 30966272688,
+      "name": "Collect final README qualification once",
+      "path": ".github/workflows/collect-readme-qualification-once.yml",
+      "status": "in_progress",
+      "conclusion": null,
+      "jobs": [
+        {
+          "id": 92180799378,
+          "name": "collect",
+          "status": "in_progress",
+          "conclusion": null,
+          "failed_steps": []
+        }
+      ]
+    },
+    {
+      "id": 30966272724,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92180799737,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92180799762,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": []
+        },
+        {
+          "id": 92180799789,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92180799790,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30966272691,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92180799498,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Process, scheduler, archive, backend, certification, IR, and workflow contracts"
+          ]
+        }
+      ]
+    }
+  ]
+}
