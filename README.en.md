@@ -56,8 +56,8 @@ The twelve diagrams below provide a fast visual index. The complete README refer
 
 ### Latest single-main automated qualification
 
-- Validated source commit: `c66300e38a5d3ce2d595c01398ba912627dfe90c`;
-- Linux CI: `30938876928`; Windows: `30938874028`;
+- Validated source commit: `974a7f125fad6f7a5628295cc2c4157d22a41ad4`;
+- Linux CI: `30967716901`; Windows: `30967716901`;
 - Python 3.11: 1186 passed; 95.20% branch coverage;
 - Python 3.12: 1186 passed; 95.20% branch coverage;
 - Python 3.13: 1186 passed; 95.20% branch coverage;
