@@ -1,0 +1,74 @@
+{
+  "target_sha": "f3de4ff272c0c6c6fdf5cfd2f9d9eb27714136cf",
+  "runs": [
+    {
+      "id": 30971515439,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92196672644,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Process, scheduler, archive, backend, certification, IR, and workflow contracts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30971515602,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92196673192,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92196673206,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": []
+        },
+        {
+          "id": 92196673224,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92196673226,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30971514783,
+      "name": ".github/workflows/finalize-readme-qualification-once.yml",
+      "path": ".github/workflows/finalize-readme-qualification-once.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": []
+    }
+  ]
+}
