@@ -1,0 +1,167 @@
+{
+  "schema": "aspenops.readme-validation-diagnostic/v1",
+  "source_sha": "c157f8ae5f5fd4125f872ad186e0c25a3efb91e2",
+  "run_count": 3,
+  "runs": [
+    {
+      "id": 30964716489,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30964716489",
+      "created_at": "2026-08-05T00:53:19Z",
+      "updated_at": "2026-08-05T00:54:13Z",
+      "jobs": [
+        {
+          "id": 92176087687,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:29Z",
+          "completed_at": "2026-08-05T00:54:12Z",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92176087689,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:29Z",
+          "completed_at": "2026-08-05T00:53:39Z",
+          "failed_steps": [
+            "Ruff"
+          ]
+        },
+        {
+          "id": 92176087697,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:29Z",
+          "completed_at": "2026-08-05T00:54:07Z",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92176087698,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:25Z",
+          "completed_at": "2026-08-05T00:54:12Z",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30964716516,
+      "name": "Validate refreshed README on single main",
+      "path": ".github/workflows/validate-readme-main-once.yml",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30964716516",
+      "created_at": "2026-08-05T00:53:19Z",
+      "updated_at": "2026-08-05T00:54:11Z",
+      "jobs": [
+        {
+          "id": 92176087768,
+          "name": "Python 3.11 full tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:30Z",
+          "completed_at": "2026-08-05T00:53:41Z",
+          "failed_steps": [
+            "Test"
+          ]
+        },
+        {
+          "id": 92176087778,
+          "name": "Windows control-plane contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:25Z",
+          "completed_at": "2026-08-05T00:53:56Z",
+          "failed_steps": [
+            "Prepare and validate"
+          ]
+        },
+        {
+          "id": 92176087791,
+          "name": "Linux quality build wheel and MCP",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:29Z",
+          "completed_at": "2026-08-05T00:53:36Z",
+          "failed_steps": [
+            "Prepare governed source tree"
+          ]
+        },
+        {
+          "id": 92176087801,
+          "name": "Python 3.12 full tests and order gate",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:23Z",
+          "completed_at": "2026-08-05T00:53:29Z",
+          "failed_steps": [
+            "Test and order independence"
+          ]
+        },
+        {
+          "id": 92176087803,
+          "name": "Python 3.13 full tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:30Z",
+          "completed_at": "2026-08-05T00:53:49Z",
+          "failed_steps": [
+            "Test"
+          ]
+        },
+        {
+          "id": 92176182471,
+          "name": "Record README qualification and clean workflow",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:54:00Z",
+          "completed_at": "2026-08-05T00:54:10Z",
+          "failed_steps": [
+            "Finalize source and evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30964716436,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30964716436",
+      "created_at": "2026-08-05T00:53:19Z",
+      "updated_at": "2026-08-05T00:54:04Z",
+      "jobs": [
+        {
+          "id": 92176087651,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "started_at": "2026-08-05T00:53:24Z",
+          "completed_at": "2026-08-05T00:54:03Z",
+          "failed_steps": [
+            "Ruff"
+          ]
+        }
+      ]
+    }
+  ]
+}
