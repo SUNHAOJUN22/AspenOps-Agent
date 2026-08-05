@@ -44,6 +44,21 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in raw_payload.splitlines()
           )
+          fragile = """if identity_block not in builder:
+    raise SystemExit('native_builder identity insertion point not found')
+builder = builder.replace(identity_block, conformance_block)"""
+          stable = """if identity_block in builder:
+    builder = builder.replace(identity_block, conformance_block)
+else:
+    anchor = \"    step_records: list[StepExecutionRecord] = []\\n\"
+    if anchor not in builder:
+        raise SystemExit('native_builder stable insertion point not found')
+    conformance_only = \"    try:\\n\" + conformance_block.split(\"    try:\\n\", 1)[1]
+    conformance_only = conformance_only.rsplit(\"\\n\\n    step_records\", 1)[0]
+    builder = builder.replace(anchor, conformance_only + \"\\n\\n\" + anchor, 1)"""
+          if fragile not in payload:
+              raise SystemExit('payload patch point not found')
+          payload = payload.replace(fragile, stable)
           exec(compile(payload, '<native-adapter-conformance-payload>', 'exec'))
 
           svg_marker = "          cat > docs/assets/readme/adapter-conformance.svg <<'SVG'\n"
@@ -60,6 +75,7 @@ jobs:
           rm -f .github/workflows/apply-native-adapter-conformance-once.yml
           rm -f docs/NATIVE_ADAPTER_CONFORMANCE_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_APPLY_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_C48_DIAGNOSTIC.json
       - name: Validate implementation
         shell: bash
         run: |
