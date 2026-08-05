@@ -10,6 +10,7 @@ import pytest
 from revocation_witness_support import install_revocation_witness
 
 from aspenops_nexus.compilation_plan import CompilationStep, compile_process_design
+from aspenops_nexus.native_adapter_conformance import NativeAdapterManifest
 from aspenops_nexus.native_builder import (
     NativeBuildError,
     _contains_expected,
@@ -189,6 +190,20 @@ class FakeAdapter:
         self._profile_hash = plan.profile_hash
         self._adapter_code_sha256 = plan.adapter_code_sha256
         self._runtime_identity_sha256 = plan.runtime_identity_sha256
+        self._conformance_manifest: object = NativeAdapterManifest(
+            profile_id=plan.profile_id,
+            profile_sha256=plan.profile_hash,
+            adapter_contract=plan.base_plan.adapter_contract,
+            adapter_code_sha256=plan.adapter_code_sha256,
+            runtime_identity_sha256=plan.runtime_identity_sha256,
+            supported_operations=tuple(sorted({step.operation for step in plan.steps})),
+            supported_adapter_keys=tuple(sorted({step.adapter_key for step in plan.steps})),
+            supports_topology_readback=True,
+            supports_layout_readback=True,
+            supports_save_reopen=True,
+            failure_isolation="PRIVATE_CASE_DISCARD",
+            source_boundary="Synthetic native-builder contract test.",
+        )
         self.topology = topology or plan.expected_topology
         self.layout_hash = layout_hash or plan.expected_layout_hash
         self.operations: list[str] = []
@@ -209,6 +224,10 @@ class FakeAdapter:
     @property
     def runtime_identity_sha256(self) -> str:
         return self._runtime_identity_sha256
+
+    @property
+    def conformance_manifest(self) -> NativeAdapterManifest:
+        return self._conformance_manifest  # type: ignore[return-value]
 
     def apply_step(self, step: CompilationStep) -> dict[str, Any]:
         self.operations.append(step.operation)
@@ -254,6 +273,8 @@ def test_execute_compilation_plan_success(tmp_path: Path) -> None:
     assert record.qualification_evidence_sha256 == plan.qualification_evidence_sha256
     assert record.adapter_code_sha256 == plan.adapter_code_sha256
     assert record.runtime_identity_sha256 == plan.runtime_identity_sha256
+    assert len(record.adapter_manifest_sha256) == 64
+    assert len(record.adapter_conformance_sha256) == 64
     assert len(record.runtime_authorization_sha256) == 64
     assert len(record.revocation_policy_sha256) == 64
     assert len(record.revocation_policy_signing_key_id) == 32
@@ -269,8 +290,11 @@ def test_execute_compilation_plan_success(tmp_path: Path) -> None:
     assert len(record.topology_reports) == 2
     assert all(item.matches for item in record.topology_reports)
     assert record.layout_hashes == (plan.expected_layout_hash, plan.expected_layout_hash)
-    assert "independent current witness" in record.boundary
-    assert record.to_dict()["completed"] is True
+    assert "manifest-conformant" in record.boundary
+    result = record.to_dict()
+    assert result["completed"] is True
+    assert result["adapter_manifest_sha256"] == record.adapter_manifest_sha256
+    assert result["adapter_conformance_sha256"] == record.adapter_conformance_sha256
 
 
 def test_plain_base_plan_cannot_execute(tmp_path: Path) -> None:
@@ -331,6 +355,51 @@ def test_adapter_code_and_runtime_identity_must_match(tmp_path: Path) -> None:
     adapter._runtime_identity_sha256 = "0" * 64
     with pytest.raises(NativeBuildError, match="runtime identity"):
         execute(plan, adapter, profile, envelope, tmp_path)
+
+
+def test_adapter_conformance_fails_before_first_plan_step(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    adapter = FakeAdapter(plan)
+    declaration = adapter.conformance_manifest
+    adapter._conformance_manifest = replace(
+        declaration,
+        supported_adapter_keys=declaration.supported_adapter_keys[1:],
+    )
+    with pytest.raises(NativeBuildError, match="before the first compilation step"):
+        execute(plan, adapter, profile, envelope, tmp_path)
+    assert adapter.operations == []
+
+
+def test_adapter_manifest_identity_is_bound_to_authorization(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    adapter = FakeAdapter(plan)
+    declaration = adapter.conformance_manifest
+    adapter._conformance_manifest = replace(
+        declaration,
+        adapter_code_sha256="0" * 64,
+    )
+    with pytest.raises(NativeBuildError, match="manifest code hash"):
+        execute(plan, adapter, profile, envelope, tmp_path)
+    assert adapter.operations == []
+
+    adapter = FakeAdapter(plan)
+    declaration = adapter.conformance_manifest
+    adapter._conformance_manifest = replace(
+        declaration,
+        runtime_identity_sha256="0" * 64,
+    )
+    with pytest.raises(NativeBuildError, match="manifest runtime identity"):
+        execute(plan, adapter, profile, envelope, tmp_path)
+    assert adapter.operations == []
+
+
+def test_invalid_manifest_fails_before_first_plan_step(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    adapter = FakeAdapter(plan)
+    adapter._conformance_manifest = object()
+    with pytest.raises(NativeBuildError, match="conformance manifest is invalid"):
+        execute(plan, adapter, profile, envelope, tmp_path)
+    assert adapter.operations == []
 
 
 def test_topology_mismatch_fails_closed(tmp_path: Path) -> None:
