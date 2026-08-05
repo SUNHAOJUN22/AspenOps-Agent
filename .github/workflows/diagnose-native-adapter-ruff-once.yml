@@ -1,0 +1,76 @@
+name: Capture native adapter Ruff diagnostics once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/diagnose-native-adapter-ruff-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Recreate final workflow-free tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/apply_native_adapter_docs.py
+          rm -f scripts/apply_native_adapter_docs.py
+          rm -f .github/workflows/native-adapter-conformance-once.yml
+          rm -f .github/workflows/apply-native-adapter-conformance-once.yml
+          rm -f .github/workflows/finalize-native-adapter-conformance-once.yml
+          rm -f .github/workflows/diagnose-native-adapter-ruff-once.yml
+          rm -f docs/NATIVE_ADAPTER_CONFORMANCE_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_APPLY_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_C48_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_392_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_FINALIZE_DIAGNOSTIC.json
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Capture Ruff and formatter output
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p docs
+          uv run ruff check . --output-format=json > docs/NATIVE_ADAPTER_RUFF_DIAGNOSTIC.json
+          check_status=$?
+          uv run ruff format --check . > docs/NATIVE_ADAPTER_FORMAT_DIAGNOSTIC.txt 2>&1
+          format_status=$?
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('docs/NATIVE_ADAPTER_RUFF_DIAGNOSTIC.json')
+          try:
+              findings = json.loads(path.read_text(encoding='utf-8'))
+          except json.JSONDecodeError as exc:
+              findings = [{"diagnostic_error": str(exc)}]
+          summary = {
+              "finding_count": len(findings),
+              "findings": findings,
+          }
+          path.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+          PY
+          printf 'ruff_check_exit=%s\nruff_format_exit=%s\n' "$check_status" "$format_status" >> docs/NATIVE_ADAPTER_FORMAT_DIAGNOSTIC.txt
+          exit 0
+      - name: Commit diagnostics and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/NATIVE_ADAPTER_RUFF_DIAGNOSTIC.json docs/NATIVE_ADAPTER_FORMAT_DIAGNOSTIC.txt .github/workflows/diagnose-native-adapter-ruff-once.yml
+          git commit -m "test: record native adapter Ruff diagnostics"
+          git push origin HEAD:main
