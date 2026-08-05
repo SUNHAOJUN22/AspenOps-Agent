@@ -1,0 +1,74 @@
+{
+  "target_sha": "2ae67298c373ca36b187331f84e9d4d2cb417456",
+  "runs": [
+    {
+      "id": 30988257812,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92247993780,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Process, scheduler, archive, backend, certification, IR, and workflow contracts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30988257864,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92247994325,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92247994345,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92247994378,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92247994390,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": []
+        }
+      ]
+    },
+    {
+      "id": 30988256231,
+      "name": ".github/workflows/native-adapter-conformance-once.yml",
+      "path": ".github/workflows/native-adapter-conformance-once.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": []
+    }
+  ]
+}
