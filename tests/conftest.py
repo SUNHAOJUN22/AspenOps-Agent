@@ -30,16 +30,19 @@ def enforce_readme_visual_system_v3() -> None:
         assert marker in master
 
     for marker in (
-        "22 README",
+        "23 README",
         "Required implementation markers",
         "render every SVG at 720 × 360",
         "retry_wait",
         "dead_letter",
+        "Plan Requirements",
+        "Manifest Identity",
+        "Fail Before Mutation",
     ):
         assert marker in override
 
     assets = sorted(ASSET_DIR.glob("*.svg"))
-    assert len(assets) == 22
+    assert len(assets) == 23
     for path in assets:
         raw = path.read_text(encoding="utf-8")
         root = ET.fromstring(raw)
