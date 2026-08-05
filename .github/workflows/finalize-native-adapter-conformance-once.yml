@@ -1,0 +1,61 @@
+name: Finalize native adapter conformance milestone once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-native-adapter-conformance-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply documentation patches and remove temporary files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/apply_native_adapter_docs.py
+          rm -f scripts/apply_native_adapter_docs.py
+          rm -f .github/workflows/native-adapter-conformance-once.yml
+          rm -f .github/workflows/apply-native-adapter-conformance-once.yml
+          rm -f .github/workflows/finalize-native-adapter-conformance-once.yml
+          rm -f docs/NATIVE_ADAPTER_CONFORMANCE_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_APPLY_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_C48_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_392_DIAGNOSTIC.json
+      - name: Validate workflow-free implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix .
+          uv run ruff format .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-fail-under=95.0
+          git diff --check
+      - name: Commit clean single-main milestone
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat: add native adapter conformance preflight"
+          git push origin HEAD:main
