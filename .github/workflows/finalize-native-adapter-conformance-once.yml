@@ -23,7 +23,7 @@ jobs:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Apply documentation patches and remove temporary files
+      - name: Recreate workflow-free milestone tree
         shell: bash
         run: |
           set -euo pipefail
@@ -40,27 +40,83 @@ jobs:
           rm -f docs/NATIVE_ADAPTER_FINALIZE_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_RUFF_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_FORMAT_DIAGNOSTIC.txt
-      - name: Validate workflow-free implementation
+          rm -f docs/NATIVE_ADAPTER_VALIDATION_DIAGNOSTIC.json
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Run diagnostic validation chain
+        id: validate
         shell: bash
         run: |
-          set -euo pipefail
-          uv sync --frozen --extra dev --extra agent --extra signing
-          uv run ruff format .
-          uv run ruff check --fix .
-          uv run ruff format --check .
-          uv run mypy src
+          set +e
+          mkdir -p /tmp/native-adapter-validation
+          uv run ruff format . > /tmp/native-adapter-validation/format.log 2>&1
+          format_status=$?
+          uv run ruff check --fix . > /tmp/native-adapter-validation/ruff.log 2>&1
+          ruff_status=$?
+          uv run ruff format --check . > /tmp/native-adapter-validation/format-check.log 2>&1
+          format_check_status=$?
+          uv run mypy src > /tmp/native-adapter-validation/mypy.log 2>&1
+          mypy_status=$?
           uv run pytest -W error::ResourceWarning \
             --cov=aspenops_nexus \
             --cov-branch \
             --cov-report=term-missing \
-            --cov-fail-under=95.0
-          git diff --check
-      - name: Commit clean single-main milestone
+            --cov-fail-under=95.0 \
+            > /tmp/native-adapter-validation/pytest.log 2>&1
+          pytest_status=$?
+          git diff --check > /tmp/native-adapter-validation/diff-check.log 2>&1
+          diff_status=$?
+          export FORMAT_STATUS="$format_status"
+          export RUFF_STATUS="$ruff_status"
+          export FORMAT_CHECK_STATUS="$format_check_status"
+          export MYPY_STATUS="$mypy_status"
+          export PYTEST_STATUS="$pytest_status"
+          export DIFF_STATUS="$diff_status"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          log_root = Path('/tmp/native-adapter-validation')
+          statuses = {
+              'format': int(os.environ['FORMAT_STATUS']),
+              'ruff': int(os.environ['RUFF_STATUS']),
+              'format_check': int(os.environ['FORMAT_CHECK_STATUS']),
+              'mypy': int(os.environ['MYPY_STATUS']),
+              'pytest': int(os.environ['PYTEST_STATUS']),
+              'diff_check': int(os.environ['DIFF_STATUS']),
+          }
+          logs = {}
+          for name in statuses:
+              path = log_root / f'{name.replace("_", "-")}.log'
+              if path.exists():
+                  lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+                  logs[name] = lines[-120:]
+          payload = {
+              'schema': 'aspenops.native-adapter-validation-diagnostic/v1',
+              'statuses': statuses,
+              'passed': all(value == 0 for value in statuses.values()),
+              'log_tails': logs,
+          }
+          Path('docs/NATIVE_ADAPTER_VALIDATION_DIAGNOSTIC.json').write_text(
+              json.dumps(payload, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          if payload['passed']:
+              Path('/tmp/native-adapter-validation-passed').write_text('PASS\n')
+          PY
+          exit 0
+      - name: Commit clean milestone or diagnostic
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "feat: add native adapter conformance preflight"
+          if test -f /tmp/native-adapter-validation-passed; then
+            rm -f docs/NATIVE_ADAPTER_VALIDATION_DIAGNOSTIC.json
+            git add -A
+            git commit -m "feat: add native adapter conformance preflight"
+          else
+            git add docs/NATIVE_ADAPTER_VALIDATION_DIAGNOSTIC.json
+            git commit -m "test: record native adapter validation diagnostic"
+          fi
           git push origin HEAD:main
