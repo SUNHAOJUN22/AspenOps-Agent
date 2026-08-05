@@ -20,6 +20,24 @@
 
 > 本 README 使用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG 示意图。图像只表达仓库中已经实现的合同或明确标注的 planned 路线；它们不把 Mock、Fake COM、签名、哈希、离线编译或公共 Windows 测试包装成真实 Aspen 工程认证。
 
+
+<!-- AI_VISUAL_GALLERY:START -->
+
+## AI 视觉图谱
+
+下列十二张核心图提供快速视觉导航；README 全文共引用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG。所有图片均为仓库内矢量资产，不加载外部脚本、字体或远程图像。
+
+| 工程意图与编译 | 执行隔离与有效性 | 调度、缓存与证据 |
+|---|---|---|
+| ![Agent pipeline](docs/assets/readme/agent-pipeline.svg) | ![COM isolation](docs/assets/readme/com-isolation.svg) | ![Scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg) |
+| ![Process intent IR](docs/assets/readme/process-intent-ir.svg) | ![Validity gates](docs/assets/readme/validity-gates.svg) | ![Cache singleflight](docs/assets/readme/cache-singleflight.svg) |
+| ![Backend capabilities](docs/assets/readme/backend-capabilities.svg) | ![Worker ownership](docs/assets/readme/worker-ownership-recycle.svg) | ![Evidence chain](docs/assets/readme/evidence-chain.svg) |
+| ![Policy and paths](docs/assets/readme/policy-path-safety.svg) | ![Optimization lifecycle](docs/assets/readme/optimization-lifecycle.svg) | ![Licensed certification](docs/assets/readme/licensed-certification.svg) |
+
+> 视觉图只用于解释软件合同。流程图、签名、哈希、Mock、Fake COM 与公共 CI 均不能代替商业 Aspen Plus/HYSYS 的工程验证。
+
+<!-- AI_VISUAL_GALLERY:END -->
+
 ---
 
 ## 当前权威状态

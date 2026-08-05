@@ -20,6 +20,24 @@
 
 > This README uses twenty-two original AI-generated SVG capability diagrams. They describe implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
 
+
+<!-- AI_VISUAL_GALLERY:START -->
+
+## AI visual atlas
+
+The twelve core diagrams below provide a fast visual index. Across the full README, AspenOps references twenty-two original, AI-assisted, self-contained SVG assets. They are repository-local vectors with no external scripts, fonts or remote images.
+
+| Process intent and compilation | Execution isolation and validity | Scheduling, cache and evidence |
+|---|---|---|
+| ![Agent pipeline](docs/assets/readme/agent-pipeline.svg) | ![COM isolation](docs/assets/readme/com-isolation.svg) | ![Scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg) |
+| ![Process intent IR](docs/assets/readme/process-intent-ir.svg) | ![Validity gates](docs/assets/readme/validity-gates.svg) | ![Cache singleflight](docs/assets/readme/cache-singleflight.svg) |
+| ![Backend capabilities](docs/assets/readme/backend-capabilities.svg) | ![Worker ownership](docs/assets/readme/worker-ownership-recycle.svg) | ![Evidence chain](docs/assets/readme/evidence-chain.svg) |
+| ![Policy and paths](docs/assets/readme/policy-path-safety.svg) | ![Optimization lifecycle](docs/assets/readme/optimization-lifecycle.svg) | ![Licensed certification](docs/assets/readme/licensed-certification.svg) |
+
+> These visuals explain software contracts only. Flowsheets, signatures, hashes, Mock, Fake COM and public CI do not replace licensed Aspen Plus/HYSYS engineering validation.
+
+<!-- AI_VISUAL_GALLERY:END -->
+
 ---
 
 ## Authoritative status
@@ -28,19 +46,31 @@
 |---|---|
 | Default and only long-lived branch | `main` |
 | Package | `aspenops-nexus 2.0.0` |
-| Public test matrix | Python 3.11, 3.12 and 3.13 |
-| Archived validated baseline | Actions run `29814739487` |
-| Archived Python 3.12 result | 72 test modules, 563 passed, 0 failed, 0 skipped, 16.73 s |
-| Combined branch-aware coverage | 94.9719800747198% |
-| Coverage floor | 94.5% |
-| Archived public Windows gate | Actions run `29814739334`, 104 passed, 2.06 s |
-| MCP tools | 14 |
-| Frozen MCP SDK | `1.28.1`; package requirement `mcp>=1.9,<2` |
+| Public matrix | Python 3.11, 3.12 and 3.13; Linux and Windows dependency audits |
+| Phase 0 | Immutable execution artifacts, cache/evidence identity and read/write contracts implemented |
+| Phase 1 | ProcessRequirement v1, ProcessDesignIR v2, rules, templates and SVG preview implemented |
+| Phase 2 | Aspen Plus/HYSYS 14/15 offline compilation contracts implemented as `OFFLINE_CONTRACT_ONLY` |
+| Phase 3–7 | Signed qualification, licensed link, fresh authorization, revocation chain and witness receipt implemented |
+| Native new-flowsheet builder | **Not implemented for production scope** |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
-These figures come from inspected JUnit, coverage JSON and logs. They are **not an automatic claim** about any later commit. The badges reflect current `main` push workflows; historical numbers never replace fresh Actions evidence.
+<!-- MAIN_SINGLE_BRANCH_QUALIFICATION:START -->
 
-Public CI can validate the control plane, configuration and path policy, IPC, process isolation, scheduling, caching, optimization, numeric fail-closed behaviour, archives, interfaces, Process Intent, MCP compatibility, portable performance contracts and documentation. It cannot certify a commercial Aspen installation, licence, property method, reaction model or engineering model.
+### Latest single-main automated qualification
+
+- Validated source commit: `c66300e38a5d3ce2d595c01398ba912627dfe90c`;
+- Standard Linux CI: `30938876928`; Windows control plane: `30938874028`;
+- | Python 3.11 | 1186 passed; 95.20% branch coverage |
+- | Python 3.12 | 1186 passed; 95.20% branch coverage |
+- | Python 3.13 | 1186 passed; 95.20% branch coverage |
+- Python 3.12 reverse-order and fixed-seed order-independence gates passed;
+- Frozen dependency audits, Ruff, formatter, strict mypy, Bandit, build, clean Wheel, MCP and Windows control-plane gates passed;
+- Evidence: [single-main qualification](docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md);
+- Real Aspen/HYSYS: `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+<!-- MAIN_SINGLE_BRANCH_QUALIFICATION:END -->
+
+Archived evidence proves only the cited source commit and Actions runs. Public CI validates software contracts; it does not certify a commercial Aspen installation, licence, property method, equipment selection, flowsheet or engineering result.
 
 ---
 
