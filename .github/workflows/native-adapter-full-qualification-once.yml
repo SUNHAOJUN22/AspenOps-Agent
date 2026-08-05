@@ -1,0 +1,554 @@
+name: Qualify native adapter conformance milestone once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/native-adapter-full-qualification-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-native-adapter-full-qualification
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Linux quality build wheel and MCP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Prepare workflow-free tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/native-adapter-full-qualification-once.yml
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Six-target frozen dependency audit
+        shell: bash
+        env:
+          UV_PREVIEW_FEATURES: json-output
+        run: |
+          set -euo pipefail
+          mkdir -p var/native-adapter-qualification/audit
+          for platform in linux windows; do
+            for version in 3.11 3.12 3.13; do
+              uv audit --frozen \
+                --python-platform "$platform" \
+                --python-version "$version" \
+                --output-format json \
+                > "var/native-adapter-qualification/audit/${platform}-${version}.json"
+              python -m json.tool \
+                "var/native-adapter-qualification/audit/${platform}-${version}.json" \
+                >/dev/null
+            done
+          done
+      - name: Static quality and security
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run python scripts/audit_source_tree.py \
+            --output var/native-adapter-qualification/source-tree-audit.json
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output var/native-adapter-qualification/bandit.json
+      - name: Build demo MCP and clean Wheel smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv build
+          uv run aspenops demo > var/native-adapter-qualification/demo.json
+          uv run python scripts/check_mcp.py > var/native-adapter-qualification/mcp.json
+          uv export --frozen \
+            --extra agent \
+            --no-default-groups \
+            --no-emit-project \
+            --format requirements.txt \
+            --output-file var/native-adapter-qualification/runtime-requirements.txt
+          uv venv --python 3.12 /tmp/aspenops-native-adapter-wheel
+          uv pip sync \
+            --python /tmp/aspenops-native-adapter-wheel/bin/python \
+            --require-hashes \
+            var/native-adapter-qualification/runtime-requirements.txt
+          uv pip install \
+            --python /tmp/aspenops-native-adapter-wheel/bin/python \
+            --offline \
+            --no-deps \
+            dist/*.whl
+          uv pip check --python /tmp/aspenops-native-adapter-wheel/bin/python
+          /tmp/aspenops-native-adapter-wheel/bin/aspenops --version
+          /tmp/aspenops-native-adapter-wheel/bin/aspenops demo >/dev/null
+          /tmp/aspenops-native-adapter-wheel/bin/python -c \
+            "from aspenops_nexus.mcp_server import _require_supported_mcp_sdk; print(_require_supported_mcp_sdk())"
+
+  python311:
+    name: Python 3.11 full tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      passed: ${{ steps.summary.outputs.passed }}
+      failed: ${{ steps.summary.outputs.failed }}
+      errors: ${{ steps.summary.outputs.errors }}
+      skipped: ${{ steps.summary.outputs.skipped }}
+      coverage: ${{ steps.summary.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Run full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/native-adapter-full-qualification-once.yml
+          mkdir -p var/native-adapter-qualification/python-3.11
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/native-adapter-qualification/python-3.11/coverage.json \
+            --junitxml=var/native-adapter-qualification/python-3.11/junit.xml \
+            --cov-fail-under=95.0
+      - name: Summarize
+        id: summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('var/native-adapter-qualification/python-3.11/junit.xml').getroot()
+          suites = [root] if root.tag.endswith('testsuite') else list(root)
+          tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+          failed = sum(int(item.attrib.get('failures', 0)) for item in suites)
+          errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+          skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+          coverage = json.load(
+              open(
+                  'var/native-adapter-qualification/python-3.11/coverage.json',
+                  encoding='utf-8',
+              )
+          )['totals']['percent_covered']
+          print(f'passed={tests - failed - errors - skipped}')
+          print(f'failed={failed}')
+          print(f'errors={errors}')
+          print(f'skipped={skipped}')
+          print(f'coverage={coverage:.2f}')
+          PY
+
+  python312:
+    name: Python 3.12 full tests and order gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    outputs:
+      passed: ${{ steps.summary.outputs.passed }}
+      failed: ${{ steps.summary.outputs.failed }}
+      errors: ${{ steps.summary.outputs.errors }}
+      skipped: ${{ steps.summary.outputs.skipped }}
+      coverage: ${{ steps.summary.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run full suite and order independence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/native-adapter-full-qualification-once.yml
+          mkdir -p var/native-adapter-qualification/python-3.12
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/native-adapter-qualification/python-3.12/coverage.json \
+            --junitxml=var/native-adapter-qualification/python-3.12/junit.xml \
+            --cov-fail-under=95.0
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir var/native-adapter-qualification/python-3.12
+      - name: Summarize
+        id: summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('var/native-adapter-qualification/python-3.12/junit.xml').getroot()
+          suites = [root] if root.tag.endswith('testsuite') else list(root)
+          tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+          failed = sum(int(item.attrib.get('failures', 0)) for item in suites)
+          errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+          skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+          coverage = json.load(
+              open(
+                  'var/native-adapter-qualification/python-3.12/coverage.json',
+                  encoding='utf-8',
+              )
+          )['totals']['percent_covered']
+          print(f'passed={tests - failed - errors - skipped}')
+          print(f'failed={failed}')
+          print(f'errors={errors}')
+          print(f'skipped={skipped}')
+          print(f'coverage={coverage:.2f}')
+          PY
+
+  python313:
+    name: Python 3.13 full tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    outputs:
+      passed: ${{ steps.summary.outputs.passed }}
+      failed: ${{ steps.summary.outputs.failed }}
+      errors: ${{ steps.summary.outputs.errors }}
+      skipped: ${{ steps.summary.outputs.skipped }}
+      coverage: ${{ steps.summary.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.13"
+          enable-cache: true
+      - name: Run full suite
+        shell: bash
+        env:
+          PYTHONTRACEMALLOC: "10"
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/native-adapter-full-qualification-once.yml
+          mkdir -p var/native-adapter-qualification/python-3.13
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=json:var/native-adapter-qualification/python-3.13/coverage.json \
+            --junitxml=var/native-adapter-qualification/python-3.13/junit.xml \
+            --cov-fail-under=95.0
+      - name: Summarize
+        id: summary
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('var/native-adapter-qualification/python-3.13/junit.xml').getroot()
+          suites = [root] if root.tag.endswith('testsuite') else list(root)
+          tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+          failed = sum(int(item.attrib.get('failures', 0)) for item in suites)
+          errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+          skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+          coverage = json.load(
+              open(
+                  'var/native-adapter-qualification/python-3.13/coverage.json',
+                  encoding='utf-8',
+              )
+          )['totals']['percent_covered']
+          print(f'passed={tests - failed - errors - skipped}')
+          print(f'failed={failed}')
+          print(f'errors={errors}')
+          print(f'skipped={skipped}')
+          print(f'coverage={coverage:.2f}')
+          PY
+
+  windows:
+    name: Windows 2025 full control-plane suite
+    runs-on: windows-2025
+    timeout-minutes: 50
+    outputs:
+      passed: ${{ steps.summary.outputs.passed }}
+      failed: ${{ steps.summary.outputs.failed }}
+      errors: ${{ steps.summary.outputs.errors }}
+      skipped: ${{ steps.summary.outputs.skipped }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Run Windows suite
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath .github/workflows/native-adapter-full-qualification-once.yml -Force -ErrorAction SilentlyContinue
+          uv lock --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv sync --frozen --extra dev --extra windows --extra agent --extra signing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run ruff check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run ruff format --check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run mypy src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force var/native-adapter-qualification/windows | Out-Null
+          uv run pytest -W error::ResourceWarning `
+            --junitxml=var/native-adapter-qualification/windows/junit.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Summarize
+        id: summary
+        shell: pwsh
+        run: |
+          $script = @'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('var/native-adapter-qualification/windows/junit.xml').getroot()
+          suites = [root] if root.tag.endswith('testsuite') else list(root)
+          tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+          failed = sum(int(item.attrib.get('failures', 0)) for item in suites)
+          errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+          skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+          print(f'passed={tests - failed - errors - skipped}')
+          print(f'failed={failed}')
+          print(f'errors={errors}')
+          print(f'skipped={skipped}')
+          '@
+          $script | python - | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  publish:
+    name: Publish qualification evidence and clean main
+    needs: [quality, python311, python312, python313, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PY311_PASSED: ${{ needs.python311.outputs.passed }}
+      PY311_FAILED: ${{ needs.python311.outputs.failed }}
+      PY311_ERRORS: ${{ needs.python311.outputs.errors }}
+      PY311_SKIPPED: ${{ needs.python311.outputs.skipped }}
+      PY311_COVERAGE: ${{ needs.python311.outputs.coverage }}
+      PY312_PASSED: ${{ needs.python312.outputs.passed }}
+      PY312_FAILED: ${{ needs.python312.outputs.failed }}
+      PY312_ERRORS: ${{ needs.python312.outputs.errors }}
+      PY312_SKIPPED: ${{ needs.python312.outputs.skipped }}
+      PY312_COVERAGE: ${{ needs.python312.outputs.coverage }}
+      PY313_PASSED: ${{ needs.python313.outputs.passed }}
+      PY313_FAILED: ${{ needs.python313.outputs.failed }}
+      PY313_ERRORS: ${{ needs.python313.outputs.errors }}
+      PY313_SKIPPED: ${{ needs.python313.outputs.skipped }}
+      PY313_COVERAGE: ${{ needs.python313.outputs.coverage }}
+      WINDOWS_PASSED: ${{ needs.windows.outputs.passed }}
+      WINDOWS_FAILED: ${{ needs.windows.outputs.failed }}
+      WINDOWS_ERRORS: ${{ needs.windows.outputs.errors }}
+      WINDOWS_SKIPPED: ${{ needs.windows.outputs.skipped }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Write exact qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/native-adapter-full-qualification-once.yml
+          export SOURCE_SHA="$(git rev-parse HEAD^)"
+          export QUALIFICATION_RUN_ID="$GITHUB_RUN_ID"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          versions = {
+              '3.11': 'PY311',
+              '3.12': 'PY312',
+              '3.13': 'PY313',
+          }
+          matrix = {}
+          for version, prefix in versions.items():
+              matrix[version] = {
+                  'tests_passed': int(os.environ[f'{prefix}_PASSED']),
+                  'failures': int(os.environ[f'{prefix}_FAILED']),
+                  'errors': int(os.environ[f'{prefix}_ERRORS']),
+                  'skipped': int(os.environ[f'{prefix}_SKIPPED']),
+                  'branch_coverage_percent': float(os.environ[f'{prefix}_COVERAGE']),
+              }
+          run_id = int(os.environ['QUALIFICATION_RUN_ID'])
+          evidence = {
+              'schema': 'aspenops.main-single-branch-qualification/v3',
+              'decision': 'PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS',
+              'branch_policy': 'MAIN_ONLY',
+              'validated_source_sha': os.environ['SOURCE_SHA'],
+              'qualification_run_id': run_id,
+              'qualification_run_url': (
+                  'https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/'
+                  f'{run_id}'
+              ),
+              'ci_run_id': run_id,
+              'windows_run_id': run_id,
+              'milestone': 'NATIVE_ADAPTER_CONFORMANCE_PREFLIGHT',
+              'native_adapter_conformance': {
+                  'manifest_schema': 'aspenops.native-adapter-manifest/v1',
+                  'report_schema': 'aspenops.native-adapter-conformance-report/v1',
+                  'fail_before_first_native_step': True,
+                  'operation_and_adapter_key_coverage': True,
+                  'topology_layout_save_reopen_contracts': True,
+                  'failure_isolation_contract': True,
+                  'execution_record_binds_manifest_and_report': True,
+              },
+              'python_matrix': matrix,
+              'python_312_order_independence': {
+                  'tests': matrix['3.12']['tests_passed'],
+                  'reverse': 'PASS',
+                  'fixed_seed': 20260728,
+                  'result': 'PASS',
+              },
+              'windows': {
+                  'runner': 'windows-2025',
+                  'python': '3.12',
+                  'tests_passed': int(os.environ['WINDOWS_PASSED']),
+                  'failures': int(os.environ['WINDOWS_FAILED']),
+                  'errors': int(os.environ['WINDOWS_ERRORS']),
+                  'skipped': int(os.environ['WINDOWS_SKIPPED']),
+              },
+              'quality': {
+                  'six_target_dependency_audit': 'PASS',
+                  'ruff': 'PASS',
+                  'ruff_format': 'PASS',
+                  'strict_mypy': 'PASS',
+                  'compileall': 'PASS',
+                  'source_tree_audit': 'PASS',
+                  'bandit_high_high': 'PASS',
+                  'distribution_build': 'PASS',
+                  'clean_wheel_install': 'PASS',
+                  'cli_demo': 'PASS',
+                  'mcp_surface': 'PASS',
+                  'windows_control_plane': 'PASS',
+                  'cryptography_version': '50.0.0',
+              },
+              'readme_visuals': {
+                  'svg_assets': 23,
+                  'visual_atlas_core_diagrams': 12,
+                  'self_contained': True,
+                  'external_scripts_fonts_images': False,
+                  'visual_system_version': 3,
+              },
+              'native_aspen_hysys_builder': 'NOT_IMPLEMENTED_PRODUCTION_SCOPE',
+              'real_simulator_status': 'PENDING_REAL_ASPEN_CERTIFICATION',
+          }
+          Path('docs/MAIN_SINGLE_BRANCH_VALIDATION.json').write_text(
+              json.dumps(evidence, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+
+          lines = [
+              '# AspenOps single-main qualification',
+              '',
+              '## Decision',
+              '',
+              '`PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS`',
+              '',
+              '## Validated scope',
+              '',
+              '- branch policy: `MAIN_ONLY`;',
+              f"- validated source: `{evidence['validated_source_sha']}`;",
+              f'- qualification run: `{run_id}`;',
+              '- milestone: `NATIVE_ADAPTER_CONFORMANCE_PREFLIGHT`;',
+              '- real commercial Aspen Plus/HYSYS runtime: `NOT_EXECUTED`;',
+              '- certification status: `PENDING_REAL_ASPEN_CERTIFICATION`.',
+              '',
+              '## Python and Windows matrix',
+              '',
+              '| Target | Passed | Failed | Errors | Skipped | Branch coverage |',
+              '|---|---:|---:|---:|---:|---:|',
+          ]
+          for version in ('3.11', '3.12', '3.13'):
+              row = matrix[version]
+              lines.append(
+                  f"| Python {version} | {row['tests_passed']} | {row['failures']} | "
+                  f"{row['errors']} | {row['skipped']} | "
+                  f"{row['branch_coverage_percent']:.2f}% |"
+              )
+          lines.append(
+              f"| Windows 2025 / Python 3.12 | {evidence['windows']['tests_passed']} | "
+              f"{evidence['windows']['failures']} | {evidence['windows']['errors']} | "
+              f"{evidence['windows']['skipped']} | not collected |"
+          )
+          lines.extend(
+              [
+                  '',
+                  'Python 3.12 reverse-order and fixed-seed (`20260728`) gates passed.',
+                  '',
+                  '## Native adapter conformance milestone',
+                  '',
+                  'A strict manifest now proves profile, adapter-contract, code/runtime identity,',
+                  'operation and adapter-key coverage, readback, save/reopen and failure-isolation',
+                  'capabilities before the first native compilation step. The execution record binds',
+                  'the manifest and conformance-report digests.',
+                  '',
+                  '## Capability boundary',
+                  '',
+                  'This is an offline preflight contract, not vendor certification. Licensed Aspen',
+                  'Plus/HYSYS Golden Cases and human engineering acceptance remain mandatory.',
+                  '',
+              ]
+          )
+          Path('docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md').write_text(
+              '\n'.join(lines),
+              encoding='utf-8',
+          )
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run python scripts/update_readme_gallery.py \
+            --evidence docs/MAIN_SINGLE_BRANCH_VALIDATION.json
+      - name: Validate generated evidence and documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning \
+            tests/test_documentation_contracts.py \
+            tests/test_readme_visual_assets.py \
+            tests/test_workflow_governance.py \
+            tests/test_source_tree_audit.py \
+            tests/test_artifact_upload_governance.py
+          git diff --check
+      - name: Commit clean qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "test: qualify native adapter conformance milestone"
+          git push origin HEAD:main
