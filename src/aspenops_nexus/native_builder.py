@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .compilation_plan import CompilationStep
+from .native_adapter_conformance import (
+    NativeAdapterManifest,
+    evaluate_native_adapter_conformance,
+)
 from .native_topology import (
     NativeTopologySnapshot,
     TopologyComparisonReport,
@@ -32,6 +36,9 @@ class NativeBuildAdapter(Protocol):
 
     @property
     def runtime_identity_sha256(self) -> str: ...
+
+    @property
+    def conformance_manifest(self) -> NativeAdapterManifest: ...
 
     def apply_step(self, step: CompilationStep) -> dict[str, Any]: ...
 
@@ -64,6 +71,8 @@ class NativeBuildExecutionRecord:
     qualification_evidence_sha256: str
     adapter_code_sha256: str
     runtime_identity_sha256: str
+    adapter_manifest_sha256: str
+    adapter_conformance_sha256: str
     runtime_authorization_sha256: str
     revocation_policy_sha256: str
     revocation_policy_signing_key_id: str
@@ -89,6 +98,8 @@ class NativeBuildExecutionRecord:
             "qualification_evidence_sha256": self.qualification_evidence_sha256,
             "adapter_code_sha256": self.adapter_code_sha256,
             "runtime_identity_sha256": self.runtime_identity_sha256,
+            "adapter_manifest_sha256": self.adapter_manifest_sha256,
+            "adapter_conformance_sha256": self.adapter_conformance_sha256,
             "runtime_authorization_sha256": self.runtime_authorization_sha256,
             "revocation_policy_sha256": self.revocation_policy_sha256,
             "revocation_policy_signing_key_id": self.revocation_policy_signing_key_id,
@@ -163,6 +174,25 @@ def execute_compilation_plan(
         raise NativeBuildError(
             "Native adapter runtime identity does not match the runtime qualification"
         )
+    try:
+        adapter_manifest = adapter.conformance_manifest
+        conformance = evaluate_native_adapter_conformance(
+            plan.base_plan,
+            adapter_manifest,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise NativeBuildError(f"Native adapter conformance manifest is invalid: {exc}") from exc
+    if adapter_manifest.adapter_code_sha256 != authorization.adapter_code_sha256:
+        raise NativeBuildError("Adapter manifest code hash does not match runtime authorization")
+    if adapter_manifest.runtime_identity_sha256 != authorization.runtime_identity_sha256:
+        raise NativeBuildError(
+            "Adapter manifest runtime identity does not match runtime authorization"
+        )
+    if not conformance.conformant:
+        raise NativeBuildError(
+            "Native adapter conformance failed before the first compilation step: "
+            f"{[item.code for item in conformance.issues]}"
+        )
 
     step_records: list[StepExecutionRecord] = []
     topology_reports: list[TopologyComparisonReport] = []
@@ -216,6 +246,8 @@ def execute_compilation_plan(
         qualification_evidence_sha256=authorization.qualification_evidence_sha256,
         adapter_code_sha256=authorization.adapter_code_sha256,
         runtime_identity_sha256=authorization.runtime_identity_sha256,
+        adapter_manifest_sha256=adapter_manifest.digest(),
+        adapter_conformance_sha256=conformance.digest(),
         runtime_authorization_sha256=authorization.digest(),
         revocation_policy_sha256=authorization.revocation_policy_sha256,
         revocation_policy_signing_key_id=authorization.revocation_policy_signing_key_id,
@@ -232,10 +264,10 @@ def execute_compilation_plan(
         topology_reports=tuple(topology_reports),
         layout_hashes=tuple(layout_hashes),
         boundary=(
-            "This execution record proves only that a freshly authorized adapter honored the "
-            "AspenOps compilation and readback contracts under a signed, checkpoint-validated "
-            "revocation policy with an independent current witness receipt. Real Aspen "
-            "certification additionally requires licensed runtime evidence and human engineering "
-            "acceptance."
+            "This execution record proves only that a freshly authorized, manifest-conformant "
+            "adapter honored the AspenOps compilation and readback contracts under a signed, "
+            "checkpoint-validated revocation policy with an independent current witness receipt. "
+            "Real Aspen certification additionally requires licensed runtime evidence and human "
+            "engineering acceptance."
         ),
     )
