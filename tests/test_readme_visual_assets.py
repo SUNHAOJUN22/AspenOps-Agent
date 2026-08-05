@@ -9,6 +9,7 @@ ASSET_DIR = ROOT / "docs" / "assets" / "readme"
 ARCHITECTURE = ROOT / "docs" / "architecture.md"
 MAX_SVG_BYTES = 64_000
 EXPECTED = {
+    "adapter-conformance.svg",
     "agent-pipeline.svg",
     "backend-capabilities.svg",
     "cache-singleflight.svg",
@@ -57,6 +58,7 @@ GOVERNED_WORKFLOWS = (
 )
 README_CONTRACTS = {
     "README.md": (
+        "## 原生适配器一致性门",
         "## 快速开始",
         "## 配置边界",
         "## 配置与路径安全策略",
@@ -103,6 +105,7 @@ README_CONTRACTS = {
         "PENDING_REAL_ASPEN_CERTIFICATION",
     ),
     "README.en.md": (
+        "## Native adapter conformance gate",
         "## Quick start",
         "## Configuration boundaries",
         "## Configuration and path safety",
@@ -164,7 +167,7 @@ def test_readme_visual_asset_inventory_is_complete_and_referenced() -> None:
         text = readme.read_text(encoding="utf-8")
         assert "AI" in text
         assert set(IMAGE_LINK.findall(text)) == expected_paths
-        assert "twenty-two" in text.casefold() or "二十二" in text
+        assert "twenty-three" in text.casefold() or "二十三" in text
 
 
 def test_readme_svgs_are_self_contained_safe_accessible_and_portable() -> None:
@@ -240,6 +243,10 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
     evidence_visual = (ASSET_DIR / "evidence-integrity.svg").read_text(encoding="utf-8")
     hotspot_visual = (ASSET_DIR / "performance-hotspot-map.svg").read_text(encoding="utf-8")
     startup_visual = (ASSET_DIR / "cold-warm-startup.svg").read_text(encoding="utf-8")
+    adapter_contract = (ROOT / "src/aspenops_nexus/native_adapter_conformance.py").read_text(
+        encoding="utf-8"
+    )
+    adapter_visual = (ASSET_DIR / "adapter-conformance.svg").read_text(encoding="utf-8")
 
     for marker in ("_SUPPORTED_BACKENDS", "_require_bool", "allowed_roots"):
         assert marker in config
@@ -319,6 +326,18 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
         assert marker in hotspot_visual
     for marker in ("Lightweight Bootstrap", "Import Time", "Hard Contracts"):
         assert marker in startup_visual
+    for marker in (
+        "NativeAdapterManifest",
+        "evaluate_native_adapter_conformance",
+        "failure_isolation",
+    ):
+        assert marker in adapter_contract
+    for marker in (
+        "Plan Requirements",
+        "Manifest Identity",
+        "Fail Before Mutation",
+    ):
+        assert marker in adapter_visual
 
 
 def test_readmes_keep_operational_product_surface_complete() -> None:

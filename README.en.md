@@ -6,7 +6,7 @@
 
 **Agent / CLI / Python → validated process intent → isolated execution → nonlinear solve → engineering decision → reproducible evidence**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V1](docs/performance-audit-2026-07-27.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Adapter Conformance](docs/native-adapter-conformance.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V1](docs/performance-audit-2026-07-27.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,14 +18,14 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses twenty-two original AI-generated SVG capability diagrams. They describe implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
+> This README uses twenty-three original AI-generated SVG capability diagrams. They describe implemented contracts and explicitly labelled planned work; Mock, Fake COM, software tests, portable performance, signatures, compatibility checks and integrity hashes are never presented as licensed Aspen engineering certification.
 
 
 <!-- AI_VISUAL_GALLERY:START -->
 
 ## AI visual atlas
 
-The twelve diagrams below provide a fast visual index. The complete README references twenty-two original, AI-assisted, self-contained SVG assets.
+The twelve diagrams below provide a fast visual index. The complete README references twenty-three original, AI-assisted, self-contained SVG assets.
 
 | Process intent and compilation | Execution isolation and validity | Scheduling, cache and evidence |
 |---|---|---|
@@ -83,6 +83,24 @@ AspenOps is not a wrapper that lets a model emit arbitrary COM scripts. It conne
 - non-finite values, invalid Boolean protocols and non-serializable diagnostics cannot silently become valid evidence;
 - accepted results bind request, model, registry, commit and evidence hashes;
 - DWSIM, IDAES, Modelica/FMI and automatic flowsheet compilers remain `planned`; unavailable execution fails closed.
+
+---
+
+## Native adapter conformance gate
+
+![Native adapter conformance gate](docs/assets/readme/adapter-conformance.svg)
+
+Before any native write, the executor now requires a strict
+`aspenops.native-adapter-manifest/v1`. The conformance gate binds the profile, adapter
+contract, code hash and runtime identity, then proves coverage of every operation and
+`adapter_key` required by the base compilation plan. Missing topology readback, layout
+readback, save/reopen or failure-isolation capabilities fail closed before the first plan
+step instead of being discovered after a commercial case has been partially mutated.
+
+The native execution record binds both the manifest digest and the conformance-report
+digest. This remains an offline contract gate: vendor objects, ports, save/reopen fidelity
+and solver behavior still require licensed Windows Golden Cases and human engineering
+review.
 
 ---
 
@@ -663,7 +681,7 @@ Real certification still requires licensed Windows, an available licence seat, a
 ```text
 .github/workflows/       four authoritative automation workflows
 docs/                    architecture, Windows, performance, certification and quality docs
-docs/assets/readme/      twenty-two test-governed README SVGs
+docs/assets/readme/      twenty-three test-governed README SVGs
 examples/                batch, optimization and Process Intent examples
 scripts/                 validators, dashboards, benchmarks, performance probes and Windows setup
 src/aspenops_nexus/      control plane, backends, Workers, scheduler, cache, optimization, evidence and MCP
@@ -738,7 +756,7 @@ No capability moves from planned to available without **code + tests + evidence*
 
 ## AI-generated visual asset inventory
 
-The following twenty-two original, self-contained SVGs live in `docs/assets/readme/`:
+The following twenty-three original, self-contained SVGs live in `docs/assets/readme/`:
 
 1. `hero-architecture.svg`
 2. `policy-path-safety.svg`

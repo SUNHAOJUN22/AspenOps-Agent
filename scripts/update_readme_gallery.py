@@ -45,7 +45,7 @@ def _gallery(*, chinese: bool) -> str:
     if chinese:
         title = "## AI 视觉图谱"
         intro = (
-            "下列十二张核心图提供快速视觉导航。README 全文共引用二十二张 "
+            "下列十二张核心图提供快速视觉导航。README 全文共引用二十三张 "
             "AspenOps 原创、AI 辅助设计的自包含 SVG。"
         )
         headers = "| 工程意图与编译 | 执行隔离与有效性 | 调度、缓存与证据 |"
@@ -57,7 +57,7 @@ def _gallery(*, chinese: bool) -> str:
         title = "## AI visual atlas"
         intro = (
             "The twelve diagrams below provide a fast visual index. The complete README "
-            "references twenty-two original, AI-assisted, self-contained SVG assets."
+            "references twenty-three original, AI-assisted, self-contained SVG assets."
         )
         headers = (
             "| Process intent and compilation | Execution isolation and validity | "
@@ -107,7 +107,7 @@ def _upsert_gallery(text: str, *, chinese: bool) -> str:
     )
     if pattern.search(text):
         return pattern.sub(block, text, count=1)
-    note = "> 本 README 使用二十二张" if chinese else "> This README uses twenty-two"
+    note = "> 本 README 使用二十三张" if chinese else "> This README uses twenty-three"
     note_index = text.find(note)
     divider_index = text.find("\n---", note_index)
     if note_index < 0 or divider_index < 0:

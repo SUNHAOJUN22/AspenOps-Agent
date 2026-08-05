@@ -6,7 +6,7 @@
 
 **自然语言意图 → 受控工程文档 → 强类型流程图 → 离线编译计划 → 隔离执行 → 工程判定 → 可验证证据**
 
-[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[English](README.en.md) · [Architecture](docs/architecture.md) · [Process Intent IR](docs/process-intent-ir.md) · [Adapter Conformance](docs/native-adapter-conformance.md) · [Windows Setup](docs/windows-setup.md) · [Performance](docs/performance.md) · [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,14 +18,14 @@
 
 ![AspenOps 总体架构](docs/assets/readme/hero-architecture.svg)
 
-> 本 README 使用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG 示意图。图像只表达仓库中已经实现的合同或明确标注的 planned 路线；它们不把 Mock、Fake COM、签名、哈希、离线编译或公共 Windows 测试包装成真实 Aspen 工程认证。
+> 本 README 使用二十三张 AspenOps 原创、AI 辅助设计的自包含 SVG 示意图。图像只表达仓库中已经实现的合同或明确标注的 planned 路线；它们不把 Mock、Fake COM、签名、哈希、离线编译或公共 Windows 测试包装成真实 Aspen 工程认证。
 
 
 <!-- AI_VISUAL_GALLERY:START -->
 
 ## AI 视觉图谱
 
-下列十二张核心图提供快速视觉导航。README 全文共引用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG。
+下列十二张核心图提供快速视觉导航。README 全文共引用二十三张 AspenOps 原创、AI 辅助设计的自包含 SVG。
 
 | 工程意图与编译 | 执行隔离与有效性 | 调度、缓存与证据 |
 |---|---|---|
@@ -116,6 +116,23 @@ Licensed simulator + human engineering acceptance
 - 人工工艺、安全、物性和设备验收。
 
 因此，系统的保证不是“任何一句话都能自动得到正确装置”，而是：**缺少工程输入、拓扑不一致、资格过期、写入未生效、未收敛、约束失败、衡算失败或证据身份不一致时，不得冒充成功。**
+
+---
+
+## 原生适配器一致性门
+
+![原生适配器一致性门](docs/assets/readme/adapter-conformance.svg)
+
+在任何原生写操作之前，执行器现在要求适配器提供严格的
+`aspenops.native-adapter-manifest/v1`。一致性门绑定 profile、adapter contract、
+代码哈希和运行时身份，并逐项覆盖基础编译计划要求的 operation 与
+`adapter_key`。拓扑读回、布局读回、保存重开和故障隔离能力缺失时，执行会在
+第一条计划步骤前 fail closed；不会等到商业模型被部分修改后才发现适配器能力
+不足。
+
+manifest 摘要与一致性报告摘要均写入原生执行记录。该门只证明离线合同覆盖；
+真实 vendor object、端口、保存重开和求解行为仍需持证 Windows Golden Cases
+与人工工程验收。
 
 ---
 
