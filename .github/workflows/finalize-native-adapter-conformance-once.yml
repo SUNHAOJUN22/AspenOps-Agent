@@ -27,6 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -f docs/assets/readme/adapter-conformance.svg
+          test -f design-system/aspenops-readme/pages/readme-visuals.md
           python scripts/apply_native_adapter_docs.py
           rm -f scripts/apply_native_adapter_docs.py
           rm -f .github/workflows/native-adapter-conformance-once.yml
