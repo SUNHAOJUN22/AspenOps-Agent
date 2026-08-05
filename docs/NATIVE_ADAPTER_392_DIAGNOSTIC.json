@@ -1,0 +1,82 @@
+{
+  "target_sha": "392cd64d7c1cdcdb728483c5950c84d865123525",
+  "runs": [
+    {
+      "id": 30989494740,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92251977953,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Process, scheduler, archive, backend, certification, IR, and workflow contracts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30989494829,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 92251978294,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": []
+        },
+        {
+          "id": 92251978422,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92251978441,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        },
+        {
+          "id": 92251978471,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30989492847,
+      "name": ".github/workflows/apply-native-adapter-conformance-once.yml",
+      "path": ".github/workflows/apply-native-adapter-conformance-once.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": []
+    },
+    {
+      "id": 30989493409,
+      "name": ".github/workflows/native-adapter-conformance-once.yml",
+      "path": ".github/workflows/native-adapter-conformance-once.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": []
+    }
+  ]
+}
