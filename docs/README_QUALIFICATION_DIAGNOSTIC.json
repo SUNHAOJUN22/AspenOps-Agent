@@ -1,0 +1,142 @@
+{
+  "schema": "aspenops.readme-qualification-diagnostic/v1",
+  "target_sha": "5757ac51254b21480068166e5c7fbca87415d765",
+  "runs": [
+    {
+      "id": 30967716923,
+      "name": "Windows control-plane contracts",
+      "path": ".github/workflows/windows-control-plane.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "event": "push",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716923",
+      "jobs": [
+        {
+          "id": 92185192094,
+          "name": "windows-contracts",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Process, scheduler, archive, backend, certification, IR, and workflow contracts"
+          ],
+          "log_tail": [],
+          "log_error": "HTTPError: HTTP Error 401: Server failed to authenticate the request. Please refer to the information in the www-authenticate header."
+        }
+      ]
+    },
+    {
+      "id": 30967716911,
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "event": "push",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716911",
+      "jobs": [
+        {
+          "id": 92185192098,
+          "name": "Quality, build and smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185192126,
+          "name": "Python 3.11 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ],
+          "log_tail": [],
+          "log_error": "HTTPError: HTTP Error 401: Server failed to authenticate the request. Please refer to the information in the www-authenticate header."
+        },
+        {
+          "id": 92185192139,
+          "name": "Python 3.13 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ],
+          "log_tail": [],
+          "log_error": "HTTPError: HTTP Error 401: Server failed to authenticate the request. Please refer to the information in the www-authenticate header."
+        },
+        {
+          "id": 92185192167,
+          "name": "Python 3.12 tests",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Pytest with branch coverage"
+          ],
+          "log_tail": [],
+          "log_error": "HTTPError: HTTP Error 401: Server failed to authenticate the request. Please refer to the information in the www-authenticate header."
+        }
+      ]
+    },
+    {
+      "id": 30967716901,
+      "name": "Final single-main README qualification",
+      "path": ".github/workflows/readme-main-qualification-once.yml",
+      "status": "completed",
+      "conclusion": "failure",
+      "event": "push",
+      "html_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716901",
+      "jobs": [
+        {
+          "id": 92185192023,
+          "name": "Python 3.11 full tests",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185192040,
+          "name": "Windows full control-plane suite",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185192044,
+          "name": "Python 3.13 full tests",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185192099,
+          "name": "Linux quality build wheel and MCP",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185192112,
+          "name": "Python 3.12 full tests and order gate",
+          "status": "completed",
+          "conclusion": "success",
+          "failed_steps": [],
+          "log_tail": []
+        },
+        {
+          "id": 92185782491,
+          "name": "Publish tested single-main tree",
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Create evidence on the tested workflow-free tree"
+          ],
+          "log_tail": [],
+          "log_error": "HTTPError: HTTP Error 401: Server failed to authenticate the request. Please refer to the information in the www-authenticate header."
+        }
+      ]
+    }
+  ]
+}
