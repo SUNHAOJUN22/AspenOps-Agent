@@ -1,0 +1,74 @@
+name: Diagnose README finalizer once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/diagnose-finalizer-once.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Read finalizer status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_SHA: f3de4ff272c0c6c6fdf5cfd2f9d9eb27714136cf
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, pathlib, urllib.request
+          repo = os.environ['REPO']
+          sha = os.environ['TARGET_SHA']
+          token = os.environ['GH_TOKEN']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'AspenOps-Finalizer-Diagnostic',
+          }
+          def get(url):
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          runs = get(f'https://api.github.com/repos/{repo}/actions/runs?head_sha={sha}&per_page=100').get('workflow_runs', [])
+          payload = {'target_sha': sha, 'runs': []}
+          for run in runs:
+              jobs = get(f"https://api.github.com/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100").get('jobs', [])
+              payload['runs'].append({
+                  'id': run['id'], 'name': run['name'], 'path': run.get('path'),
+                  'status': run['status'], 'conclusion': run.get('conclusion'),
+                  'jobs': [
+                      {
+                          'id': job['id'], 'name': job['name'], 'status': job['status'],
+                          'conclusion': job.get('conclusion'),
+                          'failed_steps': [s['name'] for s in job.get('steps', []) if s.get('conclusion') == 'failure'],
+                      }
+                      for job in jobs
+                  ],
+              })
+          pathlib.Path('docs/README_FINALIZER_DIAGNOSTIC.json').write_text(
+              json.dumps(payload, indent=2) + '\n', encoding='utf-8'
+          )
+          PY
+      - name: Commit and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/diagnose-finalizer-once.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/README_FINALIZER_DIAGNOSTIC.json .github/workflows/diagnose-finalizer-once.yml
+          git commit -m "test: record README finalizer diagnostic"
+          git push origin HEAD:main
