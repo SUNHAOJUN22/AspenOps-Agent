@@ -62,11 +62,11 @@
 
 ### 最新单一主干自动资格
 
-- 验证源码提交：`974a7f125fad6f7a5628295cc2c4157d22a41ad4`；
-- Linux CI：`30967716901`；Windows：`30967716901`；
-- Python 3.11：1186 passed，95.20% 分支覆盖率；
-- Python 3.12：1186 passed，95.20% 分支覆盖率；
-- Python 3.13：1186 passed，95.20% 分支覆盖率；
+- 验证源码提交：`0214fe417735c6162fd6f4317b2f0fc645cad552`；
+- Linux CI：`30992536823`；Windows：`30992536823`；
+- Python 3.11：1207 passed，95.27% 分支覆盖率；
+- Python 3.12：1207 passed，95.27% 分支覆盖率；
+- Python 3.13：1207 passed，95.27% 分支覆盖率；
 - Python 3.12 反序与固定种子顺序独立性门：通过；
 - 真实 Aspen/HYSYS：`PENDING_REAL_ASPEN_CERTIFICATION`。
 

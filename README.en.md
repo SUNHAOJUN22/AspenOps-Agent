@@ -56,11 +56,11 @@ The twelve diagrams below provide a fast visual index. The complete README refer
 
 ### Latest single-main automated qualification
 
-- Validated source commit: `974a7f125fad6f7a5628295cc2c4157d22a41ad4`;
-- Linux CI: `30967716901`; Windows: `30967716901`;
-- Python 3.11: 1186 passed; 95.20% branch coverage;
-- Python 3.12: 1186 passed; 95.20% branch coverage;
-- Python 3.13: 1186 passed; 95.20% branch coverage;
+- Validated source commit: `0214fe417735c6162fd6f4317b2f0fc645cad552`;
+- Linux CI: `30992536823`; Windows: `30992536823`;
+- Python 3.11: 1207 passed; 95.27% branch coverage;
+- Python 3.12: 1207 passed; 95.27% branch coverage;
+- Python 3.13: 1207 passed; 95.27% branch coverage;
 - Python 3.12 reverse and fixed-seed order gates passed;
 - Real Aspen/HYSYS: `PENDING_REAL_ASPEN_CERTIFICATION`.
 

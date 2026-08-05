@@ -1,38 +1,47 @@
 {
-  "schema": "aspenops.main-single-branch-qualification/v2",
+  "schema": "aspenops.main-single-branch-qualification/v3",
   "decision": "PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS",
   "branch_policy": "MAIN_ONLY",
-  "validated_source_sha": "974a7f125fad6f7a5628295cc2c4157d22a41ad4",
-  "qualification_orchestration_sha": "5757ac51254b21480068166e5c7fbca87415d765",
-  "qualification_run_id": 30967716901,
-  "qualification_run_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716901",
-  "ci_run_id": 30967716901,
-  "windows_run_id": 30967716901,
+  "validated_source_sha": "0214fe417735c6162fd6f4317b2f0fc645cad552",
+  "qualification_run_id": 30992536823,
+  "qualification_run_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30992536823",
+  "ci_run_id": 30992536823,
+  "windows_run_id": 30992536823,
+  "milestone": "NATIVE_ADAPTER_CONFORMANCE_PREFLIGHT",
+  "native_adapter_conformance": {
+    "manifest_schema": "aspenops.native-adapter-manifest/v1",
+    "report_schema": "aspenops.native-adapter-conformance-report/v1",
+    "fail_before_first_native_step": true,
+    "operation_and_adapter_key_coverage": true,
+    "topology_layout_save_reopen_contracts": true,
+    "failure_isolation_contract": true,
+    "execution_record_binds_manifest_and_report": true
+  },
   "python_matrix": {
     "3.11": {
-      "tests_passed": 1186,
+      "tests_passed": 1207,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "branch_coverage_percent": 95.2
+      "branch_coverage_percent": 95.27
     },
     "3.12": {
-      "tests_passed": 1186,
+      "tests_passed": 1207,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "branch_coverage_percent": 95.2
+      "branch_coverage_percent": 95.27
     },
     "3.13": {
-      "tests_passed": 1186,
+      "tests_passed": 1207,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "branch_coverage_percent": 95.2
+      "branch_coverage_percent": 95.27
     }
   },
   "python_312_order_independence": {
-    "tests": 1186,
+    "tests": 1207,
     "reverse": "PASS",
     "fixed_seed": 20260728,
     "result": "PASS"
@@ -40,7 +49,7 @@
   "windows": {
     "runner": "windows-2025",
     "python": "3.12",
-    "tests_passed": 1186,
+    "tests_passed": 1207,
     "failures": 0,
     "errors": 0,
     "skipped": 0
@@ -61,10 +70,11 @@
     "cryptography_version": "50.0.0"
   },
   "readme_visuals": {
-    "svg_assets": 22,
+    "svg_assets": 23,
     "visual_atlas_core_diagrams": 12,
     "self_contained": true,
-    "external_scripts_fonts_images": false
+    "external_scripts_fonts_images": false,
+    "visual_system_version": 3
   },
   "native_aspen_hysys_builder": "NOT_IMPLEMENTED_PRODUCTION_SCOPE",
   "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION"
