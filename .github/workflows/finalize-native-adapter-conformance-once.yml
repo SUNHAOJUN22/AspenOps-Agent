@@ -32,17 +32,22 @@ jobs:
           rm -f .github/workflows/native-adapter-conformance-once.yml
           rm -f .github/workflows/apply-native-adapter-conformance-once.yml
           rm -f .github/workflows/finalize-native-adapter-conformance-once.yml
+          rm -f .github/workflows/diagnose-native-adapter-ruff-once.yml
           rm -f docs/NATIVE_ADAPTER_CONFORMANCE_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_APPLY_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_C48_DIAGNOSTIC.json
           rm -f docs/NATIVE_ADAPTER_392_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_FINALIZE_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_RUFF_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_FORMAT_DIAGNOSTIC.txt
       - name: Validate workflow-free implementation
         shell: bash
         run: |
           set -euo pipefail
           uv sync --frozen --extra dev --extra agent --extra signing
-          uv run ruff check --fix .
           uv run ruff format .
+          uv run ruff check --fix .
+          uv run ruff format --check .
           uv run mypy src
           uv run pytest -W error::ResourceWarning \
             --cov=aspenops_nexus \
