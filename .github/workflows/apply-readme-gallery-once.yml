@@ -1,0 +1,49 @@
+name: Apply README visual atlas once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-readme-gallery-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-apply-readme-gallery-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Update both README files deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/update_readme_gallery.py
+          git diff --check
+          grep -q '<!-- AI_VISUAL_GALLERY:START -->' README.md
+          grep -q '<!-- AI_VISUAL_GALLERY:START -->' README.en.md
+          grep -q '## AI 视觉图谱' README.md
+          grep -q '## AI visual atlas' README.en.md
+      - name: Commit README refresh and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-readme-gallery-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md README.en.md scripts/update_readme_gallery.py .github/workflows/apply-readme-gallery-once.yml
+          if git diff --cached --quiet; then
+            echo 'README visual atlas is already current'
+            exit 0
+          fi
+          git commit -m 'docs: publish synchronized AI visual atlas'
+          git push origin HEAD:main
