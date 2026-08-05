@@ -29,25 +29,37 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import textwrap
 
           source = Path('.github/workflows/native-adapter-conformance-once.yml').read_text(
               encoding='utf-8'
           )
-          py_start = source.index("          python - <<'PY'\n") + len("          python - <<'PY'\n")
-          py_end = source.index("\n          PY\n          cat > docs/assets/readme/adapter-conformance.svg", py_start)
-          payload = textwrap.dedent(source[py_start:py_end])
+          py_marker = "          python - <<'PY'\n"
+          py_start = source.index(py_marker) + len(py_marker)
+          py_end = source.index(
+              "\n          PY\n          cat > docs/assets/readme/adapter-conformance.svg",
+              py_start,
+          )
+          raw_payload = source[py_start:py_end]
+          payload = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in raw_payload.splitlines()
+          )
           exec(compile(payload, '<native-adapter-conformance-payload>', 'exec'))
 
           svg_marker = "          cat > docs/assets/readme/adapter-conformance.svg <<'SVG'\n"
           svg_start = source.index(svg_marker, py_end) + len(svg_marker)
           svg_end = source.index("\n          SVG\n", svg_start)
-          svg = textwrap.dedent(source[svg_start:svg_end]).strip() + '\n'
+          raw_svg = source[svg_start:svg_end]
+          svg = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in raw_svg.splitlines()
+          ).strip() + '\n'
           Path('docs/assets/readme/adapter-conformance.svg').write_text(svg, encoding='utf-8')
           PY
           rm -f .github/workflows/native-adapter-conformance-once.yml
           rm -f .github/workflows/apply-native-adapter-conformance-once.yml
           rm -f docs/NATIVE_ADAPTER_CONFORMANCE_DIAGNOSTIC.json
+          rm -f docs/NATIVE_ADAPTER_APPLY_DIAGNOSTIC.json
       - name: Validate implementation
         shell: bash
         run: |
