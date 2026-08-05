@@ -25,7 +25,7 @@
 
 ## AI 视觉图谱
 
-下列十二张核心图提供快速视觉导航；README 全文共引用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG。所有图片均为仓库内矢量资产，不加载外部脚本、字体或远程图像。
+下列十二张核心图提供快速视觉导航。README 全文共引用二十二张 AspenOps 原创、AI 辅助设计的自包含 SVG。
 
 | 工程意图与编译 | 执行隔离与有效性 | 调度、缓存与证据 |
 |---|---|---|
@@ -63,12 +63,11 @@
 ### 最新单一主干自动资格
 
 - 验证源码提交：`c66300e38a5d3ce2d595c01398ba912627dfe90c`；
-- 标准 Linux CI：`30938876928`；标准 Windows control plane：`30938874028`；
-- Python 3.11：1186 passed，0 failed，0 skipped，95.20% branch coverage；
-- Python 3.12：1186 passed，0 failed，0 skipped，95.20% branch coverage，并通过反序与固定种子顺序独立性；
-- Python 3.13：1186 passed，0 failed，0 skipped，95.20% branch coverage；
-- 六组合冻结依赖审计、Ruff、formatter、strict mypy、Bandit、build、clean Wheel、MCP 与 Windows control plane：通过；
-- 详细证据：[single-main qualification](docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md)；
+- Linux CI：`30938876928`；Windows：`30938874028`；
+- Python 3.11：1186 passed，95.20% 分支覆盖率；
+- Python 3.12：1186 passed，95.20% 分支覆盖率；
+- Python 3.13：1186 passed，95.20% 分支覆盖率；
+- Python 3.12 反序与固定种子顺序独立性门：通过；
 - 真实 Aspen/HYSYS：`PENDING_REAL_ASPEN_CERTIFICATION`。
 
 <!-- MAIN_SINGLE_BRANCH_QUALIFICATION:END -->

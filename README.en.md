@@ -25,7 +25,7 @@
 
 ## AI visual atlas
 
-The twelve core diagrams below provide a fast visual index. Across the full README, AspenOps references twenty-two original, AI-assisted, self-contained SVG assets. They are repository-local vectors with no external scripts, fonts or remote images.
+The twelve diagrams below provide a fast visual index. The complete README references twenty-two original, AI-assisted, self-contained SVG assets.
 
 | Process intent and compilation | Execution isolation and validity | Scheduling, cache and evidence |
 |---|---|---|
@@ -34,7 +34,7 @@ The twelve core diagrams below provide a fast visual index. Across the full READ
 | ![Backend capabilities](docs/assets/readme/backend-capabilities.svg) | ![Worker ownership](docs/assets/readme/worker-ownership-recycle.svg) | ![Evidence chain](docs/assets/readme/evidence-chain.svg) |
 | ![Policy and paths](docs/assets/readme/policy-path-safety.svg) | ![Optimization lifecycle](docs/assets/readme/optimization-lifecycle.svg) | ![Licensed certification](docs/assets/readme/licensed-certification.svg) |
 
-> These visuals explain software contracts only. Flowsheets, signatures, hashes, Mock, Fake COM and public CI do not replace licensed Aspen Plus/HYSYS engineering validation.
+> These visuals explain software contracts only. Flowsheets, signatures, hashes, Mock, Fake COM and public CI do not replace licensed Aspen engineering validation.
 
 <!-- AI_VISUAL_GALLERY:END -->
 
@@ -46,11 +46,9 @@ The twelve core diagrams below provide a fast visual index. Across the full READ
 |---|---|
 | Default and only long-lived branch | `main` |
 | Package | `aspenops-nexus 2.0.0` |
-| Public matrix | Python 3.11, 3.12 and 3.13; Linux and Windows dependency audits |
-| Phase 0 | Immutable execution artifacts, cache/evidence identity and read/write contracts implemented |
-| Phase 1 | ProcessRequirement v1, ProcessDesignIR v2, rules, templates and SVG preview implemented |
-| Phase 2 | Aspen Plus/HYSYS 14/15 offline compilation contracts implemented as `OFFLINE_CONTRACT_ONLY` |
-| Phase 3–7 | Signed qualification, licensed link, fresh authorization, revocation chain and witness receipt implemented |
+| Phase 0–1 | Execution identity and governed design contracts implemented |
+| Phase 2 | Offline simulator compilation contracts only |
+| Phase 3–7 | Signed qualification and revocation controls implemented |
 | Native new-flowsheet builder | **Not implemented for production scope** |
 | Licensed Aspen status | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
@@ -59,18 +57,17 @@ The twelve core diagrams below provide a fast visual index. Across the full READ
 ### Latest single-main automated qualification
 
 - Validated source commit: `c66300e38a5d3ce2d595c01398ba912627dfe90c`;
-- Standard Linux CI: `30938876928`; Windows control plane: `30938874028`;
-- | Python 3.11 | 1186 passed; 95.20% branch coverage |
-- | Python 3.12 | 1186 passed; 95.20% branch coverage |
-- | Python 3.13 | 1186 passed; 95.20% branch coverage |
-- Python 3.12 reverse-order and fixed-seed order-independence gates passed;
-- Frozen dependency audits, Ruff, formatter, strict mypy, Bandit, build, clean Wheel, MCP and Windows control-plane gates passed;
-- Evidence: [single-main qualification](docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md);
+- Linux CI: `30938876928`; Windows: `30938874028`;
+- Python 3.11: 1186 passed; 95.20% branch coverage;
+- Python 3.12: 1186 passed; 95.20% branch coverage;
+- Python 3.13: 1186 passed; 95.20% branch coverage;
+- Python 3.12 reverse and fixed-seed order gates passed;
 - Real Aspen/HYSYS: `PENDING_REAL_ASPEN_CERTIFICATION`.
 
 <!-- MAIN_SINGLE_BRANCH_QUALIFICATION:END -->
 
-Archived evidence proves only the cited source commit and Actions runs. Public CI validates software contracts; it does not certify a commercial Aspen installation, licence, property method, equipment selection, flowsheet or engineering result.
+Archived validated baseline evidence proves only the cited source commit and Actions runs. It is not an automatic claim about arbitrary later commits.
+Public CI validates software contracts; it does not certify a commercial Aspen installation, property method, equipment selection, flowsheet or engineering result.
 
 ---
 
