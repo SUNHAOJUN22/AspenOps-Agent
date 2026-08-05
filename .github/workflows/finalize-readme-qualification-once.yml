@@ -1,0 +1,158 @@
+name: Finalize README qualification evidence once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-readme-qualification-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Build permanent qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/finalize-readme-qualification-once.yml
+          rm -f .github/workflows/readme-main-qualification-once.yml
+          rm -f docs/README_QUALIFICATION_DIAGNOSTIC.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence = {
+              "schema": "aspenops.main-single-branch-qualification/v2",
+              "decision": "PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS",
+              "branch_policy": "MAIN_ONLY",
+              "validated_source_sha": "5757ac51254b21480068166e5c7fbca87415d765",
+              "tested_workflow_free_base_sha": "974a7f125fad6f7a5628295cc2c4157d22a41ad4",
+              "qualification_run_id": 30967716901,
+              "qualification_run_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716901",
+              "python_matrix": {
+                  "3.11": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "branch_coverage_percent": 95.20},
+                  "3.12": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "branch_coverage_percent": 95.20},
+                  "3.13": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "branch_coverage_percent": 95.20},
+              },
+              "python_312_order_independence": {"reverse": "PASS", "fixed_seed": 20260728, "result": "PASS", "tests": 1186},
+              "windows": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "runner": "windows-2025"},
+              "quality": {
+                  "six_target_dependency_audit": "PASS",
+                  "ruff": "PASS",
+                  "ruff_format": "PASS",
+                  "strict_mypy": "PASS",
+                  "compileall": "PASS",
+                  "source_tree_audit": "PASS",
+                  "bandit_high_high": "PASS",
+                  "distribution_build": "PASS",
+                  "clean_wheel_install": "PASS",
+                  "cli_demo": "PASS",
+                  "mcp_surface": "PASS",
+                  "windows_control_plane": "PASS",
+              },
+              "readme_visuals": {
+                  "svg_assets": 22,
+                  "visual_atlas_core_diagrams": 12,
+                  "self_contained": True,
+                  "external_scripts_fonts_images": False,
+              },
+              "native_aspen_hysys_builder": "NOT_IMPLEMENTED_PRODUCTION_SCOPE",
+              "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+          }
+          Path("docs/MAIN_SINGLE_BRANCH_VALIDATION.json").write_text(
+              json.dumps(evidence, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          report = """# AspenOps single-main qualification
+
+## Decision
+
+`PASS_CONTROL_PLANE_AND_BUILD_CONTRACTS`
+
+## Validated scope
+
+- branch policy: `MAIN_ONLY`;
+- validated workflow source: `5757ac51254b21480068166e5c7fbca87415d765`;
+- workflow-free tested base: `974a7f125fad6f7a5628295cc2c4157d22a41ad4`;
+- qualification run: `30967716901`;
+- real commercial Aspen Plus/HYSYS runtime: `NOT_EXECUTED`;
+- certification status: `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+## Python and Windows matrix
+
+| Target | Passed | Failed | Errors | Skipped | Branch coverage |
+|---|---:|---:|---:|---:|---:|
+| Python 3.11 | 1186 | 0 | 0 | 0 | 95.20% |
+| Python 3.12 | 1186 | 0 | 0 | 0 | 95.20% |
+| Python 3.13 | 1186 | 0 | 0 | 0 | 95.20% |
+| Windows 2025 / Python 3.12 | 1186 | 0 | 0 | 0 | not collected |
+
+Python 3.12 reverse-order and fixed-seed (`20260728`) order-independence gates passed for all 1186 tests.
+
+## Quality gates
+
+Six-target frozen dependency audit, Ruff, exact formatter, strict mypy, compileall,
+source-tree audit, high/high Bandit, distribution build, clean Wheel installation,
+CLI demo, MCP surface and Windows control-plane validation passed.
+
+## README visual contract
+
+The Chinese and English README files use twenty-two repository-local, self-contained,
+AI-assisted SVG diagrams. The twelve-diagram visual atlas provides the primary navigation.
+The assets contain no remote scripts, external fonts or remote images and remain bound to
+implemented software contracts or clearly labelled planned scope.
+
+## Capability boundary
+
+The validated repository includes immutable execution artifacts, typed process
+requirements and ProcessDesignIR v2, deterministic engineering rules, offline Aspen
+Plus/HYSYS 14/15 compilation contracts, signed runtime qualification, fresh execution
+authorization, chained revocation policies and an independent short-lived witness receipt.
+
+It does **not** yet include a production native builder that can take arbitrary natural
+language and safely create any Aspen Plus/HYSYS flowsheet. No licensed Aspen Plus V15 or
+HYSYS V15 Golden Case, native topology/layout roundtrip, commercial solver result or
+human engineering acceptance was executed by these public workflows.
+"""
+          Path("docs/MAIN_SINGLE_BRANCH_QUALIFICATION.md").write_text(report, encoding="utf-8")
+          PY
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run python scripts/update_readme_gallery.py --evidence docs/MAIN_SINGLE_BRANCH_VALIDATION.json
+      - name: Validate final workflow-free documentation tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/finalize-readme-qualification-once.yml
+          test ! -e .github/workflows/readme-main-qualification-once.yml
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning \
+            tests/test_documentation_contracts.py \
+            tests/test_readme_visual_assets.py \
+            tests/test_workflow_governance.py \
+            tests/test_source_tree_audit.py \
+            tests/test_artifact_upload_governance.py
+          git diff --check
+      - name: Commit final README and qualification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "docs: publish final single-main README qualification"
+          git push origin HEAD:main
