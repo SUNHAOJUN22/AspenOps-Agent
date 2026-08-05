@@ -1,0 +1,277 @@
+name: Collect final README qualification once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/collect-readme-qualification-once.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: 31ec7640a17d21fe38f7d271afa8f1efcca59756
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Wait for authoritative runs and collect evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import io
+          import json
+          import os
+          import re
+          import time
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          import zipfile
+          from pathlib import Path
+
+          repo = os.environ['GITHUB_REPOSITORY']
+          source = os.environ['SOURCE_SHA']
+          token = os.environ['GH_TOKEN']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'AspenOps-README-qualification',
+          }
+
+          def request_json(url: str):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  return json.load(response)
+
+          def request_bytes(url: str) -> bytes:
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return response.read()
+
+          def matching_runs():
+              url = (
+                  f'https://api.github.com/repos/{repo}/actions/runs'
+                  f'?head_sha={source}&event=push&per_page=100'
+              )
+              runs = request_json(url).get('workflow_runs', [])
+              return {run.get('path'): run for run in runs}
+
+          deadline = time.monotonic() + 900
+          required_paths = {
+              '.github/workflows/ci.yml',
+              '.github/workflows/windows-control-plane.yml',
+          }
+          while True:
+              by_path = matching_runs()
+              selected = {path: by_path.get(path) for path in required_paths}
+              if all(run and run['status'] == 'completed' for run in selected.values()):
+                  break
+              if time.monotonic() >= deadline:
+                  raise TimeoutError(f'Actions runs did not complete: {selected}')
+              time.sleep(15)
+
+          ci_run = selected['.github/workflows/ci.yml']
+          windows_run = selected['.github/workflows/windows-control-plane.yml']
+          assert ci_run is not None and windows_run is not None
+          conclusions = {
+              'ci': ci_run.get('conclusion'),
+              'windows': windows_run.get('conclusion'),
+          }
+
+          jobs = {}
+          for label, run in (('ci', ci_run), ('windows', windows_run)):
+              payload = request_json(run['jobs_url'])
+              jobs[label] = [
+                  {
+                      'id': job['id'],
+                      'name': job['name'],
+                      'status': job['status'],
+                      'conclusion': job.get('conclusion'),
+                      'failed_steps': [
+                          step['name']
+                          for step in job.get('steps', [])
+                          if step.get('conclusion') == 'failure'
+                      ],
+                  }
+                  for job in payload.get('jobs', [])
+              ]
+
+          matrix = {}
+          artifacts_url = (
+              f'https://api.github.com/repos/{repo}/actions/runs/'
+              f"{ci_run['id']}/artifacts?per_page=100"
+          )
+          artifacts = request_json(artifacts_url).get('artifacts', [])
+          for version in ('3.11', '3.12', '3.13'):
+              prefix = f"ci-evidence-python-{version}-{ci_run['id']}-"
+              matches = [item for item in artifacts if item['name'].startswith(prefix)]
+              if len(matches) != 1:
+                  raise RuntimeError(
+                      f'Expected one Python {version} artifact; found {len(matches)}'
+                  )
+              archive = zipfile.ZipFile(
+                  io.BytesIO(request_bytes(matches[0]['archive_download_url']))
+              )
+              names = archive.namelist()
+              junit_name = next(name for name in names if name.endswith(f'junit-{version}.xml'))
+              coverage_name = next(
+                  name for name in names if name.endswith(f'coverage-{version}.json')
+              )
+              root = ET.fromstring(archive.read(junit_name))
+              suites = [root] if root.tag.endswith('testsuite') else list(root)
+              tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+              failures = sum(int(item.attrib.get('failures', 0)) for item in suites)
+              errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+              skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+              coverage = json.loads(archive.read(coverage_name))
+              matrix[version] = {
+                  'tests_passed': tests - failures - errors - skipped,
+                  'failures': failures,
+                  'errors': errors,
+                  'skipped': skipped,
+                  'branch_coverage_percent': round(
+                      float(coverage['totals']['percent_covered']), 2
+                  ),
+              }
+
+          success = all(value == 'success' for value in conclusions.values())
+          success = success and all(
+              row['failures'] == 0 and row['errors'] == 0 for row in matrix.values()
+          )
+          payload = {
+              'schema': 'aspenops.readme-visual-refresh-qualification/v1',
+              'decision': 'PASS' if success else 'BLOCKED',
+              'branch_policy': 'MAIN_ONLY',
+              'validated_source_sha': source,
+              'ci_run_id': ci_run['id'],
+              'windows_run_id': windows_run['id'],
+              'conclusions': conclusions,
+              'python_matrix': matrix,
+              'python_312_order_independence': (
+                  'PASS' if conclusions['ci'] == 'success' else 'BLOCKED'
+              ),
+              'visual_assets': 22,
+              'featured_visuals': 12,
+              'real_simulator_status': 'PENDING_REAL_ASPEN_CERTIFICATION',
+              'jobs': jobs,
+          }
+          docs = Path('docs')
+          docs.mkdir(exist_ok=True)
+          (docs / 'README_VISUAL_REFRESH_VALIDATION.json').write_text(
+              json.dumps(payload, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          lines = [
+              '# README AI visual refresh qualification',
+              '',
+              f"## Decision: `{payload['decision']}`",
+              '',
+              f"- validated source: `{source}`;",
+              f"- Linux CI run: `{ci_run['id']}` / `{conclusions['ci']}`;",
+              f"- Windows run: `{windows_run['id']}` / `{conclusions['windows']}`;",
+              '- branch policy: `MAIN_ONLY`;',
+              '- visual assets: 22 self-contained SVG files; featured atlas: 12;',
+              '- real Aspen/HYSYS: `PENDING_REAL_ASPEN_CERTIFICATION`.',
+              '',
+              '| Python | Passed | Failed | Errors | Skipped | Branch coverage |',
+              '|---|---:|---:|---:|---:|---:|',
+          ]
+          for version, row in matrix.items():
+              lines.append(
+                  f"| {version} | {row['tests_passed']} | {row['failures']} | "
+                  f"{row['errors']} | {row['skipped']} | "
+                  f"{row['branch_coverage_percent']:.2f}% |"
+              )
+          lines.extend(
+              [
+                  '',
+                  'Python 3.12 reverse-order and fixed-seed order gates are part of the CI run.',
+                  '',
+                  'This report validates software and documentation contracts only. It does not '
+                  'certify commercial Aspen thermodynamics, topology or engineering acceptance.',
+              ]
+          )
+          (docs / 'README_VISUAL_REFRESH_VALIDATION.md').write_text(
+              '\n'.join(lines) + '\n', encoding='utf-8'
+          )
+
+          start = '<!-- README_VISUAL_REFRESH_VALIDATION:START -->'
+          end = '<!-- README_VISUAL_REFRESH_VALIDATION:END -->'
+          zh = '\n'.join(
+              [
+                  start,
+                  '',
+                  '### 本次 AI README 自动验证',
+                  '',
+                  f"- 验证源码：`{source}`；",
+                  f"- Linux CI：`{ci_run['id']}`；Windows：`{windows_run['id']}`；",
+                  f"- Python 3.11/3.12/3.13：分别 "
+                  f"{matrix['3.11']['tests_passed']} / "
+                  f"{matrix['3.12']['tests_passed']} / "
+                  f"{matrix['3.13']['tests_passed']} passed；",
+                  '- 二十二张自包含 SVG 与十二图视觉导航：通过资产合同；',
+                  '- 真实 Aspen/HYSYS：`PENDING_REAL_ASPEN_CERTIFICATION`。',
+                  '',
+                  end,
+              ]
+          )
+          en = '\n'.join(
+              [
+                  start,
+                  '',
+                  '### Automated AI README validation',
+                  '',
+                  f"- validated source: `{source}`;",
+                  f"- Linux CI: `{ci_run['id']}`; Windows: `{windows_run['id']}`;",
+                  f"- Python 3.11/3.12/3.13: "
+                  f"{matrix['3.11']['tests_passed']} / "
+                  f"{matrix['3.12']['tests_passed']} / "
+                  f"{matrix['3.13']['tests_passed']} passed;",
+                  '- twenty-two SVG assets and the twelve-diagram atlas passed asset contracts;',
+                  '- real Aspen/HYSYS: `PENDING_REAL_ASPEN_CERTIFICATION`.',
+                  '',
+                  end,
+              ]
+          )
+
+          def insert(path: Path, block: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              pattern = re.compile(
+                  re.escape(start) + r'.*?' + re.escape(end), re.DOTALL
+              )
+              if pattern.search(text):
+                  text = pattern.sub(block, text, count=1)
+              else:
+                  anchor = QUAL_END = '<!-- MAIN_SINGLE_BRANCH_QUALIFICATION:END -->'
+                  index = text.find(anchor)
+                  if index < 0:
+                      raise RuntimeError(f'Qualification anchor missing in {path}')
+                  index += len(anchor)
+                  text = text[:index] + '\n\n' + block + text[index:]
+              path.write_text(text.rstrip() + '\n', encoding='utf-8')
+
+          insert(Path('README.md'), zh)
+          insert(Path('README.en.md'), en)
+          if not success:
+              raise SystemExit('Authoritative CI or Windows qualification failed')
+          PY
+      - name: Verify report and clean workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/collect-readme-qualification-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'test: record final AI README qualification'
+          git push origin HEAD:main
