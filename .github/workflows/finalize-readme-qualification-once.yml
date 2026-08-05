@@ -42,6 +42,8 @@ jobs:
               "tested_workflow_free_base_sha": "974a7f125fad6f7a5628295cc2c4157d22a41ad4",
               "qualification_run_id": 30967716901,
               "qualification_run_url": "https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/runs/30967716901",
+              "ci_run_id": 30967716901,
+              "windows_run_id": 30967716901,
               "python_matrix": {
                   "3.11": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "branch_coverage_percent": 95.20},
                   "3.12": {"tests_passed": 1186, "failures": 0, "errors": 0, "skipped": 0, "branch_coverage_percent": 95.20},
