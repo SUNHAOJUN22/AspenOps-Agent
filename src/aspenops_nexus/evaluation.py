@@ -16,6 +16,8 @@ from .units import convert
 def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
     if isinstance(raw, bool | str):
         return raw
+    if not isinstance(raw, int | float):
+        return raw
     numeric = float(raw)
     if not math.isfinite(numeric):
         return numeric
@@ -23,13 +25,21 @@ def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
     return convert(numeric, node.native_unit, target_unit)
 
 
-def _finite(value: Any) -> bool:
-    if isinstance(value, bool | str):
-        return True
-    try:
-        return math.isfinite(float(value))
-    except (TypeError, ValueError):
-        return False
+def _finite_number(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int | float)
+        and math.isfinite(float(value))
+    )
+
+
+def _numeric_value(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"Expected numeric simulator value, observed {type(value).__name__}")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Simulator value is non-finite")
+    return number
 
 
 def _non_finite_label(value: float) -> str:
@@ -187,12 +197,23 @@ def evaluate(
         )
 
         non_finite_outputs: dict[str, str] = {}
+        non_numeric_outputs: dict[str, str] = {}
         for binding in active_plan.output_bindings:
             converted = _converted(
                 raw_by_identity[binding.identity], binding.node, binding.spec.unit
             )
             units[binding.output_key] = binding.spec.unit or binding.node.native_unit
-            if not _finite(converted):
+            if binding.node.native_unit is None and isinstance(converted, bool | str):
+                values[binding.output_key] = converted
+                continue
+            if isinstance(converted, bool) or not isinstance(converted, int | float):
+                values[binding.output_key] = None
+                non_numeric_outputs[binding.output_key] = type(converted).__name__
+                if binding.spec.required:
+                    violations.append(f"non_numeric_required_output:{binding.output_key}")
+                    feasible = False
+                continue
+            if not _finite_number(converted):
                 numeric = float(converted)
                 values[binding.output_key] = None
                 non_finite_outputs[binding.output_key] = _non_finite_label(numeric)
@@ -201,6 +222,8 @@ def evaluate(
                     feasible = False
                 continue
             values[binding.output_key] = converted
+        if non_numeric_outputs:
+            diagnostics["non_numeric_outputs"] = non_numeric_outputs
         if non_finite_outputs:
             diagnostics["non_finite_outputs"] = non_finite_outputs
         diagnostics["state_trace"].append("outputs_read")
@@ -216,7 +239,7 @@ def evaluate(
                 compiled_constraint.spec.unit,
             )
             try:
-                actual = float(converted)
+                actual = _numeric_value(converted)
             except (TypeError, ValueError):
                 constraint_violation_finite = False
                 constraint_details.append(
@@ -236,28 +259,6 @@ def evaluate(
                     }
                 )
                 violations.append(f"constraint_non_numeric:{name}")
-                violations.append(f"constraint_failed:{name}")
-                feasible = False
-                continue
-            if not math.isfinite(actual):
-                constraint_violation_finite = False
-                constraint_details.append(
-                    {
-                        "name": name,
-                        "actual": None,
-                        "operator": compiled_constraint.spec.operator,
-                        "limit": compiled_constraint.spec.value,
-                        "tolerance": compiled_constraint.spec.tolerance,
-                        "violation": None,
-                        "unit": (
-                            compiled_constraint.spec.unit or compiled_constraint.node.native_unit
-                        ),
-                        "passed": False,
-                        "failure": "non_finite",
-                        "non_finite_value": _non_finite_label(actual),
-                    }
-                )
-                violations.append(f"constraint_non_finite:{name}")
                 violations.append(f"constraint_failed:{name}")
                 feasible = False
                 continue
@@ -325,20 +326,12 @@ def evaluate(
                     compiled_term.spec.unit,
                 )
                 try:
-                    numeric = float(converted)
+                    numeric = _numeric_value(converted)
                 except (TypeError, ValueError):
                     invalid_terms.append(
                         {
                             "identity": compiled_term.identity,
                             "value": f"non_numeric:{type(converted).__name__}",
-                        }
-                    )
-                    continue
-                if not math.isfinite(numeric):
-                    invalid_terms.append(
-                        {
-                            "identity": compiled_term.identity,
-                            "value": _non_finite_label(numeric),
                         }
                     )
                     continue
@@ -428,6 +421,11 @@ def evaluate(
     except Exception as exc:
         diagnostics["exception_type"] = type(exc).__name__
         diagnostics["exception"] = str(exc)
+        if any(
+            state in diagnostics["state_trace"]
+            for state in ("writes_committed", "engine_returned", "outputs_read")
+        ):
+            diagnostics["worker_tainted"] = True
         diagnostics["state_trace"].append("failed")
         violations.append(f"execution_error:{type(exc).__name__}")
         feasible = False
