@@ -1,0 +1,289 @@
+name: Acceptance hardening once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/acceptance-hardening-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-acceptance-hardening
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Apply acceptance hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, *, count: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              observed = text.count(old)
+              if observed != count:
+                  raise RuntimeError(
+                      f"Patch anchor mismatch for {path}: expected {count}, observed {observed}"
+                  )
+              target.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          # Strict native readback types and enforce the declared failure-isolation lifecycle.
+          replace(
+              "src/aspenops_nexus/native_builder.py",
+              "from dataclasses import dataclass\n",
+              "import math\nfrom collections.abc import Callable\nfrom dataclasses import dataclass\n",
+          )
+          replace(
+              "src/aspenops_nexus/native_builder.py",
+              '''    def read_layout_hash(self) -> str: ...\n''',
+              '''    def read_layout_hash(self) -> str: ...\n\n    def discard_private_case(self) -> dict[str, Any]: ...\n\n    def begin_transaction(self) -> Any: ...\n\n    def rollback_transaction(self, token: Any) -> dict[str, Any]: ...\n\n    def commit_transaction(self, token: Any) -> dict[str, Any]: ...\n''',
+          )
+          replace(
+              "src/aspenops_nexus/native_builder.py",
+              '''def _contains_expected(observed: Any, expected: Any) -> bool:\n    if isinstance(expected, dict):\n        if not isinstance(observed, dict):\n            return False\n        return all(\n            key in observed and _contains_expected(observed[key], value)\n            for key, value in expected.items()\n        )\n    if isinstance(expected, list):\n        return isinstance(observed, list) and observed == expected\n    return bool(observed == expected)\n''',
+              '''def _contains_expected(observed: Any, expected: Any) -> bool:\n    if isinstance(expected, dict):\n        if not isinstance(observed, dict):\n            return False\n        return all(\n            key in observed and _contains_expected(observed[key], value)\n            for key, value in expected.items()\n        )\n    if isinstance(expected, list):\n        return (\n            isinstance(observed, list)\n            and len(observed) == len(expected)\n            and all(\n                _contains_expected(observed_item, expected_item)\n                for observed_item, expected_item in zip(observed, expected, strict=True)\n            )\n        )\n    if isinstance(expected, bool):\n        return isinstance(observed, bool) and observed is expected\n    if isinstance(expected, str):\n        return isinstance(observed, str) and observed == expected\n    if isinstance(expected, int | float) and not isinstance(expected, bool):\n        if isinstance(observed, bool) or not isinstance(observed, int | float):\n            return False\n        observed_number = float(observed)\n        expected_number = float(expected)\n        return (\n            math.isfinite(observed_number)\n            and math.isfinite(expected_number)\n            and observed_number == expected_number\n        )\n    return type(observed) is type(expected) and observed == expected\n\n\ndef _required_adapter_method(\n    adapter: NativeBuildAdapter,\n    name: str,\n) -> Callable[..., Any]:\n    method = getattr(adapter, name, None)\n    if not callable(method):\n        raise NativeBuildError(\n            f"Native adapter failure-isolation contract requires callable {name}()"\n        )\n    return method\n\n\ndef _assert_isolation_result(value: Any, field: str) -> dict[str, Any]:\n    if not isinstance(value, dict) or value.get(field) is not True:\n        raise NativeBuildError(\n            f"Native adapter failure-isolation result must contain {field}=true"\n        )\n    return value\n''',
+          )
+          old_native_execution = '''    step_records: list[StepExecutionRecord] = []\n    topology_reports: list[TopologyComparisonReport] = []\n    layout_hashes: list[str] = []\n    for step in plan.steps:\n        if step.operation in {\n            "readback_topology",\n            "readback_topology_after_reopen",\n        }:\n            observed_topology = adapter.read_topology()\n            report = compare_topology(plan.expected_topology, observed_topology)\n            topology_reports.append(report)\n            if not report.matches:\n                raise NativeBuildError(\n                    f"Topology readback mismatch at {step.step_id}: "\n                    f"{[item.code for item in report.mismatches]}"\n                )\n            result = {"topology_hash": report.observed_hash}\n        elif step.operation in {"readback_layout", "readback_layout_after_reopen"}:\n            layout_hash = adapter.read_layout_hash()\n            layout_hashes.append(layout_hash)\n            if layout_hash != plan.expected_layout_hash:\n                raise NativeBuildError(\n                    f"Layout readback mismatch at {step.step_id}: "\n                    f"{layout_hash} != {plan.expected_layout_hash}"\n                )\n            result = {"layout_hash": layout_hash}\n        else:\n            result = adapter.apply_step(step)\n            if not isinstance(result, dict):\n                raise NativeBuildError(\n                    f"Native adapter returned a non-object result for {step.step_id}"\n                )\n        if not _contains_expected(result, step.expected_readback):\n            raise NativeBuildError(\n                f"Mandatory readback failed at {step.step_id}: "\n                f"expected subset={step.expected_readback!r}, observed={result!r}"\n            )\n        step_records.append(\n            StepExecutionRecord(\n                step_id=step.step_id,\n                operation=step.operation,\n                target_id=step.target_id,\n                result=result,\n            )\n        )\n'''
+          new_native_execution = '''    isolation = adapter_manifest.failure_isolation\n    transaction_token: Any = None\n    discard_private_case: Callable[..., Any] | None = None\n    rollback_transaction: Callable[..., Any] | None = None\n    commit_transaction: Callable[..., Any] | None = None\n    if isolation == "PRIVATE_CASE_DISCARD":\n        discard_private_case = _required_adapter_method(adapter, "discard_private_case")\n    else:\n        begin_transaction = _required_adapter_method(adapter, "begin_transaction")\n        rollback_transaction = _required_adapter_method(adapter, "rollback_transaction")\n        commit_transaction = _required_adapter_method(adapter, "commit_transaction")\n        try:\n            transaction_token = begin_transaction()\n        except Exception as exc:\n            raise NativeBuildError(f"Native adapter transaction start failed: {exc}") from exc\n\n    step_records: list[StepExecutionRecord] = []\n    topology_reports: list[TopologyComparisonReport] = []\n    layout_hashes: list[str] = []\n    try:\n        for step in plan.steps:\n            current = now or datetime.now(UTC)\n            if current.astimezone(UTC) >= authorization.expires_at:\n                raise NativeBuildError(\n                    f"Fresh runtime authorization expired before {step.step_id}"\n                )\n            if step.operation in {\n                "readback_topology",\n                "readback_topology_after_reopen",\n            }:\n                observed_topology = adapter.read_topology()\n                report = compare_topology(plan.expected_topology, observed_topology)\n                topology_reports.append(report)\n                if not report.matches:\n                    raise NativeBuildError(\n                        f"Topology readback mismatch at {step.step_id}: "\n                        f"{[item.code for item in report.mismatches]}"\n                    )\n                result = {"topology_hash": report.observed_hash}\n            elif step.operation in {"readback_layout", "readback_layout_after_reopen"}:\n                layout_hash = adapter.read_layout_hash()\n                layout_hashes.append(layout_hash)\n                if layout_hash != plan.expected_layout_hash:\n                    raise NativeBuildError(\n                        f"Layout readback mismatch at {step.step_id}: "\n                        f"{layout_hash} != {plan.expected_layout_hash}"\n                    )\n                result = {"layout_hash": layout_hash}\n            else:\n                result = adapter.apply_step(step)\n                if not isinstance(result, dict):\n                    raise NativeBuildError(\n                        f"Native adapter returned a non-object result for {step.step_id}"\n                    )\n            if not _contains_expected(result, step.expected_readback):\n                raise NativeBuildError(\n                    f"Mandatory readback failed at {step.step_id}: "\n                    f"expected subset={step.expected_readback!r}, observed={result!r}"\n                )\n            step_records.append(\n                StepExecutionRecord(\n                    step_id=step.step_id,\n                    operation=step.operation,\n                    target_id=step.target_id,\n                    result=result,\n                )\n            )\n        if commit_transaction is not None:\n            _assert_isolation_result(\n                commit_transaction(transaction_token),\n                "committed",\n            )\n    except Exception as exc:\n        try:\n            if discard_private_case is not None:\n                _assert_isolation_result(discard_private_case(), "discarded")\n            elif rollback_transaction is not None:\n                _assert_isolation_result(\n                    rollback_transaction(transaction_token),\n                    "rolled_back",\n                )\n            else:\n                raise NativeBuildError("Native adapter has no enforceable failure isolation")\n        except Exception as isolation_exc:\n            raise NativeBuildError(\n                f"{exc}; native failure isolation also failed: {isolation_exc}"\n            ) from exc\n        if isinstance(exc, NativeBuildError):\n            raise\n        raise NativeBuildError(f"Native compilation step failed: {exc}") from exc\n'''
+          replace(
+              "src/aspenops_nexus/native_builder.py",
+              old_native_execution,
+              new_native_execution,
+          )
+
+          # Numeric reads, constraints and balances must never accept bool/text as numbers.
+          replace(
+              "src/aspenops_nexus/evaluation.py",
+              '''def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:\n    if isinstance(raw, bool | str):\n        return raw\n    numeric = float(raw)\n    if not math.isfinite(numeric):\n        return numeric\n    target_unit = unit or node.native_unit\n    return convert(numeric, node.native_unit, target_unit)\n\n\ndef _finite(value: Any) -> bool:\n    if isinstance(value, bool | str):\n        return True\n    try:\n        return math.isfinite(float(value))\n    except (TypeError, ValueError):\n        return False\n''',
+              '''def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:\n    if isinstance(raw, bool | str):\n        return raw\n    if not isinstance(raw, int | float):\n        return raw\n    numeric = float(raw)\n    if not math.isfinite(numeric):\n        return numeric\n    target_unit = unit or node.native_unit\n    return convert(numeric, node.native_unit, target_unit)\n\n\ndef _finite_number(value: Any) -> bool:\n    return (\n        not isinstance(value, bool)\n        and isinstance(value, int | float)\n        and math.isfinite(float(value))\n    )\n\n\ndef _numeric_value(value: Any) -> float:\n    if isinstance(value, bool) or not isinstance(value, int | float):\n        raise TypeError(f"Expected numeric simulator value, observed {type(value).__name__}")\n    number = float(value)\n    if not math.isfinite(number):\n        raise ValueError("Simulator value is non-finite")\n    return number\n''',
+          )
+          replace(
+              "src/aspenops_nexus/evaluation.py",
+              '''        non_finite_outputs: dict[str, str] = {}\n        for binding in active_plan.output_bindings:\n            converted = _converted(\n                raw_by_identity[binding.identity], binding.node, binding.spec.unit\n            )\n            units[binding.output_key] = binding.spec.unit or binding.node.native_unit\n            if not _finite(converted):\n                numeric = float(converted)\n                values[binding.output_key] = None\n                non_finite_outputs[binding.output_key] = _non_finite_label(numeric)\n                if binding.spec.required:\n                    violations.append(f"non_finite_required_output:{binding.output_key}")\n                    feasible = False\n                continue\n            values[binding.output_key] = converted\n        if non_finite_outputs:\n            diagnostics["non_finite_outputs"] = non_finite_outputs\n''',
+              '''        non_finite_outputs: dict[str, str] = {}\n        non_numeric_outputs: dict[str, str] = {}\n        for binding in active_plan.output_bindings:\n            converted = _converted(\n                raw_by_identity[binding.identity], binding.node, binding.spec.unit\n            )\n            units[binding.output_key] = binding.spec.unit or binding.node.native_unit\n            if binding.node.native_unit is None and isinstance(converted, bool | str):\n                values[binding.output_key] = converted\n                continue\n            if isinstance(converted, bool) or not isinstance(converted, int | float):\n                values[binding.output_key] = None\n                non_numeric_outputs[binding.output_key] = type(converted).__name__\n                if binding.spec.required:\n                    violations.append(f"non_numeric_required_output:{binding.output_key}")\n                    feasible = False\n                continue\n            if not _finite_number(converted):\n                numeric = float(converted)\n                values[binding.output_key] = None\n                non_finite_outputs[binding.output_key] = _non_finite_label(numeric)\n                if binding.spec.required:\n                    violations.append(f"non_finite_required_output:{binding.output_key}")\n                    feasible = False\n                continue\n            values[binding.output_key] = converted\n        if non_numeric_outputs:\n            diagnostics["non_numeric_outputs"] = non_numeric_outputs\n        if non_finite_outputs:\n            diagnostics["non_finite_outputs"] = non_finite_outputs\n''',
+          )
+          replace(
+              "src/aspenops_nexus/evaluation.py",
+              '''            try:\n                actual = float(converted)\n            except (TypeError, ValueError):\n''',
+              '''            try:\n                actual = _numeric_value(converted)\n            except (TypeError, ValueError):\n''',
+          )
+          replace(
+              "src/aspenops_nexus/evaluation.py",
+              '''                try:\n                    numeric = float(converted)\n                except (TypeError, ValueError):\n''',
+              '''                try:\n                    numeric = _numeric_value(converted)\n                except (TypeError, ValueError):\n''',
+          )
+          replace(
+              "src/aspenops_nexus/evaluation.py",
+              '''    except Exception as exc:\n        diagnostics["exception_type"] = type(exc).__name__\n        diagnostics["exception"] = str(exc)\n        diagnostics["state_trace"].append("failed")\n''',
+              '''    except Exception as exc:\n        diagnostics["exception_type"] = type(exc).__name__\n        diagnostics["exception"] = str(exc)\n        if any(\n            state in diagnostics["state_trace"]\n            for state in ("writes_committed", "engine_returned", "outputs_read")\n        ):\n            diagnostics["worker_tainted"] = True\n        diagnostics["state_trace"].append("failed")\n''',
+          )
+
+          # Warm-start requests carry explicit trajectory identity and are single-worker only.
+          replace(
+              "src/aspenops_nexus/models.py",
+              '''        metadata = _object(mapping.get("metadata", {}), "metadata")\n        return cls(\n''',
+              '''        metadata = _object(mapping.get("metadata", {}), "metadata")\n        if reset_raw == "warm_start":\n            session = metadata.get("warm_start_session")\n            step = metadata.get("warm_start_step")\n            if not isinstance(session, str) or not session.strip():\n                raise ValueError(\n                    "warm_start requires metadata.warm_start_session as a non-empty string"\n                )\n            if isinstance(step, bool) or not isinstance(step, int) or step < 0:\n                raise ValueError(\n                    "warm_start requires metadata.warm_start_step as a non-negative integer"\n                )\n        return cls(\n''',
+          )
+          replace(
+              "src/aspenops_nexus/models.py",
+              '''    def physical_identity(self) -> dict[str, Any]:\n        """Return solver and verification semantics without locations or execution policy."""\n        return {\n            "backend": self.backend,\n            "reset_mode": self.reset_mode,\n            "writes": [_variable_write_dict(item) for item in self.writes],\n            "reads": [_variable_read_dict(item) for item in self.reads],\n            "constraints": [_constraint_dict(item) for item in self.constraints],\n            "balances": [_balance_identity(item) for item in self.balances],\n        }\n''',
+              '''    def physical_identity(self) -> dict[str, Any]:\n        """Return solver and verification semantics without filesystem locations."""\n        identity: dict[str, Any] = {\n            "backend": self.backend,\n            "reset_mode": self.reset_mode,\n            "writes": [_variable_write_dict(item) for item in self.writes],\n            "reads": [_variable_read_dict(item) for item in self.reads],\n            "constraints": [_constraint_dict(item) for item in self.constraints],\n            "balances": [_balance_identity(item) for item in self.balances],\n        }\n        if self.reset_mode == "warm_start":\n            identity["warm_start_trajectory"] = {\n                "session": self.metadata["warm_start_session"],\n                "step": self.metadata["warm_start_step"],\n            }\n        return identity\n''',
+          )
+          replace(
+              "src/aspenops_nexus/batch.py",
+              '''        merged_metadata["point_index"] = point_index\n        request_data["metadata"] = merged_metadata\n''',
+              '''        merged_metadata["point_index"] = point_index\n        if common["reset_mode"] == "warm_start":\n            merged_metadata.setdefault("warm_start_step", point_index)\n        request_data["metadata"] = merged_metadata\n''',
+          )
+          replace(
+              "src/aspenops_nexus/batch.py",
+              '''    registry = NodeRegistry(registry_path)\n    plans = [EvaluationPlanCompiler.compile(registry, request, policy) for request in requests]\n''',
+              '''    warm_start_requests = [request for request in requests if not request.reinitialize]\n    if warm_start_requests:\n        if requested_workers != 1:\n            raise ValueError("warm_start batches require workers=1")\n        sessions = {\n            str(request.metadata["warm_start_session"]) for request in warm_start_requests\n        }\n        steps = [int(request.metadata["warm_start_step"]) for request in warm_start_requests]\n        if len(sessions) != 1:\n            raise ValueError("warm_start batch points must share one warm_start_session")\n        if steps != sorted(steps) or len(set(steps)) != len(steps):\n            raise ValueError("warm_start_step values must be unique and increasing")\n\n    registry = NodeRegistry(registry_path)\n    plans = [EvaluationPlanCompiler.compile(registry, request, policy) for request in requests]\n''',
+          )
+
+          # Reject bool objectives and strict-check optimization status fields.
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''def _finite_output(value: object) -> float | None:\n    if isinstance(value, bool | int | float):\n        number = float(value)\n        return number if math.isfinite(number) else None\n    return None\n''',
+              '''def _finite_output(value: object) -> float | None:\n    if isinstance(value, bool) or not isinstance(value, int | float):\n        return None\n    number = float(value)\n    return number if math.isfinite(number) else None\n''',
+          )
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''        if bool(result.get("ok")):\n            return 0.0\n''',
+              '''        if result.get("ok") is True:\n            return 0.0\n''',
+          )
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''                if not bool(balance.get("passed")):\n''',
+              '''                if balance.get("passed") not in {True, 1.0}:\n''',
+          )
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''        if not bool(result.get("communication_ok")):\n            total = _saturating_nonnegative_add(total, 1_000_000.0)\n        elif not bool(result.get("engine_ok")) or not bool(result.get("converged")):\n''',
+              '''        if result.get("communication_ok") is not True:\n            total = _saturating_nonnegative_add(total, 1_000_000.0)\n        elif result.get("engine_ok") is not True or result.get("converged") is not True:\n''',
+          )
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''                    ok=bool(result.get("ok")) and not missing,\n''',
+              '''                    ok=result.get("ok") is True and not missing,\n''',
+          )
+          replace(
+              "src/aspenops_nexus/optimization.py",
+              '''    trace_by_x = {point.x: point for point in evaluator.trace}\n    pareto = [\n        {\n            "x": list(point.x),\n            "decoded": trace_by_x[point.x].decoded,\n            "objectives": list(trace_by_x[point.x].objectives),\n            "violation": point.violation,\n        }\n        for point in pareto_points\n    ]\n''',
+              '''    def matching_trace(point: ParetoPoint) -> OptimizationTracePoint:\n        matches = [\n            item\n            for item in evaluator.trace\n            if item.x == point.x\n            and item.minimized_objectives == point.objectives\n            and item.violation == point.violation\n        ]\n        if not matches:\n            raise RuntimeError("Pareto point has no exact optimization trace record")\n        return matches[-1]\n\n    pareto = []\n    for point in pareto_points:\n        trace = matching_trace(point)\n        pareto.append(\n            {\n                "x": list(point.x),\n                "decoded": trace.decoded,\n                "objectives": list(trace.objectives),\n                "violation": point.violation,\n            }\n        )\n''',
+          )
+
+          # Strict JSON cache loading rejects NaN/Infinity corruption.
+          replace(
+              "src/aspenops_nexus/cache.py",
+              '''_HIT_FLUSH_THRESHOLD = 1024\n\n\ndef _chunks''',
+              '''_HIT_FLUSH_THRESHOLD = 1024\n\n\ndef _reject_nonfinite_constant(value: str) -> Any:\n    raise ValueError(f"Non-finite JSON constant is not allowed: {value}")\n\n\ndef _chunks''',
+          )
+          replace(
+              "src/aspenops_nexus/cache.py",
+              '''                    value = json.loads(payload)\n                except json.JSONDecodeError:\n''',
+              '''                    value = json.loads(\n                        payload,\n                        parse_constant=_reject_nonfinite_constant,\n                    )\n                except (json.JSONDecodeError, ValueError):\n''',
+          )
+
+          # Add physical parameter contracts and require every directed cycle to own a tear edge.
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''from .process_ir_v2 import (\n''',
+              '''from .process_ir_v2 import (\n''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              ''')\n\nIssueSeverity = Literal''',
+              ''')\nfrom .units import UnitError, dimension\n\nIssueSeverity = Literal''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''_COLUMN_KINDS = {"radfrac", "distillation_column", "dstwu"}\n''',
+              '''_COLUMN_KINDS = {"radfrac", "distillation_column", "dstwu"}\n_PARAMETER_DIMENSIONS: dict[str, frozenset[str]] = {\n    "SPLIT_FRACTION": frozenset({"dimensionless"}),\n    "FLOW_SPEC": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),\n    "OUTLET_TEMPERATURE": frozenset({"temperature"}),\n    "TEMPERATURE": frozenset({"temperature"}),\n    "DUTY": frozenset({"power"}),\n    "CONDENSER_DUTY": frozenset({"power"}),\n    "REBOILER_DUTY": frozenset({"power"}),\n    "VAPOR_FRACTION": frozenset({"dimensionless"}),\n    "PRESSURE": frozenset({"pressure"}),\n    "OUTLET_PRESSURE": frozenset({"pressure"}),\n    "PRESSURE_INCREASE": frozenset({"pressure"}),\n    "PRESSURE_DROP": frozenset({"pressure"}),\n    "PRESSURE_RATIO": frozenset({"dimensionless"}),\n    "EFFICIENCY": frozenset({"dimensionless"}),\n    "TOTAL_STAGES": frozenset({"dimensionless"}),\n    "FEED_STAGE": frozenset({"dimensionless"}),\n    "REFLUX_RATIO": frozenset({"dimensionless"}),\n    "DISTILLATE_RATE": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),\n    "BOTTOMS_RATE": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),\n    "DISTILLATE_RECOVERY": frozenset({"dimensionless"}),\n    "BOTTOMS_RECOVERY": frozenset({"dimensionless"}),\n    "DISTILLATE_PURITY": frozenset({"dimensionless"}),\n    "BOTTOMS_PURITY": frozenset({"dimensionless"}),\n    "VOLUME": frozenset({"volume"}),\n    "RESIDENCE_TIME": frozenset({"time"}),\n    "CONVERSION": frozenset({"dimensionless"}),\n    "TOTAL_FLOW": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),\n}\n_INTEGER_PARAMETERS = frozenset({"TOTAL_STAGES", "FEED_STAGE"})\n_FRACTION_PARAMETERS = frozenset(\n    {\n        "SPLIT_FRACTION",\n        "VAPOR_FRACTION",\n        "EFFICIENCY",\n        "DISTILLATE_RECOVERY",\n        "BOTTOMS_RECOVERY",\n        "DISTILLATE_PURITY",\n        "BOTTOMS_PURITY",\n        "CONVERSION",\n    }\n)\n_POSITIVE_PARAMETERS = frozenset(\n    {\n        "FLOW_SPEC",\n        "OUTLET_TEMPERATURE",\n        "TEMPERATURE",\n        "PRESSURE",\n        "OUTLET_PRESSURE",\n        "PRESSURE_RATIO",\n        "TOTAL_STAGES",\n        "FEED_STAGE",\n        "REFLUX_RATIO",\n        "DISTILLATE_RATE",\n        "BOTTOMS_RATE",\n        "VOLUME",\n        "RESIDENCE_TIME",\n        "TOTAL_FLOW",\n    }\n)\n''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''def _require_any_parameter(\n''',
+              '''def _validate_parameter_contracts(\n    parameters: tuple[ParameterDefinition, ...],\n    path: str,\n) -> list[RuleIssue]:\n    issues: list[RuleIssue] = []\n    for parameter in parameters:\n        expected_dimensions = _PARAMETER_DIMENSIONS.get(parameter.name)\n        if expected_dimensions is None or not parameter.approved:\n            continue\n        parameter_path = f"{path}.parameters.{parameter.name}"\n        if isinstance(parameter.value, bool | str) or parameter.value is None:\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.numeric_type",\n                    parameter_path,\n                    f"Parameter {parameter.name} requires a finite numeric value",\n                )\n            )\n            continue\n        number = float(parameter.value)\n        if not math.isfinite(number):\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.non_finite",\n                    parameter_path,\n                    f"Parameter {parameter.name} requires a finite numeric value",\n                )\n            )\n            continue\n        if parameter.unit is None:\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.unit_missing",\n                    parameter_path,\n                    f"Parameter {parameter.name} requires an explicit unit",\n                )\n            )\n        else:\n            try:\n                observed_dimension = dimension(parameter.unit)\n            except UnitError:\n                observed_dimension = None\n            if observed_dimension not in expected_dimensions:\n                issues.append(\n                    _issue(\n                        "ENGINEERING_BLOCKER",\n                        "parameter.unit_dimension",\n                        parameter_path,\n                        f"Parameter {parameter.name} unit {parameter.unit!r} is incompatible with "\n                        f"{sorted(expected_dimensions)}",\n                    )\n                )\n        if parameter.name in _INTEGER_PARAMETERS and not number.is_integer():\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.integer_required",\n                    parameter_path,\n                    f"Parameter {parameter.name} must be integral",\n                )\n            )\n        if parameter.name in _FRACTION_PARAMETERS and not 0.0 <= number <= 1.0:\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.fraction_range",\n                    parameter_path,\n                    f"Parameter {parameter.name} must lie between zero and one",\n                )\n            )\n        if parameter.name in _POSITIVE_PARAMETERS and number <= 0.0:\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "parameter.positive_required",\n                    parameter_path,\n                    f"Parameter {parameter.name} must be positive",\n                )\n            )\n    return issues\n\n\ndef _require_any_parameter(\n''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''    if any(not item.approved for item in (*equipment.parameters, *equipment.design_specs)):\n''',
+              '''    issues.extend(\n        _validate_parameter_contracts(\n            (*equipment.parameters, *equipment.design_specs),\n            path,\n        )\n    )\n    if any(not item.approved for item in (*equipment.parameters, *equipment.design_specs)):\n''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''        if any(not item.approved for item in stream.parameters):\n            issues.append(\n''',
+              '''        issues.extend(_validate_parameter_contracts(stream.parameters, path))\n        if any(not item.approved for item in stream.parameters):\n            issues.append(\n''',
+          )
+          replace(
+              "src/aspenops_nexus/engineering_rules.py",
+              '''    cycles = _cycle_paths(design)\n    if cycles and not design.recycles:\n        for cycle in cycles:\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "topology.recycle_contract_missing",\n                    "streams",\n                    "Directed material cycle has no approved recycle contract: "\n                    + " -> ".join(cycle),\n                )\n            )\n''',
+              '''    cycles = _cycle_paths(design)\n    owned_tear_edges = {\n        (tear.source.equipment_id, tear.target.equipment_id)\n        for recycle in design.recycles\n        if (tear := stream_map.get(recycle.tear_stream_id)) is not None\n        and tear.kind == "tear"\n    }\n    for cycle in cycles:\n        cycle_edges = set(zip(cycle, cycle[1:]))\n        if not cycle_edges.intersection(owned_tear_edges):\n            issues.append(\n                _issue(\n                    "ENGINEERING_BLOCKER",\n                    "topology.recycle_contract_missing",\n                    "streams",\n                    "Directed material cycle has no owned tear edge: "\n                    + " -> ".join(cycle),\n                )\n            )\n''',
+          )
+
+          # Make column capability and engineering freedom contracts satisfiable.
+          column_parameters = '''(\n            "TOTAL_STAGES",\n            "FEED_STAGE",\n            "REFLUX_RATIO",\n            "DISTILLATE_RATE",\n            "BOTTOMS_RATE",\n            "DISTILLATE_RECOVERY",\n            "BOTTOMS_RECOVERY",\n            "DISTILLATE_PURITY",\n            "BOTTOMS_PURITY",\n            "CONDENSER_DUTY",\n            "REBOILER_DUTY",\n        )'''
+          replace(
+              "src/aspenops_nexus/simulator_capabilities.py",
+              '''("TOTAL_STAGES", "FEED_STAGE"),''',
+              column_parameters + ",",
+              count=2,
+          )
+
+          # Complete the unit ontology needed by equipment contracts.
+          replace(
+              "src/aspenops_nexus/units.py",
+              '''    "ppm": UnitSpec("dimensionless", 1e-6),\n''',
+              '''    "ppm": UnitSpec("dimensionless", 1e-6),\n    "s": UnitSpec("time"),\n    "min": UnitSpec("time", 60.0),\n    "h": UnitSpec("time", 3600.0),\n''',
+          )
+          replace(
+              "src/aspenops_nexus/units.py",
+              '''    "m3/s": UnitSpec("volumetric_flow"),\n''',
+              '''    "m3": UnitSpec("volume"),\n    "L": UnitSpec("volume", 0.001),\n    "m3/s": UnitSpec("volumetric_flow"),\n''',
+          )
+
+          # Fake native adapter implements enforceable isolation for all existing contract tests.
+          replace(
+              "tests/test_native_builder_contract.py",
+              '''        self.operations: list[str] = []\n        self.override_results: dict[str, Any] = {}\n''',
+              '''        self.operations: list[str] = []\n        self.override_results: dict[str, Any] = {}\n        self.discard_calls = 0\n        self.rollback_calls = 0\n        self.commit_calls = 0\n''',
+          )
+          replace(
+              "tests/test_native_builder_contract.py",
+              '''    def read_layout_hash(self) -> str:\n        self.operations.append("read_layout_hash")\n        return self.layout_hash\n''',
+              '''    def read_layout_hash(self) -> str:\n        self.operations.append("read_layout_hash")\n        return self.layout_hash\n\n    def discard_private_case(self) -> dict[str, Any]:\n        self.discard_calls += 1\n        return {"discarded": True}\n\n    def begin_transaction(self) -> str:\n        return "transaction-token"\n\n    def rollback_transaction(self, token: Any) -> dict[str, Any]:\n        assert token == "transaction-token"\n        self.rollback_calls += 1\n        return {"rolled_back": True}\n\n    def commit_transaction(self, token: Any) -> dict[str, Any]:\n        assert token == "transaction-token"\n        self.commit_calls += 1\n        return {"committed": True}\n''',
+          )
+          with Path("tests/test_native_builder_contract.py").open("a", encoding="utf-8") as handle:
+              handle.write(
+                  '''\n\ndef test_expected_subset_comparison_rejects_bool_number_aliases() -> None:\n    assert _contains_expected(1, True) is False\n    assert _contains_expected(True, 1) is False\n    assert _contains_expected(0, False) is False\n    assert _contains_expected(False, 0) is False\n    assert _contains_expected([1], [True]) is False\n\n\ndef test_private_case_is_discarded_after_step_failure(tmp_path: Path) -> None:\n    plan, profile, envelope = authorization_context(tmp_path)\n    adapter = FakeAdapter(plan)\n    first_apply = next(\n        item\n        for item in plan.steps\n        if item.operation\n        not in {\n            "readback_topology",\n            "readback_topology_after_reopen",\n            "readback_layout",\n            "readback_layout_after_reopen",\n        }\n    )\n    adapter.override_results[first_apply.step_id] = {"wrong": True}\n    with pytest.raises(NativeBuildError, match="Mandatory readback failed"):\n        execute(plan, adapter, profile, envelope, tmp_path)\n    assert adapter.discard_calls == 1\n\n\ndef test_transactional_adapter_commits_success(tmp_path: Path) -> None:\n    plan, profile, envelope = authorization_context(tmp_path)\n    adapter = FakeAdapter(plan)\n    adapter._conformance_manifest = replace(\n        adapter.conformance_manifest,\n        failure_isolation="TRANSACTIONAL_ROLLBACK",\n    )\n    record = execute(plan, adapter, profile, envelope, tmp_path)\n    assert record.completed is True\n    assert adapter.commit_calls == 1\n    assert adapter.rollback_calls == 0\n'''
+              )
+
+          # Focused acceptance regression suite.
+          Path("tests/test_acceptance_hardening.py").write_text(
+              '''from __future__ import annotations\n\nimport json\nimport sqlite3\nfrom contextlib import closing\nfrom pathlib import Path\n\nimport pytest\n\nfrom aspenops_nexus.backends.mock import MockBackend\nfrom aspenops_nexus.batch import dry_run_document, expand_batch_document\nfrom aspenops_nexus.cache import ResultCache\nfrom aspenops_nexus.config import Settings\nfrom aspenops_nexus.engineering_rules import validate_process_design\nfrom aspenops_nexus.evaluation import evaluate\nfrom aspenops_nexus.models import EvaluationRequest\nfrom aspenops_nexus.optimization import _finite_output\nfrom aspenops_nexus.process_ir_v2 import ProcessDesignIR\nfrom aspenops_nexus.registry import NodeRegistry\nfrom aspenops_nexus.simulator_capabilities import get_builtin_capability_profile\n\nROOT = Path(__file__).resolve().parents[1]\nMODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"\nREGISTRY = ROOT / "src/aspenops_nexus/data/node-registry.json"\nDESIGN = ROOT / "examples/process-design-v2.example.json"\n\n\nclass BoolNumericOutputBackend(MockBackend):\n    def read(self, node):  # type: ignore[no-untyped-def]\n        if node.key == "stream.output.purity":\n            return True\n        return super().read(node)\n\n\nclass ExplodingRunBackend(MockBackend):\n    def run(self):  # type: ignore[no-untyped-def]\n        raise RuntimeError("solver transport failed after writes")\n\n\ndef _read_request() -> EvaluationRequest:\n    return EvaluationRequest.from_dict(\n        {\n            "model_path": str(MODEL),\n            "registry_path": str(REGISTRY),\n            "backend": "mock",\n            "writes": [],\n            "reads": [\n                {\n                    "key": "stream.output.purity",\n                    "identifiers": {"stream": "PRODUCT"},\n                    "unit": "fraction",\n                }\n            ],\n        }\n    )\n\n\ndef test_numeric_output_rejects_boolean() -> None:\n    backend = BoolNumericOutputBackend()\n    backend.open(MODEL)\n    result = evaluate(backend, NodeRegistry(REGISTRY), _read_request())\n    backend.close()\n    assert result.ok is False\n    assert "non_numeric_required_output:stream.output.purity:stream=PRODUCT" in result.violations\n    assert result.values["stream.output.purity:stream=PRODUCT"] is None\n\n\ndef test_post_write_execution_exception_taints_worker() -> None:\n    backend = ExplodingRunBackend()\n    backend.open(MODEL)\n    result = evaluate(backend, NodeRegistry(REGISTRY), _read_request())\n    backend.close()\n    assert result.ok is False\n    assert result.diagnostics["worker_tainted"] is True\n\n\ndef test_optimization_rejects_boolean_as_numeric_objective() -> None:\n    assert _finite_output(True) is None\n    assert _finite_output(False) is None\n    assert _finite_output(1) == 1.0\n\n\ndef test_warm_start_requires_explicit_trajectory_identity() -> None:\n    payload = _read_request().to_dict()\n    payload["reset_mode"] = "warm_start"\n    with pytest.raises(ValueError, match="warm_start_session"):\n        EvaluationRequest.from_dict(payload)\n\n    payload["metadata"] = {"warm_start_session": "trajectory-a", "warm_start_step": 0}\n    first = EvaluationRequest.from_dict(payload)\n    payload["metadata"] = {"warm_start_session": "trajectory-a", "warm_start_step": 1}\n    second = EvaluationRequest.from_dict(payload)\n    assert first.physical_identity() != second.physical_identity()\n\n\ndef test_warm_start_batch_is_single_worker_and_ordered(tmp_path: Path) -> None:\n    document = {\n        "backend": "mock",\n        "model_path": str(MODEL),\n        "registry_path": str(REGISTRY),\n        "workers": 2,\n        "reset_mode": "warm_start",\n        "metadata": {"warm_start_session": "trajectory-a"},\n        "points": [{}, {}],\n        "reads": [],\n    }\n    requests = expand_batch_document(document)\n    assert [request.metadata["warm_start_step"] for request in requests] == [0, 1]\n    with pytest.raises(ValueError, match="workers=1"):\n        dry_run_document(document, Settings(state_dir=tmp_path, max_workers=2, license_slots=2))\n\n\ndef test_parameter_contract_rejects_text_temperature_and_wrong_unit() -> None:\n    raw = json.loads(DESIGN.read_text(encoding="utf-8"))\n    heater = next(item for item in raw["equipment"] if item["kind"] == "heater")\n    heater["parameters"][0]["value"] = "hot"\n    report = validate_process_design(ProcessDesignIR.from_dict(raw))\n    assert "parameter.numeric_type" in {item.code for item in report.issues}\n\n    heater["parameters"][0]["value"] = 90.0\n    heater["parameters"][0]["unit"] = "kg/s"\n    report = validate_process_design(ProcessDesignIR.from_dict(raw))\n    assert "parameter.unit_dimension" in {item.code for item in report.issues}\n\n\ndef test_column_capability_exposes_independent_specs() -> None:\n    profile = get_builtin_capability_profile("aspen_plus", "15")\n    column = profile.equipment_by_kind()["distillation_column"]\n    supported = set(column.supported_parameter_names)\n    assert {"REFLUX_RATIO", "DISTILLATE_RATE", "BOTTOMS_RATE"}.issubset(supported)\n\n\ndef test_cache_discards_nonfinite_json_constants(tmp_path: Path) -> None:\n    path = tmp_path / "cache.sqlite3"\n    cache = ResultCache(path)\n    with closing(sqlite3.connect(path)) as connection, connection:\n        connection.execute(\n            "INSERT INTO result_cache(cache_key, payload) VALUES (?, ?)",\n            ("nan", '{"value": NaN}'),\n        )\n    assert cache.get("nan") is None\n    assert cache.stats()["entries"] == 0\n''',
+              encoding="utf-8",
+          )
+
+          # Record the acceptance hardening in the changelog.
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text(encoding="utf-8")
+          marker = "# Changelog\n"
+          entry = '''# Changelog\n\n## Acceptance hardening - 2026-08-06\n\n- reject Boolean/text aliases in numeric simulator readback, constraints, balances and objectives;\n- require explicit single-worker warm-start trajectory identity;\n- enforce native adapter discard/rollback/commit failure-isolation contracts;\n- bind equipment parameters to numeric, unit-dimension and range contracts;\n- require every directed material cycle to own a tear edge;\n- align distillation capability parameters with engineering degrees of freedom;\n- reject non-finite JSON constants in the persistent result cache.\n'''
+          if not text.startswith(marker):
+              raise RuntimeError("Unexpected CHANGELOG heading")
+          changelog.write_text(entry + text[len(marker):], encoding="utf-8")
+          PY
+          rm -f .github/workflows/acceptance-hardening-once.yml
+      - name: Format and static validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format src tests
+          uv run ruff check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts tests
+          uv run python scripts/audit_source_tree.py --output /tmp/source-tree-audit.json
+          uv tool run --isolated --from 'bandit==1.9.4' bandit \
+            --recursive src scripts \
+            --severity-level high \
+            --confidence-level high
+      - name: Full tests and coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest -W error::ResourceWarning \
+            --cov=aspenops_nexus \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-fail-under=95.0
+          uv run python scripts/run_test_order_gate.py \
+            --seed 20260728 \
+            --output-dir /tmp/acceptance-order-gate
+      - name: Commit hardened source to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden acceptance-critical runtime contracts"
+          git push origin HEAD:main
