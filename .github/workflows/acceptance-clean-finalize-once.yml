@@ -29,6 +29,7 @@ jobs:
       - name: Patch, qualify and publish source-only tree
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           trigger_sha="$(git rev-parse HEAD)"
           log=/tmp/acceptance-source-finalizer.log
@@ -47,6 +48,7 @@ jobs:
             if [[ "$rc" -ne 0 ]]; then
               status=$rc
             fi
+            return 0
           }
 
           git config user.name "github-actions[bot]"
