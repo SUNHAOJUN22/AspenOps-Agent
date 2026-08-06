@@ -4,8 +4,7 @@ name: Delivery qualification once
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/delivery-qualification-once.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
