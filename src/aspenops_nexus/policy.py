@@ -8,10 +8,21 @@ class PolicyError(PermissionError):
     pass
 
 
+_SUPPORTED_MODES = {"readonly", "default", "enhanced"}
+
+
 @dataclass(frozen=True, slots=True)
 class Policy:
     mode: str
     allowed_roots: tuple[Path, ...]
+
+    def __post_init__(self) -> None:
+        if self.mode not in _SUPPORTED_MODES:
+            raise ValueError(f"Unsupported policy mode={self.mode!r}")
+        if not isinstance(self.allowed_roots, tuple) or any(
+            not isinstance(root, Path) for root in self.allowed_roots
+        ):
+            raise ValueError("allowed_roots must be a tuple of Path values")
 
     def assert_path(self, path: str | Path) -> Path:
         resolved = Path(path).expanduser().resolve()

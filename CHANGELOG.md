@@ -1,5 +1,16 @@
 # Changelog
 
+## Acceptance hardening - 2026-08-06
+
+- reject Boolean/text aliases in numeric simulator readback, constraints, balances and objectives;
+- require explicit single-worker warm-start trajectory identity and prohibit stateful optimization;
+- enforce native adapter discard/rollback/commit failure-isolation contracts;
+- bind equipment parameters to numeric, unit-dimension, absolute-temperature and range contracts;
+- require every directed material cycle to own a tear edge;
+- align distillation capability parameters with engineering degrees of freedom;
+- reject non-finite JSON constants in the persistent result cache;
+- reject duplicate public read outputs and heterogeneous worker runtime identities.
+
 ## Unreleased
 
 - added simulator-neutral `aspenops.flowsheet/v1` Process Intent IR;

@@ -33,6 +33,16 @@ def _finite_number(value: Any) -> bool:
     )
 
 
+def _finite(value: Any) -> bool:
+    """Compatibility helper; numeric runtime gates use _finite_number instead."""
+    if isinstance(value, bool | str):
+        return True
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _numeric_value(value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(f"Expected numeric simulator value, observed {type(value).__name__}")
@@ -203,7 +213,11 @@ def evaluate(
                 raw_by_identity[binding.identity], binding.node, binding.spec.unit
             )
             units[binding.output_key] = binding.spec.unit or binding.node.native_unit
-            if binding.node.native_unit is None and isinstance(converted, bool | str):
+            if (
+                binding.node.native_unit is None
+                and binding.spec.unit is None
+                and isinstance(converted, bool | str)
+            ):
                 values[binding.output_key] = converted
                 continue
             if isinstance(converted, bool) or not isinstance(converted, int | float):
@@ -240,7 +254,7 @@ def evaluate(
             )
             try:
                 actual = _numeric_value(converted)
-            except (TypeError, ValueError):
+            except TypeError:
                 constraint_violation_finite = False
                 constraint_details.append(
                     {
@@ -259,6 +273,28 @@ def evaluate(
                     }
                 )
                 violations.append(f"constraint_non_numeric:{name}")
+                violations.append(f"constraint_failed:{name}")
+                feasible = False
+                continue
+            except ValueError:
+                constraint_violation_finite = False
+                constraint_details.append(
+                    {
+                        "name": name,
+                        "actual": None,
+                        "operator": compiled_constraint.spec.operator,
+                        "limit": compiled_constraint.spec.value,
+                        "tolerance": compiled_constraint.spec.tolerance,
+                        "violation": None,
+                        "unit": (
+                            compiled_constraint.spec.unit or compiled_constraint.node.native_unit
+                        ),
+                        "passed": False,
+                        "failure": "non_finite",
+                        "non_finite_value": _non_finite_label(float(converted)),
+                    }
+                )
+                violations.append(f"constraint_non_finite:{name}")
                 violations.append(f"constraint_failed:{name}")
                 feasible = False
                 continue
@@ -327,11 +363,19 @@ def evaluate(
                 )
                 try:
                     numeric = _numeric_value(converted)
-                except (TypeError, ValueError):
+                except TypeError:
                     invalid_terms.append(
                         {
                             "identity": compiled_term.identity,
                             "value": f"non_numeric:{type(converted).__name__}",
+                        }
+                    )
+                    continue
+                except ValueError:
+                    invalid_terms.append(
+                        {
+                            "identity": compiled_term.identity,
+                            "value": _non_finite_label(float(converted)),
                         }
                     )
                     continue

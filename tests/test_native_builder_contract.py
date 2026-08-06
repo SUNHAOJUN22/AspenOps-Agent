@@ -208,6 +208,9 @@ class FakeAdapter:
         self.layout_hash = layout_hash or plan.expected_layout_hash
         self.operations: list[str] = []
         self.override_results: dict[str, Any] = {}
+        self.discard_calls = 0
+        self.rollback_calls = 0
+        self.commit_calls = 0
 
     @property
     def profile_id(self) -> str:
@@ -243,6 +246,23 @@ class FakeAdapter:
     def read_layout_hash(self) -> str:
         self.operations.append("read_layout_hash")
         return self.layout_hash
+
+    def discard_private_case(self) -> dict[str, Any]:
+        self.discard_calls += 1
+        return {"discarded": True}
+
+    def begin_transaction(self) -> str:
+        return "transaction-token"
+
+    def rollback_transaction(self, token: Any) -> dict[str, Any]:
+        assert token == "transaction-token"
+        self.rollback_calls += 1
+        return {"rolled_back": True}
+
+    def commit_transaction(self, token: Any) -> dict[str, Any]:
+        assert token == "transaction-token"
+        self.commit_calls += 1
+        return {"committed": True}
 
 
 def execute(
@@ -466,3 +486,73 @@ def test_expected_subset_comparison() -> None:
     assert _contains_expected({"a": [1, 2]}, {"a": [1]}) is False
     assert _contains_expected([], {}) is False
     assert _contains_expected({"a": 1}, {"a": 2}) is False
+
+
+def test_expected_subset_comparison_rejects_bool_number_aliases() -> None:
+    assert _contains_expected(1, True) is False
+    assert _contains_expected(True, 1) is False
+    assert _contains_expected(0, False) is False
+    assert _contains_expected(False, 0) is False
+    assert _contains_expected([1], [True]) is False
+
+
+def test_private_case_is_discarded_after_step_failure(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    adapter = FakeAdapter(plan)
+    first_apply = next(
+        item
+        for item in plan.steps
+        if item.operation
+        not in {
+            "readback_topology",
+            "readback_topology_after_reopen",
+            "readback_layout",
+            "readback_layout_after_reopen",
+        }
+    )
+    adapter.override_results[first_apply.step_id] = {"wrong": True}
+    with pytest.raises(NativeBuildError, match="Mandatory readback failed"):
+        execute(plan, adapter, profile, envelope, tmp_path)
+    assert adapter.discard_calls == 1
+
+
+def test_transactional_adapter_commits_and_rolls_back(tmp_path: Path) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    adapter = FakeAdapter(plan)
+    adapter._conformance_manifest = replace(
+        adapter.conformance_manifest,
+        failure_isolation="TRANSACTIONAL_ROLLBACK",
+    )
+    record = execute(plan, adapter, profile, envelope, tmp_path)
+    assert record.completed is True
+    assert adapter.commit_calls == 1
+    assert adapter.rollback_calls == 0
+
+    failing = FakeAdapter(plan)
+    failing._conformance_manifest = replace(
+        failing.conformance_manifest,
+        failure_isolation="TRANSACTIONAL_ROLLBACK",
+    )
+    first_apply = next(item for item in plan.steps if item.expected_readback)
+    failing.override_results[first_apply.step_id] = {}
+    with pytest.raises(NativeBuildError, match="Mandatory readback failed"):
+        execute(plan, failing, profile, envelope, tmp_path)
+    assert failing.commit_calls == 0
+    assert failing.rollback_calls == 1
+
+
+def test_failure_isolation_contract_rejects_missing_or_false_cleanup(
+    tmp_path: Path,
+) -> None:
+    plan, profile, envelope = authorization_context(tmp_path)
+    missing = FakeAdapter(plan)
+    missing.discard_private_case = None  # type: ignore[method-assign,assignment]
+    with pytest.raises(NativeBuildError, match="requires callable discard_private_case"):
+        execute(plan, missing, profile, envelope, tmp_path)
+
+    invalid = FakeAdapter(plan)
+    invalid.discard_private_case = lambda: {"discarded": False}  # type: ignore[method-assign]
+    first_apply = next(item for item in plan.steps if item.expected_readback)
+    invalid.override_results[first_apply.step_id] = {}
+    with pytest.raises(NativeBuildError, match="failure isolation also failed"):
+        execute(plan, invalid, profile, envelope, tmp_path)

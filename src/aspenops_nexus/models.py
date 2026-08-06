@@ -335,6 +335,9 @@ class EvaluationRequest:
         timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), "timeout_s")
         metadata = _object(mapping.get("metadata", {}), "metadata")
         if reset_raw == "warm_start":
+            metadata = dict(metadata)
+            metadata.setdefault("warm_start_session", "unscoped-single-worker")
+            metadata.setdefault("warm_start_step", 0)
             session = metadata.get("warm_start_session")
             step = metadata.get("warm_start_step")
             if not isinstance(session, str) or not session.strip():

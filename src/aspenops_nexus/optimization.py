@@ -98,6 +98,14 @@ _MAX_FINITE_FRACTION = Fraction.from_float(_MAX_FINITE)
 
 
 def _finite_output(value: object) -> float | None:
+    """Compatibility conversion for persisted result flags and diagnostics."""
+    if not isinstance(value, bool | int | float):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _strict_finite_output(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     number = float(value)
@@ -524,7 +532,7 @@ class _Evaluator:
             minimized_values: list[float] = []
             missing = False
             for objective in self.problem.objectives:
-                value = _finite_output(values.get(objective.output_key))
+                value = _strict_finite_output(values.get(objective.output_key))
                 if value is None:
                     missing = True
                     value = -1e12 if objective.direction == "maximize" else 1e12

@@ -11,7 +11,12 @@ from typing import Any
 import psutil
 
 from ..compat import discover_aspen_plus_candidates
-from ..convergence import ConvergenceState, classify_convergence, poll_engine_idle
+from ..convergence import (
+    ConvergenceState,
+    classify_convergence,
+    normalize_running_flag,
+    poll_engine_idle,
+)
 from ..registry import ResolvedNode
 from ..windows_job import (
     ProcessFingerprint,
@@ -302,7 +307,9 @@ class AspenPlusBackend(SimulatorBackend):
                 value = getattr(engine, attribute)
                 if callable(value):
                     value = value()
-                return bool(value)
+                normalized = normalize_running_flag(value)
+                if normalized is not None:
+                    return normalized
             except Exception:
                 continue
         return None

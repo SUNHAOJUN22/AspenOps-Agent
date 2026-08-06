@@ -12,7 +12,7 @@ from .process_ir_v2 import (
     ProcessDesignIR,
     ReactionDefinition,
 )
-from .units import UnitError, dimension
+from .units import UnitError, convert, dimension
 
 IssueSeverity = Literal["HARD_ERROR", "ENGINEERING_BLOCKER", "WARNING", "INFORMATION"]
 
@@ -68,11 +68,10 @@ _FRACTION_PARAMETERS = frozenset(
         "CONVERSION",
     }
 )
+_ABSOLUTE_TEMPERATURE_PARAMETERS = frozenset({"OUTLET_TEMPERATURE", "TEMPERATURE"})
 _POSITIVE_PARAMETERS = frozenset(
     {
         "FLOW_SPEC",
-        "OUTLET_TEMPERATURE",
-        "TEMPERATURE",
         "PRESSURE",
         "OUTLET_PRESSURE",
         "PRESSURE_RATIO",
@@ -188,16 +187,7 @@ def _validate_parameter_contracts(
                 )
             )
             continue
-        if parameter.unit is None:
-            issues.append(
-                _issue(
-                    "ENGINEERING_BLOCKER",
-                    "parameter.unit_missing",
-                    parameter_path,
-                    f"Parameter {parameter.name} requires an explicit unit",
-                )
-            )
-        else:
+        if parameter.unit is not None:
             try:
                 observed_dimension = dimension(parameter.unit)
             except UnitError:
@@ -210,6 +200,20 @@ def _validate_parameter_contracts(
                         parameter_path,
                         f"Parameter {parameter.name} unit {parameter.unit!r} is incompatible with "
                         f"{sorted(expected_dimensions)}",
+                    )
+                )
+        if parameter.name in _ABSOLUTE_TEMPERATURE_PARAMETERS and parameter.unit is not None:
+            try:
+                absolute_temperature = convert(number, parameter.unit, "K")
+            except UnitError:
+                absolute_temperature = None
+            if absolute_temperature is not None and absolute_temperature <= 0.0:
+                issues.append(
+                    _issue(
+                        "ENGINEERING_BLOCKER",
+                        "parameter.absolute_temperature",
+                        parameter_path,
+                        f"Parameter {parameter.name} must be above absolute zero",
                     )
                 )
         if parameter.name in _INTEGER_PARAMETERS and not number.is_integer():
@@ -861,8 +865,7 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
     owned_tear_edges = {
         (tear.source.equipment_id, tear.target.equipment_id)
         for recycle in design.recycles
-        if (tear := stream_map.get(recycle.tear_stream_id)) is not None
-        and tear.kind == "tear"
+        if (tear := stream_map.get(recycle.tear_stream_id)) is not None and tear.kind == "tear"
     }
     for cycle in cycles:
         cycle_edges = set(zip(cycle, cycle[1:], strict=False))

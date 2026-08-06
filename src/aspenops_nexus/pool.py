@@ -124,7 +124,13 @@ class CasePool:
                     handle = self._new_handle(worker_id)
                     self._assert_handle_identity(handle)
                     started.append(handle)
-                identities = [self._stable_runtime_value(handle.runtime) for handle in started]
+                identities: list[Any] = []
+                for handle in started:
+                    runtime = getattr(handle, "runtime", None)
+                    if isinstance(handle, WorkerHandle) and not isinstance(runtime, dict):
+                        raise RuntimeError("Worker runtime identity must be an object")
+                    if isinstance(runtime, dict):
+                        identities.append(self._stable_runtime_value(runtime))
                 if identities and any(identity != identities[0] for identity in identities[1:]):
                     raise RuntimeError(
                         "CasePool workers expose heterogeneous simulator runtime identities"
@@ -132,7 +138,8 @@ class CasePool:
                 self._handles = started
             except Exception:
                 for handle in started:
-                    stop_worker(handle)
+                    if isinstance(handle, WorkerHandle):
+                        stop_worker(handle)
                 raise
 
     def close(self) -> None:
@@ -423,6 +430,8 @@ class CasePool:
     ) -> list[EvaluationResult]:
         if not requests:
             return []
+        if self.workers != 1 and any(not request.reinitialize for request in requests):
+            raise ValueError("warm_start evaluation requires a single-worker CasePool")
         warm_start_requests = [request for request in requests if not request.reinitialize]
         if warm_start_requests:
             if len(warm_start_requests) != len(requests):

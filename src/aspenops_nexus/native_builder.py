@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from .compilation_plan import CompilationStep
 from .native_adapter_conformance import (
@@ -176,14 +176,12 @@ def _required_adapter_method(
         raise NativeBuildError(
             f"Native adapter failure-isolation contract requires callable {name}()"
         )
-    return method
+    return cast(Callable[..., Any], method)
 
 
 def _assert_isolation_result(value: Any, field: str) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get(field) is not True:
-        raise NativeBuildError(
-            f"Native adapter failure-isolation result must contain {field}=true"
-        )
+        raise NativeBuildError(f"Native adapter failure-isolation result must contain {field}=true")
     return value
 
 
@@ -268,9 +266,7 @@ def execute_compilation_plan(
         for step in plan.steps:
             current = now or datetime.now(UTC)
             if current.astimezone(UTC) >= authorization.expires_at:
-                raise NativeBuildError(
-                    f"Fresh runtime authorization expired before {step.step_id}"
-                )
+                raise NativeBuildError(f"Fresh runtime authorization expired before {step.step_id}")
             if step.operation in {
                 "readback_topology",
                 "readback_topology_after_reopen",

@@ -50,7 +50,7 @@ Automated tests lock:
 
 ## README visual governance
 
-Both READMEs reference twenty-two original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual exposes the Bandit `1.9.4` gate, full-source compilation, deterministic AST auditing, reverse and seeded-random full-suite reruns, the evidence-backed Python 3.12 95.0% floor, the 3.11/3.13 compatibility floors and the rule that missing current evidence is not a pass.
+Both READMEs reference twenty-three original, self-contained SVG capability diagrams in `docs/assets/readme/`. The automated test-matrix visual exposes the Bandit `1.9.4` gate, full-source compilation, deterministic AST auditing, reverse and seeded-random full-suite reruns, the evidence-backed Python 3.12 95.0% floor, the 3.11/3.13 compatibility floors and the rule that missing current evidence is not a pass.
 
 The visual suite remains bound to implemented source markers and is checked for exact inventory, local paths, XML validity, a fixed `1440 × 720` view box, titles/descriptions, safe elements and attributes, portable fonts, size limits and absence of scripts, event handlers, remote resources and data URIs.
 

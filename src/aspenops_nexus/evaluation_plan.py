@@ -115,8 +115,12 @@ class EvaluationPlanCompiler:
             return node, identity
 
         output_bindings: list[OutputBinding] = []
+        output_identities: set[str] = set()
         for read_spec in request.reads:
             read_node, identity = resolve_read_node(read_spec.key, read_spec.identifiers)
+            if identity in output_identities:
+                raise ValueError(f"Duplicate read output target: {identity}")
+            output_identities.add(identity)
             output_bindings.append(OutputBinding(read_spec, read_node, identity, identity))
 
         constraints: list[CompiledConstraint] = []

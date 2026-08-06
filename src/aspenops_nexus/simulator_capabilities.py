@@ -267,6 +267,21 @@ def _capability(
     )
 
 
+_COLUMN_PARAMETERS = (
+    "TOTAL_STAGES",
+    "FEED_STAGE",
+    "REFLUX_RATIO",
+    "DISTILLATE_RATE",
+    "BOTTOMS_RATE",
+    "DISTILLATE_RECOVERY",
+    "BOTTOMS_RECOVERY",
+    "DISTILLATE_PURITY",
+    "BOTTOMS_PURITY",
+    "CONDENSER_DUTY",
+    "REBOILER_DUTY",
+)
+
+
 _ASPEN_PLUS_EQUIPMENT = (
     _capability("feed", "boundary.feed", (), notes="Boundary object; no block is implied."),
     _capability("product", "boundary.product", (), notes="Boundary object; no block is implied."),
@@ -326,14 +341,14 @@ _ASPEN_PLUS_EQUIPMENT = (
     _capability(
         "distillation_column",
         "unit.distillation_column",
-        ("TOTAL_STAGES", "FEED_STAGE"),
+        _COLUMN_PARAMETERS,
         domains=("material", "energy"),
         notes="Native mapping requires runtime verification.",
     ),
     _capability(
         "radfrac",
         "unit.distillation_column",
-        ("TOTAL_STAGES", "FEED_STAGE"),
+        _COLUMN_PARAMETERS,
         domains=("material", "energy"),
         notes="Alias contract; native mapping requires runtime verification.",
     ),

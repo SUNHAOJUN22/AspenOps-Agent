@@ -204,9 +204,7 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
     if warm_start_requests:
         if requested_workers != 1:
             raise ValueError("warm_start batches require workers=1")
-        sessions = {
-            str(request.metadata["warm_start_session"]) for request in warm_start_requests
-        }
+        sessions = {str(request.metadata["warm_start_session"]) for request in warm_start_requests}
         steps = [int(request.metadata["warm_start_step"]) for request in warm_start_requests]
         if len(sessions) != 1:
             raise ValueError("warm_start batch points must share one warm_start_session")
