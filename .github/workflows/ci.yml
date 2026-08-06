@@ -1,190 +1,27 @@
-name: Acceptance hardening through permanent CI
+name: CI Recovery Hold
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: aspenops-acceptance-permanent-ci
-  cancel-in-progress: false
+  group: aspenops-ci-recovery-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  finalize:
+  recovery-hold:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-        with:
-          version: "0.11.16"
-          python-version: "3.12"
-          enable-cache: true
-      - name: Apply patch, restore permanent tree, qualify and publish
+          persist-credentials: false
+      - name: Confirm write-free recovery state
         shell: bash
         run: |
-          set -uo pipefail
-          run_sha="$(git rev-parse HEAD)"
-          parent_sha="$(git rev-parse HEAD^)"
-          patch_source_sha="$(git rev-parse HEAD^^)"
-          permanent_source_sha="$(git rev-parse HEAD^^^)"
-          log=/tmp/acceptance-permanent-ci.log
-          : > "$log"
-          status=0
-          {
-            set -e
-            git show "${patch_source_sha}:.github/workflows/acceptance-hardening-once.yml" \
-              > /tmp/original-acceptance-workflow.yml
-            python - <<'PY'
-            from pathlib import Path
-
-            workflow = Path('/tmp/original-acceptance-workflow.yml').read_text(
-                encoding='utf-8'
-            )
-            marker = "          python - <<'PY'\n"
-            end_marker = "          PY\n"
-            start = workflow.index(marker) + len(marker)
-            end = workflow.index(end_marker, start)
-            lines = workflow[start:end].splitlines()
-            script = '\n'.join(
-                line[10:] if line.startswith('          ') else line for line in lines
-            ) + '\n'
-            target = Path('/tmp/apply-acceptance.py')
-            target.write_text(script, encoding='utf-8')
-            if target.stat().st_size < 1000:
-                raise RuntimeError('Extracted acceptance patch is unexpectedly small')
-            PY
-            python /tmp/apply-acceptance.py
-            python - <<'PY'
-            from pathlib import Path
-
-            def replace(path: str, old: str, new: str) -> None:
-                target = Path(path)
-                text = target.read_text(encoding='utf-8')
-                observed = text.count(old)
-                if observed != 1:
-                    raise RuntimeError(
-                        f'repair anchor mismatch for {path}: expected 1, observed {observed}'
-                    )
-                target.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-            replace(
-                'src/aspenops_nexus/engineering_rules.py',
-                'set(zip(cycle, cycle[1:]))',
-                'set(zip(cycle, cycle[1:], strict=False))',
-            )
-            replace(
-                'src/aspenops_nexus/optimization.py',
-                'if balance.get("passed") not in {True, 1.0}:',
-                'if _finite_output(balance.get("passed")) != 1.0:',
-            )
-            PY
-
-            git show "${parent_sha}:.github/workflows/ci.yml" \
-              > .github/workflows/ci.yml
-            git show "${permanent_source_sha}:.github/workflows/generate-performance-evidence.yml" \
-              > .github/workflows/generate-performance-evidence.yml
-            rm -f \
-              .github/workflows/acceptance-hardening-once.yml \
-              .github/workflows/acceptance-hardening-retry-once.yml \
-              .github/workflows/acceptance-finalizer-once.yml \
-              docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json \
-              docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt \
-              docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
-
-            uv lock --check
-            uv sync --frozen --extra dev --extra agent --extra signing
-            uv run ruff format src tests
-            uv run ruff check .
-            uv run mypy src
-            uv run python -m compileall -q src scripts tests
-            uv run python scripts/audit_source_tree.py --output /tmp/source-tree-audit.json
-            uv tool run --isolated --from 'bandit==1.9.4' bandit \
-              --recursive src scripts \
-              --severity-level high \
-              --confidence-level high
-            uv run pytest -W error::ResourceWarning \
-              --cov=aspenops_nexus \
-              --cov-branch \
-              --cov-report=term-missing \
-              --cov-report=json:/tmp/acceptance-coverage.json \
-              --junitxml=/tmp/acceptance-junit.xml \
-              --cov-fail-under=95.0
-            uv run python scripts/run_test_order_gate.py \
-              --seed 20260728 \
-              --output-dir /tmp/acceptance-order-gate
-            git diff --check
-          } > >(tee "$log") 2>&1 || status=$?
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [[ "$status" -eq 0 ]]; then
-            python - <<'PY'
-            import json
-            import xml.etree.ElementTree as ET
-            from pathlib import Path
-
-            coverage = json.loads(
-                Path('/tmp/acceptance-coverage.json').read_text(encoding='utf-8')
-            )['totals']['percent_covered']
-            root = ET.parse('/tmp/acceptance-junit.xml').getroot()
-            suites = [root] if root.tag.endswith('testsuite') else list(root)
-            tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
-            failures = sum(int(item.attrib.get('failures', 0)) for item in suites)
-            errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
-            skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
-            evidence = {
-                'schema': 'aspenops.acceptance-hardening-qualification/v1',
-                'status': 'PASS',
-                'python': '3.12',
-                'passed': tests - failures - errors - skipped,
-                'failed': failures,
-                'errors': errors,
-                'skipped': skipped,
-                'branch_coverage_percent': round(float(coverage), 2),
-                'reverse_order_gate': 'PASS',
-                'seeded_order_gate': {'status': 'PASS', 'seed': 20260728},
-                'static_gates': {
-                    'ruff': 'PASS',
-                    'mypy_strict': 'PASS',
-                    'compileall': 'PASS',
-                    'source_tree_audit': 'PASS',
-                    'bandit_high_high': 'PASS'
-                },
-                'real_aspen_status': 'PENDING_REAL_ASPEN_CERTIFICATION'
-            }
-            Path('docs/ACCEPTANCE_HARDENING_QUALIFICATION.json').write_text(
-                json.dumps(evidence, indent=2, sort_keys=True) + '\n',
-                encoding='utf-8'
-            )
-            PY
-            git add -A
-            git commit -m "fix: harden acceptance-critical runtime contracts"
-            git push origin HEAD:main
-            exit 0
-          fi
-
-          cp "$log" /tmp/acceptance-permanent-ci-failure.log
-          git reset --hard "$run_sha"
-          git show "${parent_sha}:.github/workflows/ci.yml" \
-            > .github/workflows/ci.yml
-          git show "${permanent_source_sha}:.github/workflows/generate-performance-evidence.yml" \
-            > .github/workflows/generate-performance-evidence.yml
-          rm -f \
-            .github/workflows/acceptance-hardening-once.yml \
-            .github/workflows/acceptance-hardening-retry-once.yml \
-            .github/workflows/acceptance-finalizer-once.yml \
-            docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json \
-            docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt
-          {
-            printf 'acceptance hardening permanent-CI finalizer failed with status %s\n\n' "$status"
-            tail -n 1800 /tmp/acceptance-permanent-ci-failure.log
-          } > docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
-          git add -A
-          git commit -m "test: record permanent-CI acceptance diagnostic"
-          git push origin HEAD:main
-          exit "$status"
+          set -euo pipefail
+          echo "Acceptance recovery is write-frozen pending final qualification."
