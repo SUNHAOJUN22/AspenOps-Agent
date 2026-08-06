@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +47,14 @@ class NativeBuildAdapter(Protocol):
     def read_topology(self) -> NativeTopologySnapshot: ...
 
     def read_layout_hash(self) -> str: ...
+
+    def discard_private_case(self) -> dict[str, Any]: ...
+
+    def begin_transaction(self) -> Any: ...
+
+    def rollback_transaction(self, token: Any) -> dict[str, Any]: ...
+
+    def commit_transaction(self, token: Any) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,8 +142,49 @@ def _contains_expected(observed: Any, expected: Any) -> bool:
             for key, value in expected.items()
         )
     if isinstance(expected, list):
-        return isinstance(observed, list) and observed == expected
-    return bool(observed == expected)
+        return (
+            isinstance(observed, list)
+            and len(observed) == len(expected)
+            and all(
+                _contains_expected(observed_item, expected_item)
+                for observed_item, expected_item in zip(observed, expected, strict=True)
+            )
+        )
+    if isinstance(expected, bool):
+        return isinstance(observed, bool) and observed is expected
+    if isinstance(expected, str):
+        return isinstance(observed, str) and observed == expected
+    if isinstance(expected, int | float) and not isinstance(expected, bool):
+        if isinstance(observed, bool) or not isinstance(observed, int | float):
+            return False
+        observed_number = float(observed)
+        expected_number = float(expected)
+        return (
+            math.isfinite(observed_number)
+            and math.isfinite(expected_number)
+            and observed_number == expected_number
+        )
+    return type(observed) is type(expected) and observed == expected
+
+
+def _required_adapter_method(
+    adapter: NativeBuildAdapter,
+    name: str,
+) -> Callable[..., Any]:
+    method = getattr(adapter, name, None)
+    if not callable(method):
+        raise NativeBuildError(
+            f"Native adapter failure-isolation contract requires callable {name}()"
+        )
+    return method
+
+
+def _assert_isolation_result(value: Any, field: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get(field) is not True:
+        raise NativeBuildError(
+            f"Native adapter failure-isolation result must contain {field}=true"
+        )
+    return value
 
 
 def execute_compilation_plan(
@@ -194,51 +245,97 @@ def execute_compilation_plan(
             f"{[item.code for item in conformance.issues]}"
         )
 
+    isolation = adapter_manifest.failure_isolation
+    transaction_token: Any = None
+    discard_private_case: Callable[..., Any] | None = None
+    rollback_transaction: Callable[..., Any] | None = None
+    commit_transaction: Callable[..., Any] | None = None
+    if isolation == "PRIVATE_CASE_DISCARD":
+        discard_private_case = _required_adapter_method(adapter, "discard_private_case")
+    else:
+        begin_transaction = _required_adapter_method(adapter, "begin_transaction")
+        rollback_transaction = _required_adapter_method(adapter, "rollback_transaction")
+        commit_transaction = _required_adapter_method(adapter, "commit_transaction")
+        try:
+            transaction_token = begin_transaction()
+        except Exception as exc:
+            raise NativeBuildError(f"Native adapter transaction start failed: {exc}") from exc
+
     step_records: list[StepExecutionRecord] = []
     topology_reports: list[TopologyComparisonReport] = []
     layout_hashes: list[str] = []
-    for step in plan.steps:
-        if step.operation in {
-            "readback_topology",
-            "readback_topology_after_reopen",
-        }:
-            observed_topology = adapter.read_topology()
-            report = compare_topology(plan.expected_topology, observed_topology)
-            topology_reports.append(report)
-            if not report.matches:
+    try:
+        for step in plan.steps:
+            current = now or datetime.now(UTC)
+            if current.astimezone(UTC) >= authorization.expires_at:
                 raise NativeBuildError(
-                    f"Topology readback mismatch at {step.step_id}: "
-                    f"{[item.code for item in report.mismatches]}"
+                    f"Fresh runtime authorization expired before {step.step_id}"
                 )
-            result = {"topology_hash": report.observed_hash}
-        elif step.operation in {"readback_layout", "readback_layout_after_reopen"}:
-            layout_hash = adapter.read_layout_hash()
-            layout_hashes.append(layout_hash)
-            if layout_hash != plan.expected_layout_hash:
+            if step.operation in {
+                "readback_topology",
+                "readback_topology_after_reopen",
+            }:
+                observed_topology = adapter.read_topology()
+                report = compare_topology(plan.expected_topology, observed_topology)
+                topology_reports.append(report)
+                if not report.matches:
+                    raise NativeBuildError(
+                        f"Topology readback mismatch at {step.step_id}: "
+                        f"{[item.code for item in report.mismatches]}"
+                    )
+                result = {"topology_hash": report.observed_hash}
+            elif step.operation in {"readback_layout", "readback_layout_after_reopen"}:
+                layout_hash = adapter.read_layout_hash()
+                layout_hashes.append(layout_hash)
+                if layout_hash != plan.expected_layout_hash:
+                    raise NativeBuildError(
+                        f"Layout readback mismatch at {step.step_id}: "
+                        f"{layout_hash} != {plan.expected_layout_hash}"
+                    )
+                result = {"layout_hash": layout_hash}
+            else:
+                result = adapter.apply_step(step)
+                if not isinstance(result, dict):
+                    raise NativeBuildError(
+                        f"Native adapter returned a non-object result for {step.step_id}"
+                    )
+            if not _contains_expected(result, step.expected_readback):
                 raise NativeBuildError(
-                    f"Layout readback mismatch at {step.step_id}: "
-                    f"{layout_hash} != {plan.expected_layout_hash}"
+                    f"Mandatory readback failed at {step.step_id}: "
+                    f"expected subset={step.expected_readback!r}, observed={result!r}"
                 )
-            result = {"layout_hash": layout_hash}
-        else:
-            result = adapter.apply_step(step)
-            if not isinstance(result, dict):
-                raise NativeBuildError(
-                    f"Native adapter returned a non-object result for {step.step_id}"
+            step_records.append(
+                StepExecutionRecord(
+                    step_id=step.step_id,
+                    operation=step.operation,
+                    target_id=step.target_id,
+                    result=result,
                 )
-        if not _contains_expected(result, step.expected_readback):
+            )
+        if commit_transaction is not None:
+            _assert_isolation_result(
+                commit_transaction(transaction_token),
+                "committed",
+            )
+    except Exception as exc:
+        try:
+            if discard_private_case is not None:
+                _assert_isolation_result(discard_private_case(), "discarded")
+            elif rollback_transaction is not None:
+                _assert_isolation_result(
+                    rollback_transaction(transaction_token),
+                    "rolled_back",
+                )
+            else:
+                raise NativeBuildError("Native adapter has no enforceable failure isolation")
+        except Exception as isolation_exc:
             raise NativeBuildError(
-                f"Mandatory readback failed at {step.step_id}: "
-                f"expected subset={step.expected_readback!r}, observed={result!r}"
-            )
-        step_records.append(
-            StepExecutionRecord(
-                step_id=step.step_id,
-                operation=step.operation,
-                target_id=step.target_id,
-                result=result,
-            )
-        )
+                f"{exc}; native failure isolation also failed: {isolation_exc}"
+            ) from exc
+        if isinstance(exc, NativeBuildError):
+            raise
+        raise NativeBuildError(f"Native compilation step failed: {exc}") from exc
+
     return NativeBuildExecutionRecord(
         plan_hash=plan.digest(),
         profile_id=plan.profile_id,
