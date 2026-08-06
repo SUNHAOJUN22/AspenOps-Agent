@@ -141,6 +141,8 @@ def expand_batch_document(
         merged_metadata = dict(metadata)
         merged_metadata.update(point_metadata)
         merged_metadata["point_index"] = point_index
+        if common["reset_mode"] == "warm_start":
+            merged_metadata.setdefault("warm_start_step", point_index)
         request_data["metadata"] = merged_metadata
         requests.append(EvaluationRequest.from_dict(request_data))
     return requests
@@ -197,6 +199,19 @@ def _prepare_batch_document(data: dict[str, Any], settings: Settings) -> _Prepar
         raise ValueError(
             f"Batch contains {len(requests)} points; limit is {settings.max_batch_points}"
         )
+
+    warm_start_requests = [request for request in requests if not request.reinitialize]
+    if warm_start_requests:
+        if requested_workers != 1:
+            raise ValueError("warm_start batches require workers=1")
+        sessions = {
+            str(request.metadata["warm_start_session"]) for request in warm_start_requests
+        }
+        steps = [int(request.metadata["warm_start_step"]) for request in warm_start_requests]
+        if len(sessions) != 1:
+            raise ValueError("warm_start batch points must share one warm_start_session")
+        if steps != sorted(steps) or len(set(steps)) != len(steps):
+            raise ValueError("warm_start_step values must be unique and increasing")
 
     registry = NodeRegistry(registry_path)
     plans = [EvaluationPlanCompiler.compile(registry, request, policy) for request in requests]
