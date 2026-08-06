@@ -14,6 +14,10 @@ _MEMORY_MAX_ENTRIES = 4096
 _HIT_FLUSH_THRESHOLD = 1024
 
 
+def _reject_nonfinite_constant(value: str) -> Any:
+    raise ValueError(f"Non-finite JSON constant is not allowed: {value}")
+
+
 def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> Iterator[list[str]]:
     for index in range(0, len(values), size):
         yield values[index : index + size]
@@ -133,8 +137,11 @@ class ResultCache:
             corrupt: list[str] = []
             for key, payload in encoded.items():
                 try:
-                    value = json.loads(payload)
-                except json.JSONDecodeError:
+                    value = json.loads(
+                        payload,
+                        parse_constant=_reject_nonfinite_constant,
+                    )
+                except (json.JSONDecodeError, ValueError):
                     corrupt.append(key)
                     continue
                 if not isinstance(value, dict):
