@@ -523,6 +523,56 @@ docs/                   architecture, qualification, performance, certification 
 | evidence verification fails | inspect member list, SHA-256, sizes, trusted key and `allow_nan=False` |
 | licensed status remains HOLD | provide solver, fixed inputs, hardware fingerprint, references and tolerances |
 
+## Permanent CI, manual guards and evidence isolation
+
+Permanent software qualification uses fixed `ubuntu-24.04` and `windows-2025`
+runners. Six dependency-audit combinations cover Python 3.11, 3.12 and 3.13
+across Linux and Windows. The four long-lived workflows are:
+
+```text
+ci.yml
+windows-control-plane.yml
+generate-performance-evidence.yml
+licensed-aspen-certification.yml
+```
+
+Manual workflows accept only `refs/heads/main`. After `actions/checkout`, a
+detached checkout, commit drift or non-main input fails explicitly with exit code 2;
+an all-skipped run is never treated as success.
+
+The licensed-aspen-certification isolation contract includes:
+
+```text
+expected_head_sha
+GITHUB_SHA
+GITHUB_RUN_ID
+GITHUB_RUN_ATTEMPT
+LICENSED_EVIDENCE_DIR
+github.run_id
+github.run_attempt
+aspenops-licensed-artifact
+run-metadata.txt
+job_status
+RUNNER_TEMP
+runner.temp
+if-no-files-found: error
+```
+
+Each run attempt uses an isolated `LICENSED_EVIDENCE_DIR`; artifact names bind
+`github.run_id` and `github.run_attempt`. Licensed work remains serial so runs,
+licence seats and evidence directories cannot overwrite one another.
+
+The archived validated baseline proves only its recorded source, runner and evidence.
+It is not an automatic claim about arbitrary later commits.
+
+## Process Intent IR and adapter boundary
+
+The public process-intent schema is `aspenops.flowsheet/v1`.
+`scripts/validate_process_ir.py` produces governed validation evidence and
+`process-ir-dashboard.html`. DWSIM, IDAES and other compiler targets remain planned.
+When there is no adapter, execution fails closed; a preview or offline contract is not
+a production native flowsheet.
+
 ## Licence and compliance
 
 Apache-2.0 covers this repository only. Aspen Plus, Aspen HYSYS, Windows, licence servers, customer models and process data remain subject to their own licences and confidentiality requirements. Do not bypass licences, access controls or safety review.
