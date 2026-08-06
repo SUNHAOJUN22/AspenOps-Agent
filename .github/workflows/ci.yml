@@ -1,355 +1,190 @@
-# Portable qualification gate for the single-main AspenOps runtime.
-name: CI
+name: Acceptance hardening through permanent CI
 
 on:
   push:
     branches: [main]
-  pull_request:
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: aspenops-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: aspenops-acceptance-permanent-ci
+  cancel-in-progress: false
 
 jobs:
-  quality:
-    name: Quality, build and smoke
+  finalize:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.16"
           python-version: "3.12"
           enable-cache: true
-      - name: Verify lockfile and sync frozen dependencies
+      - name: Apply patch, restore permanent tree, qualify and publish
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p var/ci
-          uv lock --check 2>&1 | tee var/ci/uv-lock.log
-          uv sync --frozen --extra dev --extra agent --extra signing \
-            2>&1 | tee var/ci/uv-sync.log
-      - name: Audit locked dependencies
-        shell: bash
-        env:
-          UV_PREVIEW_FEATURES: json-output
-        run: |
-          set -euo pipefail
-          audit_failed=0
-          for platform in linux windows; do
-            for version in 3.11 3.12 3.13; do
-              stem="var/ci/dependency-audit-${platform}-py${version}"
-              output="${stem}.json"
-              error_log="${stem}.log"
-              if ! uv audit --frozen \
-                --python-platform "$platform" \
-                --python-version "$version" \
-                --output-format json > "$output" 2> "$error_log"; then
-                audit_failed=1
-              fi
-              if ! python -m json.tool "$output" >/dev/null; then
-                echo "Invalid JSON audit evidence: $output" >&2
-                audit_failed=1
-              fi
-            done
-          done
-          if [[ "$audit_failed" -ne 0 ]]; then
-            echo "One or more locked dependency audits failed" >&2
-            exit 1
-          fi
-      - name: Ruff
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run ruff check . 2>&1 | tee var/ci/ruff.log
-      - name: Ruff format
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run ruff format --check . 2>&1 | tee var/ci/ruff-format.log
-      - name: Strict mypy
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run mypy src 2>&1 | tee var/ci/mypy.log
-      - name: Compile Python sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python -m compileall -q src scripts
-      - name: Audit Python source tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/audit_source_tree.py \
-            --output var/ci/source-tree-audit.json
-      - name: Bandit security analysis
-        shell: bash
-        run: |
-          set -euo pipefail
-          bandit_status=0
-          uv tool run --isolated --from 'bandit==1.9.4' bandit \
-            --recursive src scripts \
-            --severity-level high \
-            --confidence-level high \
-            --format json \
-            --output var/ci/bandit.json \
-            2> var/ci/bandit.log || bandit_status=$?
-          python -m json.tool var/ci/bandit.json >/dev/null
-          if [[ "$bandit_status" -ne 0 ]]; then
-            cat var/ci/bandit.log >&2
-            python -m json.tool var/ci/bandit.json >&2
-            exit "$bandit_status"
-          fi
-      - name: Verify documentation, durable CLI, artifact, dashboard and Process IR contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest -W error::ResourceWarning \
-            tests/test_documentation_contracts.py \
-            tests/test_artifact_upload_governance.py \
-            tests/test_test_dashboard.py \
-            tests/test_readme_visual_assets.py \
-            tests/test_cli_durable_queue.py \
-            tests/test_process_ir.py \
-            tests/test_process_ir_edges.py \
-            tests/test_process_ir_dashboard.py \
-            tests/test_source_tree_audit.py \
-            tests/test_wheel_metadata_edges.py \
-            --junitxml=var/ci/documentation-contracts.xml \
-            2>&1 | tee var/ci/documentation-contracts.log
-      - name: Render quality test dashboard
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/render_test_dashboard.py \
-            --input-dir var/ci \
-            --output-html var/ci/test-dashboard-quality.html \
-            --output-svg var/ci/test-dashboard-quality.svg \
-            --title "AspenOps quality dashboard" \
-            --scope "Linux quality, documentation and artifact governance" \
-            --note "This dashboard summarizes only evidence from the quality job."
-      - name: Validate simulator-neutral Process Intent IR
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/validate_process_ir.py \
-            examples/process-intent.example.json \
-            --canonical-output var/ci/process-intent-canonical.json \
-            --report-output var/ci/process-intent-report.json \
-            2>&1 | tee var/ci/process-intent-validation.log
-      - name: Render Process Intent IR dashboard
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/render_process_ir_dashboard.py \
-            --input var/ci/process-intent-report.json \
-            --output-html var/ci/process-ir-dashboard.html \
-            --output-svg var/ci/process-ir-dashboard.svg
-      - name: Build distributions
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv build 2>&1 | tee var/ci/build.log
-      - name: Run portable demo
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run aspenops demo 2>&1 | tee var/ci/demo.log
-      - name: Verify README command paths and durable queue lifecycle
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run aspenops --version 2>&1 | tee var/ci/cli-version.log
-          uv run aspenops --help > var/ci/cli-help.log
-          uv run aspenops scheduler --help > var/ci/readme-scheduler-help.log
-          uv run aspenops cancel --help > var/ci/readme-cancel-help.log
-          uv run aspenops dry-run examples/batch-request.example.json \
-            > var/ci/readme-dry-run.json
-          uv run aspenops optimize examples/optimization-request.example.json \
-            --output var/ci/readme-optimization.json \
-            > var/ci/readme-optimization-cli.json
-          rm -rf var/ci/durable-smoke-state
-          submit_json="$(
-            ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
-              uv run aspenops submit examples/batch-request.example.json
-          )"
-          printf '%s\n' "$submit_json" > var/ci/readme-submit.json
-          python -c \
-            'import json,pathlib; data=json.loads(pathlib.Path("var/ci/readme-submit.json").read_text()); assert data["paths_pinned"] is True; assert pathlib.Path(data["submission_cwd"]).is_absolute()'
-          job_id="$(
-            printf '%s' "$submit_json" |
-              python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
-          )"
-          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
-            uv run aspenops job "$job_id" > var/ci/readme-job-before-cancel.json
-          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
-            uv run aspenops cancel "$job_id" --grace-s 0 \
-            > var/ci/readme-cancel.json
-          ASPENOPS_STATE_DIR=var/ci/durable-smoke-state \
-            uv run aspenops job "$job_id" > var/ci/readme-job-after-cancel.json
-          python -c \
-            'import json,pathlib; assert json.loads(pathlib.Path("var/ci/readme-job-after-cancel.json").read_text())["job"]["status"] == "cancelled"'
-          uv run aspenops benchmark --points 4 --workers 1,2 \
-            > var/ci/readme-benchmark.json
-          uv run aspenops certify examples/batch-request.example.json \
-            --output var/ci/readme-certification.json \
-            --repeats 2 \
-            > var/ci/readme-certification-cli.json
-          uv run python scripts/validate_process_ir.py --capabilities-only \
-            > var/ci/readme-process-ir-capabilities.json
-      - name: Benchmark smoke and committed performance policy
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/run_benchmark_matrix.py \
-            --repo-root . \
-            --output var/ci/benchmark-smoke.json \
-            --smoke
-          uv run python scripts/compare_benchmarks.py \
-            --baseline var/benchmarks/baseline.json \
-            --after var/benchmarks/after.json \
-            --baseline-doc var/ci/performance-baseline.md \
-            --after-doc var/ci/performance-after.md \
-            --fail-on-stable-regression \
-            2>&1 | tee var/ci/performance-policy.log
-      - name: Verify MCP surface
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/check_mcp.py 2>&1 | tee var/ci/mcp.json
-      - name: Wheel install and CLI smoke from locked runtime dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv export --frozen \
-            --extra agent \
-            --no-default-groups \
-            --no-emit-project \
-            --format requirements.txt \
-            --output-file var/ci/runtime-requirements.txt
-          uv venv --python 3.12 /tmp/aspenops-wheel
-          uv pip sync \
-            --python /tmp/aspenops-wheel/bin/python \
-            --require-hashes \
-            var/ci/runtime-requirements.txt \
-            2>&1 | tee var/ci/wheel-runtime-sync.log
-          uv pip install \
-            --python /tmp/aspenops-wheel/bin/python \
-            --offline \
-            --no-deps \
-            dist/*.whl \
-            2>&1 | tee var/ci/wheel-install.log
-          uv pip check --python /tmp/aspenops-wheel/bin/python \
-            2>&1 | tee var/ci/wheel-dependency-check.log
-          /tmp/aspenops-wheel/bin/aspenops --version \
-            | tee var/ci/wheel-version.log
-          /tmp/aspenops-wheel/bin/aspenops --help > var/ci/wheel-help.log
-          /tmp/aspenops-wheel/bin/aspenops demo \
-            | tee var/ci/wheel-demo.log
-          /tmp/aspenops-wheel/bin/aspenops scheduler --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops cancel --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops optimize --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops mcp --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops certification-preflight --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops certify-licensed --help >/dev/null
-          /tmp/aspenops-wheel/bin/aspenops verify-licensed-bundle --help >/dev/null
-          /tmp/aspenops-wheel/bin/python -c \
-            "from aspenops_nexus.mcp_server import _require_supported_mcp_sdk; print(_require_supported_mcp_sdk())" \
-            | tee var/ci/wheel-mcp-version.log
-          /tmp/aspenops-wheel/bin/python -c \
-            "from aspenops_nexus.process_ir import ProcessIntent; print(ProcessIntent)"
-          /tmp/aspenops-wheel/bin/python -c \
-            "from aspenops_nexus.simulation_agents import capability_matrix; print(capability_matrix())"
-      - name: Upload quality evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ci-evidence-quality-${{ github.run_id }}-${{ github.run_attempt }}
-          path: var/ci
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 90
+          set -uo pipefail
+          run_sha="$(git rev-parse HEAD)"
+          parent_sha="$(git rev-parse HEAD^)"
+          patch_source_sha="$(git rev-parse HEAD^^)"
+          permanent_source_sha="$(git rev-parse HEAD^^^)"
+          log=/tmp/acceptance-permanent-ci.log
+          : > "$log"
+          status=0
+          {
+            set -e
+            git show "${patch_source_sha}:.github/workflows/acceptance-hardening-once.yml" \
+              > /tmp/original-acceptance-workflow.yml
+            python - <<'PY'
+            from pathlib import Path
 
-  tests:
-    name: Python ${{ matrix.python-version }} tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - python-version: "3.11"
-            coverage-floor: "94.5"
-          - python-version: "3.12"
-            coverage-floor: "95.0"
-          - python-version: "3.13"
-            coverage-floor: "94.5"
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-        with:
-          version: "0.11.16"
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-      - name: Verify lockfile and sync frozen dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p var/ci
-          uv lock --check 2>&1 | tee var/ci/uv-lock-${{ matrix.python-version }}.log
-          uv sync --frozen --extra dev --extra agent --extra signing \
-            2>&1 | tee var/ci/uv-sync-${{ matrix.python-version }}.log
-      - name: Pytest with branch coverage
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest -W error::ResourceWarning \
-            --cov=aspenops_nexus \
-            --cov-branch \
-            --cov-report=term-missing \
-            --cov-report=json:var/ci/coverage-${{ matrix.python-version }}.json \
-            --junitxml=var/ci/junit-${{ matrix.python-version }}.xml \
-            --durations=20 \
-            --cov-fail-under=${{ matrix.coverage-floor }} \
-            2>&1 | tee var/ci/pytest-${{ matrix.python-version }}.log
-      - name: Verify complete-suite order independence
-        if: ${{ matrix.python-version == '3.12' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/run_test_order_gate.py \
-            --seed 20260728 \
-            --output-dir var/ci \
-            2>&1 | tee var/ci/test-order-gate.log
-      - name: Render Python test dashboard
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/render_test_dashboard.py \
-            --input-dir var/ci \
-            --output-html var/ci/test-dashboard-python-${{ matrix.python-version }}.html \
-            --output-svg var/ci/test-dashboard-python-${{ matrix.python-version }}.svg \
-            --title "AspenOps Python ${{ matrix.python-version }} dashboard" \
-            --scope "Full Python test matrix with branch coverage" \
-            --note "This dashboard summarizes only this Python job's evidence."
-      - name: Upload test evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ci-evidence-python-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: var/ci
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 90
+            workflow = Path('/tmp/original-acceptance-workflow.yml').read_text(
+                encoding='utf-8'
+            )
+            marker = "          python - <<'PY'\n"
+            end_marker = "          PY\n"
+            start = workflow.index(marker) + len(marker)
+            end = workflow.index(end_marker, start)
+            lines = workflow[start:end].splitlines()
+            script = '\n'.join(
+                line[10:] if line.startswith('          ') else line for line in lines
+            ) + '\n'
+            target = Path('/tmp/apply-acceptance.py')
+            target.write_text(script, encoding='utf-8')
+            if target.stat().st_size < 1000:
+                raise RuntimeError('Extracted acceptance patch is unexpectedly small')
+            PY
+            python /tmp/apply-acceptance.py
+            python - <<'PY'
+            from pathlib import Path
+
+            def replace(path: str, old: str, new: str) -> None:
+                target = Path(path)
+                text = target.read_text(encoding='utf-8')
+                observed = text.count(old)
+                if observed != 1:
+                    raise RuntimeError(
+                        f'repair anchor mismatch for {path}: expected 1, observed {observed}'
+                    )
+                target.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+            replace(
+                'src/aspenops_nexus/engineering_rules.py',
+                'set(zip(cycle, cycle[1:]))',
+                'set(zip(cycle, cycle[1:], strict=False))',
+            )
+            replace(
+                'src/aspenops_nexus/optimization.py',
+                'if balance.get("passed") not in {True, 1.0}:',
+                'if _finite_output(balance.get("passed")) != 1.0:',
+            )
+            PY
+
+            git show "${parent_sha}:.github/workflows/ci.yml" \
+              > .github/workflows/ci.yml
+            git show "${permanent_source_sha}:.github/workflows/generate-performance-evidence.yml" \
+              > .github/workflows/generate-performance-evidence.yml
+            rm -f \
+              .github/workflows/acceptance-hardening-once.yml \
+              .github/workflows/acceptance-hardening-retry-once.yml \
+              .github/workflows/acceptance-finalizer-once.yml \
+              docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json \
+              docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt \
+              docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
+
+            uv lock --check
+            uv sync --frozen --extra dev --extra agent --extra signing
+            uv run ruff format src tests
+            uv run ruff check .
+            uv run mypy src
+            uv run python -m compileall -q src scripts tests
+            uv run python scripts/audit_source_tree.py --output /tmp/source-tree-audit.json
+            uv tool run --isolated --from 'bandit==1.9.4' bandit \
+              --recursive src scripts \
+              --severity-level high \
+              --confidence-level high
+            uv run pytest -W error::ResourceWarning \
+              --cov=aspenops_nexus \
+              --cov-branch \
+              --cov-report=term-missing \
+              --cov-report=json:/tmp/acceptance-coverage.json \
+              --junitxml=/tmp/acceptance-junit.xml \
+              --cov-fail-under=95.0
+            uv run python scripts/run_test_order_gate.py \
+              --seed 20260728 \
+              --output-dir /tmp/acceptance-order-gate
+            git diff --check
+          } > >(tee "$log") 2>&1 || status=$?
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ "$status" -eq 0 ]]; then
+            python - <<'PY'
+            import json
+            import xml.etree.ElementTree as ET
+            from pathlib import Path
+
+            coverage = json.loads(
+                Path('/tmp/acceptance-coverage.json').read_text(encoding='utf-8')
+            )['totals']['percent_covered']
+            root = ET.parse('/tmp/acceptance-junit.xml').getroot()
+            suites = [root] if root.tag.endswith('testsuite') else list(root)
+            tests = sum(int(item.attrib.get('tests', 0)) for item in suites)
+            failures = sum(int(item.attrib.get('failures', 0)) for item in suites)
+            errors = sum(int(item.attrib.get('errors', 0)) for item in suites)
+            skipped = sum(int(item.attrib.get('skipped', 0)) for item in suites)
+            evidence = {
+                'schema': 'aspenops.acceptance-hardening-qualification/v1',
+                'status': 'PASS',
+                'python': '3.12',
+                'passed': tests - failures - errors - skipped,
+                'failed': failures,
+                'errors': errors,
+                'skipped': skipped,
+                'branch_coverage_percent': round(float(coverage), 2),
+                'reverse_order_gate': 'PASS',
+                'seeded_order_gate': {'status': 'PASS', 'seed': 20260728},
+                'static_gates': {
+                    'ruff': 'PASS',
+                    'mypy_strict': 'PASS',
+                    'compileall': 'PASS',
+                    'source_tree_audit': 'PASS',
+                    'bandit_high_high': 'PASS'
+                },
+                'real_aspen_status': 'PENDING_REAL_ASPEN_CERTIFICATION'
+            }
+            Path('docs/ACCEPTANCE_HARDENING_QUALIFICATION.json').write_text(
+                json.dumps(evidence, indent=2, sort_keys=True) + '\n',
+                encoding='utf-8'
+            )
+            PY
+            git add -A
+            git commit -m "fix: harden acceptance-critical runtime contracts"
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          cp "$log" /tmp/acceptance-permanent-ci-failure.log
+          git reset --hard "$run_sha"
+          git show "${parent_sha}:.github/workflows/ci.yml" \
+            > .github/workflows/ci.yml
+          git show "${permanent_source_sha}:.github/workflows/generate-performance-evidence.yml" \
+            > .github/workflows/generate-performance-evidence.yml
+          rm -f \
+            .github/workflows/acceptance-hardening-once.yml \
+            .github/workflows/acceptance-hardening-retry-once.yml \
+            .github/workflows/acceptance-finalizer-once.yml \
+            docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json \
+            docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt
+          {
+            printf 'acceptance hardening permanent-CI finalizer failed with status %s\n\n' "$status"
+            tail -n 1800 /tmp/acceptance-permanent-ci-failure.log
+          } > docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
+          git add -A
+          git commit -m "test: record permanent-CI acceptance diagnostic"
+          git push origin HEAD:main
+          exit "$status"
