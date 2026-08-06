@@ -12,6 +12,7 @@ This document defines the software-delivery boundary for AspenOps 2.0. It is bil
 - Scheduler, cache, optimization, evidence, signature and revocation controls.
 - Bilingual README files, twenty-three governed SVGs and four AI-assisted acceptance diagrams.
 - Machine delivery verifier: `scripts/verify_delivery.py`.
+- Deterministic handover builder: `scripts/build_delivery_bundle.py`; see `docs/delivery-bundle.md`.
 
 The repository does **not** deliver a production-grade arbitrary native flowsheet builder or licensed Aspen engineering certification.
 
@@ -43,6 +44,14 @@ uv run python scripts/run_test_order_gate.py \
   --seed 20260728 \
   --output-dir var/ci
 uv build
+rm -rf var/delivery
+uv run python scripts/build_delivery_bundle.py \
+  --source-sha "$(git rev-parse HEAD)" \
+  --source-date-epoch 0 \
+  --include-dist \
+  --output-dir var/delivery
+sha256sum -c var/delivery/SHA256SUMS
+sha256sum -c var/delivery/aspenops-handover-*.zip.sha256
 ```
 
 A software delivery is acceptable only when every command succeeds and the delivery report has `status=PASS`.
@@ -61,6 +70,8 @@ A software delivery is acceptable only when every command succeeds and the deliv
 8. Package metadata, README version and licence remain consistent.
 9. Warm-start is single-Worker and path-dependent; optimization is reinitialized.
 10. Native failure isolation is implemented by private-case discard or transactional rollback.
+11. Delivery ZIP members are sorted, timestamps and file modes are normalized, and every artifact is SHA-256 bound.
+12. The SPDX SBOM is generated from the frozen `uv.lock` inventory.
 
 ## 4. External qualification HOLD / 外部资格暂停
 
@@ -96,7 +107,16 @@ source-tree-audit.json
 Bandit JSON
 test-order-gate evidence
 ACCEPTANCE_HARDENING_QUALIFICATION.json
+aspenops-source-<sha12>.zip
+aspenops-sbom-<sha12>.spdx.json
+aspenops-evidence-index-<sha12>.json
+aspenops-delivery-manifest-<sha12>.json
+SHA256SUMS
+aspenops-handover-<sha12>.zip
+aspenops-handover-<sha12>.zip.sha256
 licensed external evidence, when available
 ```
 
 The archive should be immutable, access-controlled and associated with the exact acceptance decision.
+
+移交包应保持不可变、受控访问，并与明确的验收决定和源码身份绑定。
