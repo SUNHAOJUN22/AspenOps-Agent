@@ -1,4 +1,5 @@
 # One-time, source-only finalizer for deterministic delivery packaging.
+# Triggered after the payload commit is visible on main.
 name: Delivery finalization once
 
 on:
