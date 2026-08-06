@@ -1,0 +1,65 @@
+name: Acceptance hardening diagnostic once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/acceptance-hardening-diagnostic-once.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: aspenops-acceptance-hardening-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Wait for and collect acceptance run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs
+          run_json=''
+          for attempt in $(seq 1 60); do
+            run_json="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/acceptance-hardening-once.yml/runs?per_page=1" \
+              --jq '.workflow_runs[0] // empty')"
+            if [[ -n "$run_json" ]]; then
+              status="$(printf '%s' "$run_json" | jq -r '.status')"
+              if [[ "$status" == "completed" ]]; then
+                break
+              fi
+            fi
+            sleep 10
+          done
+          if [[ -z "$run_json" ]]; then
+            printf '%s\n' '{"status":"NO_RUN_FOUND"}' > docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json
+          else
+            run_id="$(printf '%s' "$run_json" | jq -r '.id')"
+            jobs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
+            jq -n \
+              --argjson run "$run_json" \
+              --argjson jobs "$jobs" \
+              '{schema:"aspenops.acceptance-hardening-diagnostic/v1",run:$run,jobs:$jobs}' \
+              > docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json
+          fi
+          rm -f .github/workflows/acceptance-hardening-diagnostic-once.yml
+      - name: Commit diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: record acceptance hardening diagnostic"
+          git push origin HEAD:main
