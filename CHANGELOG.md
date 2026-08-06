@@ -1,5 +1,14 @@
 # Changelog
 
+## Delivery readiness - 2026-08-06
+
+- rewrote the primary and English README files as acceptance-oriented bilingual guides with architecture, mathematical contracts, operating strategies, CLI/MCP/Windows workflows and explicit licensed-simulator boundaries;
+- added four repository-specific AI-assisted SVG diagrams for mathematical contracts, warm-start trajectories, native failure isolation and delivery acceptance;
+- added `scripts/verify_delivery.py`, strict delivery-governance tests and a bilingual software-acceptance guide;
+- added `scripts/build_delivery_bundle.py` for deterministic source archives, SPDX 2.3 SBOM generation, qualification-evidence indexing, delivery manifests, SHA-256 inventories and reproducible handover ZIP files;
+- added regression tests for deterministic bytes, normalized ZIP metadata, transient-file exclusion, wheel/sdist collection, strict failure behavior and repository-level delivery contracts;
+- retained `PENDING_REAL_ASPEN_CERTIFICATION` because public software qualification cannot replace licensed Aspen Plus/HYSYS runtime evidence and human engineering approval.
+
 ## Acceptance hardening - 2026-08-06
 
 - reject Boolean/text aliases in numeric simulator readback, constraints, balances and objectives;
