@@ -334,6 +334,17 @@ class EvaluationRequest:
             raise ValueError(f"Unsupported reset_mode: {reset_raw}")
         timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), "timeout_s")
         metadata = _object(mapping.get("metadata", {}), "metadata")
+        if reset_raw == "warm_start":
+            session = metadata.get("warm_start_session")
+            step = metadata.get("warm_start_step")
+            if not isinstance(session, str) or not session.strip():
+                raise ValueError(
+                    "warm_start requires metadata.warm_start_session as a non-empty string"
+                )
+            if isinstance(step, bool) or not isinstance(step, int) or step < 0:
+                raise ValueError(
+                    "warm_start requires metadata.warm_start_step as a non-negative integer"
+                )
         return cls(
             model_path=_text(mapping["model_path"], "model_path"),
             registry_path=_text(mapping["registry_path"], "registry_path"),
@@ -378,8 +389,8 @@ class EvaluationRequest:
         }
 
     def physical_identity(self) -> dict[str, Any]:
-        """Return solver and verification semantics without locations or execution policy."""
-        return {
+        """Return solver and verification semantics without filesystem locations."""
+        identity: dict[str, Any] = {
             "backend": self.backend,
             "reset_mode": self.reset_mode,
             "writes": [_variable_write_dict(item) for item in self.writes],
@@ -387,6 +398,12 @@ class EvaluationRequest:
             "constraints": [_constraint_dict(item) for item in self.constraints],
             "balances": [_balance_identity(item) for item in self.balances],
         }
+        if self.reset_mode == "warm_start":
+            identity["warm_start_trajectory"] = {
+                "session": self.metadata["warm_start_session"],
+                "step": self.metadata["warm_start_step"],
+            }
+        return identity
 
 
 _RESULT_PAYLOAD_SCALAR_TYPES = frozenset((str, int, float, bool, type(None)))
