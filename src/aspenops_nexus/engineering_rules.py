@@ -12,6 +12,7 @@ from .process_ir_v2 import (
     ProcessDesignIR,
     ReactionDefinition,
 )
+from .units import UnitError, dimension
 
 IssueSeverity = Literal["HARD_ERROR", "ENGINEERING_BLOCKER", "WARNING", "INFORMATION"]
 
@@ -25,6 +26,66 @@ _REACTOR_KINDS = {
     "reactor_yield",
 }
 _COLUMN_KINDS = {"radfrac", "distillation_column", "dstwu"}
+_PARAMETER_DIMENSIONS: dict[str, frozenset[str]] = {
+    "SPLIT_FRACTION": frozenset({"dimensionless"}),
+    "FLOW_SPEC": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),
+    "OUTLET_TEMPERATURE": frozenset({"temperature"}),
+    "TEMPERATURE": frozenset({"temperature"}),
+    "DUTY": frozenset({"power"}),
+    "CONDENSER_DUTY": frozenset({"power"}),
+    "REBOILER_DUTY": frozenset({"power"}),
+    "VAPOR_FRACTION": frozenset({"dimensionless"}),
+    "PRESSURE": frozenset({"pressure"}),
+    "OUTLET_PRESSURE": frozenset({"pressure"}),
+    "PRESSURE_INCREASE": frozenset({"pressure"}),
+    "PRESSURE_DROP": frozenset({"pressure"}),
+    "PRESSURE_RATIO": frozenset({"dimensionless"}),
+    "EFFICIENCY": frozenset({"dimensionless"}),
+    "TOTAL_STAGES": frozenset({"dimensionless"}),
+    "FEED_STAGE": frozenset({"dimensionless"}),
+    "REFLUX_RATIO": frozenset({"dimensionless"}),
+    "DISTILLATE_RATE": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),
+    "BOTTOMS_RATE": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),
+    "DISTILLATE_RECOVERY": frozenset({"dimensionless"}),
+    "BOTTOMS_RECOVERY": frozenset({"dimensionless"}),
+    "DISTILLATE_PURITY": frozenset({"dimensionless"}),
+    "BOTTOMS_PURITY": frozenset({"dimensionless"}),
+    "VOLUME": frozenset({"volume"}),
+    "RESIDENCE_TIME": frozenset({"time"}),
+    "CONVERSION": frozenset({"dimensionless"}),
+    "TOTAL_FLOW": frozenset({"mass_flow", "molar_flow", "volumetric_flow"}),
+}
+_INTEGER_PARAMETERS = frozenset({"TOTAL_STAGES", "FEED_STAGE"})
+_FRACTION_PARAMETERS = frozenset(
+    {
+        "SPLIT_FRACTION",
+        "VAPOR_FRACTION",
+        "EFFICIENCY",
+        "DISTILLATE_RECOVERY",
+        "BOTTOMS_RECOVERY",
+        "DISTILLATE_PURITY",
+        "BOTTOMS_PURITY",
+        "CONVERSION",
+    }
+)
+_POSITIVE_PARAMETERS = frozenset(
+    {
+        "FLOW_SPEC",
+        "OUTLET_TEMPERATURE",
+        "TEMPERATURE",
+        "PRESSURE",
+        "OUTLET_PRESSURE",
+        "PRESSURE_RATIO",
+        "TOTAL_STAGES",
+        "FEED_STAGE",
+        "REFLUX_RATIO",
+        "DISTILLATE_RATE",
+        "BOTTOMS_RATE",
+        "VOLUME",
+        "RESIDENCE_TIME",
+        "TOTAL_FLOW",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -94,6 +155,91 @@ def _finite_parameter(
         return None
     number = float(parameter.value)
     return number if math.isfinite(number) else None
+
+
+def _validate_parameter_contracts(
+    parameters: tuple[ParameterDefinition, ...],
+    path: str,
+) -> list[RuleIssue]:
+    issues: list[RuleIssue] = []
+    for parameter in parameters:
+        expected_dimensions = _PARAMETER_DIMENSIONS.get(parameter.name)
+        if expected_dimensions is None or not parameter.approved:
+            continue
+        parameter_path = f"{path}.parameters.{parameter.name}"
+        if isinstance(parameter.value, bool | str) or parameter.value is None:
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.numeric_type",
+                    parameter_path,
+                    f"Parameter {parameter.name} requires a finite numeric value",
+                )
+            )
+            continue
+        number = float(parameter.value)
+        if not math.isfinite(number):
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.non_finite",
+                    parameter_path,
+                    f"Parameter {parameter.name} requires a finite numeric value",
+                )
+            )
+            continue
+        if parameter.unit is None:
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.unit_missing",
+                    parameter_path,
+                    f"Parameter {parameter.name} requires an explicit unit",
+                )
+            )
+        else:
+            try:
+                observed_dimension = dimension(parameter.unit)
+            except UnitError:
+                observed_dimension = None
+            if observed_dimension not in expected_dimensions:
+                issues.append(
+                    _issue(
+                        "ENGINEERING_BLOCKER",
+                        "parameter.unit_dimension",
+                        parameter_path,
+                        f"Parameter {parameter.name} unit {parameter.unit!r} is incompatible with "
+                        f"{sorted(expected_dimensions)}",
+                    )
+                )
+        if parameter.name in _INTEGER_PARAMETERS and not number.is_integer():
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.integer_required",
+                    parameter_path,
+                    f"Parameter {parameter.name} must be integral",
+                )
+            )
+        if parameter.name in _FRACTION_PARAMETERS and not 0.0 <= number <= 1.0:
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.fraction_range",
+                    parameter_path,
+                    f"Parameter {parameter.name} must lie between zero and one",
+                )
+            )
+        if parameter.name in _POSITIVE_PARAMETERS and number <= 0.0:
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.positive_required",
+                    parameter_path,
+                    f"Parameter {parameter.name} must be positive",
+                )
+            )
+    return issues
 
 
 def _require_any_parameter(
@@ -331,6 +477,12 @@ def _validate_equipment_contract(
             )
         )
 
+    issues.extend(
+        _validate_parameter_contracts(
+            (*equipment.parameters, *equipment.design_specs),
+            path,
+        )
+    )
     if any(not item.approved for item in (*equipment.parameters, *equipment.design_specs)):
         issues.append(
             _issue(
@@ -415,6 +567,7 @@ def _validate_reaction(
                 f"Reaction {reaction.id} requires engineering approval",
             )
         )
+    issues.extend(_validate_parameter_contracts(reaction.parameters, path))
     if any(not item.approved for item in reaction.parameters):
         issues.append(
             _issue(
@@ -627,6 +780,7 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
                     "Energy and information streams cannot carry material components",
                 )
             )
+        issues.extend(_validate_parameter_contracts(stream.parameters, path))
         if any(not item.approved for item in stream.parameters):
             issues.append(
                 _issue(
@@ -704,15 +858,21 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
         recycle_streams.update({recycle.stream_id, recycle.tear_stream_id})
 
     cycles = _cycle_paths(design)
-    if cycles and not design.recycles:
-        for cycle in cycles:
+    owned_tear_edges = {
+        (tear.source.equipment_id, tear.target.equipment_id)
+        for recycle in design.recycles
+        if (tear := stream_map.get(recycle.tear_stream_id)) is not None
+        and tear.kind == "tear"
+    }
+    for cycle in cycles:
+        cycle_edges = set(zip(cycle, cycle[1:], strict=False))
+        if not cycle_edges.intersection(owned_tear_edges):
             issues.append(
                 _issue(
                     "ENGINEERING_BLOCKER",
                     "topology.recycle_contract_missing",
                     "streams",
-                    "Directed material cycle has no approved recycle contract: "
-                    + " -> ".join(cycle),
+                    "Directed material cycle has no owned tear edge: " + " -> ".join(cycle),
                 )
             )
     if design.recycles and not cycles:
