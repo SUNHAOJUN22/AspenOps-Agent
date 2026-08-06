@@ -559,6 +559,54 @@ docs/                   架构、资格、性能、认证和验收文档
 | 证据包验证失败 | 检查成员清单、SHA-256、大小、签名密钥和 `allow_nan=False` |
 | 真实资格仍 HOLD | 提供持证求解器、固定输入、硬件指纹、参考值与容差 |
 
+## 永久 CI、手动门与证据隔离
+
+永久软件资格使用固定 runner：`ubuntu-24.04` 与 `windows-2025`。依赖审计覆盖
+Python 3.11、3.12、3.13 与 Linux 与 Windows 的六组合，并由以下四个长期
+workflow 管理：
+
+```text
+ci.yml
+windows-control-plane.yml
+generate-performance-evidence.yml
+licensed-aspen-certification.yml
+```
+
+手动 workflow 只接受 `refs/heads/main`。`actions/checkout` 后如果检测到
+detached checkout、提交漂移或非主干输入，会显式失败并返回 status 2，不允许
+all-skipped 被解释为成功。
+
+licensed-aspen-certification 的执行隔离合同固定包含：
+
+```text
+expected_head_sha
+GITHUB_SHA
+GITHUB_RUN_ID
+GITHUB_RUN_ATTEMPT
+LICENSED_EVIDENCE_DIR
+github.run_id
+github.run_attempt
+aspenops-licensed-artifact
+run-metadata.txt
+job_status
+RUNNER_TEMP
+runner.temp
+if-no-files-found: error
+```
+
+每次 run attempt 使用独立 `LICENSED_EVIDENCE_DIR`，证据上传名称包含
+`github.run_id` 与 `github.run_attempt`，licensed 作业保持串行，避免不同许可证
+运行和证据目录互相覆盖。
+
+已验证归档基线只证明其明确记录的源码提交、运行器和证据；它不是对任意后续提交的自动声明。
+
+## Process Intent IR 与适配器边界
+
+公开流程意图 schema 为 `aspenops.flowsheet/v1`。离线验证命令为
+`scripts/validate_process_ir.py`，可生成 `process-ir-dashboard.html`。DWSIM、
+IDAES 以及其他编译目标仍是 planned；对应生产适配器未实现时必须 fail closed，
+不得把预览图或离线合同解释为可执行原生流程图。
+
 ## 许可证与合规
 
 Apache-2.0 仅覆盖本仓库代码。Aspen Plus、Aspen HYSYS、Windows、许可证服务器、客户模型和工艺数据受各自许可与保密条款约束。不得绕过许可证、访问控制或安全审查。
