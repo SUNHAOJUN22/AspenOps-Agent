@@ -212,7 +212,12 @@ def _check_workflows(root: Path, issues: list[dict[str, str]]) -> list[str]:
     for path in sorted(directory.glob("*.yml")):
         text = path.read_text(encoding="utf-8")
         if "contents: write" in text:
-            _issue(issues, "workflow_write_permission", str(path.relative_to(root)), "Must be read-only")
+            _issue(
+                issues,
+                "workflow_write_permission",
+                str(path.relative_to(root)),
+                "Must be read-only",
+            )
         if TEMPORARY_NAME.search(path.name):
             _issue(issues, "temporary_workflow_present", str(path.relative_to(root)), path.name)
     return sorted(names)
