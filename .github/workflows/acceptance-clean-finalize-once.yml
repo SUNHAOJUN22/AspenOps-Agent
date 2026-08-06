@@ -1,4 +1,4 @@
-name: Finalize clean acceptance hardening once
+name: Remove temporary acceptance branch once
 
 on:
   push:
@@ -10,124 +10,19 @@ permissions:
   contents: write
 
 concurrency:
-  group: aspenops-clean-acceptance-finalizer
+  group: aspenops-remove-temporary-branch
   cancel-in-progress: false
 
 jobs:
-  finalize:
+  cleanup:
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
-        with:
-          version: "0.11.16"
-          python-version: "3.12"
-          enable-cache: true
-      - name: Patch, qualify and publish source-only tree
+      - name: Delete temporary reference
         shell: bash
         run: |
-          set +e
-          set -uo pipefail
-          trigger_sha="$(git rev-parse HEAD)"
-          log=/tmp/acceptance-source-finalizer.log
-          : > "$log"
-          status=0
-
-          run_gate() {
-            if [[ "$status" -ne 0 ]]; then
-              return 0
-            fi
-            printf '\n>>> %q' "$1" | tee -a "$log"
-            printf ' %q' "${@:2}" | tee -a "$log"
-            printf '\n' | tee -a "$log"
-            "$@" 2>&1 | tee -a "$log"
-            local rc=${PIPESTATUS[0]}
-            if [[ "$rc" -ne 0 ]]; then
-              status=$rc
-            fi
-            return 0
-          }
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          printf '{"schema":"aspenops.acceptance-finalizer-running/v1","run_id":"%s","source_sha":"%s"}\n' "$GITHUB_RUN_ID" "$trigger_sha" > docs/ACCEPTANCE_FINALIZER_RUNNING.json
-          git add docs/ACCEPTANCE_FINALIZER_RUNNING.json
-          git commit -m "ci: mark acceptance qualification running"
-          git fetch origin main
-          if [[ "$(git rev-parse origin/main)" != "$trigger_sha" ]]; then
-            echo "main advanced before qualification heartbeat" >&2
-            exit 2
-          fi
-          git push origin HEAD:main
-          published_sha="$(git rev-parse HEAD)"
-
-          run_gate bash -c "git show 13eab4d18decb544597dea9f72e07fbee795f1ba:.github/workflows/ci.yml > .github/workflows/ci.yml"
-          run_gate bash -c "git show 13eab4d18decb544597dea9f72e07fbee795f1ba:.github/workflows/generate-performance-evidence.yml > .github/workflows/generate-performance-evidence.yml"
-          run_gate rm -f .github/workflows/acceptance-clean-finalize-once.yml
-          run_gate rm -f .github/workflows/acceptance-finalizer-once.yml
-          run_gate rm -f .github/workflows/acceptance-hardening-once.yml
-          run_gate rm -f .github/workflows/acceptance-hardening-retry-once.yml
-          run_gate rm -f docs/ACCEPTANCE_FINALIZER_RUNNING.json
-          run_gate rm -f docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json
-          run_gate rm -f docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt
-          run_gate rm -f docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
-          run_gate rm -f docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
-
-          run_gate python scripts/finalize_acceptance_hardening.py patch
-          run_gate python scripts/finalize_acceptance_fixups.py
-          run_gate uv lock --check
-          run_gate uv sync --frozen --extra dev --extra agent --extra signing
-          run_gate uv run ruff format src tests
-          run_gate uv run ruff check . --exclude scripts/finalize_acceptance_hardening.py --exclude scripts/finalize_acceptance_fixups.py
-          run_gate uv run mypy src
-          run_gate uv run python -m compileall -q src scripts tests
-          run_gate uv run python scripts/audit_source_tree.py --output /tmp/source-tree-audit.json
-          run_gate uv tool run --isolated --from bandit==1.9.4 bandit --recursive src scripts --severity-level high --confidence-level high
-          run_gate uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-report=json:/tmp/acceptance-source-coverage.json --junitxml=/tmp/acceptance-source-junit.xml --cov-fail-under=95.0
-          run_gate uv run python scripts/run_test_order_gate.py --seed 20260728 --output-dir /tmp/acceptance-source-order
-          run_gate python scripts/finalize_acceptance_hardening.py evidence --coverage /tmp/acceptance-source-coverage.json --junit /tmp/acceptance-source-junit.xml --validated-parent "$trigger_sha"
-
-          if [[ "$status" -eq 0 ]]; then
-            git checkout "$published_sha" -- .github/workflows
-            rm -f docs/ACCEPTANCE_FINALIZER_RUNNING.json
-            rm -f docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json
-            rm -f docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt
-            rm -f docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
-            rm -f docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
-            rm -f scripts/finalize_acceptance_hardening.py
-            rm -f scripts/finalize_acceptance_fixups.py
-            if git diff --name-only "$published_sha" | grep -q '^\.github/workflows/'; then
-              echo "source finalizer attempted to mutate workflows" >&2
-              status=2
-            fi
-            git diff --check || status=$?
-          fi
-
-          if [[ "$status" -eq 0 ]]; then
-            git add -A
-            git commit -m "fix: complete acceptance-critical runtime hardening"
-            git fetch origin main
-            if [[ "$(git rev-parse origin/main)" != "$published_sha" ]]; then
-              echo "main advanced during final qualification" >&2
-              exit 2
-            fi
-            git push origin HEAD:main
-            exit 0
-          fi
-
-          git reset --hard "$published_sha"
-          rm -f docs/ACCEPTANCE_FINALIZER_RUNNING.json
-          printf 'acceptance source finalizer failed with status %s\n\n' "$status" > docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
-          tail -n 2200 "$log" >> docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
-          git add -A
-          git commit -m "test: record acceptance source finalizer diagnostic"
-          git fetch origin main
-          if [[ "$(git rev-parse origin/main)" != "$published_sha" ]]; then
-            echo "main advanced before diagnostic publication" >&2
-            exit 2
-          fi
-          git push origin HEAD:main
-          exit "$status"
+          set -euo pipefail
+          git push origin --delete tmp-do-not-use
