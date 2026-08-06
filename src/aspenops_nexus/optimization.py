@@ -98,10 +98,10 @@ _MAX_FINITE_FRACTION = Fraction.from_float(_MAX_FINITE)
 
 
 def _finite_output(value: object) -> float | None:
-    if isinstance(value, bool | int | float):
-        number = float(value)
-        return number if math.isfinite(number) else None
-    return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 def _saturating_nonnegative_add(total: float, value: float) -> float:
@@ -362,6 +362,9 @@ class OptimizationProblem:
         base_request = {
             key: value for key, value in document.items() if key not in {"optimization", "points"}
         }
+        reset_mode = base_request.get("reset_mode")
+        if reset_mode == "warm_start" or base_request.get("reinitialize") is False:
+            raise ValueError("Optimization requires reset_mode='reinitialize'")
         budget = OptimizationBudget.from_mapping(
             _optional_object_map(optimization.get("budget", {}))
         )
@@ -454,7 +457,7 @@ class _Evaluator:
 
     @staticmethod
     def _violation(result: Mapping[str, object]) -> float:
-        if bool(result.get("ok")):
+        if result.get("ok") is True:
             return 0.0
         diagnostics = _optional_object_map(result.get("diagnostics", {}))
         total_value = _finite_output(diagnostics.get("total_constraint_violation"))
@@ -465,7 +468,7 @@ class _Evaluator:
             balances = cast(dict[object, object], balances_value)
             for balance_value in balances.values():
                 balance = _optional_object_map(balance_value)
-                if not bool(balance.get("passed")):
+                if _finite_output(balance.get("passed")) != 1.0:
                     relative = _finite_output(balance.get("relative"))
                     if relative is not None:
                         total = _saturating_nonnegative_add(total, relative)
@@ -479,9 +482,9 @@ class _Evaluator:
             total = _saturating_nonnegative_add(total, 1.0)
         if any(name.startswith("balance_failed:") for name in violations):
             total = _saturating_nonnegative_add(total, 1.0)
-        if not bool(result.get("communication_ok")):
+        if result.get("communication_ok") is not True:
             total = _saturating_nonnegative_add(total, 1_000_000.0)
-        elif not bool(result.get("engine_ok")) or not bool(result.get("converged")):
+        elif result.get("engine_ok") is not True or result.get("converged") is not True:
             total = _saturating_nonnegative_add(total, 100_000.0)
         return max(total, 1e-12)
 
@@ -548,7 +551,7 @@ class _Evaluator:
                     minimized_objectives=tuple(minimized_values),
                     scalar_objective=scalar,
                     violation=violation,
-                    ok=bool(result.get("ok")) and not missing,
+                    ok=result.get("ok") is True and not missing,
                     request_hash=str(result.get("request_hash", "")),
                 )
             )
@@ -633,16 +636,30 @@ def run_optimization_document(
             for point in evaluator.trace
         ]
     )
-    trace_by_x = {point.x: point for point in evaluator.trace}
-    pareto = [
-        {
-            "x": list(point.x),
-            "decoded": trace_by_x[point.x].decoded,
-            "objectives": list(trace_by_x[point.x].objectives),
-            "violation": point.violation,
-        }
-        for point in pareto_points
-    ]
+
+    def matching_trace(point: ParetoPoint) -> OptimizationTracePoint:
+        matches = [
+            item
+            for item in evaluator.trace
+            if item.x == point.x
+            and item.minimized_objectives == point.objectives
+            and item.violation == point.violation
+        ]
+        if not matches:
+            raise RuntimeError("Pareto point has no exact optimization trace record")
+        return matches[-1]
+
+    pareto = []
+    for point in pareto_points:
+        trace = matching_trace(point)
+        pareto.append(
+            {
+                "x": list(point.x),
+                "decoded": trace.decoded,
+                "objectives": list(trace.objectives),
+                "violation": point.violation,
+            }
+        )
 
     best: dict[str, object] | None = None
     if run is not None:
