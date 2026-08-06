@@ -33,6 +33,19 @@ jobs:
           trigger_sha="$(git rev-parse HEAD)"
           log=/tmp/acceptance-clean-finalizer.log
           : > "$log"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf '{"schema":"aspenops.acceptance-finalizer-running/v1","run_id":"%s","source_sha":"%s"}\n' "$GITHUB_RUN_ID" "$trigger_sha" > docs/ACCEPTANCE_FINALIZER_RUNNING.json
+          git add docs/ACCEPTANCE_FINALIZER_RUNNING.json
+          git commit -m "ci: mark acceptance qualification running"
+          git fetch origin main
+          if [[ "$(git rev-parse origin/main)" != "$trigger_sha" ]]; then
+            echo "main advanced before qualification heartbeat" >&2
+            exit 2
+          fi
+          git push origin HEAD:main
+          published_sha="$(git rev-parse HEAD)"
+
           status=0
           {
             set -e
@@ -42,6 +55,7 @@ jobs:
             rm -f .github/workflows/acceptance-finalizer-once.yml
             rm -f .github/workflows/acceptance-hardening-once.yml
             rm -f .github/workflows/acceptance-hardening-retry-once.yml
+            rm -f docs/ACCEPTANCE_FINALIZER_RUNNING.json
             rm -f docs/ACCEPTANCE_HARDENING_DIAGNOSTIC.json
             rm -f docs/ACCEPTANCE_HARDENING_RETRY_DIAGNOSTIC.txt
             rm -f docs/ACCEPTANCE_FINALIZER_DIAGNOSTIC.txt
@@ -63,13 +77,11 @@ jobs:
             git diff --check
           } > >(tee "$log") 2>&1 || status=$?
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [[ "$status" -eq 0 ]]; then
             git add -A
             git commit -m "fix: complete acceptance-critical runtime hardening"
             git fetch origin main
-            if [[ "$(git rev-parse origin/main)" != "$trigger_sha" ]]; then
+            if [[ "$(git rev-parse origin/main)" != "$published_sha" ]]; then
               echo "main advanced during final qualification" >&2
               exit 2
             fi
@@ -78,13 +90,14 @@ jobs:
           fi
 
           cp "$log" /tmp/acceptance-clean-finalizer-failure.log
-          git reset --hard "$trigger_sha"
+          git reset --hard "$published_sha"
+          rm -f docs/ACCEPTANCE_FINALIZER_RUNNING.json
           printf 'clean acceptance finalizer failed with status %s\n\n' "$status" > docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
           tail -n 2200 /tmp/acceptance-clean-finalizer-failure.log >> docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
-          git add docs/ACCEPTANCE_CLEAN_FINALIZER_DIAGNOSTIC.txt
+          git add -A
           git commit -m "test: record clean acceptance finalizer diagnostic"
           git fetch origin main
-          if [[ "$(git rev-parse origin/main)" != "$trigger_sha" ]]; then
+          if [[ "$(git rev-parse origin/main)" != "$published_sha" ]]; then
             echo "main advanced before diagnostic publication" >&2
             exit 2
           fi
