@@ -124,6 +124,11 @@ class CasePool:
                     handle = self._new_handle(worker_id)
                     self._assert_handle_identity(handle)
                     started.append(handle)
+                identities = [self._stable_runtime_value(handle.runtime) for handle in started]
+                if identities and any(identity != identities[0] for identity in identities[1:]):
+                    raise RuntimeError(
+                        "CasePool workers expose heterogeneous simulator runtime identities"
+                    )
                 self._handles = started
             except Exception:
                 for handle in started:
@@ -215,6 +220,12 @@ class CasePool:
             new = self._new_handle(current.worker_id)
             try:
                 self._assert_handle_identity(new)
+                expected_runtime = self._runtime_cache_identity()
+                observed_runtime = self._stable_runtime_value(new.runtime)
+                if observed_runtime != expected_runtime:
+                    raise RuntimeError(
+                        "Replacement worker runtime identity differs from the CasePool identity"
+                    )
             except Exception:
                 abort_worker(new)
                 raise
@@ -265,9 +276,12 @@ class CasePool:
     def _runtime_cache_identity(self) -> dict[str, Any]:
         if not self._handles:
             return {"backend": self.backend_name}
-        stable = self._stable_runtime_value(self._handles[0].runtime)
+        identities = [self._stable_runtime_value(handle.runtime) for handle in self._handles]
+        stable = identities[0]
         if not isinstance(stable, dict):
             raise RuntimeError("Worker runtime identity must be an object")
+        if any(identity != stable for identity in identities[1:]):
+            raise RuntimeError("CasePool workers expose heterogeneous runtime identities")
         return stable
 
     def cache_key(self, request: EvaluationRequest) -> str:
@@ -365,15 +379,18 @@ class CasePool:
     ) -> EvaluationResult:
         if not self._handles:
             self.start()
+        if not request.reinitialize:
+            with self._operation_lock:
+                return self._evaluate_many_locked([request], cancel_check=cancel_check)[0]
+
         request_hash = self.cache_key(request)
-        if request.reinitialize:
-            cached = self.cache.get(request_hash)
-            if cached is not None:
-                result = EvaluationResult.from_dict(cached)
-                result.cache_source = "persistent_cache"
-                result.cache_hit = True
-                result.request_hash = request_hash
-                return result
+        cached = self.cache.get(request_hash)
+        if cached is not None:
+            result = EvaluationResult.from_dict(cached)
+            result.cache_source = "persistent_cache"
+            result.cache_hit = True
+            result.request_hash = request_hash
+            return result
 
         with self._singleflight_lock:
             flight = self._inflight.get(request_hash)
@@ -406,6 +423,23 @@ class CasePool:
     ) -> list[EvaluationResult]:
         if not requests:
             return []
+        warm_start_requests = [request for request in requests if not request.reinitialize]
+        if warm_start_requests:
+            if len(warm_start_requests) != len(requests):
+                raise ValueError("Cannot mix reinitialize and warm_start requests in one pool call")
+            if self.workers != 1:
+                raise ValueError("warm_start pool calls require exactly one worker")
+            trajectories = [
+                (
+                    str(request.metadata["warm_start_session"]),
+                    int(request.metadata["warm_start_step"]),
+                )
+                for request in warm_start_requests
+            ]
+            if len(set(trajectories)) != len(trajectories):
+                raise ValueError("warm_start trajectory steps must be unique")
+            with self._operation_lock:
+                return self._evaluate_many_locked(requests, cancel_check=cancel_check)
         if len(requests) == 1:
             return [self._evaluate_singleflight(requests[0], cancel_check)]
         with self._operation_lock:
