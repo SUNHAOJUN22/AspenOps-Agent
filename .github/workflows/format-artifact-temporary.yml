@@ -1,0 +1,45 @@
+name: Temporary exact formatter artifact
+
+on:
+  push:
+    branches:
+      - agent/final-acceptance-20260807
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: 0.11.16
+          python-version: "3.12"
+      - name: Synchronize locked development environment
+        run: uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Format exact governed files
+        run: |
+          uv run ruff format \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
+            tests/test_delivery_qualification_writer.py
+      - name: Upload exact formatted sources
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: aspenops-exact-formatted-sources
+          path: |
+            scripts/build_delivery_bundle.py
+            scripts/verify_delivery.py
+            tests/test_delivery_acceptance.py
+            tests/test_delivery_bundle.py
+            tests/test_delivery_qualification_writer.py
+          if-no-files-found: error
+          retention-days: 1
