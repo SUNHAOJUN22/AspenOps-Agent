@@ -14,11 +14,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SHA256_RE = re.compile(r"[0-9a-f]{40}")
+GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 MAX_FILES = 10_000
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 512 * 1024 * 1024
+EXPECTED_REAL_ASPEN_STATUS = "PENDING_REAL_ASPEN_CERTIFICATION"
 EXCLUDED_PARTS = {
     ".git",
     ".mypy_cache",
@@ -67,7 +68,13 @@ def _load_strict_json(path: Path) -> Any:
 
 def _json_bytes(value: Any) -> bytes:
     return (
-        json.dumps(value, indent=2, sort_keys=True, allow_nan=False, ensure_ascii=False)
+        json.dumps(
+            value,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+            ensure_ascii=False,
+        )
         + "\n"
     ).encode("utf-8")
 
@@ -223,8 +230,7 @@ def _build_spdx(root: Path, source_sha: str, generated_at: str) -> dict[str, Any
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"AspenOps-Agent-{source_sha[:12]}",
         "documentNamespace": (
-            "https://github.com/SUNHAOJUN22/AspenOps-Agent/"
-            f"spdx/{source_sha}"
+            "https://github.com/SUNHAOJUN22/AspenOps-Agent/" f"spdx/{source_sha}"
         ),
         "creationInfo": {
             "created": generated_at,
@@ -237,7 +243,6 @@ def _build_spdx(root: Path, source_sha: str, generated_at: str) -> dict[str, Any
 
 def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
-    external_status = "PENDING_REAL_ASPEN_CERTIFICATION"
     for relative in QUALIFICATION_PATHS:
         path = root / relative
         if not path.is_file():
@@ -246,8 +251,10 @@ def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
         if not isinstance(document, dict):
             raise DeliveryBundleError(f"Evidence root must be an object: {relative}")
         status = document.get("real_aspen_status")
-        if isinstance(status, str):
-            external_status = status
+        if status != EXPECTED_REAL_ASPEN_STATUS:
+            raise DeliveryBundleError(
+                f"Evidence must preserve {EXPECTED_REAL_ASPEN_STATUS}: {relative}"
+            )
         records.append(
             {
                 "path": relative,
@@ -264,9 +271,13 @@ def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
     return {
         "schema": "aspenops.delivery-evidence-index/v1",
         "source_sha": source_sha,
-        "real_aspen_status": external_status,
+        "real_aspen_status": EXPECTED_REAL_ASPEN_STATUS,
         "records": records,
     }
+
+
+def _is_distribution(path: Path) -> bool:
+    return path.name.endswith(".whl") or path.name.endswith(".tar.gz")
 
 
 def _copy_dist_artifacts(root: Path, output_dir: Path) -> tuple[Path, ...]:
@@ -274,11 +285,16 @@ def _copy_dist_artifacts(root: Path, output_dir: Path) -> tuple[Path, ...]:
     if not dist.is_dir():
         raise DeliveryBundleError("--include-dist requires a populated dist directory")
     copied: list[Path] = []
+    total_bytes = 0
     for source in sorted(dist.iterdir(), key=lambda item: item.name):
-        if source.is_symlink() or not source.is_file():
+        if source.is_symlink() or not source.is_file() or not _is_distribution(source):
             continue
-        if source.suffix not in {".whl", ".gz"}:
-            continue
+        size = source.stat().st_size
+        if size > MAX_FILE_BYTES:
+            raise DeliveryBundleError(f"Distribution exceeds size limit: {source.name}")
+        total_bytes += size
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise DeliveryBundleError("Distribution payload exceeds total size limit")
         target = output_dir / source.name
         shutil.copyfile(source, target)
         copied.append(target)
@@ -288,11 +304,26 @@ def _copy_dist_artifacts(root: Path, output_dir: Path) -> tuple[Path, ...]:
 
 
 def _artifact_record(path: Path, output_dir: Path) -> dict[str, Any]:
+    try:
+        relative = path.relative_to(output_dir)
+    except ValueError as exc:
+        raise DeliveryBundleError(f"Artifact escapes output directory: {path}") from exc
     return {
-        "path": path.relative_to(output_dir).as_posix(),
+        "path": relative.as_posix(),
         "sha256": _sha256_file(path),
         "size_bytes": path.stat().st_size,
     }
+
+
+def _prepare_output_dir(output_dir: Path) -> Path:
+    resolved_output = output_dir.resolve(strict=False)
+    if resolved_output.exists():
+        if not resolved_output.is_dir():
+            raise DeliveryBundleError("output path must be a directory")
+        if any(resolved_output.iterdir()):
+            raise DeliveryBundleError("output directory must be empty")
+    resolved_output.mkdir(parents=True, exist_ok=True)
+    return resolved_output
 
 
 def build_delivery_bundle(
@@ -304,20 +335,25 @@ def build_delivery_bundle(
     include_dist: bool = False,
 ) -> dict[str, Any]:
     resolved_root = root.resolve(strict=True)
-    if not SHA256_RE.fullmatch(source_sha):
-        raise DeliveryBundleError("source_sha must be a 40-character lowercase Git SHA")
-    if isinstance(source_date_epoch, bool) or source_date_epoch < 0:
+    if not GIT_SHA_RE.fullmatch(source_sha):
+        raise DeliveryBundleError(
+            "source_sha must be a 40-character lowercase hexadecimal Git SHA"
+        )
+    if (
+        isinstance(source_date_epoch, bool)
+        or not isinstance(source_date_epoch, int)
+        or source_date_epoch < 0
+    ):
         raise DeliveryBundleError("source_date_epoch must be a non-negative integer")
-    resolved_output = output_dir.resolve(strict=False)
-    if resolved_output.exists() and any(resolved_output.iterdir()):
-        raise DeliveryBundleError("output directory must be empty")
-    resolved_output.mkdir(parents=True, exist_ok=True)
+    resolved_output = _prepare_output_dir(output_dir)
 
-    generated_at = (
-        datetime.fromtimestamp(source_date_epoch, UTC)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    try:
+        generated_at = (
+            datetime.fromtimestamp(source_date_epoch, UTC).isoformat().replace("+00:00", "Z")
+        )
+    except (OverflowError, OSError, ValueError) as exc:
+        raise DeliveryBundleError("source_date_epoch is outside the supported range") from exc
+
     stem = source_sha[:12]
     source_name = f"aspenops-source-{stem}.zip"
     sbom_name = f"aspenops-sbom-{stem}.spdx.json"
@@ -326,15 +362,16 @@ def build_delivery_bundle(
     handover_name = f"aspenops-handover-{stem}.zip"
 
     source_payload, source_file_count = _source_archive(
-        resolved_root, resolved_output, source_sha
+        resolved_root,
+        resolved_output,
+        source_sha,
     )
     source_path = resolved_output / source_name
     source_path.write_bytes(source_payload)
 
     sbom_path = resolved_output / sbom_name
-    sbom_path.write_bytes(
-        _json_bytes(_build_spdx(resolved_root, source_sha, generated_at))
-    )
+    sbom_path.write_bytes(_json_bytes(_build_spdx(resolved_root, source_sha, generated_at)))
+
     evidence = _evidence_index(resolved_root, source_sha)
     evidence_path = resolved_output / evidence_name
     evidence_path.write_bytes(_json_bytes(evidence))
@@ -379,14 +416,16 @@ def build_delivery_bundle(
     checksums_path.write_bytes(checksums)
 
     handover_entries = [
-        (path.name, path.read_bytes())
-        for path in [*checksum_paths, checksums_path]
+        (path.name, path.read_bytes()) for path in [*checksum_paths, checksums_path]
     ]
     handover_path = resolved_output / handover_name
     handover_path.write_bytes(_zip_bytes(handover_entries))
     handover_digest = _sha256_file(handover_path)
     digest_path = resolved_output / f"{handover_name}.sha256"
-    digest_path.write_text(f"{handover_digest}  {handover_name}\n", encoding="ascii")
+    digest_path.write_text(
+        f"{handover_digest}  {handover_name}\n",
+        encoding="ascii",
+    )
 
     return {
         "schema": "aspenops.delivery-build-report/v1",
