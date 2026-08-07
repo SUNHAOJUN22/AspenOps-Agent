@@ -2,7 +2,7 @@
   "hash_normalization": "text-newlines-lf",
   "lock_check": "PASS",
   "mcp_requirement": "mcp>=1.9,<2",
-  "pyproject_sha256": "c7fef54a073c2524c22adc430704daec73b2d05ab959085b7f27161799289bfa",
+  "pyproject_sha256": "980baa45b65704620fd8c71eab5084c0371eb21ae00240162dbb30f33a5f3ab7",
   "schema": "aspenops.lock-sync/v1",
   "source_sha": "final-acceptance-windows-linux-delivery",
   "uv_lock_sha256": "6eef3a50764685539e7539fe098fd8227f1a4ca4d0e0fe18f3aeb1866a883073",
