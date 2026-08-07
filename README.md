@@ -313,4 +313,4 @@ uv run python scripts/verify_delivery.py \
   --output var/ci/delivery-acceptance-current.json
 ```
 
-验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。
+验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。

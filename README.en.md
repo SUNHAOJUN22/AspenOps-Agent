@@ -313,4 +313,4 @@ uv run python scripts/verify_delivery.py \
   --output var/ci/delivery-acceptance-current.json
 ```
 
-Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
+Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
