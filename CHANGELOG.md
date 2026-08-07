@@ -1,5 +1,16 @@
 # Changelog
 
+## Final acceptance hardening - 2026-08-07
+
+- separated historical software qualification from exact-current-tree qualification in `scripts/verify_delivery.py`, with `--require-current-qualification` for final acceptance decisions;
+- made the delivery verifier require the deterministic bundle builder, qualification writer, bilingual delivery documentation and their regression tests;
+- made `scripts/write_delivery_qualification.py` reject malformed Git identities, skipped tests, acceptance suites below 1200 passing tests, non-PASS delivery reports and forged real-Aspen certification boundaries;
+- hardened `scripts/build_delivery_bundle.py` for strict lowercase Git SHA identity, non-negative integer epochs, directory-only empty outputs, bounded wheel/sdist collection and fail-closed qualification evidence;
+- expanded delivery regression coverage for malformed identities, forged external qualification, output-path hazards, unrelated `.gz` files, exact-tree evidence and acceptance-sized test evidence;
+- rewrote both README files as final bilingual acceptance guides with additional material/energy balances, recycle/tear invariants, distillation DOF, cache identity, warm-start state equations, constrained optimization, licence-aware concurrency and deterministic handover mathematics;
+- retained the four repository-local AI-assisted acceptance SVGs and the complete governed visual inventory;
+- kept `PENDING_REAL_ASPEN_CERTIFICATION` explicit because real licensed solver, fixed-model, Golden Case, hardware and engineering-tolerance evidence remain external inputs.
+
 ## Delivery readiness - 2026-08-06
 
 - rewrote the primary and English README files as acceptance-oriented bilingual guides with architecture, mathematical contracts, operating strategies, CLI/MCP/Windows workflows and explicit licensed-simulator boundaries;
