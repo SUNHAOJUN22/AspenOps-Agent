@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
+import subprocess
 import tomllib
 import zipfile
 from collections.abc import Iterable
@@ -35,6 +37,8 @@ EXCLUDED_PARTS = {
     "var",
 }
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".coverage", ".tmp"}
+GENERATED_CURRENT_QUALIFICATION = "docs/DELIVERY_QUALIFICATION.json"
+EXCLUDED_SOURCE_PATHS = {GENERATED_CURRENT_QUALIFICATION}
 QUALIFICATION_PATHS = (
     "docs/ACCEPTANCE_HARDENING_QUALIFICATION.json",
     "docs/DELIVERY_QUALIFICATION.json",
@@ -120,6 +124,8 @@ def _iter_source_files(root: Path, output_dir: Path) -> tuple[Path, ...]:
         if _inside(resolved, resolved_output):
             continue
         relative = _safe_relative(resolved, resolved_root)
+        if relative.as_posix() in EXCLUDED_SOURCE_PATHS:
+            continue
         if any(part in EXCLUDED_PARTS for part in relative.parts):
             continue
         if resolved.suffix.lower() in EXCLUDED_SUFFIXES:
@@ -251,10 +257,35 @@ def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
         document = _load_strict_json(path)
         if not isinstance(document, dict):
             raise DeliveryBundleError(f"Evidence root must be an object: {relative}")
+        expected_schema = (
+            "aspenops.delivery-qualification/v2"
+            if relative == GENERATED_CURRENT_QUALIFICATION
+            else "aspenops.acceptance-hardening-qualification/v2"
+        )
+        if document.get("schema") != expected_schema or document.get("status") != "PASS":
+            raise DeliveryBundleError(f"Qualification evidence is not PASS: {relative}")
         status = document.get("real_aspen_status")
         if status != EXPECTED_REAL_ASPEN_STATUS:
             raise DeliveryBundleError(
                 f"Evidence must preserve {EXPECTED_REAL_ASPEN_STATUS}: {relative}"
+            )
+        passed = document.get("passed")
+        coverage = document.get("branch_coverage_percent")
+        if isinstance(passed, bool) or not isinstance(passed, int) or passed < 1200:
+            raise DeliveryBundleError(f"Qualification test floor is not met: {relative}")
+        if (
+            isinstance(coverage, bool)
+            or not isinstance(coverage, int | float)
+            or not math.isfinite(float(coverage))
+            or float(coverage) < 95.0
+        ):
+            raise DeliveryBundleError(f"Qualification coverage floor is not met: {relative}")
+        if (
+            relative == GENERATED_CURRENT_QUALIFICATION
+            and document.get("validated_source_parent") != source_sha
+        ):
+            raise DeliveryBundleError(
+                "Current delivery qualification does not match requested source SHA"
             )
         records.append(
             {
@@ -275,6 +306,55 @@ def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
         "real_aspen_status": EXPECTED_REAL_ASPEN_STATUS,
         "records": records,
     }
+
+
+def _git_output(root: Path, *args: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise DeliveryBundleError(f"Git identity check failed: {' '.join(args)}") from exc
+    return completed.stdout.strip()
+
+
+def _dirty_path_allowed(path: str) -> bool:
+    normalized = PurePosixPath(path.strip('"'))
+    if normalized.as_posix() == GENERATED_CURRENT_QUALIFICATION:
+        return True
+    if normalized.parts and normalized.parts[0] in EXCLUDED_PARTS:
+        return True
+    return normalized.suffix.lower() in EXCLUDED_SUFFIXES
+
+
+def _verify_git_source_identity(root: Path, source_sha: str) -> bool:
+    if not (root / ".git").exists():
+        return False
+    head = _git_output(root, "rev-parse", "HEAD")
+    if head != source_sha:
+        raise DeliveryBundleError(
+            f"source_sha does not match checked-out HEAD: expected {head}, received {source_sha}"
+        )
+    status = _git_output(root, "status", "--porcelain=v1", "--untracked-files=all")
+    dirty: list[str] = []
+    for line in status.splitlines():
+        if len(line) < 4:
+            dirty.append(line)
+            continue
+        candidate = line[3:]
+        if " -> " in candidate:
+            candidate = candidate.rsplit(" -> ", 1)[1]
+        if not _dirty_path_allowed(candidate):
+            dirty.append(line)
+    if dirty:
+        raise DeliveryBundleError(
+            "delivery source contains uncommitted files: " + "; ".join(dirty[:10])
+        )
+    return True
 
 
 def _is_distribution(path: Path) -> bool:
@@ -346,6 +426,7 @@ def build_delivery_bundle(
         or source_date_epoch < 0
     ):
         raise DeliveryBundleError("source_date_epoch must be a non-negative integer")
+    git_identity_verified = _verify_git_source_identity(resolved_root, source_sha)
     resolved_output = _prepare_output_dir(output_dir)
 
     try:
@@ -406,6 +487,7 @@ def build_delivery_bundle(
             "sorted_entries": True,
             "normalized_file_mode": "0644",
         },
+        "git_identity_verified": git_identity_verified,
         "qualification_boundary": (
             "Software delivery PASS does not grant licensed Aspen engineering certification."
         ),
@@ -421,7 +503,8 @@ def build_delivery_bundle(
     checksums_path.write_bytes(checksums)
 
     handover_entries = [
-        (path.name, path.read_bytes()) for path in [*checksum_paths, checksums_path]
+        (path.name, path.read_bytes())
+        for path in [*checksum_paths, checksums_path]
     ]
     handover_path = resolved_output / handover_name
     handover_path.write_bytes(_zip_bytes(handover_entries))
