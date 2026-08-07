@@ -1,16 +1,20 @@
 name: Temporary exact acceptance finalizer
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - agent/final-acceptance-20260807
 
 permissions:
   contents: write
 
+concurrency:
+  group: aspenops-exact-acceptance-finalizer
+  cancel-in-progress: false
+
 jobs:
   finalize:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/final-acceptance-20260807'
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout acceptance branch
@@ -47,7 +51,7 @@ jobs:
 
 ### 当前交付树强制验收
 
-最终交付时必须把测试结果、覆盖率和 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。
+最终交付必须把测试结果、覆盖率与 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。
 
 ```bash
 uv run python scripts/verify_delivery.py \\
@@ -56,9 +60,9 @@ uv run python scripts/verify_delivery.py \\
   --output var/ci/delivery-acceptance-current.json
 ```
 
-验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 和各 Python 版本面板。面板仅汇总对应作业证据，不构成真实 Aspen 工程认证。
+验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。
 """
-          chinese.write_text(text, encoding="utf-8")
+          chinese.write_text(text, encoding="utf-8", newline="\n")
 
           english = Path("README.en.md")
           text = english.read_text(encoding="utf-8")
@@ -78,7 +82,7 @@ uv run python scripts/verify_delivery.py \\
 
 Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
 """
-          english.write_text(text, encoding="utf-8")
+          english.write_text(text, encoding="utf-8", newline="\n")
           PY
       - name: Remove temporary workflow and publish exact patch
         run: |
