@@ -9,6 +9,7 @@
 ```bash
 rm -rf var/delivery
 uv build
+
 uv run python scripts/build_delivery_bundle.py \
   --source-sha "$(git rev-parse HEAD)" \
   --source-date-epoch 0 \
@@ -16,7 +17,7 @@ uv run python scripts/build_delivery_bundle.py \
   --output-dir var/delivery
 ```
 
-GitHub Actions uses the immutable `GITHUB_SHA`:
+GitHub Actions or another immutable runner should pass the exact source identity rather than a branch name:
 
 ```bash
 uv run python scripts/build_delivery_bundle.py \
@@ -25,6 +26,8 @@ uv run python scripts/build_delivery_bundle.py \
   --include-dist \
   --output-dir var/ci/delivery-package
 ```
+
+`source_sha` must be a 40-character lowercase hexadecimal Git SHA. `source_date_epoch` must be a non-negative integer.
 
 ## Produced artifacts / 生成产物
 
@@ -39,9 +42,39 @@ aspenops-handover-<sha12>.zip.sha256
 wheel and source distribution, when --include-dist is used
 ```
 
-The source archive uses sorted members, a fixed ZIP timestamp and normalized file mode. Cache directories, virtual environments, build outputs, `var/`, bytecode and VCS internals are excluded. Symlinks, unsafe paths, excessive file counts and excessive payload sizes fail closed.
+Only `.whl` and `.tar.gz` distributions are admitted when `--include-dist` is used. Unrelated `.gz` files are ignored.
 
-源码归档采用确定顺序、固定 ZIP 时间戳和规范文件权限；排除缓存、虚拟环境、构建目录、`var/`、字节码和版本控制内部文件。符号链接、路径逃逸、超量文件和超大载荷均会拒绝。
+使用 `--include-dist` 时只接受 `.whl` 与 `.tar.gz` 分发产物；无关 `.gz` 文件不会进入交付包。
+
+## Reproducibility / 可复现性
+
+The source archive uses:
+
+- lexicographically sorted members;
+- fixed ZIP timestamp `1980-01-01T00:00:00Z`;
+- normalized file mode `0644`;
+- deterministic JSON serialization;
+- `allow_nan=False`;
+- exclusion of `.git`, virtual environments, caches, bytecode, `build/`, `dist/`, `var/`, and other transient trees.
+
+源码归档采用排序成员、固定 ZIP 时间戳、规范权限和严格 JSON；缓存、虚拟环境、构建目录、`var/`、字节码和 VCS 内部文件不会进入源码包。
+
+## Fail-closed path and size rules / 路径与大小门
+
+The builder rejects:
+
+- any symlink in the delivery source;
+- absolute or `..` archive members;
+- source files above the configured per-file limit;
+- source trees above the configured total-size or file-count limits;
+- an output path that is a regular file;
+- a non-empty output directory;
+- distribution artifacts above the size budget;
+- qualification evidence that does not preserve `PENDING_REAL_ASPEN_CERTIFICATION`.
+
+构建器对符号链接、路径逃逸、超大文件、超量源码、文件型输出路径、非空输出目录、超限分发产物以及伪造真实 Aspen 资格状态全部 fail closed。
+
+The literal diagnostic `Symlink is not allowed` is intentionally retained as part of the acceptance contract.
 
 ## Integrity model / 完整性模型
 
@@ -57,7 +90,7 @@ The checksum list is:
 S = \operatorname{sort}\left\{(h_i,\operatorname{name}(A_i))\right\}
 ```
 
-The handover archive is a deterministic function of the payload set and normalized metadata:
+The handover archive is a deterministic function of the payload and normalized metadata:
 
 ```math
 B = ZIP_{deterministic}(A_1,\ldots,A_n,Manifest,SHA256SUMS)
@@ -69,33 +102,65 @@ Its external checksum is:
 h_B = SHA256(B)
 ```
 
-The manifest binds the source SHA, package name/version, qualification boundary, source-file count, artifact sizes and artifact SHA-256 values. JSON serialization uses sorted keys and `allow_nan=False`.
+The manifest binds:
 
-Manifest 绑定源码 SHA、包名/版本、资格边界、源码文件数、产物大小和 SHA-256。所有 JSON 使用排序键并禁止 `NaN/Infinity`。
+```text
+source SHA
+package name/version
+real Aspen status
+source archive identity
+source-file count
+artifact sizes
+artifact SHA-256 values
+reproducibility policy
+qualification boundary
+```
+
+Manifest 绑定源码 SHA、包名/版本、真实 Aspen 状态、源码归档、源码文件数、产物大小、SHA-256、可复现性策略和资格边界。
 
 ## SBOM / 软件物料清单
 
-The builder converts the frozen `uv.lock` package inventory into SPDX 2.3 JSON. The SBOM describes dependency identity only; licence conclusions remain `NOASSERTION` unless separately reviewed.
+The frozen `uv.lock` inventory is converted into `SPDX 2.3` JSON (`SPDX-2.3`). Dependency identity is recorded without inventing licence conclusions; unreviewed package licence fields remain `NOASSERTION`.
 
-构建器将冻结的 `uv.lock` 依赖清单转换为 SPDX 2.3 JSON。SBOM 只描述依赖身份；未经独立许可证审查时，许可证结论保持 `NOASSERTION`。
+冻结的 `uv.lock` 会转换为 `SPDX 2.3` JSON。未经独立许可证审查时，许可证结论保持 `NOASSERTION`。
 
-## Evidence boundary / 证据边界
+## Qualification evidence / 资格证据
 
-The evidence index records strict-JSON qualification files and their byte size and SHA-256. The following status remains explicit until real external evidence exists:
+The evidence index reads strict JSON only. Duplicate keys, `NaN`, `Infinity`, non-object roots, or a forged real-Aspen status are rejected.
+
+The accepted external status is exactly:
 
 ```text
 PENDING_REAL_ASPEN_CERTIFICATION
 ```
 
-A delivery bundle can prove that the software, documentation, tests and artifacts are bound to one source revision. It cannot prove that an unprovided licensed solver, customer model, property method, hardware environment or engineering tolerance is correct.
+If `docs/DELIVERY_QUALIFICATION.json` exists, it can be included alongside the historical baseline; both must preserve the same external qualification boundary.
 
-交付包可以证明软件、文档、测试和产物绑定到同一源码版本；它不能证明未提供的商业求解器、客户模型、物性方法、硬件环境或工程容差正确。
+证据索引只读取严格 JSON。重复键、`NaN`、`Infinity`、非对象根以及伪造真实 Aspen 资格均会拒绝。
 
 ## Verification / 校验
 
 ```bash
-sha256sum -c var/delivery/SHA256SUMS
-sha256sum -c var/delivery/aspenops-handover-*.zip.sha256
-python scripts/verify_delivery.py --output var/ci/delivery-acceptance.json
-uv run pytest tests/test_delivery_bundle.py tests/test_delivery_acceptance.py
+cd var/delivery
+sha256sum -c SHA256SUMS
+sha256sum -c aspenops-handover-*.zip.sha256
 ```
+
+Then verify the repository delivery surface:
+
+```bash
+python scripts/verify_delivery.py \
+  --output var/ci/delivery-acceptance.json
+```
+
+If exact-tree qualification evidence has been produced:
+
+```bash
+python scripts/verify_delivery.py \
+  --require-current-qualification \
+  --output var/ci/delivery-acceptance-current.json
+```
+
+A deterministic bundle proves that source, software artifacts, documents, tests, and evidence are bound to one declared source identity. It does **not** prove that an unprovided licensed solver, customer model, property method, hardware environment, or engineering tolerance is correct.
+
+确定性交付包证明的是软件与证据的绑定关系，不证明未提供的商业求解器、客户模型、物性方法、硬件环境或工程容差正确。
