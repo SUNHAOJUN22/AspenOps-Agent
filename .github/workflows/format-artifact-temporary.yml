@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/final-acceptance-20260807
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
