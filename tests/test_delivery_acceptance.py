@@ -90,6 +90,54 @@ def test_current_qualification_is_optional_or_fail_closed(tmp_path: Path) -> Non
     )
 
 
+def test_current_qualification_binds_expected_git_identity(tmp_path: Path) -> None:
+    module = _load_module()
+    path = tmp_path / "docs" / "DELIVERY_QUALIFICATION.json"
+    path.parent.mkdir(parents=True)
+    source_sha = "a" * 40
+    tree_sha = "b" * 40
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "aspenops.delivery-qualification/v2",
+                "status": "PASS",
+                "failed": 0,
+                "errors": 0,
+                "skipped": 0,
+                "passed": 1204,
+                "branch_coverage_percent": 95.2,
+                "reverse_order_gate": "PASS",
+                "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+                "validated_source_parent": source_sha,
+                "qualified_content_tree_sha": tree_sha,
+            }
+        ),
+        encoding="utf-8",
+    )
+    issues: list[dict[str, str]] = []
+    module._check_current_qualification(
+        tmp_path,
+        issues,
+        required=True,
+        expected_source_sha=source_sha,
+        expected_tree_sha=tree_sha,
+    )
+    assert issues == []
+
+    mismatch: list[dict[str, str]] = []
+    module._check_current_qualification(
+        tmp_path,
+        mismatch,
+        required=True,
+        expected_source_sha="c" * 40,
+        expected_tree_sha="d" * 40,
+    )
+    assert {item["code"] for item in mismatch} >= {
+        "current_qualification_source_mismatch",
+        "current_qualification_tree_mismatch",
+    }
+
+
 def test_cli_writes_json_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     module = _load_module()
     output = tmp_path / "delivery.json"
