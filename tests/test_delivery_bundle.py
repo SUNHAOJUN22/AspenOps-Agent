@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 from types import ModuleType
@@ -220,6 +221,85 @@ def test_evidence_cannot_self_promote_real_aspen_certification(tmp_path: Path) -
             output_dir=tmp_path / "delivery",
             source_sha=SOURCE_SHA,
         )
+
+
+def test_git_checkout_identity_and_dirty_source_are_enforced(tmp_path: Path) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+    subprocess.run(["git", "init", "-q", str(root)], check=True, shell=False)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"],
+        check=True,
+        shell=False,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.name", "AspenOps Test"],
+        check=True,
+        shell=False,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True, shell=False)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "fixture"],
+        check=True,
+        shell=False,
+    )
+    source_sha = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        shell=False,
+    ).stdout.strip()
+
+    report = module.build_delivery_bundle(
+        root=root,
+        output_dir=tmp_path / "clean-delivery",
+        source_sha=source_sha,
+    )
+    manifest = json.loads(
+        next((tmp_path / "clean-delivery").glob("aspenops-delivery-manifest-*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["git_identity_verified"] is True
+    assert report["status"] == "PASS"
+
+    (root / "src" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
+    with pytest.raises(module.DeliveryBundleError, match="uncommitted"):
+        module.build_delivery_bundle(
+            root=root,
+            output_dir=tmp_path / "dirty-delivery",
+            source_sha=source_sha,
+        )
+
+
+def test_generated_current_qualification_is_evidence_not_source(tmp_path: Path) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+    current = {
+        "schema": "aspenops.delivery-qualification/v2",
+        "status": "PASS",
+        "passed": 1204,
+        "branch_coverage_percent": 95.2,
+        "validated_source_parent": SOURCE_SHA,
+        "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+    }
+    path = root / "docs" / "DELIVERY_QUALIFICATION.json"
+    path.write_text(json.dumps(current), encoding="utf-8")
+    output = tmp_path / "delivery-current"
+    module.build_delivery_bundle(root=root, output_dir=output, source_sha=SOURCE_SHA)
+
+    source_archive = next(output.glob("aspenops-source-*.zip"))
+    with zipfile.ZipFile(source_archive) as archive:
+        assert all(
+            not name.endswith("docs/DELIVERY_QUALIFICATION.json")
+            for name in archive.namelist()
+        )
+    evidence = json.loads(next(output.glob("aspenops-evidence-index-*.json")).read_text())
+    assert any(
+        record["path"] == "docs/DELIVERY_QUALIFICATION.json"
+        for record in evidence["records"]
+    )
 
 
 def test_cli_writes_machine_readable_report(
