@@ -230,7 +230,8 @@ def _build_spdx(root: Path, source_sha: str, generated_at: str) -> dict[str, Any
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"AspenOps-Agent-{source_sha[:12]}",
         "documentNamespace": (
-            "https://github.com/SUNHAOJUN22/AspenOps-Agent/" f"spdx/{source_sha}"
+            "https://github.com/SUNHAOJUN22/AspenOps-Agent/"
+            f"spdx/{source_sha}"
         ),
         "creationInfo": {
             "created": generated_at,
@@ -349,7 +350,9 @@ def build_delivery_bundle(
 
     try:
         generated_at = (
-            datetime.fromtimestamp(source_date_epoch, UTC).isoformat().replace("+00:00", "Z")
+            datetime.fromtimestamp(source_date_epoch, UTC)
+            .isoformat()
+            .replace("+00:00", "Z")
         )
     except (OverflowError, OSError, ValueError) as exc:
         raise DeliveryBundleError("source_date_epoch is outside the supported range") from exc
@@ -370,7 +373,9 @@ def build_delivery_bundle(
     source_path.write_bytes(source_payload)
 
     sbom_path = resolved_output / sbom_name
-    sbom_path.write_bytes(_json_bytes(_build_spdx(resolved_root, source_sha, generated_at)))
+    sbom_path.write_bytes(
+        _json_bytes(_build_spdx(resolved_root, source_sha, generated_at))
+    )
 
     evidence = _evidence_index(resolved_root, source_sha)
     evidence_path = resolved_output / evidence_name
