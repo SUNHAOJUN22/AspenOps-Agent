@@ -36,7 +36,8 @@ EXCLUDED_PARTS = {
     "node_modules",
     "var",
 }
-EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".coverage", ".tmp"}
+EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".tmp"}
+EXCLUDED_FILE_NAMES = {".coverage"}
 GENERATED_CURRENT_QUALIFICATION = "docs/DELIVERY_QUALIFICATION.json"
 EXCLUDED_SOURCE_PATHS = {GENERATED_CURRENT_QUALIFICATION}
 QUALIFICATION_PATHS = (
@@ -115,10 +116,21 @@ def _iter_source_files(root: Path, output_dir: Path) -> tuple[Path, ...]:
     resolved_output = output_dir.resolve(strict=False)
     files: list[Path] = []
     total_bytes = 0
-    for path in sorted(resolved_root.rglob("*"), key=lambda item: item.as_posix()):
+    if (resolved_root / ".git").exists():
+        tracked = _git_output(resolved_root, "ls-files", "-z")
+        candidates = [
+            resolved_root / name
+            for name in tracked.split("\0")
+            if name
+        ]
+    else:
+        candidates = sorted(resolved_root.rglob("*"), key=lambda item: item.as_posix())
+    for path in candidates:
         if path.is_symlink():
             raise DeliveryBundleError(f"Symlink is not allowed in delivery source: {path}")
         if not path.is_file():
+            if (resolved_root / ".git").exists():
+                raise DeliveryBundleError(f"Tracked delivery path is not a file: {path}")
             continue
         resolved = path.resolve(strict=True)
         if _inside(resolved, resolved_output):
@@ -128,7 +140,7 @@ def _iter_source_files(root: Path, output_dir: Path) -> tuple[Path, ...]:
             continue
         if any(part in EXCLUDED_PARTS for part in relative.parts):
             continue
-        if resolved.suffix.lower() in EXCLUDED_SUFFIXES:
+        if resolved.name in EXCLUDED_FILE_NAMES or resolved.suffix.lower() in EXCLUDED_SUFFIXES:
             continue
         size = resolved.stat().st_size
         if size > MAX_FILE_BYTES:
@@ -328,7 +340,10 @@ def _dirty_path_allowed(path: str) -> bool:
         return True
     if normalized.parts and normalized.parts[0] in EXCLUDED_PARTS:
         return True
-    return normalized.suffix.lower() in EXCLUDED_SUFFIXES
+    return (
+        normalized.name in EXCLUDED_FILE_NAMES
+        or normalized.suffix.lower() in EXCLUDED_SUFFIXES
+    )
 
 
 def _verify_git_source_identity(root: Path, source_sha: str) -> bool:
