@@ -22,13 +22,16 @@ def _load_module() -> ModuleType:
 def test_repository_delivery_contract_passes() -> None:
     module = _load_module()
     report = module.verify_delivery(ROOT)
+    assert report["schema"] == "aspenops.delivery-acceptance/v1"
     assert report["status"] == "PASS"
     assert report["visual_asset_count"] == 27
-    assert report["qualification"]["passed"] >= 1200
-    assert report["qualification"]["branch_coverage_percent"] >= 95.0
-    assert report["qualification"]["real_aspen_status"] == (
+    assert report["required_file_count"] >= 16
+    assert report["baseline_qualification"]["passed"] >= 1200
+    assert report["baseline_qualification"]["branch_coverage_percent"] >= 95.0
+    assert report["baseline_qualification"]["real_aspen_status"] == (
         "PENDING_REAL_ASPEN_CERTIFICATION"
     )
+    assert report["current_qualification"]["required"] is False
     assert report["issues"] == []
 
 
@@ -60,6 +63,31 @@ def test_temporary_artifact_detection(tmp_path: Path) -> None:
         ".github/workflows/acceptance-finalizer-once.yml",
         "docs/ACCEPTANCE_RUNNING.json",
     ]
+
+
+def test_current_qualification_is_optional_or_fail_closed(tmp_path: Path) -> None:
+    module = _load_module()
+    issues: list[dict[str, str]] = []
+    assert module._check_current_qualification(tmp_path, issues, required=False) is None
+    assert issues == []
+
+    assert module._check_current_qualification(tmp_path, issues, required=True) is None
+    assert issues[-1]["code"] == "current_qualification_missing"
+
+    path = tmp_path / "docs" / "DELIVERY_QUALIFICATION.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"schema":"wrong","status":"PASS"}\n', encoding="utf-8")
+    malformed_issues: list[dict[str, str]] = []
+    evidence = module._check_current_qualification(
+        tmp_path,
+        malformed_issues,
+        required=False,
+    )
+    assert evidence is not None
+    assert any(
+        issue["code"] == "current_qualification_field_mismatch"
+        for issue in malformed_issues
+    )
 
 
 def test_cli_writes_json_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
