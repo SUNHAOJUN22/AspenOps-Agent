@@ -131,12 +131,13 @@ def test_source_archive_is_sorted_normalized_and_excludes_transient_files(
             assert item.external_attr >> 16 == 0o100644
 
 
-def test_include_dist_copies_wheel_and_source_distribution(tmp_path: Path) -> None:
+def test_include_dist_copies_only_wheel_and_source_distribution(tmp_path: Path) -> None:
     module = _load_module()
     root = _repository(tmp_path / "repo")
     (root / "dist").mkdir()
     (root / "dist" / "aspenops_nexus-2.0.0-py3-none-any.whl").write_bytes(b"wheel")
     (root / "dist" / "aspenops_nexus-2.0.0.tar.gz").write_bytes(b"sdist")
+    (root / "dist" / "unrelated.gz").write_bytes(b"not-a-source-distribution")
     (root / "dist" / "ignore.txt").write_text("ignore", encoding="utf-8")
 
     output = tmp_path / "delivery"
@@ -149,32 +150,81 @@ def test_include_dist_copies_wheel_and_source_distribution(tmp_path: Path) -> No
     artifact_names = {item["path"] for item in report["artifacts"]}
     assert "aspenops_nexus-2.0.0-py3-none-any.whl" in artifact_names
     assert "aspenops_nexus-2.0.0.tar.gz" in artifact_names
+    assert "unrelated.gz" not in artifact_names
     assert "ignore.txt" not in artifact_names
 
 
-def test_invalid_sha_and_nonempty_output_fail_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("source_sha", ["main", "G" * 40, "A" * 40])
+def test_invalid_sha_fails_closed(tmp_path: Path, source_sha: str) -> None:
     module = _load_module()
     root = _repository(tmp_path / "repo")
-    with pytest.raises(module.DeliveryBundleError, match="40-character"):
+    with pytest.raises(module.DeliveryBundleError, match="lowercase hexadecimal"):
         module.build_delivery_bundle(
             root=root,
             output_dir=tmp_path / "bad-sha",
-            source_sha="main",
+            source_sha=source_sha,
         )
 
-    output = tmp_path / "nonempty"
-    output.mkdir()
-    (output / "existing.txt").write_text("do not overwrite", encoding="utf-8")
+
+@pytest.mark.parametrize("source_date_epoch", [True, 1.5, -1])
+def test_invalid_source_date_epoch_fails_closed(
+    tmp_path: Path,
+    source_date_epoch: object,
+) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+    with pytest.raises(module.DeliveryBundleError, match="non-negative integer"):
+        module.build_delivery_bundle(
+            root=root,
+            output_dir=tmp_path / "bad-epoch",
+            source_sha=SOURCE_SHA,
+            source_date_epoch=source_date_epoch,
+        )
+
+
+def test_nonempty_or_file_output_path_fails_closed(tmp_path: Path) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+
+    nonempty = tmp_path / "nonempty"
+    nonempty.mkdir()
+    (nonempty / "existing.txt").write_text("do not overwrite", encoding="utf-8")
     with pytest.raises(module.DeliveryBundleError, match="must be empty"):
         module.build_delivery_bundle(
             root=root,
-            output_dir=output,
+            output_dir=nonempty,
+            source_sha=SOURCE_SHA,
+        )
+
+    output_file = tmp_path / "output-file"
+    output_file.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(module.DeliveryBundleError, match="must be a directory"):
+        module.build_delivery_bundle(
+            root=root,
+            output_dir=output_file,
+            source_sha=SOURCE_SHA,
+        )
+
+
+def test_evidence_cannot_self_promote_real_aspen_certification(tmp_path: Path) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+    evidence_path = root / "docs" / "ACCEPTANCE_HARDENING_QUALIFICATION.json"
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["real_aspen_status"] = "REAL_ASPEN_CERTIFIED"
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+
+    with pytest.raises(module.DeliveryBundleError, match="PENDING_REAL_ASPEN_CERTIFICATION"):
+        module.build_delivery_bundle(
+            root=root,
+            output_dir=tmp_path / "delivery",
             source_sha=SOURCE_SHA,
         )
 
 
 def test_cli_writes_machine_readable_report(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     module = _load_module()
     root = _repository(tmp_path / "repo")
