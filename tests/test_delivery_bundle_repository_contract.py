@@ -56,6 +56,22 @@ def test_delivery_bundle_uses_deterministic_and_fail_closed_contracts() -> None:
         "output directory must be empty",
         "output path must be a directory",
         "source_date_epoch must be a non-negative integer",
+        "source_sha does not match checked-out HEAD",
+        "delivery source contains uncommitted files",
+        "git_identity_verified",
+        "GENERATED_CURRENT_QUALIFICATION",
+    ):
+        assert marker in source
+
+
+def test_exact_tree_verifier_binds_git_commit_and_tree() -> None:
+    source = (ROOT / "scripts/verify_delivery.py").read_text(encoding="utf-8")
+    for marker in (
+        '"HEAD"',
+        '"HEAD^{tree}"',
+        "current_qualification_source_mismatch",
+        "current_qualification_tree_mismatch",
+        "git_identity_unavailable",
     ):
         assert marker in source
 
