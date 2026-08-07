@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_QUALIFICATION = "docs/ACCEPTANCE_HARDENING_QUALIFICATION.json"
 CURRENT_QUALIFICATION = "docs/DELIVERY_QUALIFICATION.json"
+GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 AUTHORITATIVE_WORKFLOWS = {
     "ci.yml",
     "generate-performance-evidence.yml",
@@ -278,11 +280,43 @@ def _check_baseline_qualification(root: Path, issues: list[dict[str, str]]) -> d
     return evidence
 
 
+def _git_output(root: Path, revision: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", revision],
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise DeliveryVerificationError(
+            f"Unable to resolve Git revision {revision!r}"
+        ) from exc
+    value = completed.stdout.strip()
+    if not GIT_SHA_RE.fullmatch(value):
+        raise DeliveryVerificationError(f"Invalid Git identity for {revision!r}: {value!r}")
+    return value
+
+
+def _current_git_identity(
+    root: Path,
+    issues: list[dict[str, str]],
+) -> tuple[str | None, str | None]:
+    try:
+        return _git_output(root, "HEAD"), _git_output(root, "HEAD^{tree}")
+    except DeliveryVerificationError as exc:
+        _issue(issues, "git_identity_unavailable", ".git", str(exc))
+        return None, None
+
+
 def _check_current_qualification(
     root: Path,
     issues: list[dict[str, str]],
     *,
     required: bool,
+    expected_source_sha: str | None = None,
+    expected_tree_sha: str | None = None,
 ) -> dict[str, Any] | None:
     path = root / CURRENT_QUALIFICATION
     if not path.is_file():
@@ -344,6 +378,26 @@ def _check_current_qualification(
             "current_qualification_coverage_floor",
             CURRENT_QUALIFICATION,
             "coverage must be >= 95",
+        )
+    if (
+        expected_source_sha is not None
+        and evidence.get("validated_source_parent") != expected_source_sha
+    ):
+        _issue(
+            issues,
+            "current_qualification_source_mismatch",
+            CURRENT_QUALIFICATION,
+            f"Expected source {expected_source_sha}",
+        )
+    if (
+        expected_tree_sha is not None
+        and evidence.get("qualified_content_tree_sha") != expected_tree_sha
+    ):
+        _issue(
+            issues,
+            "current_qualification_tree_mismatch",
+            CURRENT_QUALIFICATION,
+            f"Expected tree {expected_tree_sha}",
         )
     return evidence
 
@@ -498,10 +552,16 @@ def verify_delivery(
     _check_required_files(resolved, issues)
     package = _check_package(resolved, issues)
     baseline = _check_baseline_qualification(resolved, issues)
+    expected_source_sha: str | None = None
+    expected_tree_sha: str | None = None
+    if require_current_qualification:
+        expected_source_sha, expected_tree_sha = _current_git_identity(resolved, issues)
     current = _check_current_qualification(
         resolved,
         issues,
         required=require_current_qualification,
+        expected_source_sha=expected_source_sha,
+        expected_tree_sha=expected_tree_sha,
     )
     workflows = _check_workflows(resolved, issues)
     _check_temporary_artifacts(resolved, issues)
