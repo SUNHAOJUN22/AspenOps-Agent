@@ -309,6 +309,75 @@ def test_generated_current_qualification_is_evidence_not_source(tmp_path: Path) 
     )
 
 
+def test_git_current_qualification_must_match_head_tree(tmp_path: Path) -> None:
+    module = _load_module()
+    root = _repository(tmp_path / "repo")
+    subprocess.run(["git", "init", "-q", str(root)], check=True, shell=False)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"],
+        check=True,
+        shell=False,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.name", "AspenOps Test"],
+        check=True,
+        shell=False,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True, shell=False)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "fixture"],
+        check=True,
+        shell=False,
+    )
+    source_sha = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        shell=False,
+    ).stdout.strip()
+    tree_sha = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        shell=False,
+    ).stdout.strip()
+    current = {
+        "schema": "aspenops.delivery-qualification/v2",
+        "status": "PASS",
+        "passed": 1204,
+        "branch_coverage_percent": 95.2,
+        "validated_source_parent": source_sha,
+        "qualified_content_tree_sha": tree_sha,
+        "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+    }
+    path = root / "docs" / "DELIVERY_QUALIFICATION.json"
+    path.write_text(json.dumps(current), encoding="utf-8")
+
+    report = module.build_delivery_bundle(
+        root=root,
+        output_dir=tmp_path / "matched-delivery",
+        source_sha=source_sha,
+    )
+    manifest = json.loads(
+        next(
+            (tmp_path / "matched-delivery").glob("aspenops-delivery-manifest-*.json")
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest["git_tree_sha"] == tree_sha
+    assert report["status"] == "PASS"
+
+    current["qualified_content_tree_sha"] = "c" * 40
+    path.write_text(json.dumps(current), encoding="utf-8")
+    with pytest.raises(module.DeliveryBundleError, match="Git tree"):
+        module.build_delivery_bundle(
+            root=root,
+            output_dir=tmp_path / "mismatched-delivery",
+            source_sha=source_sha,
+        )
+
+
 def test_cli_writes_machine_readable_report(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
