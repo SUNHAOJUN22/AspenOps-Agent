@@ -3,9 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+
+GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
+MIN_PASSED_TESTS = 1200
+EXPECTED_DELIVERY_SCHEMA = "aspenops.delivery-acceptance/v1"
+EXPECTED_REAL_ASPEN_STATUS = "PENDING_REAL_ASPEN_CERTIFICATION"
 
 
 class DeliveryQualificationError(ValueError):
@@ -47,6 +53,35 @@ def _junit_totals(path: Path) -> dict[str, int]:
     return totals
 
 
+def _validate_delivery_report(delivery: Any) -> dict[str, Any]:
+    if not isinstance(delivery, dict):
+        raise DeliveryQualificationError("Delivery verifier report must be an object")
+    if delivery.get("schema") != EXPECTED_DELIVERY_SCHEMA:
+        raise DeliveryQualificationError(
+            f"Delivery verifier schema must be {EXPECTED_DELIVERY_SCHEMA}"
+        )
+    if delivery.get("status") != "PASS":
+        raise DeliveryQualificationError("Delivery verifier must report PASS")
+    issues = delivery.get("issues")
+    if issues != []:
+        raise DeliveryQualificationError("Delivery verifier must report zero issues")
+    baseline = delivery.get("baseline_qualification")
+    if not isinstance(baseline, dict):
+        raise DeliveryQualificationError("Delivery verifier baseline qualification is missing")
+    if baseline.get("real_aspen_status") != EXPECTED_REAL_ASPEN_STATUS:
+        raise DeliveryQualificationError(
+            "Delivery verifier must preserve the external Aspen qualification boundary"
+        )
+    return delivery
+
+
+def _validate_git_sha(value: str, field: str) -> None:
+    if not GIT_SHA_RE.fullmatch(value):
+        raise DeliveryQualificationError(
+            f"{field} must be a 40-character lowercase hexadecimal Git SHA"
+        )
+
+
 def write_delivery_qualification(
     *,
     coverage_path: Path,
@@ -58,7 +93,7 @@ def write_delivery_qualification(
     run_id: int,
 ) -> dict[str, Any]:
     coverage = _load_json(coverage_path)
-    delivery = _load_json(delivery_report_path)
+    delivery = _validate_delivery_report(_load_json(delivery_report_path))
     if not isinstance(coverage, dict) or not isinstance(coverage.get("totals"), dict):
         raise DeliveryQualificationError("Coverage evidence has an invalid root")
     percent = coverage["totals"].get("percent_covered")
@@ -69,17 +104,23 @@ def write_delivery_qualification(
         or float(percent) < 95.0
     ):
         raise DeliveryQualificationError("Branch coverage must be finite and at least 95%")
-    if not isinstance(delivery, dict) or delivery.get("status") != "PASS":
-        raise DeliveryQualificationError("Delivery verifier must report PASS")
-    if len(source_sha) != 40 or len(qualified_tree_sha) != 40:
-        raise DeliveryQualificationError("Source and qualified tree identities must be Git hashes")
-    if isinstance(run_id, bool) or run_id <= 0:
+
+    _validate_git_sha(source_sha, "source_sha")
+    _validate_git_sha(qualified_tree_sha, "qualified_tree_sha")
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         raise DeliveryQualificationError("run_id must be a positive integer")
 
     totals = _junit_totals(junit_path)
-    passed = totals["tests"] - totals["failed"] - totals["errors"] - totals["skipped"]
     if totals["failed"] or totals["errors"]:
         raise DeliveryQualificationError("JUnit evidence contains failures or errors")
+    if totals["skipped"]:
+        raise DeliveryQualificationError("Final delivery qualification must not skip tests")
+    passed = totals["tests"]
+    if passed < MIN_PASSED_TESTS:
+        raise DeliveryQualificationError(
+            f"Final delivery qualification requires at least {MIN_PASSED_TESTS} passed tests"
+        )
+
     evidence = {
         "schema": "aspenops.delivery-qualification/v2",
         "status": "PASS",
@@ -107,15 +148,18 @@ def write_delivery_qualification(
             "build": "PASS",
         },
         "delivery_report_schema": delivery.get("schema"),
-        "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+        "real_aspen_status": EXPECTED_REAL_ASPEN_STATUS,
     }
-    payload = json.dumps(
-        evidence,
-        indent=2,
-        sort_keys=True,
-        allow_nan=False,
-        ensure_ascii=False,
-    ) + "\n"
+    payload = (
+        json.dumps(
+            evidence,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(payload, encoding="utf-8")
     return evidence
