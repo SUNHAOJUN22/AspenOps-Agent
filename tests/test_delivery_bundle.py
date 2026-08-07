@@ -117,6 +117,7 @@ def test_source_archive_is_sorted_normalized_and_excludes_transient_files(
     (root / ".venv" / "private.txt").write_text("private", encoding="utf-8")
     (root / "src" / "__pycache__").mkdir()
     (root / "src" / "__pycache__" / "module.pyc").write_bytes(b"bytecode")
+    (root / ".coverage").write_text("coverage-db", encoding="utf-8")
 
     output = tmp_path / "delivery"
     module.build_delivery_bundle(root=root, output_dir=output, source_sha=SOURCE_SHA)
@@ -127,6 +128,7 @@ def test_source_archive_is_sorted_normalized_and_excludes_transient_files(
         assert all("/var/" not in name for name in names)
         assert all("/.venv/" not in name for name in names)
         assert all("/__pycache__/" not in name for name in names)
+        assert all(not name.endswith("/.coverage") for name in names)
         for item in archive.infolist():
             assert item.date_time == (1980, 1, 1, 0, 0, 0)
             assert item.external_attr >> 16 == 0o100644
@@ -226,6 +228,7 @@ def test_evidence_cannot_self_promote_real_aspen_certification(tmp_path: Path) -
 def test_git_checkout_identity_and_dirty_source_are_enforced(tmp_path: Path) -> None:
     module = _load_module()
     root = _repository(tmp_path / "repo")
+    (root / ".gitignore").write_text("ignored-secret.txt\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(root)], check=True, shell=False)
     subprocess.run(
         ["git", "-C", str(root), "config", "user.email", "test@example.invalid"],
@@ -250,6 +253,7 @@ def test_git_checkout_identity_and_dirty_source_are_enforced(tmp_path: Path) -> 
         text=True,
         shell=False,
     ).stdout.strip()
+    (root / "ignored-secret.txt").write_text("must-not-ship", encoding="utf-8")
 
     report = module.build_delivery_bundle(
         root=root,
@@ -257,12 +261,15 @@ def test_git_checkout_identity_and_dirty_source_are_enforced(tmp_path: Path) -> 
         source_sha=source_sha,
     )
     manifest = json.loads(
-        next((tmp_path / "clean-delivery").glob("aspenops-delivery-manifest-*.json")).read_text(
-            encoding="utf-8"
-        )
+        next(
+            (tmp_path / "clean-delivery").glob("aspenops-delivery-manifest-*.json")
+        ).read_text(encoding="utf-8")
     )
     assert manifest["git_identity_verified"] is True
     assert report["status"] == "PASS"
+    source_archive = next((tmp_path / "clean-delivery").glob("aspenops-source-*.zip"))
+    with zipfile.ZipFile(source_archive) as archive:
+        assert all(not name.endswith("ignored-secret.txt") for name in archive.namelist())
 
     (root / "src" / "module.py").write_text("VALUE = 2\n", encoding="utf-8")
     with pytest.raises(module.DeliveryBundleError, match="uncommitted"):
