@@ -260,7 +260,11 @@ def _build_spdx(root: Path, source_sha: str, generated_at: str) -> dict[str, Any
     }
 
 
-def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
+def _evidence_index(
+    root: Path,
+    source_sha: str,
+    qualified_tree_sha: str | None = None,
+) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     for relative in QUALIFICATION_PATHS:
         path = root / relative
@@ -292,13 +296,18 @@ def _evidence_index(root: Path, source_sha: str) -> dict[str, Any]:
             or float(coverage) < 95.0
         ):
             raise DeliveryBundleError(f"Qualification coverage floor is not met: {relative}")
-        if (
-            relative == GENERATED_CURRENT_QUALIFICATION
-            and document.get("validated_source_parent") != source_sha
-        ):
-            raise DeliveryBundleError(
-                "Current delivery qualification does not match requested source SHA"
-            )
+        if relative == GENERATED_CURRENT_QUALIFICATION:
+            if document.get("validated_source_parent") != source_sha:
+                raise DeliveryBundleError(
+                    "Current delivery qualification does not match requested source SHA"
+                )
+            if (
+                qualified_tree_sha is not None
+                and document.get("qualified_content_tree_sha") != qualified_tree_sha
+            ):
+                raise DeliveryBundleError(
+                    "Current delivery qualification does not match checked-out Git tree"
+                )
         records.append(
             {
                 "path": relative,
@@ -442,6 +451,11 @@ def build_delivery_bundle(
     ):
         raise DeliveryBundleError("source_date_epoch must be a non-negative integer")
     git_identity_verified = _verify_git_source_identity(resolved_root, source_sha)
+    qualified_tree_sha: str | None = None
+    if git_identity_verified:
+        qualified_tree_sha = _git_output(resolved_root, "rev-parse", "HEAD^{tree}")
+        if not GIT_SHA_RE.fullmatch(qualified_tree_sha):
+            raise DeliveryBundleError("checked-out Git tree has an invalid identity")
     resolved_output = _prepare_output_dir(output_dir)
 
     try:
@@ -473,7 +487,11 @@ def build_delivery_bundle(
         _json_bytes(_build_spdx(resolved_root, source_sha, generated_at))
     )
 
-    evidence = _evidence_index(resolved_root, source_sha)
+    evidence = _evidence_index(
+        resolved_root,
+        source_sha,
+        qualified_tree_sha=qualified_tree_sha,
+    )
     evidence_path = resolved_output / evidence_name
     evidence_path.write_bytes(_json_bytes(evidence))
 
@@ -503,6 +521,7 @@ def build_delivery_bundle(
             "normalized_file_mode": "0644",
         },
         "git_identity_verified": git_identity_verified,
+        "git_tree_sha": qualified_tree_sha,
         "qualification_boundary": (
             "Software delivery PASS does not grant licensed Aspen engineering certification."
         ),
