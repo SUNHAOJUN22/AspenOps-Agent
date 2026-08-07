@@ -1,0 +1,104 @@
+name: One-time exact acceptance finalization
+
+on:
+  push:
+    branches:
+      - agent/final-acceptance-20260807
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout acceptance branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: agent/final-acceptance-20260807
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: 0.11.16
+          python-version: '3.12'
+      - name: Synchronize exact locked environment
+        run: uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Format governed Python sources
+        run: |
+          uv run ruff format \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
+            tests/test_delivery_qualification_writer.py
+      - name: Close README acceptance contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          zh = Path('README.md')
+          text = zh.read_text(encoding='utf-8').replace('## 数理与工程合同', '## 数学与工程合同', 1)
+          if '--require-current-qualification' not in text:
+              text += '''
+
+### 当前交付树强制验收
+
+最终交付必须将测试结果、分支覆盖率和 Git 身份绑定到当前源码树；历史 PASS 不得代替当前树资格。
+
+```bash
+uv run python scripts/verify_delivery.py \\
+  --root . \\
+  --require-current-qualification \\
+  --output var/ci/delivery-acceptance-current.json
+```
+
+验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总相应软件作业证据，不构成真实 Aspen 工程认证。
+'''
+          zh.write_text(text, encoding='utf-8')
+
+          en = Path('README.en.md')
+          text = en.read_text(encoding='utf-8')
+          if '--require-current-qualification' not in text:
+              text += '''
+
+### Exact current-tree acceptance
+
+Final delivery binds tests, branch coverage, and Git identity to the current source tree. A historical PASS never substitutes for current-tree qualification.
+
+```bash
+uv run python scripts/verify_delivery.py \\
+  --root . \\
+  --require-current-qualification \\
+  --output var/ci/delivery-acceptance-current.json
+```
+
+Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its software-job evidence and is not real-Aspen engineering certification.
+'''
+          en.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify focused blockers are closed
+        run: |
+          uv run ruff format --check \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
+            tests/test_delivery_qualification_writer.py
+          uv run pytest -q tests/test_delivery_acceptance.py
+      - name: Remove temporary workflows and publish final tree
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/finalize-acceptance-once.yml .github/workflows/format-artifact-temporary.yml
+          git add README.md README.en.md \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
+            tests/test_delivery_qualification_writer.py
+          git diff --cached --check
+          git commit -m 'fix: close exact delivery acceptance blockers'
+          git push origin HEAD:agent/final-acceptance-20260807
