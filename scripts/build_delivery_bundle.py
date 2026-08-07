@@ -118,11 +118,7 @@ def _iter_source_files(root: Path, output_dir: Path) -> tuple[Path, ...]:
     total_bytes = 0
     if (resolved_root / ".git").exists():
         tracked = _git_output(resolved_root, "ls-files", "-z")
-        candidates = [
-            resolved_root / name
-            for name in tracked.split("\0")
-            if name
-        ]
+        candidates = [resolved_root / name for name in tracked.split("\0") if name]
     else:
         candidates = sorted(resolved_root.rglob("*"), key=lambda item: item.as_posix())
     for path in candidates:
@@ -247,10 +243,7 @@ def _build_spdx(root: Path, source_sha: str, generated_at: str) -> dict[str, Any
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"AspenOps-Agent-{source_sha[:12]}",
-        "documentNamespace": (
-            "https://github.com/SUNHAOJUN22/AspenOps-Agent/"
-            f"spdx/{source_sha}"
-        ),
+        "documentNamespace": (f"https://github.com/SUNHAOJUN22/AspenOps-Agent/spdx/{source_sha}"),
         "creationInfo": {
             "created": generated_at,
             "creators": ["Tool: AspenOps deterministic delivery builder"],
@@ -315,8 +308,7 @@ def _evidence_index(
                 "size_bytes": path.stat().st_size,
                 "schema": document.get("schema"),
                 "status": document.get("status"),
-                "source_sha": document.get("source_sha")
-                or document.get("validated_source_parent"),
+                "source_sha": document.get("source_sha") or document.get("validated_source_parent"),
             }
         )
     if not records:
@@ -349,10 +341,7 @@ def _dirty_path_allowed(path: str) -> bool:
         return True
     if normalized.parts and normalized.parts[0] in EXCLUDED_PARTS:
         return True
-    return (
-        normalized.name in EXCLUDED_FILE_NAMES
-        or normalized.suffix.lower() in EXCLUDED_SUFFIXES
-    )
+    return normalized.name in EXCLUDED_FILE_NAMES or normalized.suffix.lower() in EXCLUDED_SUFFIXES
 
 
 def _verify_git_source_identity(root: Path, source_sha: str) -> bool:
@@ -441,9 +430,7 @@ def build_delivery_bundle(
 ) -> dict[str, Any]:
     resolved_root = root.resolve(strict=True)
     if not GIT_SHA_RE.fullmatch(source_sha):
-        raise DeliveryBundleError(
-            "source_sha must be a 40-character lowercase hexadecimal Git SHA"
-        )
+        raise DeliveryBundleError("source_sha must be a 40-character lowercase hexadecimal Git SHA")
     if (
         isinstance(source_date_epoch, bool)
         or not isinstance(source_date_epoch, int)
@@ -460,9 +447,7 @@ def build_delivery_bundle(
 
     try:
         generated_at = (
-            datetime.fromtimestamp(source_date_epoch, UTC)
-            .isoformat()
-            .replace("+00:00", "Z")
+            datetime.fromtimestamp(source_date_epoch, UTC).isoformat().replace("+00:00", "Z")
         )
     except (OverflowError, OSError, ValueError) as exc:
         raise DeliveryBundleError("source_date_epoch is outside the supported range") from exc
@@ -483,9 +468,7 @@ def build_delivery_bundle(
     source_path.write_bytes(source_payload)
 
     sbom_path = resolved_output / sbom_name
-    sbom_path.write_bytes(
-        _json_bytes(_build_spdx(resolved_root, source_sha, generated_at))
-    )
+    sbom_path.write_bytes(_json_bytes(_build_spdx(resolved_root, source_sha, generated_at)))
 
     evidence = _evidence_index(
         resolved_root,
@@ -511,9 +494,7 @@ def build_delivery_bundle(
             "file_count": source_file_count,
             "root_prefix": f"AspenOps-Agent-{stem}",
         },
-        "artifacts": [
-            _artifact_record(path, resolved_output) for path in sorted(payload_paths)
-        ],
+        "artifacts": [_artifact_record(path, resolved_output) for path in sorted(payload_paths)],
         "reproducibility": {
             "source_date_epoch": source_date_epoch,
             "zip_member_timestamp": "1980-01-01T00:00:00Z",
@@ -530,15 +511,14 @@ def build_delivery_bundle(
     manifest_path.write_bytes(_json_bytes(manifest))
 
     checksum_paths = sorted([*payload_paths, manifest_path], key=lambda item: item.name)
-    checksums = "".join(
-        f"{_sha256_file(path)}  {path.name}\n" for path in checksum_paths
-    ).encode("ascii")
+    checksums = "".join(f"{_sha256_file(path)}  {path.name}\n" for path in checksum_paths).encode(
+        "ascii"
+    )
     checksums_path = resolved_output / "SHA256SUMS"
     checksums_path.write_bytes(checksums)
 
     handover_entries = [
-        (path.name, path.read_bytes())
-        for path in [*checksum_paths, checksums_path]
+        (path.name, path.read_bytes()) for path in [*checksum_paths, checksums_path]
     ]
     handover_path = resolved_output / handover_name
     handover_path.write_bytes(_zip_bytes(handover_entries))

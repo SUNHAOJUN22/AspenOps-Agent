@@ -49,9 +49,7 @@ def _evidence(
                 "schema": "aspenops.delivery-acceptance/v1",
                 "status": "PASS",
                 "issues": [],
-                "baseline_qualification": {
-                    "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION"
-                },
+                "baseline_qualification": {"real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION"},
             }
         ),
         encoding="utf-8",

@@ -268,9 +268,7 @@ def _check_baseline_qualification(root: Path, issues: list[dict[str, str]]) -> d
         "ruff",
         "source_tree_audit",
     }
-    if not isinstance(static, dict) or any(
-        static.get(name) != "PASS" for name in required_static
-    ):
+    if not isinstance(static, dict) or any(static.get(name) != "PASS" for name in required_static):
         _issue(
             issues,
             "static_gate_failed",
@@ -290,9 +288,7 @@ def _git_output(root: Path, revision: str) -> str:
             shell=False,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
-        raise DeliveryVerificationError(
-            f"Unable to resolve Git revision {revision!r}"
-        ) from exc
+        raise DeliveryVerificationError(f"Unable to resolve Git revision {revision!r}") from exc
     value = completed.stdout.strip()
     if not GIT_SHA_RE.fullmatch(value):
         raise DeliveryVerificationError(f"Invalid Git identity for {revision!r}: {value!r}")
@@ -588,9 +584,7 @@ def verify_delivery(
             "branch_coverage_percent": (
                 None if current is None else current.get("branch_coverage_percent")
             ),
-            "real_aspen_status": (
-                None if current is None else current.get("real_aspen_status")
-            ),
+            "real_aspen_status": (None if current is None else current.get("real_aspen_status")),
         },
         "workflows": workflows,
         "visual_asset_count": len(visuals),
