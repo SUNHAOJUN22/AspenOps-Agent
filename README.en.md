@@ -300,3 +300,17 @@ uv build
 ## License
 
 Apache-2.0 covers this repository only. Aspen Plus, Aspen HYSYS, Windows, license services, customer models, and process data remain subject to their own licenses, confidentiality, and safety controls.
+
+
+### Exact current-tree acceptance
+
+Final delivery binds tests, coverage, and Git identity to the current source tree. A historical PASS never substitutes for current-tree qualification.
+
+```bash
+uv run python scripts/verify_delivery.py \
+  --root . \
+  --require-current-qualification \
+  --output var/ci/delivery-acceptance-current.json
+```
+
+Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.

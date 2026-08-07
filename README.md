@@ -72,7 +72,7 @@ Human / Agent
 
 DWSIM 与 IDAES 处于 `planned` 路线，当前**未实现**生产 adapter。能力未知或无 adapter 时必须显式报告，不能把“知道软件名称”伪装成可执行能力。
 
-## 数理与工程合同
+## 数学与工程合同
 
 ### 1. 物料与能量守恒
 
@@ -300,3 +300,17 @@ uv build
 ## License
 
 Apache-2.0 仅覆盖本仓库。Aspen Plus、Aspen HYSYS、Windows、许可证服务、客户模型和工艺数据受各自许可、保密与安全制度约束。
+
+
+### 当前交付树强制验收
+
+最终交付必须把测试结果、覆盖率与 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。
+
+```bash
+uv run python scripts/verify_delivery.py \
+  --root . \
+  --require-current-qualification \
+  --output var/ci/delivery-acceptance-current.json
+```
+
+验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。

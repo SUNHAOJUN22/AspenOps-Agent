@@ -85,8 +85,7 @@ def test_current_qualification_is_optional_or_fail_closed(tmp_path: Path) -> Non
     )
     assert evidence is not None
     assert any(
-        issue["code"] == "current_qualification_field_mismatch"
-        for issue in malformed_issues
+        issue["code"] == "current_qualification_field_mismatch" for issue in malformed_issues
     )
 
 

@@ -88,9 +88,7 @@ def test_delivery_bundle_is_deterministic_and_self_verifying(tmp_path: Path) -> 
     assert first_report["status"] == "PASS"
     assert first_report["real_aspen_status"] == "PENDING_REAL_ASPEN_CERTIFICATION"
     assert first_report["source_file_count"] == 6
-    assert {item.name for item in first.iterdir()} == {
-        item.name for item in second.iterdir()
-    }
+    assert {item.name for item in first.iterdir()} == {item.name for item in second.iterdir()}
     for first_path in first.iterdir():
         assert first_path.read_bytes() == (second / first_path.name).read_bytes()
 
@@ -101,9 +99,7 @@ def test_delivery_bundle_is_deterministic_and_self_verifying(tmp_path: Path) -> 
 
     handover = next(first.glob("aspenops-handover-*.zip"))
     digest_file = first / f"{handover.name}.sha256"
-    assert digest_file.read_text(encoding="ascii") == (
-        f"{_sha256(handover)}  {handover.name}\n"
-    )
+    assert digest_file.read_text(encoding="ascii") == (f"{_sha256(handover)}  {handover.name}\n")
 
 
 def test_source_archive_is_sorted_normalized_and_excludes_transient_files(
@@ -261,9 +257,9 @@ def test_git_checkout_identity_and_dirty_source_are_enforced(tmp_path: Path) -> 
         source_sha=source_sha,
     )
     manifest = json.loads(
-        next(
-            (tmp_path / "clean-delivery").glob("aspenops-delivery-manifest-*.json")
-        ).read_text(encoding="utf-8")
+        next((tmp_path / "clean-delivery").glob("aspenops-delivery-manifest-*.json")).read_text(
+            encoding="utf-8"
+        )
     )
     assert manifest["git_identity_verified"] is True
     assert report["status"] == "PASS"
@@ -299,13 +295,11 @@ def test_generated_current_qualification_is_evidence_not_source(tmp_path: Path) 
     source_archive = next(output.glob("aspenops-source-*.zip"))
     with zipfile.ZipFile(source_archive) as archive:
         assert all(
-            not name.endswith("docs/DELIVERY_QUALIFICATION.json")
-            for name in archive.namelist()
+            not name.endswith("docs/DELIVERY_QUALIFICATION.json") for name in archive.namelist()
         )
     evidence = json.loads(next(output.glob("aspenops-evidence-index-*.json")).read_text())
     assert any(
-        record["path"] == "docs/DELIVERY_QUALIFICATION.json"
-        for record in evidence["records"]
+        record["path"] == "docs/DELIVERY_QUALIFICATION.json" for record in evidence["records"]
     )
 
 
@@ -361,9 +355,9 @@ def test_git_current_qualification_must_match_head_tree(tmp_path: Path) -> None:
         source_sha=source_sha,
     )
     manifest = json.loads(
-        next(
-            (tmp_path / "matched-delivery").glob("aspenops-delivery-manifest-*.json")
-        ).read_text(encoding="utf-8")
+        next((tmp_path / "matched-delivery").glob("aspenops-delivery-manifest-*.json")).read_text(
+            encoding="utf-8"
+        )
     )
     assert manifest["git_tree_sha"] == tree_sha
     assert report["status"] == "PASS"
