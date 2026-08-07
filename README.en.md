@@ -2,11 +2,11 @@
 
 # AspenOps 2.0
 
-## Deterministic engineering control plane for Aspen Plus, Aspen HYSYS and AI agents
+## Deterministic engineering control plane for Aspen Plus, Aspen HYSYS, and AI agents
 
-**Governed requirements → typed flowsheet → verifiable compilation → process-isolated execution → engineering decision → auditable evidence**
+**Governed requirement → typed process intent → engineering rules → verifiable compilation → isolated execution → engineering decision → auditable evidence → deterministic handover**
 
-[中文](README.md) · [Architecture](docs/architecture.md) · [Delivery Acceptance](docs/delivery-acceptance.md) · [Windows Setup](docs/windows-setup.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md)
+[中文](README.md) · [Architecture](docs/architecture.md) · [Delivery Acceptance](docs/delivery-acceptance.md) · [Delivery Bundle](docs/delivery-bundle.md) · [Windows Setup](docs/windows-setup.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md)
 
 [![CI main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
 [![Windows main push](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml/badge.svg?branch=main&event=push)](https://github.com/SUNHAOJUN22/AspenOps-Agent/actions/workflows/windows-control-plane.yml?query=branch%3Amain+event%3Apush)
@@ -18,64 +18,72 @@
 
 ![AspenOps architecture](docs/assets/readme/hero-architecture.svg)
 
-> This README uses twenty-three governed AspenOps SVGs plus four new AI-assisted acceptance diagrams. They explain implemented software contracts or explicitly planned work only. Mock, Fake COM, hashes, signatures, public CI and offline compilation do not replace licensed Aspen engineering certification.
+> **Acceptance boundary:** AspenOps can qualify its software control plane, typed process intent, isolated runtime, cache/scheduler/optimization behavior, evidence chain, and deterministic handover. It cannot self-grant licensed Aspen engineering certification without the real commercial solver, licence, fixed model, Golden Cases, hardware fingerprint, and approved tolerances. The real-environment status must remain `PENDING_REAL_ASPEN_CERTIFICATION`.
 
-## Acceptance statement
+## Acceptance status
 
-| Item | Current result |
+| Item | Current rule |
 |---|---|
-| Only long-lived branch | `main` |
-| Package | `aspenops-nexus 2.0.0` |
-| Public software qualification baseline | 1224 passed, 0 failed, 0 errors, 95.03% branch coverage |
-| Order independence | reverse order PASS; seed `20260728` PASS |
-| Delivery verifier | `python scripts/verify_delivery.py --output var/ci/delivery-acceptance.json` |
+| Long-lived branch | `main` only |
+| Python package | `aspenops-nexus 2.0.0` |
+| Historical full software baseline | `1224 passed`, 0 failed, 0 errors, 95.03% branch coverage |
+| Order gates | reverse-order PASS; seed `20260728` PASS |
+| Delivery-surface verifier | `python scripts/verify_delivery.py` |
+| Exact-tree qualification | `python scripts/verify_delivery.py --require-current-qualification` |
+| Deterministic handover | `scripts/build_delivery_bundle.py` |
 | Licensed Aspen/HYSYS | `PENDING_REAL_ASPEN_CERTIFICATION` |
-| Arbitrary native flowsheet construction | not claimed as production capability |
-| Process, safety, property and equipment approval | required from project authorities |
 
-Machine evidence lives in `docs/ACCEPTANCE_HARDENING_QUALIFICATION.json` and permanent GitHub Actions. Archived qualification proves only its cited source and run.
+Archived qualification evidence proves only the source identity recorded in that evidence. It does not automatically qualify later commits. If the acceptance decision requires exact-tree qualification rather than delivery-surface completeness, provide `docs/DELIVERY_QUALIFICATION.json` and use `--require-current-qualification`.
 
-## AI visual atlas
+---
 
-| Intent and compilation | Execution and mathematics | Evidence and delivery |
+## AI and engineering visual atlas
+
+All figures are repository-local. The four figures under `docs/assets/ai/` are AI-assisted acceptance illustrations grounded in implemented contracts.
+
+| Architecture and intent | Runtime and safety | Evidence and engineering |
 |---|---|---|
-| ![hero-architecture](docs/assets/readme/hero-architecture.svg) | ![agent-pipeline](docs/assets/readme/agent-pipeline.svg) | ![process-intent-ir](docs/assets/readme/process-intent-ir.svg) |
-| ![backend-capabilities](docs/assets/readme/backend-capabilities.svg) | ![adapter-conformance](docs/assets/readme/adapter-conformance.svg) | ![mathematical-contracts](docs/assets/ai/mathematical-contracts.svg) |
-| ![com-isolation](docs/assets/readme/com-isolation.svg) | ![worker-ownership-recycle](docs/assets/readme/worker-ownership-recycle.svg) | ![native-failure-isolation](docs/assets/ai/native-failure-isolation.svg) |
-| ![validity-gates](docs/assets/readme/validity-gates.svg) | ![warm-start-trajectory](docs/assets/ai/warm-start-trajectory.svg) | ![optimization-lifecycle](docs/assets/readme/optimization-lifecycle.svg) |
-| ![scheduler-lifecycle](docs/assets/readme/scheduler-lifecycle.svg) | ![durable-path-portability](docs/assets/readme/durable-path-portability.svg) | ![cache-singleflight](docs/assets/readme/cache-singleflight.svg) |
-| ![evidence-chain](docs/assets/readme/evidence-chain.svg) | ![evidence-integrity](docs/assets/readme/evidence-integrity.svg) | ![licensed-certification](docs/assets/readme/licensed-certification.svg) |
-| ![cli-mcp-workflow](docs/assets/readme/cli-mcp-workflow.svg) | ![mcp-runtime-lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg) | ![policy-path-safety](docs/assets/readme/policy-path-safety.svg) |
-| ![performance-hotspot-map](docs/assets/readme/performance-hotspot-map.svg) | ![cold-warm-startup](docs/assets/readme/cold-warm-startup.svg) | ![test-matrix](docs/assets/readme/test-matrix.svg) |
-| ![industrial-scenarios](docs/assets/readme/industrial-scenarios.svg) | ![delivery-acceptance](docs/assets/ai/delivery-acceptance.svg) | ![roadmap](docs/assets/readme/roadmap.svg) |
+| ![hero](docs/assets/readme/hero-architecture.svg) | ![agent pipeline](docs/assets/readme/agent-pipeline.svg) | ![process IR](docs/assets/readme/process-intent-ir.svg) |
+| ![backend](docs/assets/readme/backend-capabilities.svg) | ![adapter](docs/assets/readme/adapter-conformance.svg) | ![math](docs/assets/ai/mathematical-contracts.svg) |
+| ![com isolation](docs/assets/readme/com-isolation.svg) | ![worker recycle](docs/assets/readme/worker-ownership-recycle.svg) | ![native failure isolation](docs/assets/ai/native-failure-isolation.svg) |
+| ![validity](docs/assets/readme/validity-gates.svg) | ![warm start](docs/assets/ai/warm-start-trajectory.svg) | ![optimization](docs/assets/readme/optimization-lifecycle.svg) |
+| ![scheduler](docs/assets/readme/scheduler-lifecycle.svg) | ![durable path](docs/assets/readme/durable-path-portability.svg) | ![cache](docs/assets/readme/cache-singleflight.svg) |
+| ![evidence chain](docs/assets/readme/evidence-chain.svg) | ![evidence integrity](docs/assets/readme/evidence-integrity.svg) | ![licensed certification](docs/assets/readme/licensed-certification.svg) |
+| ![cli mcp](docs/assets/readme/cli-mcp-workflow.svg) | ![mcp lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg) | ![path safety](docs/assets/readme/policy-path-safety.svg) |
+| ![performance](docs/assets/readme/performance-hotspot-map.svg) | ![startup](docs/assets/readme/cold-warm-startup.svg) | ![test matrix](docs/assets/readme/test-matrix.svg) |
+| ![industry](docs/assets/readme/industrial-scenarios.svg) | ![delivery](docs/assets/ai/delivery-acceptance.svg) | ![roadmap](docs/assets/readme/roadmap.svg) |
 
 ---
 
 ## Product position
 
-AspenOps is not a wrapper that lets a model emit arbitrary COM, Python, VBA or Shell. It connects agents, CLI, Python, Aspen Plus and HYSYS to one governed plane:
+AspenOps is not a wrapper that allows a model to emit arbitrary COM, VBA, Python, or shell code. It converts agent/human intent into typed contracts and governed execution:
 
 ```text
 Human / Agent
 → ProcessRequirementDocument
 → ProcessDesignIR
 → Engineering Rules
-→ Capability Profile
-→ Compilation Plan
-→ Isolated Worker
-→ Solver / Readback
-→ Constraints + Balances
+→ Simulator Capability Profile
+→ Compilation / Evaluation Plan
+→ CasePool / Scheduler
+→ Process-isolated Worker
+→ Aspen Plus / HYSYS / Mock
+→ Readback + Constraints + Balances
 → Evidence Bundle
+→ Deterministic Handover
 ```
 
-Implemented software boundaries:
+Core responsibilities:
 
-- semantic reads/writes, batching, cache, scheduling, optimization and evidence for approved models;
-- one real simulator owner per Windows child process and COM STA;
-- agent-facing semantic keys and typed documents, not arbitrary Tree Paths;
-- write readback and rollback, with tainted Worker recycling on cleanup, protocol, timeout or post-write failures;
-- Aspen Plus/HYSYS 14/15 capability profiles, offline compilation contracts and native adapter conformance;
-- licensed solver, licence, Golden Cases, reference values and engineering tolerances remain external qualification inputs.
+- typed process intent and semantic variables;
+- engineering rules, units, ranges, degrees of freedom, recycle/tear validation;
+- semantic reads/writes against approved Aspen Plus/HYSYS models;
+- one Windows child process and COM STA per real simulator ownership boundary;
+- `CasePool`, persistent cache, batch execution, singleflight, scheduler, and optimization;
+- native-adapter conformance and failure isolation;
+- run evidence, hashes, signatures, revocation, and reproducible handover;
+- Mock/offline qualification for software behavior without pretending to produce real thermodynamic or equipment results.
 
 ---
 
@@ -83,32 +91,33 @@ Implemented software boundaries:
 
 ![Mathematical contracts](docs/assets/ai/mathematical-contracts.svg)
 
-### 1. Dynamic material balance
+### 1. Component material balance
 
 For component \(i\):
 
 ```math
 \frac{dN_i}{dt}
 =
-\sum_{s\in\mathcal I} \dot n_{i,s}
+\sum_{s\in\mathcal I}\dot n_{i,s}
 -
-\sum_{s\in\mathcal O} \dot n_{i,s}
+\sum_{s\in\mathcal O}\dot n_{i,s}
 +
-\sum_{r\in\mathcal R} \nu_{i,r} r_r V
+\sum_{r\in\mathcal R}\nu_{i,r}r_rV
 ```
 
 At steady state:
 
 ```math
-0=
-\sum_{s\in\mathcal I} \dot n_{i,s}
+0
+=
+\sum_{s\in\mathcal I}\dot n_{i,s}
 -
-\sum_{s\in\mathcal O} \dot n_{i,s}
+\sum_{s\in\mathcal O}\dot n_{i,s}
 +
-\sum_{r\in\mathcal R} \nu_{i,r} r_r V
+\sum_{r\in\mathcal R}\nu_{i,r}r_rV
 ```
 
-Solver success is not balance success. Residuals stay independent in `balance_residuals`; non-finite terms produce `balance_non_finite` and `balance_failed`.
+Solver success is not balance success. Non-finite balance evidence is represented separately as `balance_non_finite`; out-of-tolerance residuals produce `balance_failed`.
 
 ### 2. Energy balance
 
@@ -117,26 +126,14 @@ Solver success is not balance success. Residuals stay independent in `balance_re
 =
 \dot Q-\dot W
 +
-\sum_{s\in\mathcal I} \dot n_s \hat h_s
+\sum_{s\in\mathcal I}\dot n_s\hat h_s
 -
-\sum_{s\in\mathcal O} \dot n_s \hat h_s
+\sum_{s\in\mathcal O}\dot n_s\hat h_s
 ```
 
-The project must still approve enthalpy reference, heat loss, shaft work, reaction heat and phase-equilibrium assumptions.
+Real projects must still approve the enthalpy basis, heat loss, shaft work, heat of reaction, and phase-equilibrium assumptions.
 
-### 3. Constraint violation
-
-For \(g_j(x)\le0\) and \(h_k(x)=0\):
-
-```math
-V(x)
-=
-\sum_j \max(0,g_j(x)-\varepsilon_j)
-+
-\sum_k \max(0,|h_k(x)|-\varepsilon_k)
-```
-
-Independent validity gates:
+### 3. Independent validity gates
 
 ```math
 OK =
@@ -148,23 +145,51 @@ C_{comm}
 \land C_{balance}
 ```
 
-`NaN`, Infinity, text aliases and Boolean numeric aliases fail closed. Evidence uses `allow_nan=False`.
-
-### 4. Units and dimensions
+Constraint violation:
 
 ```math
-x_t=(x_s+a_s)m_s/m_t-a_t
+V(x)
+=
+\sum_j \max(0,g_j(x)-\varepsilon_j)
++
+\sum_k \max(0,|h_k(x)|-\varepsilon_k)
 ```
 
-Absolute temperature must satisfy:
+`NaN`, Infinity, textual numeric aliases, and Boolean numeric aliases fail closed. Non-finite constraint evidence is exposed as `constraint_non_finite`. Evidence JSON uses `allow_nan=False`.
+
+### 4. Units and affine conversion
+
+```math
+x_t=(x_s+a_s)\frac{m_s}{m_t}-a_t
+```
+
+Absolute temperature:
 
 ```math
 T_K>0
 ```
 
-Parameter contracts enforce numeric type, finiteness, dimension, integrality, fraction range and positive range.
+Parameter contracts validate numeric type, finiteness, physical dimension, integrality, fractional range, and positive ranges.
 
-### 5. Cache identity
+### 5. Recycle graph and tear edges
+
+For a directed material graph \(G=(V,E)\) and tear-edge set \(T\):
+
+```math
+\forall C\in cycles(G),\qquad C\cap T\neq\varnothing
+```
+
+A generic recycle declaration cannot suppress an unrelated directed cycle. A tear edge must belong to the actual cycle it resolves.
+
+### 6. Distillation degrees of freedom
+
+```math
+DOF=N_c-N_s
+```
+
+\(N_c\) is the number of independent controllable/manipulated variables and \(N_s\) the number of independent specifications. Capability profiles must expose independent design specifications consistent with engineering rules.
+
+### 7. Cache identity
 
 ```math
 K =
@@ -179,9 +204,9 @@ schema
 )
 ```
 
-Display metadata does not change physical identity. Model, registry, backend, runtime or verification semantics do.
+Display metadata does not change physical identity. Model, registry, backend, runtime, or verification semantics do.
 
-### 6. Warm-start trajectory
+### 8. Warm-start trajectory
 
 ![Warm-start trajectory](docs/assets/ai/warm-start-trajectory.svg)
 
@@ -189,61 +214,121 @@ Display metadata does not change physical identity. Model, registry, backend, ru
 x_{k+1}=F(x_k,u_k),\qquad y_k=G(x_k)
 ```
 
-Warm-start is path dependent:
+Warm-start is path dependent, so:
 
-- one Worker per trajectory;
-- no persistent cache, same-batch dedup or inflight singleflight;
-- explicit session/step identity;
-- optimization requires `reset_mode='reinitialize'`.
+- one Worker owns one trajectory;
+- persistent cache is disabled;
+- same-batch deduplication is disabled;
+- `inflight_singleflight` is disabled;
+- explicit session/step metadata participates in trajectory identity;
+- optimization uses `reset_mode='reinitialize'` so objective values do not depend on prior candidates.
 
-### 7. Constrained optimization
+### 9. Constrained optimization
 
 ```math
-\min_x\;J(x)=\sum_{m=1}^M w_m f_m(x)
+\min_x J(x)=\sum_{m=1}^{M}w_m f_m(x)
 ```
 
-Subject to variable bounds and all validity gates. Differential evolution is seeded and budgeted. Pareto construction performs exact deduplication, feasibility filtering and nondominance.
+With a penalty:
 
-### 8. Evidence identity and signature
+```math
+J_p(x)=J(x)+\lambda V(x),\qquad \lambda\ge0
+```
+
+Operational rule: qualify feasibility and engineering gates before comparing objectives. Do not use penalty tuning to hide convergence, balance, or non-finite failures.
+
+### 10. Licence-aware concurrency
+
+A conservative bound is:
+
+```math
+C_{\max}\le \min(L,W)
+```
+
+where \(L\) is available licence slots and \(W\) is the configured Worker budget. Memory, model residency, and Windows process limits may reduce usable concurrency further.
+
+### 11. Evidence binding
 
 ```math
 H_{bundle}
 =
 SHA256(
-H_{request}\Vert
-H_{results}\Vert
-H_{model}\Vert
-H_{registry}\Vert
-H_{environment}
+H_{request}
+\Vert H_{results}
+\Vert H_{model}
+\Vert H_{registry}
+\Vert H_{environment}
 )
 ```
 
-Ed25519 authenticates canonical manifest bytes under a trusted key. It cannot self-grant licensed Aspen engineering status.
+Ed25519 authenticates canonical manifest bytes under a trusted key. It cannot elevate software evidence into licensed Aspen engineering certification.
 
 ---
 
-## Native adapter conformance gate
+## Process Intent IR and engineering rules
 
-![Native adapter conformance gate](docs/assets/readme/adapter-conformance.svg)
+![Process Intent IR](docs/assets/readme/process-intent-ir.svg)
 
-Before any native write, `aspenops.native-adapter-manifest/v1` must bind profile, profile hash, adapter contract, code hash and runtime identity; cover every operation and `adapter_key`; and declare topology, layout, save/reopen and failure-isolation capabilities. Authorization remains fresh at execution boundaries.
+Process Intent IR expresses:
+
+```text
+units
+streams
+connections
+parameters
+tears
+constraints
+design intent
+```
+
+Recommended strategy:
+
+1. Validate topology, units, parameter contracts, and capability profiles with Mock/offline compilation first.
+2. Select tear edges explicitly for recycle graphs.
+3. Use only approved semantic keys and approved model roots against real Aspen installations.
+4. Apply unit-specific contracts for distillation, reactors, heat exchangers, and pumps/compressors.
+5. Keep “the model can run” separate from “the engineering result is approved.”
+
+---
+
+## Native adapter conformance
+
+![Adapter conformance](docs/assets/readme/adapter-conformance.svg)
+
+Before native writes, the adapter must bind:
+
+- capability profile;
+- profile SHA-256;
+- adapter contract and code identity;
+- operation/`adapter_key` coverage;
+- topology/layout readback;
+- save/reopen;
+- failure isolation;
+- fresh authorization.
 
 ## Native failure isolation
 
 ![Native failure isolation](docs/assets/ai/native-failure-isolation.svg)
 
+Two enforceable strategies:
+
 ```text
 PRIVATE_CASE_DISCARD
-step failure → discard_private_case() → discarded=true
-
-TRANSACTIONAL_ROLLBACK
-begin_transaction()
-→ steps
-→ commit_transaction(token)
-or rollback_transaction(token)
+step failure
+→ discard_private_case()
+→ discarded == True
 ```
 
-Missing cleanup methods, malformed cleanup evidence or cleanup failure raises `NativeBuildError`.
+```text
+TRANSACTIONAL_ROLLBACK
+token = begin_transaction()
+→ steps
+→ commit_transaction(token)
+or
+→ rollback_transaction(token)
+```
+
+Missing cleanup methods, cleanup values other than literal `True`, rollback/discard failure, and post-write exceptions taint the Worker and trigger recycling.
 
 ---
 
@@ -271,15 +356,11 @@ uv sync --frozen --extra windows --extra dev --extra agent --extra signing
 uv run aspenops doctor --probe
 ```
 
-MCP Wheel contract:
+Mock is a control-plane/software-qualification backend; it is not evidence for real Aspen Plus/HYSYS thermodynamics, properties, equipment, or convergence.
 
-```text
-mcp>=1.9,<2
-```
+---
 
-Mock is control-plane evidence, not Aspen Plus/HYSYS physical evidence.
-
-## Configuration boundaries
+## Configuration and path safety
 
 ```dotenv
 ASPENOPS_BACKEND=mock
@@ -291,7 +372,7 @@ ASPENOPS_MAX_WORKERS=1
 ASPENOPS_MAX_RESIDENT_CASES=2
 ```
 
-Real backends require absolute roots:
+Real-backend example:
 
 ```dotenv
 ASPENOPS_BACKEND=aspen_plus
@@ -299,47 +380,74 @@ ASPENOPS_ALLOWED_ROOTS=C:/AspenModels;C:/AspenResults
 ASPENOPS_STATE_DIR=C:/AspenResults/aspenops-state
 ```
 
+![Path safety](docs/assets/readme/policy-path-safety.svg)
+
 Rules:
 
-1. Real backends cannot use an empty allowlist.
-2. `..`, symlinks, junctions and realpath escapes are rejected.
-3. `license_slots` and `max_workers` jointly bound concurrency.
-4. Unknown backend/mode, truthy strings, non-finite and non-positive budgets fail at construction.
-5. Private keys, tokens, licence secrets, customer models and production data do not belong in the repository.
+- real backends cannot use an empty allowlist;
+- only absolute approved roots are valid;
+- `..`, symlink, junction, and realpath escapes are rejected;
+- unknown backend/mode values fail closed;
+- truthy strings and non-finite resource budgets are rejected;
+- private keys, tokens, licence secrets, customer models, and production data do not belong in the repository.
 
-## Configuration and path safety
+---
 
-![Configuration and path safety](docs/assets/readme/policy-path-safety.svg)
+## Batch, cache, and singleflight strategy
+
+![Cache and singleflight](docs/assets/readme/cache-singleflight.svg)
+
+For `reinitialize` requests, AspenOps may use:
+
+- memory LRU;
+- SQLite WAL persistent cache;
+- same-batch deduplication;
+- `inflight_singleflight`.
+
+Warm-start requests use none of those cross-request reuse paths.
+
+Recommendations:
+
+1. Reuse results only for deterministic, reinitialized requests.
+2. Cache failures only under explicit policy.
+3. Bind cache identity to backend/runtime/model/registry/physical request.
+4. Reject non-standard JSON constants and non-object cache roots.
+5. Return deeply isolated result objects.
+
+---
+
+## Worker ownership and durable scheduling
+
+![Worker ownership](docs/assets/readme/worker-ownership-recycle.svg)
+
+One Worker owns:
 
 ```text
-Environment / Python API
-→ Type Gate
-→ Backend and Mode Allowlist
-→ Absolute Root Policy
-→ resolve()
-→ relative_to(approved root)
-→ Operation Gate
+spawned process
++ COM STA
++ Automation Server
++ private case
++ sequential command stream
++ process-ownership supervision
 ```
 
-Unknown authority modes cannot inherit default permissions.
+![Scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
 
-## Independent validity gates
-
-![Independent validity gates](docs/assets/readme/validity-gates.svg)
+Scheduler states include:
 
 ```text
-communication_ok
-AND engine_ok
-AND converged
-AND feasible
-AND finite evidence
-AND constraints passed
-AND balances passed
+pending
+→ claimed
+→ running
+→ completed | failed | cancelling
+→ retry_wait | dead_letter | cancelled
 ```
 
-Aspen Plus/HYSYS running flags accept explicit booleans, supported COM numeric values and bounded known strings; they never rely on `bool("False")`.
+Expired leases enter `retry_wait` while retry budget remains; exhausted jobs enter `dead_letter`. Owner fencing and idempotent commit tokens prevent stale Workers from publishing results.
 
-## Common workflows
+---
+
+## Common operating strategies
 
 ### Batch
 
@@ -364,11 +472,10 @@ JOB_ID=$(
   uv run aspenops submit examples/batch-request.example.json |
   python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])'
 )
+
 uv run aspenops job "$JOB_ID"
 uv run aspenops cancel "$JOB_ID" --grace-s 2
 ```
-
-Responses expose `paths_pinned=true` and absolute `submission_cwd`.
 
 ### Optimization
 
@@ -377,11 +484,7 @@ uv run aspenops optimize examples/optimization-request.example.json \
   --output var/aspenops-state/optimization-result.json
 ```
 
-### Evidence verification
-
-```bash
-uv run aspenops verify-bundle var/aspenops-state/run-bundle.zip
-```
+Optimization should use reinitialize. Do not treat warm-start state as a stateless objective-function cache.
 
 ### MCP
 
@@ -389,69 +492,31 @@ uv run aspenops verify-bundle var/aspenops-state/run-bundle.zip
 uv run aspenops mcp
 ```
 
-## MCP compatibility and server lifecycle
+The MCP surface does not expose arbitrary shell, Python, VBA, COM, or Aspen Tree Path access.
 
-![MCP lifecycle](docs/assets/readme/mcp-runtime-lifecycle.svg)
+### Evidence
 
-```text
-FastMCP lifespan enter
-→ SDK compatibility gate
-→ scheduler.start()
-→ 14 constrained tools
-→ scheduler.stop()
-→ Pool / Worker cleanup
+```bash
+uv run aspenops verify-bundle var/aspenops-state/run-bundle.zip
 ```
 
-MCP exposes no arbitrary Shell, COM, Python, VBA or Aspen Tree Path.
+---
 
-## Constrained optimization lifecycle
-
-![Constrained optimization](docs/assets/readme/optimization-lifecycle.svg)
-
-Usage strategy:
-
-- validate structure, budgets and evidence with Mock first;
-- start licensed runs with small populations and low concurrency;
-- use reinitialize for every optimization point;
-- never hide constraint or balance failures with penalty tuning;
-- keep checkpoints inside state/allowed roots;
-- retain `PENDING_REAL_ASPEN_CERTIFICATION` until engineering approval.
-
-## Scheduling and recovery
-
-![Scheduler lifecycle](docs/assets/readme/scheduler-lifecycle.svg)
-
-```text
-pending
-→ claimed
-→ running
-→ completed | failed | cancelling
-→ retry_wait | dead_letter | cancelled
-```
-
-Expired leases enter `retry_wait` while attempts remain; exhausted attempts enter `dead_letter`. Owner fencing and idempotent commit tokens protect result publication.
-
-## Cache, batch deduplication and singleflight
-
-![Cache and singleflight](docs/assets/readme/cache-singleflight.svg)
-
-- reinitialized requests may use memory LRU, SQLite WAL, `same_batch_dedup` and `inflight_singleflight`;
-- warm-start requests use none of those reuse paths;
-- failed results are cached only under explicit policy;
-- cache reads reject nonstandard JSON constants and non-object payloads;
-- returned objects are deeply isolated.
-
-## Worker ownership and recycling
-
-![Worker ownership](docs/assets/readme/worker-ownership-recycle.svg)
-
-One Worker owns one spawned process, COM STA, Automation Server, private model/registry snapshot, sequential command stream and Windows Job Object or verified process-ownership boundary. Timeout, crash, protocol error, tainted transaction, lifecycle budget and post-write exception trigger recycling.
-
-## Performance engineering and evidence
+## Performance strategy
 
 ![Performance hotspot map](docs/assets/readme/performance-hotspot-map.svg)
 
-Correctness precedes performance claims. The repository uses:
+Performance work follows:
+
+```text
+correctness qualification
+→ deterministic operation-count evidence
+→ same-environment timing
+→ optimization
+→ regression gate
+```
+
+Repository measurement entry points:
 
 ```text
 scripts/measure_cli_startup.py
@@ -459,135 +524,166 @@ scripts/measure_operation_counts.py
 scripts/measure_job_store_queries.py
 ```
 
-Outputs:
+A speedup claim requires the same workload, environment, repetitions, and statistical rule.
 
-```text
-cli-startup.json
-operation-counts.json
-job-store-query-plan.json
+---
+
+## Deterministic delivery bundle
+
+Software acceptance should not end with an unbound source directory. `scripts/build_delivery_bundle.py` converts one exact Git SHA into a reproducible handover.
+
+```bash
+rm -rf var/delivery
+uv build
+
+uv run python scripts/build_delivery_bundle.py \
+  --source-sha "$(git rev-parse HEAD)" \
+  --source-date-epoch 0 \
+  --include-dist \
+  --output-dir var/delivery
 ```
 
-`Performance Audit V2` separates deterministic operation-count contracts from environment-sensitive wall time. Any speedup claim requires the same environment, input, repetitions and statistics.
+Artifacts:
 
-## Industrial use cases
+```text
+aspenops-source-<sha12>.zip
+aspenops-sbom-<sha12>.spdx.json
+aspenops-evidence-index-<sha12>.json
+aspenops-delivery-manifest-<sha12>.json
+SHA256SUMS
+aspenops-handover-<sha12>.zip
+aspenops-handover-<sha12>.zip.sha256
+wheel / source distribution
+```
 
-![Industrial scenarios](docs/assets/readme/industrial-scenarios.svg)
+The SBOM is `SPDX-2.3`.
 
-Suitable for approved-model parameter sweeps, DOE, sensitivity studies, constrained screening, bounded optimization, durable multi-model scheduling, licence-slot control and evidence archiving.
+For each artifact \(A_i\):
 
-Not suitable for inventing property methods, kinetics or equipment specifications without engineering input; bypassing licences; self-approving safety/design; or claiming unverified arbitrary native flowsheet construction.
+```math
+h_i=SHA256(A_i)
+```
 
-## Evidence bundle integrity and authenticity
+Checksum set:
 
-![Evidence integrity](docs/assets/readme/evidence-integrity.svg)
+```math
+S=\operatorname{sort}\{(h_i,\operatorname{name}(A_i))\}
+```
 
-ZIP path, compression ratio, member count, member size and total expansion are bounded. Manifest declarations bind exact byte length and SHA-256. Integrity, signature authenticity, licensed runtime execution and human engineering approval remain separate evidence levels.
+Final package:
+
+```math
+B=
+ZIP_{deterministic}
+(A_1,\ldots,A_n,Manifest,SHA256SUMS)
+```
+
+External checksum:
+
+```math
+h_B=SHA256(B)
+```
+
+The builder uses fixed ZIP timestamps, sorted members, normalized file modes, strict JSON, and `allow_nan=False`. Symlinks, path escape, non-empty output directories, malformed Git SHAs, forged real-Aspen status, and unrelated distribution files fail closed.
+
+Verification:
+
+```bash
+cd var/delivery
+sha256sum -c SHA256SUMS
+sha256sum -c aspenops-handover-*.zip.sha256
+```
+
+---
 
 ## Delivery acceptance
 
 ![Delivery acceptance](docs/assets/ai/delivery-acceptance.svg)
 
+### A. Delivery-surface completeness
+
 ```bash
-python scripts/verify_delivery.py --output var/ci/delivery-acceptance.json
+python scripts/verify_delivery.py \
+  --output var/ci/delivery-acceptance.json
+```
+
+This verifies:
+
+- bilingual README contracts;
+- 27 governed/AI-assisted figures;
+- deterministic bundle surface;
+- SBOM/manifest/SHA-256 documentation;
+- qualification writer;
+- exactly four permanent read-only workflows;
+- no temporary workflow/running-heartbeat residue;
+- historical software qualification baseline;
+- the `PENDING_REAL_ASPEN_CERTIFICATION` boundary.
+
+### B. Exact-tree qualification
+
+After a full qualification process creates `docs/DELIVERY_QUALIFICATION.json`:
+
+```bash
+python scripts/verify_delivery.py \
+  --require-current-qualification \
+  --output var/ci/delivery-acceptance-current.json
+```
+
+Recommended software gates:
+
+```bash
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
+uv run python -m compileall -q src scripts tests
+uv run python scripts/audit_source_tree.py
 uv run pytest --cov=aspenops_nexus --cov-branch --cov-fail-under=95
 uv run python scripts/run_test_order_gate.py --seed 20260728 --output-dir var/ci
 uv build
 ```
 
-The verifier checks bilingual README contracts, twenty-three governed SVGs and four new AI acceptance diagrams; qualification schema, test count, coverage and order gates; four permanent workflows with no one-time/finalizer residue; package version, licence and external hold; and absence of false licensed-certification claims.
+`write_delivery_qualification.py` writes `aspenops.delivery-qualification/v2` only after a complete suite reports no failures, no errors, **no skipped tests**, at least 1200 passed tests, at least 95% branch coverage, and a PASS delivery-verifier report.
+
+---
 
 ## Repository structure
 
 ```text
 src/aspenops_nexus/     control plane, Worker, Pool, cache, scheduler, optimization, evidence
-scripts/                audits, benchmarks, delivery verification and rendering
-tests/                  software contracts, regressions, order independence and governance
-examples/               Mock, batch, optimization and Process IR examples
-docs/                   architecture, qualification, performance, certification and acceptance
+scripts/                audits, benchmarks, delivery verifier, deterministic bundle builder
+tests/                  software contracts, regressions, order independence, delivery governance
+examples/               Mock, batch, optimization, Process Intent IR
+docs/                   architecture, acceptance, certification, delivery bundle, visuals
 .github/workflows/      four permanent read-only qualification workflows
 ```
 
-## Troubleshooting
+---
 
-| Symptom | Action |
-|---|---|
-| `doctor --probe` finds no Aspen | verify Windows, bitness, ProgID and licence; do not substitute Mock |
-| path rejected | use absolute allowed roots and inspect symlink/junction/realpath |
-| `constraint_non_finite` | inspect solver output, unit conversion and derived arithmetic |
-| `balance_non_finite` | inspect flow, enthalpy, coefficients and residual normalization |
-| warm-start rejected | use one Worker and explicit session/step; use reinitialize for optimization |
-| Worker recycled | inspect timeout, protocol, taint, post-write exception and runtime identity |
-| evidence verification fails | inspect member list, SHA-256, sizes, trusted key and `allow_nan=False` |
-| licensed status remains HOLD | provide solver, fixed inputs, hardware fingerprint, references and tolerances |
+## External inputs for real Aspen qualification
 
-## Permanent CI, manual guards and evidence isolation
+Licensed engineering qualification requires at least:
 
-Permanent software qualification uses fixed `ubuntu-24.04` and `windows-2025`
-runners. Six dependency-audit combinations cover Python 3.11, 3.12 and 3.13
-across Linux and Windows. The four long-lived workflows are:
-
-```text
-ci.yml
-windows-control-plane.yml
-generate-performance-evidence.yml
-licensed-aspen-certification.yml
-```
-
-Manual workflows accept only `refs/heads/main`. After `actions/checkout`, a
-detached checkout, commit drift or non-main input fails explicitly with exit code 2;
-an all-skipped run is never treated as success.
-
-The licensed-aspen-certification isolation contract includes:
-
-```text
-expected_head_sha
-GITHUB_SHA
-GITHUB_RUN_ID
-GITHUB_RUN_ATTEMPT
-LICENSED_EVIDENCE_DIR
-github.run_id
-github.run_attempt
-aspenops-licensed-artifact
-run-metadata.txt
-job_status
-RUNNER_TEMP
-runner.temp
-if-no-files-found: error
-```
-
-Each run attempt uses an isolated `LICENSED_EVIDENCE_DIR`; artifact names bind
-`github.run_id` and `github.run_attempt`. Licensed work remains serial so runs,
-licence seats and evidence directories cannot overwrite one another.
-
-The archived validated baseline proves only its recorded source, runner and evidence.
-It is not an automatic claim about arbitrary later commits.
-
-## Process Intent IR and adapter boundary
-
-The public process-intent schema is `aspenops.flowsheet/v1`.
-`scripts/validate_process_ir.py` produces governed validation evidence and
-`process-ir-dashboard.html`. DWSIM, IDAES and other compiler targets remain planned.
-When there is no adapter, execution fails closed; a preview or offline contract is not
-a production native flowsheet.
-
-## Licence and compliance
-
-Apache-2.0 covers this repository only. Aspen Plus, Aspen HYSYS, Windows, licence servers, customer models and process data remain subject to their own licences and confidentiality requirements. Do not bypass licences, access controls or safety review.
-
-## External qualification intake
-
-Licensed qualification requires, at minimum:
-
-1. solver product, exact version, bitness and ProgID;
+1. Aspen Plus/HYSYS product, exact version, bitness, and ProgID;
 2. valid licence features and permitted concurrency;
-3. approved fixed model, registry, inputs and output list;
-4. CPU, memory, Windows, Python and runner fingerprints;
-5. scientific/engineering reference values for every Golden Case;
-6. absolute/relative tolerances, repeat count and pass rule;
+3. fixed approved model, registry, inputs, and output list;
+4. Windows, Python, CPU, memory, and runner fingerprints;
+5. engineering/scientific reference values for each Golden Case;
+6. absolute/relative tolerances, repeat count, and pass rule;
 7. topology/layout/save-reopen/readback evidence;
-8. signed process, safety, property and equipment approval.
+8. process, property, equipment, and safety approval.
 
-Until those inputs exist, status remains `PENDING_REAL_ASPEN_CERTIFICATION`.
+Without those inputs:
+
+```text
+PENDING_REAL_ASPEN_CERTIFICATION
+```
+
+must remain unchanged.
+
+---
+
+## License
+
+Apache-2.0 covers this repository only. Aspen Plus, Aspen HYSYS, Windows, licence servers, customer models, and process data remain subject to their own licences, confidentiality requirements, and safety controls.
