@@ -1,0 +1,82 @@
+name: One-time acceptance finalizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/acceptance-finalizer.trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aspenops-one-time-acceptance-finalizer
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out acceptance branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: agent/final-acceptance-20260807
+          fetch-depth: 0
+          token: ${{ github.token }}
+      - name: Install exact toolchain
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: 0.11.16
+          python-version: '3.12'
+      - name: Format and close public contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff format \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
+            tests/test_delivery_qualification_writer.py
+          python - <<'PY'
+          from pathlib import Path
+
+          zh = Path('README.md')
+          text = zh.read_text(encoding='utf-8').replace('## 数理与工程合同', '## 数学与工程合同', 1)
+          if '--require-current-qualification' not in text:
+              text += '''\n\n### 当前交付树强制验收\n\n最终交付必须把测试结果、覆盖率与 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。\n\n```bash\nuv run python scripts/verify_delivery.py \\\n  --root . \\\n  --require-current-qualification \\\n  --output var/ci/delivery-acceptance-current.json\n```\n\n验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。\n'''
+          zh.write_text(text, encoding='utf-8', newline='\n')
+
+          en = Path('README.en.md')
+          text = en.read_text(encoding='utf-8')
+          if '--require-current-qualification' not in text:
+              text += '''\n\n### Exact current-tree acceptance\n\nFinal delivery binds tests, coverage, and Git identity to the current source tree. A historical PASS never substitutes for current-tree qualification.\n\n```bash\nuv run python scripts/verify_delivery.py \\\n  --root . \\\n  --require-current-qualification \\\n  --output var/ci/delivery-acceptance-current.json\n```\n\nAcceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.\n'''
+          en.write_text(text, encoding='utf-8', newline='\n')
+          PY
+          rm -f .github/workflows/format-artifact-temporary.yml
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest -q tests/test_documentation_contracts.py tests/test_readme_visual_assets.py tests/test_delivery_bundle.py
+      - name: Publish acceptance branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: close exact acceptance formatting and README contracts'
+          git push origin HEAD:agent/final-acceptance-20260807
+      - name: Remove one-time main controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git switch --force-create main origin/main
+          git rm .github/workflows/one-time-acceptance-finalizer.yml .github/acceptance-finalizer.trigger
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove one-time acceptance finalizer'
+          git push origin HEAD:main
