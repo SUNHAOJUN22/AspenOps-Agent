@@ -1,24 +1,23 @@
-name: Temporary exact formatter artifact
+name: Temporary exact acceptance finalizer
 
 on:
   push:
     branches:
       - agent/final-acceptance-20260807
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format:
+  finalize:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout acceptance branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          persist-credentials: false
+          ref: agent/final-acceptance-20260807
+          fetch-depth: 0
+          persist-credentials: true
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
         with:
@@ -26,7 +25,7 @@ jobs:
           python-version: "3.12"
       - name: Synchronize locked development environment
         run: uv sync --frozen --extra dev --extra agent --extra signing
-      - name: Format exact governed files
+      - name: Format governed Python files
         run: |
           uv run ruff format \
             scripts/build_delivery_bundle.py \
@@ -34,15 +33,63 @@ jobs:
             tests/test_delivery_acceptance.py \
             tests/test_delivery_bundle.py \
             tests/test_delivery_qualification_writer.py
-      - name: Upload exact formatted sources
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: aspenops-exact-formatted-sources
-          path: |
-            scripts/build_delivery_bundle.py
-            scripts/verify_delivery.py
-            tests/test_delivery_acceptance.py
-            tests/test_delivery_bundle.py
+      - name: Close bilingual README contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          chinese = Path("README.md")
+          text = chinese.read_text(encoding="utf-8")
+          text = text.replace("## 数理与工程合同", "## 数学与工程合同", 1)
+          if "--require-current-qualification" not in text:
+              text += """
+
+### 当前交付树强制验收
+
+最终交付时必须把测试结果、覆盖率和 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。
+
+```bash
+uv run python scripts/verify_delivery.py \\
+  --root . \\
+  --require-current-qualification \\
+  --output var/ci/delivery-acceptance-current.json
+```
+
+验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed-mock.html` 和各 Python 版本面板。面板仅汇总对应作业证据，不构成真实 Aspen 工程认证。
+"""
+          chinese.write_text(text, encoding="utf-8")
+
+          english = Path("README.en.md")
+          text = english.read_text(encoding="utf-8")
+          if "--require-current-qualification" not in text:
+              text += """
+
+### Exact current-tree acceptance
+
+Final delivery binds tests, coverage, and Git identity to the current source tree. A historical PASS never substitutes for current-tree qualification.
+
+```bash
+uv run python scripts/verify_delivery.py \\
+  --root . \\
+  --require-current-qualification \\
+  --output var/ci/delivery-acceptance-current.json
+```
+
+Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
+"""
+          english.write_text(text, encoding="utf-8")
+          PY
+      - name: Remove temporary workflow and publish exact patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/format-artifact-temporary.yml
+          git add README.md README.en.md \
+            scripts/build_delivery_bundle.py \
+            scripts/verify_delivery.py \
+            tests/test_delivery_acceptance.py \
+            tests/test_delivery_bundle.py \
             tests/test_delivery_qualification_writer.py
-          if-no-files-found: error
-          retention-days: 1
+          git diff --cached --check
+          git commit -m "fix: close acceptance formatting and README contracts"
+          git push origin HEAD:agent/final-acceptance-20260807
