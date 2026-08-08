@@ -15,6 +15,17 @@
 
 </div>
 
+<!-- LOCALIZED_VISION_EN:START -->
+## Project vision: from process intent to industrial evidence closure
+
+<p align="center">
+  <img src="docs/localized-vision/aspenops-vision-en.svg" width="100%" alt="AspenOps English project vision and engineering mathematics architecture">
+</p>
+
+> The modules and equations map to current software contracts. This is a control-plane vision, not Aspen Plus/HYSYS output, plant data or engineering certification.
+
+<!-- LOCALIZED_VISION_EN:END -->
+
 ![Final acceptance architecture](docs/assets/acceptance/final-acceptance-map.svg)
 
 > **Qualification boundary:** `aspenops-nexus 2.0.0` qualifies the software control plane, process intent, isolated execution, cache, scheduler, optimization, evidence chain, and deterministic delivery. Without a real commercial solver, license, fixed model, Golden Case, hardware fingerprint, engineering tolerance, and signed review, it cannot self-certify Aspen engineering performance. Status remains `PENDING_REAL_ASPEN_CERTIFICATION`.

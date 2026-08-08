@@ -15,6 +15,17 @@
 
 </div>
 
+<!-- LOCALIZED_VISION_ZH:START -->
+## 中文项目愿景图：从过程意图到工业装置证据闭环
+
+<p align="center">
+  <img src="docs/localized-vision/aspenops-vision-zh.svg" width="100%" alt="AspenOps 中文项目愿景与工程数理架构">
+</p>
+
+> 图中公式和模块来自当前代码合同；它展示的是控制平面愿景，不是 Aspen Plus/HYSYS 求解结果、装置数据或工程认证。
+
+<!-- LOCALIZED_VISION_ZH:END -->
+
 ![最终验收架构](docs/assets/acceptance/final-acceptance-map.svg)
 
 > **资格边界：** `aspenops-nexus 2.0.0` 对控制面、过程意图、隔离执行、缓存、调度、优化、证据链和确定性交付进行软件资格验证。没有真实商业求解器、许可证、固定模型、Golden Case、硬件指纹、工程容差和签名审查时，不得自授 Aspen 工程资格；状态保持 `PENDING_REAL_ASPEN_CERTIFICATION`。
