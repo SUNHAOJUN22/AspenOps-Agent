@@ -1,0 +1,330 @@
+name: AspenOps-Agent six-hour active qualification
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  stage-1:
+    if: contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    outputs:
+      active_ns: ${{ steps.soak.outputs.active_ns }}
+      cycles: ${{ steps.soak.outputs.cycles }}
+      tested_sha: ${{ steps.target.outputs.tested_sha }}
+    steps:
+      - name: Check out exact pre-harness source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.before }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind exact pre-harness source
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_sha=$(git rev-parse HEAD)
+          test "$tested_sha" = "${{ github.event.before }}"
+          echo "tested_sha=$tested_sha" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Write deterministic qualification cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/six-hour-cycle.sh" <<'SOAK_CYCLE'
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          SOAK_CYCLE
+          chmod +x "$RUNNER_TEMP/six-hour-cycle.sh"
+      - name: Accumulate active qualification runtime
+        id: soak
+        shell: bash
+        env:
+          ACTIVE_INITIAL_NS: "0"
+          ACTIVE_TARGET_NS: "9000000000000"
+          STAGE_NUMBER: "1"
+          TESTED_SHA: "${{ steps.target.outputs.tested_sha }}"
+        run: |
+          set -euo pipefail
+          mkdir -p six-hour-evidence
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+
+          evidence_dir = Path("six-hour-evidence")
+          stage = int(os.environ["STAGE_NUMBER"])
+          active_ns = int(os.environ["ACTIVE_INITIAL_NS"])
+          target_ns = int(os.environ["ACTIVE_TARGET_NS"])
+          tested_sha = os.environ["TESTED_SHA"]
+          if not tested_sha:
+              raise SystemExit("tested source SHA is empty")
+          cycle = 0
+          ledger = evidence_dir / f"stage-{stage}.ndjson"
+          ledger.write_text("", encoding="utf-8")
+
+          while active_ns < target_ns:
+              cycle += 1
+              started_wall = int(time.time())
+              started_active = time.monotonic_ns()
+              log = evidence_dir / f"stage-{stage}-current.log"
+              with log.open("w", encoding="utf-8") as stream:
+                  completed = subprocess.run(
+                      ["bash", os.path.join(os.environ["RUNNER_TEMP"], "six-hour-cycle.sh")],
+                      stdout=stream,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                      check=False,
+                  )
+              ended_active = time.monotonic_ns()
+              ended_wall = int(time.time())
+              cycle_active_ns = ended_active - started_active
+              active_ns += cycle_active_ns
+              row = {
+                  "stage": stage,
+                  "cycle": cycle,
+                  "tested_sha": tested_sha,
+                  "started_epoch": started_wall,
+                  "ended_epoch": ended_wall,
+                  "cycle_active_ns": cycle_active_ns,
+                  "cumulative_active_ns": active_ns,
+                  "target_active_ns": target_ns,
+                  "returncode": completed.returncode,
+              }
+              with ledger.open("a", encoding="utf-8") as stream:
+                  stream.write(json.dumps(row, sort_keys=True) + "\n")
+              if completed.returncode != 0:
+                  print(log.read_text(encoding="utf-8", errors="replace")[-30000:])
+                  raise SystemExit(
+                      f"stage {stage} cycle {cycle} failed with {completed.returncode}"
+                  )
+              print(
+                  f"stage={stage} cycle={cycle} PASS "
+                  f"active={active_ns / 3_600_000_000_000:.6f} h",
+                  flush=True,
+              )
+
+          summary = {
+              "schema": "SUNHJ-SIX-HOUR-ACTIVE-QUALIFICATION-1",
+              "stage": stage,
+              "pass": True,
+              "tested_sha": tested_sha,
+              "stage_cycles": cycle,
+              "cumulative_active_ns": active_ns,
+              "cumulative_active_hours": active_ns / 3_600_000_000_000,
+              "required_active_ns": target_ns,
+              "duration_basis": "MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY",
+          }
+          (evidence_dir / f"stage-{stage}-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              stream.write(f"active_ns={active_ns}\n")
+              stream.write(f"cycles={cycle}\n")
+          PY
+      - name: Upload stage evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: AspenOps-Agent-six-hour-stage-1-${{ github.run_id }}
+          path: six-hour-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  stage-2:
+    needs: stage-1
+    if: contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    outputs:
+      active_ns: ${{ steps.soak.outputs.active_ns }}
+      cycles: ${{ steps.soak.outputs.cycles }}
+      tested_sha: ${{ needs.stage-1.outputs.tested_sha }}
+    steps:
+      - name: Check out exact pre-harness source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.stage-1.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Write deterministic qualification cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/six-hour-cycle.sh" <<'SOAK_CYCLE'
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          SOAK_CYCLE
+          chmod +x "$RUNNER_TEMP/six-hour-cycle.sh"
+      - name: Accumulate active qualification runtime
+        id: soak
+        shell: bash
+        env:
+          ACTIVE_INITIAL_NS: "${{ needs.stage-1.outputs.active_ns }}"
+          ACTIVE_TARGET_NS: "21600000000000"
+          STAGE_NUMBER: "2"
+          TESTED_SHA: "${{ needs.stage-1.outputs.tested_sha }}"
+        run: |
+          set -euo pipefail
+          mkdir -p six-hour-evidence
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+
+          evidence_dir = Path("six-hour-evidence")
+          stage = int(os.environ["STAGE_NUMBER"])
+          active_ns = int(os.environ["ACTIVE_INITIAL_NS"])
+          target_ns = int(os.environ["ACTIVE_TARGET_NS"])
+          tested_sha = os.environ["TESTED_SHA"]
+          if not tested_sha:
+              raise SystemExit("tested source SHA is empty")
+          cycle = 0
+          ledger = evidence_dir / f"stage-{stage}.ndjson"
+          ledger.write_text("", encoding="utf-8")
+
+          while active_ns < target_ns:
+              cycle += 1
+              started_wall = int(time.time())
+              started_active = time.monotonic_ns()
+              log = evidence_dir / f"stage-{stage}-current.log"
+              with log.open("w", encoding="utf-8") as stream:
+                  completed = subprocess.run(
+                      ["bash", os.path.join(os.environ["RUNNER_TEMP"], "six-hour-cycle.sh")],
+                      stdout=stream,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                      check=False,
+                  )
+              ended_active = time.monotonic_ns()
+              ended_wall = int(time.time())
+              cycle_active_ns = ended_active - started_active
+              active_ns += cycle_active_ns
+              row = {
+                  "stage": stage,
+                  "cycle": cycle,
+                  "tested_sha": tested_sha,
+                  "started_epoch": started_wall,
+                  "ended_epoch": ended_wall,
+                  "cycle_active_ns": cycle_active_ns,
+                  "cumulative_active_ns": active_ns,
+                  "target_active_ns": target_ns,
+                  "returncode": completed.returncode,
+              }
+              with ledger.open("a", encoding="utf-8") as stream:
+                  stream.write(json.dumps(row, sort_keys=True) + "\n")
+              if completed.returncode != 0:
+                  print(log.read_text(encoding="utf-8", errors="replace")[-30000:])
+                  raise SystemExit(
+                      f"stage {stage} cycle {cycle} failed with {completed.returncode}"
+                  )
+              print(
+                  f"stage={stage} cycle={cycle} PASS "
+                  f"active={active_ns / 3_600_000_000_000:.6f} h",
+                  flush=True,
+              )
+
+          summary = {
+              "schema": "SUNHJ-SIX-HOUR-ACTIVE-QUALIFICATION-1",
+              "stage": stage,
+              "pass": True,
+              "tested_sha": tested_sha,
+              "stage_cycles": cycle,
+              "cumulative_active_ns": active_ns,
+              "cumulative_active_hours": active_ns / 3_600_000_000_000,
+              "required_active_ns": target_ns,
+              "duration_basis": "MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY",
+          }
+          (evidence_dir / f"stage-{stage}-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              stream.write(f"active_ns={active_ns}\n")
+              stream.write(f"cycles={cycle}\n")
+          PY
+      - name: Upload stage evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: AspenOps-Agent-six-hour-stage-2-${{ github.run_id }}
+          path: six-hour-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  duration-gate:
+    needs: [stage-1, stage-2]
+    if: always() && contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce six active hours
+        shell: bash
+        env:
+          STAGE1_RESULT: "${{ needs.stage-1.result }}"
+          STAGE2_RESULT: "${{ needs.stage-2.result }}"
+          ACTIVE_NS: "${{ needs.stage-2.outputs.active_ns }}"
+          TESTED_SHA: "${{ needs.stage-2.outputs.tested_sha }}"
+        run: |
+          set -euo pipefail
+          test "$STAGE1_RESULT" = success
+          test "$STAGE2_RESULT" = success
+          test "${ACTIVE_NS:-0}" -ge 21600000000000
+          test -n "$TESTED_SHA"
+          python - <<'PY'
+          import json
+          import os
+          active_ns = int(os.environ["ACTIVE_NS"])
+          print(json.dumps({
+              "schema": "SUNHJ-SIX-HOUR-ACTIVE-QUALIFICATION-1",
+              "pass": active_ns >= 21_600_000_000_000,
+              "tested_sha": os.environ["TESTED_SHA"],
+              "active_ns": active_ns,
+              "active_hours": active_ns / 3_600_000_000_000,
+              "required_active_ns": 21_600_000_000_000,
+              "duration_basis": "MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY",
+          }, indent=2, sort_keys=True))
+          PY
