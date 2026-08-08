@@ -1,0 +1,77 @@
+name: One-time localized vision portability repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/repair-localized-vision.trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: localized-vision-portability
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Remove renderer-fragile filters
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          paths = sorted(Path('docs/localized-vision').glob('*.svg'))
+          if len(paths) != 2:
+              raise SystemExit(f'expected two localized SVGs, found {len(paths)}')
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace(' filter="url(#shadow)"', '')
+              text = re.sub(r'\s*<filter id="shadow".*?</filter>\s*', '\n', text, flags=re.S)
+              path.write_text(text, encoding='utf-8', newline='\n')
+              root = ET.parse(path).getroot()
+              if not root.tag.endswith('svg') or not root.attrib.get('viewBox'):
+                  raise SystemExit(f'{path}: invalid SVG')
+              rendered = path.read_text(encoding='utf-8')
+              if 'feDropShadow' in rendered or 'filter="url(#shadow)"' in rendered:
+                  raise SystemExit(f'{path}: fragile shadow filter remains')
+              if rendered.count('<rect') < 8 or rendered.count('<text') < 25:
+                  raise SystemExit(f'{path}: incomplete visual structure')
+          PY
+      - name: Render both languages with librsvg and CJK fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends librsvg2-bin fonts-noto-cjk
+          fc-cache -f
+          mkdir -p /tmp/localized-render
+          for svg in docs/localized-vision/*.svg; do
+            png="/tmp/localized-render/$(basename "${svg%.svg}").png"
+            rsvg-convert --width 1600 --output "$png" "$svg"
+            test "$(stat -c%s "$png")" -gt 50000
+          done
+      - name: Remove transport and publish portable figures
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/repair-localized-vision.trigger
+          rm -f .github/workflows/repair-localized-vision-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: make localized README diagrams portable across renderers'
+          git push origin HEAD:main
