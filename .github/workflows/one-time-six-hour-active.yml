@@ -1,15 +1,14 @@
 name: AspenOps-Agent six-hour active qualification
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   stage-1:
-    if: contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 210
     outputs:
@@ -20,7 +19,7 @@ jobs:
       - name: Check out exact pre-harness source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.before }}
+          ref: de952b7df54134eed269e5545f0e710f56efd66d
           fetch-depth: 0
           persist-credentials: false
       - name: Bind exact pre-harness source
@@ -29,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           tested_sha=$(git rev-parse HEAD)
-          test "$tested_sha" = "${{ github.event.before }}"
+          test "$tested_sha" = "de952b7df54134eed269e5545f0e710f56efd66d"
           echo "tested_sha=$tested_sha" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
         with:
@@ -157,7 +156,7 @@ jobs:
 
   stage-2:
     needs: stage-1
-    if: contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     outputs:
@@ -297,7 +296,7 @@ jobs:
 
   duration-gate:
     needs: [stage-1, stage-2]
-    if: always() && contains(github.event.head_commit.message || '', '[six-hour-soak]')
+    if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
