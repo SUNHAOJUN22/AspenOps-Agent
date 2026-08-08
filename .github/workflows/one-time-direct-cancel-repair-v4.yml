@@ -1,0 +1,223 @@
+name: One-time direct Aspen cancellation repair v4
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  repair:
+    if: github.event.issue.number == 114 && github.event.comment.body == '/repair-aspen-cancel-v4'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+
+      - name: Apply cancellation ordering repair and regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          scheduler_path = Path('src/aspenops_nexus/scheduler.py')
+          scheduler = scheduler_path.read_text(encoding='utf-8')
+          old = '''    def _commit_bundle(
+              self,
+              job_id: str,
+              results: list[dict[str, Any]],
+              bundle: Path,
+          ) -> bool:
+              if self.store.is_cancel_requested(job_id):
+                  committed = self.store.finalize_cancelled(
+                      job_id,
+                      results,
+                      bundle,
+                      owner=self.owner,
+                  )
+              else:
+                  committed = self.store.complete(
+                      job_id,
+                      results,
+                      bundle,
+                      commit_token=canonical_hash(results),
+                      owner=self.owner,
+                  )
+                  if not committed and self.store.is_cancel_requested(job_id):
+                      committed = self.store.finalize_cancelled(
+                          job_id,
+                          results,
+                          bundle,
+                          owner=self.owner,
+                      )
+          '''
+          new = '''    def _commit_bundle(
+              self,
+              job_id: str,
+              results: list[dict[str, Any]],
+              bundle: Path,
+          ) -> bool:
+              def dispatch_cancel_recycle() -> None:
+                  # Publish worker-recycle evidence before the cancelled terminal
+                  # state becomes visible. The cancellation watcher and worker
+                  # completion path may otherwise race at the grace deadline.
+                  active_pool = self._active_snapshot().get(job_id)
+                  recycle_events = (
+                      []
+                      if active_pool is None
+                      else active_pool.force_recycle_all("cancel_completion")
+                  )
+                  self.store.mark_abort_dispatched(
+                      job_id,
+                      recycle_events,
+                      owner=self.owner,
+                  )
+
+              if self.store.is_cancel_requested(job_id):
+                  dispatch_cancel_recycle()
+                  committed = self.store.finalize_cancelled(
+                      job_id,
+                      results,
+                      bundle,
+                      owner=self.owner,
+                  )
+              else:
+                  committed = self.store.complete(
+                      job_id,
+                      results,
+                      bundle,
+                      commit_token=canonical_hash(results),
+                      owner=self.owner,
+                  )
+                  if not committed and self.store.is_cancel_requested(job_id):
+                      dispatch_cancel_recycle()
+                      committed = self.store.finalize_cancelled(
+                          job_id,
+                          results,
+                          bundle,
+                          owner=self.owner,
+                      )
+          '''
+          if scheduler.count(old) != 1:
+              raise SystemExit('scheduler cancellation anchor drifted')
+          scheduler_path.write_text(scheduler.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('tests/test_scheduler.py')
+          tests = test_path.read_text(encoding='utf-8')
+          regression = '''
+
+          def test_cancel_completion_orders_recycle_before_terminal(tmp_path: Path) -> None:
+              slow_model = tmp_path / "slow-cooperative-cancel-case.json"
+              model_data = json.loads(MODEL.read_text(encoding="utf-8"))
+              model_data["solve_delay_ms"] = 1000
+              slow_model.write_text(json.dumps(model_data), encoding="utf-8")
+              batch = request()
+              batch["model_path"] = str(slow_model)
+              batch["workers"] = 1
+              settings = Settings(
+                  state_dir=tmp_path / "state",
+                  max_workers=1,
+                  license_slots=1,
+                  scheduler_poll_s=0.02,
+                  job_lease_s=2.0,
+                  cancellation_grace_s=30.0,
+              )
+              scheduler = BackgroundScheduler(settings)
+              job_id = scheduler.submit(batch)
+              running = wait_for_status(scheduler, job_id, {"running", "completed", "failed"})
+              assert running is not None and running["status"] == "running"
+              assert wait_for_active_pool(scheduler, job_id)
+              assert scheduler.cancel(job_id)
+              record = wait_for_status(
+                  scheduler,
+                  job_id,
+                  {"cancelled", "failed", "dead_letter"},
+              )
+              events = scheduler.store.events(job_id)
+              scheduler.stop()
+              assert record is not None
+              assert record["status"] == "cancelled", record
+              assert record["finished_at"] is not None
+              recycle = next(
+                  event
+                  for event in events
+                  if event["event"] == "worker_recycle_dispatched"
+              )
+              assert recycle["created_at"] <= record["finished_at"]
+          '''
+          if 'test_cancel_completion_orders_recycle_before_terminal' not in tests:
+              tests = tests.rstrip() + regression + '\n'
+          test_path.write_text(tests, encoding='utf-8')
+
+          for relative in (
+              '.github/workflows/one-time-six-hour-active.yml',
+              '.github/workflows/one-time-six-hour-controller.yml',
+              '.github/workflows/one-time-fix-scheduler-cancel-race.yml',
+              '.github/workflows/one-time-launch-scheduler-repair-v2.yml',
+              '.github/workflows/one-time-direct-cancel-repair-v4.yml',
+          ):
+              path = Path(relative)
+              if path.exists():
+                  path.unlink()
+          PY
+          uv run ruff format src/aspenops_nexus/scheduler.py tests/test_scheduler.py
+          git diff --check
+
+      - name: Stress repaired cancellation path
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          for iteration in $(seq 1 50); do
+            uv run pytest -q \
+              tests/test_scheduler.py::test_running_job_is_cancelled_after_deadline \
+              tests/test_scheduler.py::test_cancel_completion_orders_recycle_before_terminal
+          done
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          git diff --check
+
+      - name: Publish clean repaired source
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: order cancellation recycle audit before terminal state"
+          git push origin HEAD:main
+          echo "clean_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Record repair result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEAN_SHA: ${{ steps.publish.outputs.clean_sha }}
+        run: |
+          set -euo pipefail
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_DIRECT_REPAIR_V4 status=${{ job.status }} run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID clean_sha=${CLEAN_SHA:-UNPUBLISHED} previous_active_ns=0"
