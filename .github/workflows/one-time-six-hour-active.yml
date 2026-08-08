@@ -1,14 +1,16 @@
 name: AspenOps-Agent six-hour active qualification
 
 on:
-  workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   stage-1:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event.issue.number == 114 && github.event.comment.body == '/run-six-hour-active-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 210
     outputs:
@@ -30,6 +32,22 @@ jobs:
           tested_sha=$(git rev-parse HEAD)
           test "$tested_sha" = "de952b7df54134eed269e5545f0e710f56efd66d"
           echo "tested_sha=$tested_sha" >> "$GITHUB_OUTPUT"
+      - name: Record six-hour run start
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body=$(printf '%s\n' \
+            'AspenOps-Agent six-hour active qualification: RUNNING.' \
+            '' \
+            "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            'immutable tested source: de952b7df54134eed269e5545f0e710f56efd66d' \
+            'required active test time: 21,600,000,000,000 ns' \
+            'duration basis: MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY' \
+            '' \
+            'Queueing, dependency installation and artifact upload time are excluded.')
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "$body"
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
         with:
           version: "0.11.16"
@@ -156,7 +174,7 @@ jobs:
 
   stage-2:
     needs: stage-1
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event.issue.number == 114 && github.event.comment.body == '/run-six-hour-active-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     outputs:
@@ -296,7 +314,7 @@ jobs:
 
   duration-gate:
     needs: [stage-1, stage-2]
-    if: always() && github.event_name == 'workflow_dispatch'
+    if: always() && github.event.issue.number == 114 && github.event.comment.body == '/run-six-hour-active-v3'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -327,3 +345,33 @@ jobs:
               "duration_basis": "MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY",
           }, indent=2, sort_keys=True))
           PY
+      - name: Record six-hour machine ledger
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE1_RESULT: "${{ needs.stage-1.result }}"
+          STAGE2_RESULT: "${{ needs.stage-2.result }}"
+          ACTIVE_NS: "${{ needs.stage-2.outputs.active_ns }}"
+          TESTED_SHA: "${{ needs.stage-2.outputs.tested_sha }}"
+        run: |
+          set -euo pipefail
+          verdict=FAIL
+          if [[ "$STAGE1_RESULT" == success && "$STAGE2_RESULT" == success ]] \
+            && [[ "${ACTIVE_NS:-0}" -ge 21600000000000 ]]; then
+            verdict=PASS
+          fi
+          body=$(printf '%s\n' \
+            'AspenOps-Agent six-hour active qualification: '"$verdict"'.' \
+            '' \
+            "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "stage 1: $STAGE1_RESULT" \
+            "stage 2: $STAGE2_RESULT" \
+            "measured active test time: ${ACTIVE_NS:-0} ns" \
+            'required active test time: 21,600,000,000,000 ns' \
+            "immutable tested source: ${TESTED_SHA:-UNRESOLVED}" \
+            'duration basis: MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY' \
+            '' \
+            'Scientific, engineering, HSE, customer and industrial approvals remain NOT_EVALUATED.')
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "$body"
+          test "$verdict" = PASS
