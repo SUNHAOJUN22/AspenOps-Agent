@@ -1,0 +1,128 @@
+name: One-time launch Aspen scheduler repair v2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  repair-and-launch:
+    if: contains(github.event.head_commit.message || '', '[run-aspen-scheduler-repair-v2]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+
+      - name: Extract audited controller scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/workflows/one-time-fix-scheduler-cancel-race.yml /tmp/aspen-controller.yml
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('/tmp/aspen-controller.yml').read_text(encoding='utf-8').splitlines()
+
+          def extract(step_name: str, target: str) -> None:
+              marker = f'- name: {step_name}'
+              index = next(
+                  i for i, line in enumerate(source)
+                  if line.strip() == marker
+              )
+              run_index = next(
+                  i for i in range(index + 1, len(source))
+                  if source[i].strip() == 'run: |'
+              )
+              run_indent = len(source[run_index]) - len(source[run_index].lstrip())
+              body: list[str] = []
+              for line in source[run_index + 1:]:
+                  indent = len(line) - len(line.lstrip())
+                  if line.strip() and indent <= run_indent:
+                      break
+                  body.append(line[run_indent + 2:] if len(line) >= run_indent + 2 else '')
+              if not body:
+                  raise SystemExit(f'empty run script for {step_name!r}')
+              Path(target).write_text('\n'.join(body) + '\n', encoding='utf-8')
+
+          extract('Apply source fix and deterministic regression', '/tmp/aspen-apply.sh')
+          extract('Stress cancellation ordering and run full qualification', '/tmp/aspen-validate.sh')
+          extract('Generate isolated six-hour harness bound to clean source', '/tmp/aspen-harness.sh')
+          PY
+          chmod +x /tmp/aspen-apply.sh /tmp/aspen-validate.sh /tmp/aspen-harness.sh
+
+      - name: Apply source repair and full stress qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash /tmp/aspen-apply.sh
+          bash /tmp/aspen-validate.sh
+          rm -f .github/workflows/one-time-launch-scheduler-repair-v2.yml
+          git diff --check
+
+      - name: Publish clean repaired source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: order cancellation recycle audit before terminal state"
+          clean_sha=$(git rev-parse HEAD)
+          git push origin HEAD:main
+          echo "clean_sha=$clean_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish isolated six-hour harness
+        id: harness
+        shell: bash
+        env:
+          CLEAN_SHA: ${{ steps.source.outputs.clean_sha }}
+        run: |
+          set -euo pipefail
+          bash /tmp/aspen-harness.sh
+
+      - name: Start repaired-source six-hour qualification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sleep 15
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body '/run-six-hour-active-v4'
+
+      - name: Record launcher result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLEAN_SHA: ${{ steps.source.outputs.clean_sha }}
+          HARNESS_SHA: ${{ steps.harness.outputs.harness_sha }}
+        run: |
+          set -euo pipefail
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_SCHEDULER_REPAIR_LAUNCHER_V2: **${{ job.status }}**
+
+- clean repaired source: \`${CLEAN_SHA:-UNPUBLISHED}\`
+- isolated harness commit: \`${HARNESS_SHA:-UNPUBLISHED}\`
+- six-hour command: \`/run-six-hour-active-v4\`
+- prior failed source contributes \`0 ns\`
+
+All original quality, typing, security and cancellation-ordering thresholds remain enforced."
