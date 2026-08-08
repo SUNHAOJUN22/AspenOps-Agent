@@ -4,8 +4,7 @@
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#06121f"/><stop offset="0.55" stop-color="#10233f"/><stop offset="1" stop-color="#1f2554"/></linearGradient>
   <radialGradient id="halo" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#22d3ee" stop-opacity=".30"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
-  <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#020617" flood-opacity=".42"/></filter>
-  <filter id="glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<filter id="glow"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   <pattern id="grid" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M38 0H0V38" fill="none" stroke="#dbeafe" stroke-opacity=".055"/></pattern>
   <style>
     text{font-family:Inter,'Noto Sans SC','Noto Sans CJK SC','Microsoft YaHei','PingFang SC','WenQuanYi Micro Hei','Segoe UI',Arial,sans-serif}
@@ -31,13 +30,13 @@
   <text class="title" y="63">从过程意图到工业装置证据闭环</text>
   <text class="subtitle" y="105">强类型过程 IR · 工程规则 · 隔离求解 · 有效性门 · 确定性交付</text>
 </g>
-<g transform="translate(1030 68)" filter="url(#shadow)">
+<g transform="translate(1030 68)">
   <rect width="490" height="104" rx="24" fill="#0a1829" stroke="#334155"/>
   <text x="24" y="36" class="vision">项目愿景</text>
   <text x="24" y="70" class="formula-small">把 AI 建议转化为可复核、可约束、可追踪的工程动作</text>
   <text x="24" y="92" class="micro">控制平面通过软件验收；真实 Aspen 工程资格保持外部证据边界。</text>
 </g>
-<g transform="translate(78 250)" filter="url(#shadow)">
+<g transform="translate(78 250)">
   <rect width="250" height="390" rx="26" fill="#0d2034" stroke="#22d3ee" stroke-width="2"/>
   <circle cx="42" cy="42" r="23" fill="#22d3ee"/><text x="42" y="48" text-anchor="middle" class="step">1</text>
   <text x="24" y="93" class="card-title">过程需求</text>
@@ -48,7 +47,7 @@
   <circle cx="34" cy="274" r="6" fill="#22d3ee"/><text x="51" y="280" class="body">组分与设备</text>
   <circle cx="34" cy="316" r="6" fill="#22d3ee"/><text x="51" y="322" class="body">边界与目标</text>
   <circle cx="34" cy="358" r="6" fill="#22d3ee"/><text x="51" y="364" class="body">来源与权限</text>
-</g><g transform="translate(370 250)" filter="url(#shadow)">
+</g><g transform="translate(370 250)">
   <rect width="250" height="390" rx="26" fill="#0d2034" stroke="#818cf8" stroke-width="2"/>
   <circle cx="42" cy="42" r="23" fill="#818cf8"/><text x="42" y="48" text-anchor="middle" class="step">2</text>
   <text x="24" y="93" class="card-title">规则与自由度</text>
@@ -59,7 +58,7 @@
   <circle cx="34" cy="274" r="6" fill="#818cf8"/><text x="51" y="280" class="body">单位换算</text>
   <circle cx="34" cy="316" r="6" fill="#818cf8"/><text x="51" y="322" class="body">回路与撕裂边</text>
   <circle cx="34" cy="358" r="6" fill="#818cf8"/><text x="51" y="364" class="body">物性与配置</text>
-</g><g transform="translate(662 250)" filter="url(#shadow)">
+</g><g transform="translate(662 250)">
   <rect width="250" height="390" rx="26" fill="#0d2034" stroke="#c084fc" stroke-width="2"/>
   <circle cx="42" cy="42" r="23" fill="#c084fc"/><text x="42" y="48" text-anchor="middle" class="step">3</text>
   <text x="24" y="93" class="card-title">隔离执行</text>
@@ -70,7 +69,7 @@
   <circle cx="34" cy="274" r="6" fill="#c084fc"/><text x="51" y="280" class="body">独占 COM 会话</text>
   <circle cx="34" cy="316" r="6" fill="#c084fc"/><text x="51" y="322" class="body">冷/热启动策略</text>
   <circle cx="34" cy="358" r="6" fill="#c084fc"/><text x="51" y="364" class="body">失败进程树回收</text>
-</g><g transform="translate(954 250)" filter="url(#shadow)">
+</g><g transform="translate(954 250)">
   <rect width="250" height="390" rx="26" fill="#0d2034" stroke="#34d399" stroke-width="2"/>
   <circle cx="42" cy="42" r="23" fill="#34d399"/><text x="42" y="48" text-anchor="middle" class="step">4</text>
   <text x="24" y="93" class="card-title">工程有效性门</text>
@@ -81,7 +80,7 @@
   <circle cx="34" cy="274" r="6" fill="#34d399"/><text x="51" y="280" class="body">收敛与有限值</text>
   <circle cx="34" cy="316" r="6" fill="#34d399"/><text x="51" y="322" class="body">约束与守恒</text>
   <circle cx="34" cy="358" r="6" fill="#34d399"/><text x="51" y="364" class="body">优化可行性</text>
-</g><g transform="translate(1246 250)" filter="url(#shadow)">
+</g><g transform="translate(1246 250)">
   <rect width="250" height="390" rx="26" fill="#0d2034" stroke="#fbbf24" stroke-width="2"/>
   <circle cx="42" cy="42" r="23" fill="#fbbf24"/><text x="42" y="48" text-anchor="middle" class="step">5</text>
   <text x="24" y="93" class="card-title">证据与交付</text>
@@ -94,7 +93,7 @@
   <circle cx="34" cy="358" r="6" fill="#fbbf24"/><text x="51" y="364" class="body">可审计交接</text>
 </g>
 <path d="M330 445h28" stroke="#94a3b8" stroke-width="4"/><path d="M358 445l-12-8v16z" fill="#94a3b8"/><path d="M622 445h28" stroke="#94a3b8" stroke-width="4"/><path d="M650 445l-12-8v16z" fill="#94a3b8"/><path d="M914 445h28" stroke="#94a3b8" stroke-width="4"/><path d="M942 445l-12-8v16z" fill="#94a3b8"/><path d="M1206 445h28" stroke="#94a3b8" stroke-width="4"/><path d="M1234 445l-12-8v16z" fill="#94a3b8"/>
-<g transform="translate(78 686)" filter="url(#shadow)">
+<g transform="translate(78 686)">
   <rect width="1444" height="128" rx="25" fill="#091827" stroke="#334155"/>
   <text x="24" y="34" class="vision">核心工程不变量</text>
   <text x="24" y="68" class="formula">dNᵢ/dt = Σ ṅᵢ,in − Σ ṅᵢ,out + Σ νᵢr rᵣV</text>
