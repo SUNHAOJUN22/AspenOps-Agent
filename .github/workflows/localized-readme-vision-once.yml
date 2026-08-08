@@ -1,0 +1,46 @@
+name: One-time localized README vision finalizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/localized-readme-vision.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: localized-readme-vision-aspenops
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+      - name: Generate localized vision diagrams and patch READMEs
+        run: |
+          python .github/localized-readme-vision.py
+          python -m compileall -q .github/localized-readme-vision.py
+          git diff --check
+      - name: Remove one-time transport and publish
+        run: |
+          rm -f .github/localized-readme-vision.py
+          rm -f .github/workflows/localized-readme-vision-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'docs: add localized Chinese and English project vision'
+          git push origin HEAD:main
