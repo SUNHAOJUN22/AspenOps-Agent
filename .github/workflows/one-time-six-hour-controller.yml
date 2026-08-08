@@ -6,74 +6,88 @@ on:
 
 permissions:
   actions: write
-  contents: write
+  contents: read
   issues: write
 
 jobs:
   dispatch:
     if: >-
       github.event.issue.number == 114 &&
-      github.event.comment.body == '/start-six-hour-active-v1'
+      github.event.comment.body == '/start-six-hour-active-v2'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Bind immutable target and enable explicit dispatch
-        shell: bash
-        env:
-          TARGET_SHA: de952b7df54134eed269e5545f0e710f56efd66d
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          path = Path('.github/workflows/one-time-six-hour-active.yml')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace(
-              "on:\n  push:\n    branches: [main]\n",
-              "on:\n  workflow_dispatch:\n",
-              1,
-          )
-          text = text.replace(
-              "contains(github.event.head_commit.message || '', '[six-hour-soak]')",
-              "github.event_name == 'workflow_dispatch'",
-          )
-          text = text.replace('${{ github.event.before }}', os.environ['TARGET_SHA'])
-          if text.count(os.environ['TARGET_SHA']) < 2:
-              raise SystemExit('immutable target SHA was not bound throughout the workflow')
-          if 'github.event.before' in text or 'head_commit.message' in text:
-              raise SystemExit('push-only expressions remain in the dispatch workflow')
-          path.write_text(text, encoding='utf-8')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/one-time-six-hour-active.yml
-          git commit -m "ci: bind AspenOps six-hour qualification target"
-          git push origin HEAD:main
-      - name: Dispatch the six-hour workflow
+      - name: Dispatch and resolve run identity
+        id: dispatch
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          dispatched=0
-          for attempt in $(seq 1 12); do
-            if gh workflow run one-time-six-hour-active.yml --repo "$GITHUB_REPOSITORY" --ref main; then
-              dispatched=1
+          requested_epoch=$(date +%s)
+          gh workflow run one-time-six-hour-active.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main
+
+          run_json=""
+          for attempt in $(seq 1 24); do
+            candidate=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow one-time-six-hour-active.yml \
+              --event workflow_dispatch \
+              --limit 5 \
+              --json databaseId,url,status,conclusion,headSha,createdAt 2>/dev/null || true)
+            run_json=$(RUNS="$candidate" REQUESTED_EPOCH="$requested_epoch" python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+
+          rows = json.loads(os.environ.get("RUNS") or "[]")
+          requested = int(os.environ["REQUESTED_EPOCH"])
+          for row in rows:
+              created = row.get("createdAt")
+              if not created:
+                  continue
+              stamp = int(dt.datetime.fromisoformat(created.replace("Z", "+00:00")).timestamp())
+              if stamp >= requested - 5:
+                  print(json.dumps(row, separators=(",", ":")))
+                  break
+          PY
+            )
+            if [[ -n "$run_json" ]]; then
               break
             fi
             sleep 5
           done
-          test "$dispatched" -eq 1
-      - name: Record dispatch
+          test -n "$run_json"
+          RUN_JSON="$run_json" python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          row = json.loads(os.environ["RUN_JSON"])
+          print(f"run_id={row['databaseId']}")
+          print(f"run_url={row['url']}")
+          print(f"run_status={row['status']}")
+          print(f"head_sha={row['headSha']}")
+          PY
+      - name: Record dispatch ledger
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+          RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+          RUN_STATUS: ${{ steps.dispatch.outputs.run_status }}
+          HEAD_SHA: ${{ steps.dispatch.outputs.head_sha }}
         run: |
           set -euo pipefail
-          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "AspenOps six-hour active qualification dispatch controller: **${{ job.status }}**. Bound target: \`de952b7df54134eed269e5545f0e710f56efd66d\`. PASS remains impossible below 21,600,000,000,000 ns of active test execution."
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "AspenOps six-hour active qualification dispatch controller: **${{ job.status }}**.
+
+- run: ${RUN_URL:-UNRESOLVED}
+- run id: \`${RUN_ID:-UNRESOLVED}\`
+- workflow head: \`${HEAD_SHA:-UNRESOLVED}\`
+- workflow status: \`${RUN_STATUS:-UNRESOLVED}\`
+- immutable tested source: \`de952b7df54134eed269e5545f0e710f56efd66d\`
+- required active test time: \`21,600,000,000,000 ns\`
+
+Queueing, installation and artifact upload time do not count. PASS remains impossible below the required active-test duration."
