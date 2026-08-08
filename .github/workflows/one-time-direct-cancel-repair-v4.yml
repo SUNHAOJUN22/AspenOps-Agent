@@ -1,4 +1,4 @@
-name: One-time direct Aspen cancellation repair v4
+name: One-time direct Aspen cancellation repair v5
 
 on:
   issue_comment:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.issue.number == 114 && github.event.comment.body == '/repair-aspen-cancel-v4'
+    if: github.event.issue.number == 114 && github.event.comment.body == '/repair-aspen-cancel-v5'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -41,85 +41,54 @@ jobs:
 
           scheduler_path = Path('src/aspenops_nexus/scheduler.py')
           scheduler = scheduler_path.read_text(encoding='utf-8')
-          old = '''    def _commit_bundle(
-              self,
-              job_id: str,
-              results: list[dict[str, Any]],
-              bundle: Path,
-          ) -> bool:
-              if self.store.is_cancel_requested(job_id):
-                  committed = self.store.finalize_cancelled(
-                      job_id,
-                      results,
-                      bundle,
-                      owner=self.owner,
-                  )
-              else:
-                  committed = self.store.complete(
-                      job_id,
-                      results,
-                      bundle,
-                      commit_token=canonical_hash(results),
-                      owner=self.owner,
-                  )
-                  if not committed and self.store.is_cancel_requested(job_id):
-                      committed = self.store.finalize_cancelled(
-                          job_id,
-                          results,
-                          bundle,
-                          owner=self.owner,
-                      )
-          '''
-          new = '''    def _commit_bundle(
-              self,
-              job_id: str,
-              results: list[dict[str, Any]],
-              bundle: Path,
-          ) -> bool:
-              def dispatch_cancel_recycle() -> None:
-                  # Publish worker-recycle evidence before the cancelled terminal
-                  # state becomes visible. The cancellation watcher and worker
-                  # completion path may otherwise race at the grace deadline.
-                  active_pool = self._active_snapshot().get(job_id)
-                  recycle_events = (
-                      []
-                      if active_pool is None
-                      else active_pool.force_recycle_all("cancel_completion")
-                  )
-                  self.store.mark_abort_dispatched(
-                      job_id,
-                      recycle_events,
-                      owner=self.owner,
-                  )
+          start = scheduler.index('    def _commit_bundle(')
+          end = scheduler.index(
+              '        record = self.store.get(job_id) if committed else None',
+              start,
+          )
+          block = scheduler[start:end]
 
-              if self.store.is_cancel_requested(job_id):
+          helper = '''        def dispatch_cancel_recycle() -> None:
+              # Publish worker-recycle evidence before the cancelled terminal
+              # state becomes visible. The cancellation watcher and worker
+              # completion path may otherwise race at the grace deadline.
+              active_pool = self._active_snapshot().get(job_id)
+              recycle_events = (
+                  []
+                  if active_pool is None
+                  else active_pool.force_recycle_all("cancel_completion")
+              )
+              self.store.mark_abort_dispatched(
+                  job_id,
+                  recycle_events,
+                  owner=self.owner,
+              )
+
+          '''
+          first = '''        if self.store.is_cancel_requested(job_id):
+              committed = self.store.finalize_cancelled(
+          '''
+          first_repaired = '''        if self.store.is_cancel_requested(job_id):
+              dispatch_cancel_recycle()
+              committed = self.store.finalize_cancelled(
+          '''
+          second = '''            if not committed and self.store.is_cancel_requested(job_id):
+                  committed = self.store.finalize_cancelled(
+          '''
+          second_repaired = '''            if not committed and self.store.is_cancel_requested(job_id):
                   dispatch_cancel_recycle()
                   committed = self.store.finalize_cancelled(
-                      job_id,
-                      results,
-                      bundle,
-                      owner=self.owner,
-                  )
-              else:
-                  committed = self.store.complete(
-                      job_id,
-                      results,
-                      bundle,
-                      commit_token=canonical_hash(results),
-                      owner=self.owner,
-                  )
-                  if not committed and self.store.is_cancel_requested(job_id):
-                      dispatch_cancel_recycle()
-                      committed = self.store.finalize_cancelled(
-                          job_id,
-                          results,
-                          bundle,
-                          owner=self.owner,
-                      )
           '''
-          if scheduler.count(old) != 1:
-              raise SystemExit('scheduler cancellation anchor drifted')
-          scheduler_path.write_text(scheduler.replace(old, new, 1), encoding='utf-8')
+
+          if 'def dispatch_cancel_recycle()' not in block:
+              if block.count(first) != 1 or block.count(second) != 1:
+                  raise SystemExit('Aspen cancellation branch anchors drifted')
+              block = block.replace(first, helper + first_repaired, 1)
+              block = block.replace(second, second_repaired, 1)
+          if block.count('dispatch_cancel_recycle()') != 2:
+              raise SystemExit('Aspen cancellation dispatch count is not two')
+          scheduler = scheduler[:start] + block + scheduler[end:]
+          scheduler_path.write_text(scheduler, encoding='utf-8')
 
           test_path = Path('tests/test_scheduler.py')
           tests = test_path.read_text(encoding='utf-8')
@@ -220,4 +189,4 @@ jobs:
           CLEAN_SHA: ${{ steps.publish.outputs.clean_sha }}
         run: |
           set -euo pipefail
-          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_DIRECT_REPAIR_V4 status=${{ job.status }} run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID clean_sha=${CLEAN_SHA:-UNPUBLISHED} previous_active_ns=0"
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_DIRECT_REPAIR_V5 status=${{ job.status }} run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID clean_sha=${CLEAN_SHA:-UNPUBLISHED} previous_active_ns=0"
