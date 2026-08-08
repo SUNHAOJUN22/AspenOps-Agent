@@ -1,4 +1,4 @@
-name: One-time launch Aspen scheduler repair v2
+name: One-time launch Aspen scheduler repair v3
 
 on:
   push:
@@ -9,8 +9,8 @@ permissions:
   issues: write
 
 jobs:
-  repair-and-launch:
-    if: contains(github.event.head_commit.message || '', '[run-aspen-scheduler-repair-v2]')
+  repair-and-publish:
+    if: contains(github.event.head_commit.message || '', '[run-aspen-scheduler-repair-v3]')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -44,14 +44,8 @@ jobs:
 
           def extract(step_name: str, target: str) -> None:
               marker = f'- name: {step_name}'
-              index = next(
-                  i for i, line in enumerate(source)
-                  if line.strip() == marker
-              )
-              run_index = next(
-                  i for i in range(index + 1, len(source))
-                  if source[i].strip() == 'run: |'
-              )
+              index = next(i for i, line in enumerate(source) if line.strip() == marker)
+              run_index = next(i for i in range(index + 1, len(source)) if source[i].strip() == 'run: |')
               run_indent = len(source[run_index]) - len(source[run_index].lstrip())
               body: list[str] = []
               for line in source[run_index + 1:]:
@@ -100,15 +94,6 @@ jobs:
           set -euo pipefail
           bash /tmp/aspen-harness.sh
 
-      - name: Start repaired-source six-hour qualification
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          sleep 15
-          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body '/run-six-hour-active-v4'
-
       - name: Record launcher result
         if: always()
         shell: bash
@@ -118,11 +103,4 @@ jobs:
           HARNESS_SHA: ${{ steps.harness.outputs.harness_sha }}
         run: |
           set -euo pipefail
-          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_SCHEDULER_REPAIR_LAUNCHER_V2: **${{ job.status }}**
-
-- clean repaired source: \`${CLEAN_SHA:-UNPUBLISHED}\`
-- isolated harness commit: \`${HARNESS_SHA:-UNPUBLISHED}\`
-- six-hour command: \`/run-six-hour-active-v4\`
-- prior failed source contributes \`0 ns\`
-
-All original quality, typing, security and cancellation-ordering thresholds remain enforced."
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_REPAIR_V3 status=${{ job.status }} clean_sha=${CLEAN_SHA:-UNPUBLISHED} harness_sha=${HARNESS_SHA:-UNPUBLISHED} next=/run-six-hour-active-v4 previous_active_ns=0"
