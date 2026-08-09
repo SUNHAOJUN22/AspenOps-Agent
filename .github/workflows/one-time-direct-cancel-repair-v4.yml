@@ -1,4 +1,4 @@
-name: One-time direct Aspen cancellation repair v5
+name: One-time direct Aspen cancellation repair v6
 
 on:
   issue_comment:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.issue.number == 114 && github.event.comment.body == '/repair-aspen-cancel-v5'
+    if: github.event.issue.number == 114 && github.event.comment.body == '/repair-aspen-cancel-v6'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -32,11 +32,12 @@ jobs:
           uv lock --check
           uv sync --frozen --extra dev --extra agent --extra signing
 
-      - name: Apply cancellation ordering repair and regression
+      - name: Apply index-based cancellation ordering repair
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
+          import textwrap
           from pathlib import Path
 
           scheduler_path = Path('src/aspenops_nexus/scheduler.py')
@@ -48,91 +49,108 @@ jobs:
           )
           block = scheduler[start:end]
 
-          helper = '''        def dispatch_cancel_recycle() -> None:
-              # Publish worker-recycle evidence before the cancelled terminal
-              # state becomes visible. The cancellation watcher and worker
-              # completion path may otherwise race at the grace deadline.
-              active_pool = self._active_snapshot().get(job_id)
-              recycle_events = (
-                  []
-                  if active_pool is None
-                  else active_pool.force_recycle_all("cancel_completion")
-              )
-              self.store.mark_abort_dispatched(
-                  job_id,
-                  recycle_events,
-                  owner=self.owner,
-              )
-
-          '''
-          first = '''        if self.store.is_cancel_requested(job_id):
-              committed = self.store.finalize_cancelled(
-          '''
-          first_repaired = '''        if self.store.is_cancel_requested(job_id):
-              dispatch_cancel_recycle()
-              committed = self.store.finalize_cancelled(
-          '''
-          second = '''            if not committed and self.store.is_cancel_requested(job_id):
-                  committed = self.store.finalize_cancelled(
-          '''
-          second_repaired = '''            if not committed and self.store.is_cancel_requested(job_id):
-                  dispatch_cancel_recycle()
-                  committed = self.store.finalize_cancelled(
-          '''
-
           if 'def dispatch_cancel_recycle()' not in block:
+              first_if = block.index(
+                  '        if self.store.is_cancel_requested(job_id):'
+              )
+              helper_lines = [
+                  '        def dispatch_cancel_recycle() -> None:',
+                  '            # Publish worker-recycle evidence before the cancelled terminal',
+                  '            # state becomes visible. The cancellation watcher and worker',
+                  '            # completion path may otherwise race at the grace deadline.',
+                  '            active_pool = self._active_snapshot().get(job_id)',
+                  '            recycle_events = (',
+                  '                []',
+                  '                if active_pool is None',
+                  '                else active_pool.force_recycle_all("cancel_completion")',
+                  '            )',
+                  '            self.store.mark_abort_dispatched(',
+                  '                job_id,',
+                  '                recycle_events,',
+                  '                owner=self.owner,',
+                  '            )',
+                  '',
+              ]
+              helper = '\n'.join(helper_lines) + '\n'
+              block = block[:first_if] + helper + block[first_if:]
+
+              first = (
+                  '        if self.store.is_cancel_requested(job_id):\n'
+                  '            committed = self.store.finalize_cancelled('
+              )
+              first_repaired = (
+                  '        if self.store.is_cancel_requested(job_id):\n'
+                  '            dispatch_cancel_recycle()\n'
+                  '            committed = self.store.finalize_cancelled('
+              )
+              second = (
+                  '            if not committed and self.store.is_cancel_requested(job_id):\n'
+                  '                committed = self.store.finalize_cancelled('
+              )
+              second_repaired = (
+                  '            if not committed and self.store.is_cancel_requested(job_id):\n'
+                  '                dispatch_cancel_recycle()\n'
+                  '                committed = self.store.finalize_cancelled('
+              )
               if block.count(first) != 1 or block.count(second) != 1:
-                  raise SystemExit('Aspen cancellation branch anchors drifted')
-              block = block.replace(first, helper + first_repaired, 1)
+                  raise SystemExit('Aspen cancellation calls drifted')
+              block = block.replace(first, first_repaired, 1)
               block = block.replace(second, second_repaired, 1)
-          if block.count('dispatch_cancel_recycle()') != 2:
-              raise SystemExit('Aspen cancellation dispatch count is not two')
+
+          if block.count('dispatch_cancel_recycle()') != 3:
+              raise SystemExit('Aspen cancellation dispatch structure is incomplete')
           scheduler = scheduler[:start] + block + scheduler[end:]
           scheduler_path.write_text(scheduler, encoding='utf-8')
 
           test_path = Path('tests/test_scheduler.py')
           tests = test_path.read_text(encoding='utf-8')
-          regression = '''
+          regression = textwrap.dedent(
+              '''
 
-          def test_cancel_completion_orders_recycle_before_terminal(tmp_path: Path) -> None:
-              slow_model = tmp_path / "slow-cooperative-cancel-case.json"
-              model_data = json.loads(MODEL.read_text(encoding="utf-8"))
-              model_data["solve_delay_ms"] = 1000
-              slow_model.write_text(json.dumps(model_data), encoding="utf-8")
-              batch = request()
-              batch["model_path"] = str(slow_model)
-              batch["workers"] = 1
-              settings = Settings(
-                  state_dir=tmp_path / "state",
-                  max_workers=1,
-                  license_slots=1,
-                  scheduler_poll_s=0.02,
-                  job_lease_s=2.0,
-                  cancellation_grace_s=30.0,
-              )
-              scheduler = BackgroundScheduler(settings)
-              job_id = scheduler.submit(batch)
-              running = wait_for_status(scheduler, job_id, {"running", "completed", "failed"})
-              assert running is not None and running["status"] == "running"
-              assert wait_for_active_pool(scheduler, job_id)
-              assert scheduler.cancel(job_id)
-              record = wait_for_status(
-                  scheduler,
-                  job_id,
-                  {"cancelled", "failed", "dead_letter"},
-              )
-              events = scheduler.store.events(job_id)
-              scheduler.stop()
-              assert record is not None
-              assert record["status"] == "cancelled", record
-              assert record["finished_at"] is not None
-              recycle = next(
-                  event
-                  for event in events
-                  if event["event"] == "worker_recycle_dispatched"
-              )
-              assert recycle["created_at"] <= record["finished_at"]
-          '''
+              def test_cancel_completion_orders_recycle_before_terminal(tmp_path: Path) -> None:
+                  slow_model = tmp_path / "slow-cooperative-cancel-case.json"
+                  model_data = json.loads(MODEL.read_text(encoding="utf-8"))
+                  model_data["solve_delay_ms"] = 1000
+                  slow_model.write_text(json.dumps(model_data), encoding="utf-8")
+                  batch = request()
+                  batch["model_path"] = str(slow_model)
+                  batch["workers"] = 1
+                  settings = Settings(
+                      state_dir=tmp_path / "state",
+                      max_workers=1,
+                      license_slots=1,
+                      scheduler_poll_s=0.02,
+                      job_lease_s=2.0,
+                      cancellation_grace_s=30.0,
+                  )
+                  scheduler = BackgroundScheduler(settings)
+                  job_id = scheduler.submit(batch)
+                  running = wait_for_status(
+                      scheduler,
+                      job_id,
+                      {"running", "completed", "failed"},
+                  )
+                  assert running is not None and running["status"] == "running"
+                  assert wait_for_active_pool(scheduler, job_id)
+                  assert scheduler.cancel(job_id)
+                  record = wait_for_status(
+                      scheduler,
+                      job_id,
+                      {"cancelled", "failed", "dead_letter"},
+                  )
+                  events = scheduler.store.events(job_id)
+                  scheduler.stop()
+                  assert record is not None
+                  assert record["status"] == "cancelled", record
+                  assert record["finished_at"] is not None
+                  recycle = next(
+                      event
+                      for event in events
+                      if event["event"] == "worker_recycle_dispatched"
+                  )
+                  assert recycle["created_at"] <= record["finished_at"]
+              '''
+          )
           if 'test_cancel_completion_orders_recycle_before_terminal' not in tests:
               tests = tests.rstrip() + regression + '\n'
           test_path.write_text(tests, encoding='utf-8')
@@ -189,4 +207,4 @@ jobs:
           CLEAN_SHA: ${{ steps.publish.outputs.clean_sha }}
         run: |
           set -euo pipefail
-          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_DIRECT_REPAIR_V5 status=${{ job.status }} run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID clean_sha=${CLEAN_SHA:-UNPUBLISHED} previous_active_ns=0"
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_DIRECT_REPAIR_V6 status=${{ job.status }} run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID clean_sha=${CLEAN_SHA:-UNPUBLISHED} previous_active_ns=0"
