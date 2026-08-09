@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run an exact-SHA active-test stage and emit a machine-readable ledger.
 
-Only time spent inside the configured repository test command contributes to
-``stage_active_ns``. Dependency installation, remote-SHA checks, artifact I/O,
-logging and retry backoff are deliberately excluded.
+Only monotonic time spent inside configured formal test subprocesses contributes
+to ``stage_active_ns``. Dependency installation, remote-SHA checks, artifact I/O,
+ledger writes, logging and retry backoff are deliberately excluded.
 """
 
 from __future__ import annotations
@@ -20,29 +20,40 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-COMMANDS: dict[str, str] = {
-    "aspenops": "uv run pytest -W error::ResourceWarning -q",
-    "scicomputation": "python scripts/verify_all.py --profile core",
+Command = tuple[str, ...]
+CommandGroup = tuple[Command, ...]
+
+COMMANDS: dict[str, CommandGroup] = {
+    "aspenops": (("uv", "run", "pytest", "-W", "error::ResourceWarning", "-q"),),
+    "scicomputation": (
+        ("python", "scripts/verify_all.py", "--profile", "core"),
+    ),
     "processing": (
-        "python scripts/run_ci.py && "
-        "python -m tsao.cli doctor --root . --profile core"
+        ("python", "scripts/run_ci.py"),
+        ("python", "-m", "tsao.cli", "doctor", "--root", ".", "--profile", "core"),
     ),
     "resindb": (
-        "npm run validate:docs && "
-        "npm run validate:source && "
-        "npm run validate:data && "
-        "npm run validate:compute && "
-        "npm run validate:scientific-ui && "
-        "npm run lint && "
-        "npm run typecheck && "
-        "npm run test:unit && "
-        "npm run test:science && "
-        "npm run build"
+        ("npm", "run", "validate:docs"),
+        ("npm", "run", "validate:source"),
+        ("npm", "run", "validate:data"),
+        ("npm", "run", "validate:compute"),
+        ("npm", "run", "validate:scientific-ui"),
+        ("npm", "run", "lint"),
+        ("npm", "run", "typecheck"),
+        ("npm", "run", "test:unit"),
+        ("npm", "run", "test:science"),
+        ("npm", "run", "build"),
     ),
-    "dft": "python scripts/quality_gate.py",
+    "dft": (("python", "scripts/quality_gate.py"),),
     "researcher": (
-        "python scripts/final_acceptance_preflight.py --root . --json && "
-        "python -m pytest -q -p hypothesis.extra.pytestplugin"
+        (
+            "python",
+            "scripts/final_acceptance_preflight.py",
+            "--root",
+            ".",
+            "--json",
+        ),
+        ("python", "-m", "pytest", "-q", "-p", "hypothesis.extra.pytestplugin"),
     ),
 }
 
@@ -57,8 +68,18 @@ def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def command_identity(commands: CommandGroup) -> str:
+    """Return a deterministic hash for the exact argument-vector sequence."""
+    payload = json.dumps(
+        [list(command) for command in commands],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write JSON atomically so an interrupted job cannot publish a partial summary."""
+    """Write JSON atomically so interruption cannot publish a partial summary."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
@@ -127,12 +148,12 @@ def base_summary(
     target_active_ns: int,
     previous_active_ns: int,
     previous_cycles: int,
-    command: str,
+    commands: CommandGroup,
     started_at: str,
 ) -> dict[str, Any]:
-    """Build the common immutable identity fields for a stage summary."""
+    """Build common immutable identity fields for a stage summary."""
     return {
-        "schema_version": "six-repository-active-stage-2.0.0",
+        "schema_version": "six-repository-active-stage-3.0.0",
         "slug": slug,
         "kind": kind,
         "repository": repository,
@@ -145,8 +166,8 @@ def base_summary(
         "stage_cycles": 0,
         "total_active_ns": previous_active_ns,
         "total_cycles": previous_cycles,
-        "command": command,
-        "command_sha256": hashlib.sha256(command.encode("utf-8")).hexdigest(),
+        "commands": [list(command) for command in commands],
+        "command_sha256": command_identity(commands),
         "started_at": started_at,
         "ended_at": None,
         "runner_os": platform.platform(),
@@ -183,6 +204,37 @@ def write_terminal_summary(
     atomic_json(summary_path, summary)
 
 
+def execute_cycle(commands: CommandGroup) -> tuple[int, bytes, int]:
+    """Execute a formal command sequence without a shell and sum active time."""
+    active_ns = 0
+    output_parts: list[bytes] = []
+    returncode = 0
+    for command in commands:
+        output_parts.append(
+            ("$ " + json.dumps(list(command), ensure_ascii=False) + "\n").encode(
+                "utf-8"
+            )
+        )
+        started_ns = time.monotonic_ns()
+        completed = subprocess.run(
+            list(command),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        ended_ns = time.monotonic_ns()
+        elapsed_ns = ended_ns - started_ns
+        if elapsed_ns <= 0:
+            raise RuntimeError("monotonic clock produced a non-positive duration")
+        active_ns += elapsed_ns
+        output_parts.append(completed.stdout)
+        output_parts.append(b"\n")
+        returncode = completed.returncode
+        if returncode != 0:
+            break
+    return returncode, b"".join(output_parts), active_ns
+
+
 def run_stage(args: argparse.Namespace) -> int:
     """Execute one active-test stage."""
     if args.kind not in COMMANDS:
@@ -207,7 +259,7 @@ def run_stage(args: argparse.Namespace) -> int:
         args.previous_summary,
         args.tested_sha,
     )
-    command = COMMANDS[args.kind]
+    commands = COMMANDS[args.kind]
     summary = base_summary(
         slug=args.slug,
         kind=args.kind,
@@ -217,7 +269,7 @@ def run_stage(args: argparse.Namespace) -> int:
         target_active_ns=args.target_active_ns,
         previous_active_ns=previous_active_ns,
         previous_cycles=previous_cycles,
-        command=command,
+        commands=commands,
         started_at=utc_now(),
     )
     atomic_json(summary_path, summary)
@@ -245,23 +297,11 @@ def run_stage(args: argparse.Namespace) -> int:
         while stage_active_ns < args.target_active_ns:
             stage_cycles += 1
             cycle_started_at = utc_now()
-            started_ns = time.monotonic_ns()
-            completed = subprocess.run(
-                command,
-                shell=True,
-                executable="/bin/bash",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
-            ended_ns = time.monotonic_ns()
-            elapsed_ns = ended_ns - started_ns
-            if elapsed_ns <= 0:
-                raise RuntimeError("monotonic clock produced a non-positive duration")
+            returncode, output, elapsed_ns = execute_cycle(commands)
             stage_active_ns += elapsed_ns
-            last_log_path.write_bytes(completed.stdout)
+            last_log_path.write_bytes(output)
             record = {
-                "schema_version": "six-repository-active-cycle-2.0.0",
+                "schema_version": "six-repository-active-cycle-3.0.0",
                 "slug": args.slug,
                 "repository": args.repository,
                 "tested_sha": args.tested_sha,
@@ -271,9 +311,9 @@ def run_stage(args: argparse.Namespace) -> int:
                 "ended_at": utc_now(),
                 "elapsed_ns": elapsed_ns,
                 "stage_active_ns": stage_active_ns,
-                "returncode": completed.returncode,
-                "output_bytes": len(completed.stdout),
-                "output_sha256": sha256_bytes(completed.stdout),
+                "returncode": returncode,
+                "output_bytes": len(output),
+                "output_sha256": sha256_bytes(output),
             }
             ledger.write(json.dumps(record, sort_keys=True) + "\n")
             ledger.flush()
@@ -283,7 +323,7 @@ def run_stage(args: argparse.Namespace) -> int:
                         "slug": args.slug,
                         "stage": args.stage,
                         "cycle": stage_cycles,
-                        "returncode": completed.returncode,
+                        "returncode": returncode,
                         "elapsed_s": round(elapsed_ns / 1_000_000_000, 3),
                         "active_h": round(stage_active_ns / 3_600_000_000_000, 6),
                         "target_h": round(
@@ -296,14 +336,14 @@ def run_stage(args: argparse.Namespace) -> int:
                 ),
                 flush=True,
             )
-            if completed.returncode != 0:
+            if returncode != 0:
                 failure_log = output_dir / (
                     f"{args.slug}-failure-stage-{args.stage}-"
                     f"cycle-{stage_cycles}.log"
                 )
-                failure_log.write_bytes(completed.stdout)
+                failure_log.write_bytes(output)
                 failure = (
-                    f"test command failed with return code {completed.returncode} "
+                    f"test command failed with return code {returncode} "
                     f"at stage {args.stage} cycle {stage_cycles}"
                 )
                 write_terminal_summary(
