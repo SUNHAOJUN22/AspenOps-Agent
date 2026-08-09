@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501
+# fmt: off
+
 from __future__ import annotations
 
 import argparse
@@ -286,6 +289,8 @@ def main() -> int:
             failures.append(f"missing README: {path}")
             continue
         outputs[path] = _inject(target.read_text(encoding="utf-8"), _readme_block(lang))
+
+    outputs = {relative_path: unicodedata.normalize("NFC", content) for relative_path, content in outputs.items()}
 
     if args.write and not failures:
         for relative_path, content in outputs.items():

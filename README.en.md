@@ -325,3 +325,36 @@ uv run python scripts/verify_delivery.py \
 ```
 
 Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
+
+<!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
+## Current `main`: code–mathematics–evidence loop
+
+<p align="center"><img src="docs/current-main/aspenops-current-main-en.svg" width="100%" alt="Current `main`: code–mathematics–evidence loop"></p>
+
+> This section is generated from current repository contracts; the visual is conceptual documentation, not simulation or experimental output.
+
+### Core mathematical contracts
+
+$$
+OK = C_comm ∧ C_engine ∧ C_conv ∧ C_finite ∧ C_constraint ∧ C_balance
+$$
+
+$$
+dN_i/dt = Σ_in ṅ_i − Σ_out ṅ_i + V Σ_r ν_ir r_r
+$$
+
+$$
+W_eff = min(W_config, W_license, W_memory, W_stable)
+$$
+
+### Usage strategy
+
+1. Run permanent CI before exact-tree current-main qualification.
+2. Reject Boolean, NaN and Infinity at scientific scalar boundaries.
+3. Any new commit invalidates six-hour evidence bound to an older SHA.
+4. Licensed Aspen qualification requires an authorized environment and accountable engineer.
+
+> **Responsibility boundary：** Software gates are not licensed Aspen Plus/HYSYS engineering certification; the external state remains PENDING_REAL_ASPEN_CERTIFICATION.
+
+Execution prompt：[`SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md`](docs/SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md)
+<!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->

@@ -325,3 +325,36 @@ uv run python scripts/verify_delivery.py \
 ```
 
 验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。
+
+<!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
+## 当前 `main`：代码—数学—证据闭环
+
+<p align="center"><img src="docs/current-main/aspenops-current-main-zh.svg" width="100%" alt="当前 `main`：代码—数学—证据闭环"></p>
+
+> 本节由仓库脚本根据当前代码合同生成；图像是文档概念设计，不是仿真或实验结果。
+
+### 核心数理合同
+
+$$
+OK = C_comm ∧ C_engine ∧ C_conv ∧ C_finite ∧ C_constraint ∧ C_balance
+$$
+
+$$
+dN_i/dt = Σ_in ṅ_i − Σ_out ṅ_i + V Σ_r ν_ir r_r
+$$
+
+$$
+W_eff = min(W_config, W_license, W_memory, W_stable)
+$$
+
+### 使用策略
+
+1. 先运行永久 CI，再运行 current-main 精确树验收。
+2. 所有数值入口拒绝 Boolean、NaN 与 Infinity。
+3. 任何新提交都会使旧 SHA 的六小时证据失效。
+4. 外部 Aspen 工程资格必须由授权环境和责任工程师完成。
+
+> **责任边界：** 软件门禁不等于真实 Aspen Plus/HYSYS 工程认证；外部状态保持 PENDING_REAL_ASPEN_CERTIFICATION。
+
+执行提示词：[`SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md`](docs/SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md)
+<!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->

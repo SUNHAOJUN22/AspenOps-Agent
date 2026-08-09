@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">AspenOps 2.0 current-main acceptance architecture</title>
+  <desc id="desc">From process intent, conservation and constraints to auditable Aspen execution evidence. Software gates are not licensed Aspen Plus/HYSYS engineering certification; the external state remains PENDING_REAL_ASPEN_CERTIFICATION.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#020617"/><stop offset="0.5" stop-color="#0b1f3a"/><stop offset="1" stop-color="#17103a"/></linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#102a4c"/><stop offset="1" stop-color="#151b3d"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/></marker>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="12" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>
+      text{font-family:"Noto Sans CJK SC","Microsoft YaHei","PingFang SC","Noto Sans",Arial,sans-serif;fill:#e5f2ff}
+      .title{font-size:54px;font-weight:800;letter-spacing:1px}
+      .subtitle{font-size:24px;fill:#9bdcff}
+      .stage{font-size:27px;font-weight:750}
+      .detail{font-size:18px;fill:#b8c8e6}
+      .index{font-size:58px;font-weight:800;fill:#1f4c7a}
+      .formula{font-family:"STIX Two Math","Cambria Math","Noto Sans Math","Noto Sans CJK SC",sans-serif;font-size:20px;fill:#e9d5ff}
+      .micro{font-size:14px;letter-spacing:2px;fill:#67e8f9}
+      .boundary{font-size:19px;fill:#cbd5e1}
+      .badge{font-size:16px;fill:#93c5fd;letter-spacing:1px}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1380" cy="92" r="120" fill="#2563eb" opacity="0.16" filter="url(#glow)"/>
+  <circle cx="210" cy="790" r="170" fill="#7c3aed" opacity="0.12" filter="url(#glow)"/>
+  <text x="48" y="88" class="title">AspenOps 2.0</text>
+  <text x="48" y="132" class="subtitle">From process intent, conservation and constraints to auditable Aspen execution evidence</text>
+  <text x="48" y="184" class="badge">AI-ASSISTED CONCEPTUAL DESIGN · NOT SCIENTIFIC DATA</text>
+  <path d="M 319 335 H 349" stroke="#38bdf8" stroke-width="5" marker-end="url(#arrow)"/><path d="M 629 335 H 659" stroke="#38bdf8" stroke-width="5" marker-end="url(#arrow)"/><path d="M 939 335 H 969" stroke="#38bdf8" stroke-width="5" marker-end="url(#arrow)"/><path d="M 1249 335 H 1279" stroke="#38bdf8" stroke-width="5" marker-end="url(#arrow)"/>
+  <g><rect x="45" y="228" width="270" height="214" rx="28" fill="url(#card)" stroke="#60a5fa" stroke-width="2"/><text x="69" y="278" class="stage">Process intent</text><text x="69" y="322" class="detail">IR and unit contracts</text><text x="69" y="392" class="index">01</text></g><g><rect x="355" y="228" width="270" height="214" rx="28" fill="url(#card)" stroke="#60a5fa" stroke-width="2"/><text x="379" y="278" class="stage">Solvability</text><text x="379" y="322" class="detail">DOF, cycles and tears</text><text x="379" y="392" class="index">02</text></g><g><rect x="665" y="228" width="270" height="214" rx="28" fill="url(#card)" stroke="#60a5fa" stroke-width="2"/><text x="689" y="278" class="stage">Execution isolation</text><text x="689" y="322" class="detail">COM workers and licences</text><text x="689" y="392" class="index">03</text></g><g><rect x="975" y="228" width="270" height="214" rx="28" fill="url(#card)" stroke="#60a5fa" stroke-width="2"/><text x="999" y="278" class="stage">Physical gates</text><text x="999" y="322" class="detail">Convergence, constraints, balances</text><text x="999" y="392" class="index">04</text></g><g><rect x="1285" y="228" width="270" height="214" rx="28" fill="url(#card)" stroke="#60a5fa" stroke-width="2"/><text x="1309" y="278" class="stage">Evidence delivery</text><text x="1309" y="322" class="detail">Hashes, signatures, authority</text><text x="1309" y="392" class="index">05</text></g>
+  <g><rect x="45" y="520" width="465" height="130" rx="22" fill="#08152f" stroke="#8b5cf6" stroke-width="2"/><text x="69" y="574" class="formula">OK = C_comm ∧ C_engine ∧ C_conv ∧ C_finite ∧ C_constraint ∧ C_balance</text><text x="69" y="620" class="micro">CODE CONTRACT 01</text></g><g><rect x="550" y="520" width="465" height="130" rx="22" fill="#08152f" stroke="#8b5cf6" stroke-width="2"/><text x="574" y="574" class="formula">dN_i/dt = Σ_in ṅ_i − Σ_out ṅ_i + V Σ_r ν_ir r_r</text><text x="574" y="620" class="micro">CODE CONTRACT 02</text></g><g><rect x="1055" y="520" width="465" height="130" rx="22" fill="#08152f" stroke="#8b5cf6" stroke-width="2"/><text x="1079" y="574" class="formula">W_eff = min(W_config, W_license, W_memory, W_stable)</text><text x="1079" y="620" class="micro">CODE CONTRACT 03</text></g>
+  <rect x="45" y="710" width="1510" height="104" rx="24" fill="#071124" stroke="#334155"/>
+  <text x="76" y="756" class="micro">QUALIFICATION BOUNDARY</text>
+  <text x="76" y="790" class="boundary">Software gates are not licensed Aspen Plus/HYSYS engineering certification; the external state remains PENDING_REAL_ASPEN_CERTIFICATION.</text>
+  <text x="48" y="866" class="micro">CURRENT MAIN · EXACT TREE · FINITE NUMERICS · BILINGUAL EVIDENCE</text>
+</svg>
