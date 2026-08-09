@@ -1,13 +1,212 @@
-name: Aspen six-hour gate placeholder
+name: Aspen six-hour active qualification v8
 
 on:
-  workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
+
+env:
+  TESTED_SHA: 6489c9109b827392ba4ba3f8944d5b1ce42b2e4e
 
 jobs:
-  placeholder:
+  stage-1:
+    if: github.event.issue.number == 114 && github.event.comment.body == '/run-aspen-six-hour-active-v8'
     runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    outputs:
+      active_ns: ${{ steps.soak.outputs.active_ns }}
+      cycles: ${{ steps.soak.outputs.cycles }}
+      tested_sha: ${{ steps.target.outputs.tested_sha }}
     steps:
-      - run: echo "Pending exact-source binding"
+      - name: Check out harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          path: harness
+          persist-credentials: false
+      - name: Check out exact repaired source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TESTED_SHA }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind exact source
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          tested_sha=$(git -C source rev-parse HEAD)
+          test "$tested_sha" = "$TESTED_SHA"
+          echo "tested_sha=$tested_sha" >> "$GITHUB_OUTPUT"
+      - name: Record run start
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "Aspen six-hour active qualification v8: RUNNING; run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID; source=$TESTED_SHA; required_active_ns=21600000000000; duration_basis=MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+          working-directory: source
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd source
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Write deterministic cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/aspen-cycle.sh" <<'CYCLE'
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/source"
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          git diff --exit-code
+          CYCLE
+          chmod +x "$RUNNER_TEMP/aspen-cycle.sh"
+      - name: Accumulate active qualification runtime
+        id: soak
+        shell: bash
+        run: |
+          set -euo pipefail
+          python harness/.github/scripts/run_active_soak.py \
+            --cycle-script "$RUNNER_TEMP/aspen-cycle.sh" \
+            --evidence-dir "$RUNNER_TEMP/aspen-six-hour-evidence" \
+            --initial-ns 0 \
+            --target-ns 9000000000000 \
+            --stage 1 \
+            --tested-sha "$TESTED_SHA"
+      - name: Upload stage 1 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: aspen-six-hour-stage-1-${{ github.run_id }}
+          path: ${{ runner.temp }}/aspen-six-hour-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  stage-2:
+    needs: stage-1
+    if: github.event.issue.number == 114 && github.event.comment.body == '/run-aspen-six-hour-active-v8'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    outputs:
+      active_ns: ${{ steps.soak.outputs.active_ns }}
+      cycles: ${{ steps.soak.outputs.cycles }}
+      tested_sha: ${{ needs.stage-1.outputs.tested_sha }}
+    steps:
+      - name: Check out harness
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          path: harness
+          persist-credentials: false
+      - name: Check out exact repaired source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.stage-1.outputs.tested_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: "0.11.16"
+          python-version: "3.12"
+          enable-cache: true
+          working-directory: source
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd source
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Write deterministic cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/aspen-cycle.sh" <<'CYCLE'
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/source"
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          git diff --exit-code
+          CYCLE
+          chmod +x "$RUNNER_TEMP/aspen-cycle.sh"
+      - name: Accumulate active qualification runtime
+        id: soak
+        shell: bash
+        run: |
+          set -euo pipefail
+          python harness/.github/scripts/run_active_soak.py \
+            --cycle-script "$RUNNER_TEMP/aspen-cycle.sh" \
+            --evidence-dir "$RUNNER_TEMP/aspen-six-hour-evidence" \
+            --initial-ns "${{ needs.stage-1.outputs.active_ns }}" \
+            --target-ns 21600000000000 \
+            --stage 2 \
+            --tested-sha "${{ needs.stage-1.outputs.tested_sha }}"
+      - name: Upload final evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: aspen-six-hour-final-${{ github.run_id }}
+          path: ${{ runner.temp }}/aspen-six-hour-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  duration-gate:
+    needs: [stage-1, stage-2]
+    if: always() && github.event.issue.number == 114 && github.event.comment.body == '/run-aspen-six-hour-active-v8'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce six active hours
+        shell: bash
+        env:
+          STAGE1_RESULT: ${{ needs.stage-1.result }}
+          STAGE2_RESULT: ${{ needs.stage-2.result }}
+          ACTIVE_NS: ${{ needs.stage-2.outputs.active_ns }}
+          TESTED_SHA: ${{ needs.stage-2.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
+          test "$STAGE1_RESULT" = success
+          test "$STAGE2_RESULT" = success
+          test "${ACTIVE_NS:-0}" -ge 21600000000000
+          test -n "$TESTED_SHA"
+      - name: Record machine ledger
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE1_RESULT: ${{ needs.stage-1.result }}
+          STAGE2_RESULT: ${{ needs.stage-2.result }}
+          ACTIVE_NS: ${{ needs.stage-2.outputs.active_ns }}
+          TESTED_SHA: ${{ needs.stage-2.outputs.tested_sha }}
+          STAGE1_CYCLES: ${{ needs.stage-1.outputs.cycles }}
+          STAGE2_CYCLES: ${{ needs.stage-2.outputs.cycles }}
+        run: |
+          set -euo pipefail
+          verdict=FAIL
+          if [[ "$STAGE1_RESULT" == success && "$STAGE2_RESULT" == success ]] && [[ "${ACTIVE_NS:-0}" -ge 21600000000000 ]]; then verdict=PASS; fi
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "Aspen six-hour active qualification v8: $verdict; run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID; stage1=$STAGE1_RESULT; stage2=$STAGE2_RESULT; active_ns=${ACTIVE_NS:-0}; required_active_ns=21600000000000; source=${TESTED_SHA:-UNRESOLVED}; cycles=${STAGE1_CYCLES:-0}+${STAGE2_CYCLES:-0}; duration_basis=MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY"
+          test "$verdict" = PASS
