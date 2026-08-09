@@ -36,6 +36,22 @@ jobs:
           version: '0.11.16'
           python-version: '3.12'
           enable-cache: true
+      - name: Normalize generator formatting directives
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/refresh_current_main_readme.py')
+          text = path.read_text(encoding='utf-8')
+          marker = '# ruff: noqa: E501\n# fmt: off\n\n'
+          if marker not in text:
+              text = text.replace(
+                  'from __future__ import annotations\n',
+                  marker + 'from __future__ import annotations\n',
+                  1,
+              )
+              path.write_text(text, encoding='utf-8', newline='\n')
+          PY
       - name: Generate bilingual README sections and code-bound visuals
         run: python scripts/refresh_current_main_readme.py --write
       - name: Verify deterministic visual and UTF-8 contracts
@@ -56,7 +72,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add README.md README.en.md docs/CURRENT_MAIN_ACCEPTANCE.md docs/current-main
+          git add \
+            scripts/refresh_current_main_readme.py \
+            README.md \
+            README.en.md \
+            docs/CURRENT_MAIN_ACCEPTANCE.md \
+            docs/current-main
           if git diff --cached --quiet; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             exit 0
