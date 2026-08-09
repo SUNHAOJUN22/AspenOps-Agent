@@ -1,16 +1,15 @@
-name: Six-repository current-main six-hour qualification V2
+name: Six-repository current-main six-hour qualification V3
 
 on:
-  workflow_dispatch:
   issue_comment:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
-  group: six-repository-current-main-six-hour-v2
+  group: six-repository-current-main-six-hour-v3
   cancel-in-progress: false
 
 env:
@@ -20,13 +19,93 @@ env:
   PYTHONNOUSERSITE: '1'
 
 jobs:
+  prepare:
+    name: Publish controller-free AspenOps main
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.comment.body, '/run-current-main-six-hour-v3')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      clean_sha: ${{ steps.candidate.outputs.clean_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install exact AspenOps environment
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Format runner and restore authoritative workflow inventory
+        run: |
+          set -euo pipefail
+          uv run ruff format scripts/run_six_repository_active_gate.py
+          rm -f .github/workflows/current-main-readme-refresh.yml
+          rm -f .github/workflows/format-six-repository-runner-once.yml
+          rm -f .github/workflows/six-repository-current-main-6h-v2.yml
+          git diff --check
+      - name: Create exact controller-free AspenOps candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A \
+            scripts/run_six_repository_active_gate.py \
+            .github/workflows/current-main-readme-refresh.yml \
+            .github/workflows/format-six-repository-runner-once.yml \
+            .github/workflows/six-repository-current-main-6h-v2.yml
+          git commit -m 'ci: publish governed exact-SHA qualification runner'
+          echo 'clean_sha='"$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Run complete AspenOps delivery gate on clean candidate
+        run: |
+          set -euo pipefail
+          uv run python scripts/refresh_current_main_readme.py --check
+          uv run python -m py_compile scripts/run_six_repository_active_gate.py
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -W error::ResourceWarning -q
+          uv run python scripts/verify_delivery.py --root . \
+            --output /tmp/aspenops-delivery-v3.json
+          git diff --exit-code
+          git diff --check
+      - name: Publish exact clean AspenOps candidate
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          EXPECTED_PARENT="$(git rev-parse HEAD^)"
+          REMOTE_MAIN="$(git rev-parse origin/main)"
+          if [ "$EXPECTED_PARENT" != "$REMOTE_MAIN" ]; then
+            echo "STALE_MAIN expected_parent=${EXPECTED_PARENT} remote_main=${REMOTE_MAIN}" >&2
+            exit 3
+          fi
+          git push origin HEAD:main
+      - name: Publish preparation failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          CANDIDATE: ${{ steps.candidate.outputs.clean_sha }}
+        run: |
+          gh issue comment "$ISSUE" --body "SIX_REPOSITORY_CURRENT_MAIN_6H_V3 PREPARE_FAIL candidate=${CANDIDATE:-unknown} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
   resolve:
     name: Resolve immutable current-main identities
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.issue.pull_request == null &&
-       github.event.comment.user.login == github.repository_owner &&
-       contains(github.event.comment.body, '/run-current-main-six-hour-v2'))
+    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -35,7 +114,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: main
+          repository: SUNHAOJUN22/AspenOps-Agent
+          ref: ${{ needs.prepare.outputs.clean_sha }}
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -47,6 +127,8 @@ jobs:
           python -m py_compile scripts/run_six_repository_active_gate.py
       - name: Resolve six current main SHAs
         id: resolve
+        env:
+          CLEAN_ASPEN_SHA: ${{ needs.prepare.outputs.clean_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -55,6 +137,7 @@ jobs:
           import os
           import subprocess
 
+          clean_aspen_sha = os.environ["CLEAN_ASPEN_SHA"]
           entries = [
               {
                   "slug": "aspenops",
@@ -63,6 +146,7 @@ jobs:
                   "python": "3.12",
                   "node": False,
                   "uv": True,
+                  "sha": clean_aspen_sha,
               },
               {
                   "slug": "scicomputation",
@@ -120,19 +204,21 @@ jobs:
                       f"invalid current-main identity for {entry['repository']}: "
                       f"{result.stdout!r}"
                   )
-              entry["sha"] = fields[0]
+              remote_sha = fields[0]
+              if entry["slug"] == "aspenops" and remote_sha != clean_aspen_sha:
+                  raise SystemExit(
+                      f"AspenOps clean SHA moved before resolve: "
+                      f"expected={clean_aspen_sha} remote={remote_sha}"
+                  )
+              entry["sha"] = remote_sha
           matrix = json.dumps({"include": entries}, separators=(",", ":"))
-          output_path = os.environ["GITHUB_OUTPUT"]
-          with open(output_path, "a", encoding="utf-8") as handle:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"matrix={matrix}\n")
-              controller = next(
-                  item["sha"] for item in entries if item["slug"] == "aspenops"
-              )
-              handle.write(f"controller_sha={controller}\n")
+              handle.write(f"controller_sha={clean_aspen_sha}\n")
           with open("resolved-current-main.json", "w", encoding="utf-8") as handle:
               json.dump(
                   {
-                      "schema_version": "six-repository-resolve-2.0.0",
+                      "schema_version": "six-repository-resolve-3.0.0",
                       "entries": entries,
                   },
                   handle,
@@ -142,7 +228,6 @@ jobs:
               handle.write("\n")
           PY
       - name: Announce immutable qualification identities
-        if: github.event_name == 'issue_comment'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE: ${{ github.event.issue.number }}
@@ -154,19 +239,18 @@ jobs:
 
           payload = json.load(open("resolved-current-main.json", encoding="utf-8"))
           lines = [
-              "SIX_REPOSITORY_CURRENT_MAIN_6H_V2 RUNNING",
+              "SIX_REPOSITORY_CURRENT_MAIN_6H_V3 RUNNING",
               "",
               (
-                  "Each repository is bound to the current `main` SHA below. "
-                  "The target is six hours of monotonic active test-command time "
-                  "per repository; setup, queueing, upload and sleep are excluded."
+                  "Each repository is bound to the exact `main` SHA below. "
+                  "The target is six hours of monotonic active test-command "
+                  "time per repository. Setup, queueing, downloads, uploads, "
+                  "ledger I/O and sleep are excluded."
               ),
               "",
           ]
           for entry in payload["entries"]:
-              lines.append(
-                  f"- `{entry['repository']}`: `{entry['sha']}`"
-              )
+              lines.append(f"- `{entry['repository']}`: `{entry['sha']}`")
           lines.extend(
               [
                   "",
@@ -178,8 +262,11 @@ jobs:
                   ),
                   "",
                   (
-                      "No PASS is claimed until both three-hour active stages "
-                      "finish and the remote `main` identities are rechecked."
+                      "The coordinator workflow removed itself before this "
+                      "qualification, so AspenOps `main` contains only its four "
+                      "authoritative long-lived workflows. No PASS is claimed "
+                      "until both active stages finish and all remote `main` "
+                      "identities are rechecked."
                   ),
               ]
           )
@@ -215,7 +302,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: ${{ matrix.python }}
-          cache: ${{ matrix.kind == 'aspenops' && '' || 'pip' }}
       - name: Set up Node for documentation generators
         if: matrix.node && matrix.kind != 'resindb'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -314,6 +400,8 @@ jobs:
               uv run ruff format --check .
               uv run mypy src
               uv run pytest -W error::ResourceWarning -q
+              uv run python scripts/verify_delivery.py --root . \
+                --output /tmp/aspenops-delivery-stage1.json
               ;;
             scicomputation)
               node scripts/refresh-current-main-readme.mjs --check
@@ -372,13 +460,13 @@ jobs:
             --tested-sha '${{ matrix.sha }}' \
             --stage 1 \
             --target-active-ns "$STAGE_ACTIVE_TARGET_NS" \
-            --output-dir .acceptance/stage1
+            --output-dir ../qualification/stage1
       - name: Upload stage 1 ledger
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: current-main-6h-v2-stage1-${{ matrix.slug }}-${{ matrix.sha }}
-          path: repo/.acceptance/stage1
+          name: current-main-6h-v3-stage1-${{ matrix.slug }}-${{ matrix.sha }}
+          path: qualification/stage1
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 90
@@ -412,7 +500,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: ${{ matrix.python }}
-          cache: ${{ matrix.kind == 'aspenops' && '' || 'pip' }}
       - name: Set up Node for documentation generators
         if: matrix.node && matrix.kind != 'resindb'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -496,11 +583,11 @@ jobs:
               exit 2
               ;;
           esac
-      - name: Download and bind stage 1 evidence
-        uses: actions/download-artifact@48434091c594fdd9cc8e5207ad7d32737a8d9431
+      - name: Download and bind stage 1 evidence outside tested repository
+        uses: actions/download-artifact@48434091c594fdd9cc8e5207ad7d32737a8d9431 # v5
         with:
-          name: current-main-6h-v2-stage1-${{ matrix.slug }}-${{ matrix.sha }}
-          path: repo/.acceptance/previous
+          name: current-main-6h-v3-stage1-${{ matrix.slug }}-${{ matrix.sha }}
+          path: qualification/previous
       - name: Accumulate the second three active hours
         working-directory: repo
         env:
@@ -514,14 +601,14 @@ jobs:
             --stage 2 \
             --target-active-ns "$STAGE_ACTIVE_TARGET_NS" \
             --previous-summary \
-              '.acceptance/previous/${{ matrix.slug }}-summary.json' \
-            --output-dir .acceptance/stage2
+              '../qualification/previous/${{ matrix.slug }}-summary.json' \
+            --output-dir ../qualification/stage2
       - name: Upload combined stage 2 ledger
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: current-main-6h-v2-stage2-${{ matrix.slug }}-${{ matrix.sha }}
-          path: repo/.acceptance/stage2
+          name: current-main-6h-v3-stage2-${{ matrix.slug }}-${{ matrix.sha }}
+          path: qualification/stage2
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 90
@@ -537,9 +624,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Download all stage 2 summaries
-        uses: actions/download-artifact@48434091c594fdd9cc8e5207ad7d32737a8d9431
+        uses: actions/download-artifact@48434091c594fdd9cc8e5207ad7d32737a8d9431 # v5
         with:
-          pattern: current-main-6h-v2-stage2-*
+          pattern: current-main-6h-v3-stage2-*
           path: final-artifacts
           merge-multiple: true
       - name: Build final report and recheck remote main
@@ -606,7 +693,7 @@ jobs:
               item["verdict"] == "PASS" for item in results
           ) else "FAIL"
           report = {
-              "schema_version": "six-repository-current-main-final-2.0.0",
+              "schema_version": "six-repository-current-main-final-3.0.0",
               "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
               "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
               "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
@@ -620,12 +707,12 @@ jobs:
               newline="\n",
           )
           lines = [
-              f"SIX_REPOSITORY_CURRENT_MAIN_6H_V2 {overall}",
+              f"SIX_REPOSITORY_CURRENT_MAIN_6H_V3 {overall}",
               "",
               (
                   "The values below count monotonic time spent only inside "
-                  "formal test commands. Setup, queueing, downloads, uploads "
-                  "and retry backoff are excluded."
+                  "formal test commands. Setup, queueing, downloads, uploads, "
+                  "ledger I/O and retry backoff are excluded."
               ),
               "",
           ]
@@ -650,8 +737,8 @@ jobs:
                   ),
                   "",
                   (
-                      "This is software and evidence qualification only. "
-                      "It does not assert licensed Aspen, external DFT/MD/CFD, "
+                      "This is software and evidence qualification only. It "
+                      "does not assert licensed Aspen, external DFT/MD/CFD, "
                       "experimental, HSE, customer or industrial approval."
                   ),
               ]
@@ -669,14 +756,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: six-repository-current-main-6h-v2-final-${{ github.run_id }}
+          name: six-repository-current-main-6h-v3-final-${{ github.run_id }}
           path: |
             final-report.json
             final-comment.md
           if-no-files-found: error
           retention-days: 90
       - name: Publish final machine verdict
-        if: always() && github.event_name == 'issue_comment'
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE: ${{ github.event.issue.number }}
