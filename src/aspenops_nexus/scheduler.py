@@ -871,7 +871,22 @@ class BackgroundScheduler:
         results: list[dict[str, Any]],
         bundle: Path,
     ) -> bool:
+        def dispatch_cancel_recycle() -> None:
+            # Publish worker-recycle evidence before the cancelled terminal
+            # state becomes visible. The cancellation watcher and worker
+            # completion path may otherwise race at the grace deadline.
+            active_pool = self._active_snapshot().get(job_id)
+            recycle_events = (
+                [] if active_pool is None else active_pool.force_recycle_all("cancel_completion")
+            )
+            self.store.mark_abort_dispatched(
+                job_id,
+                recycle_events,
+                owner=self.owner,
+            )
+
         if self.store.is_cancel_requested(job_id):
+            dispatch_cancel_recycle()
             committed = self.store.finalize_cancelled(
                 job_id,
                 results,
@@ -887,6 +902,7 @@ class BackgroundScheduler:
                 owner=self.owner,
             )
             if not committed and self.store.is_cancel_requested(job_id):
+                dispatch_cancel_recycle()
                 committed = self.store.finalize_cancelled(
                     job_id,
                     results,

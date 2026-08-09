@@ -88,3 +88,43 @@ def test_running_job_is_cancelled_after_deadline(tmp_path: Path) -> None:
     assert record["results"] is not None
     assert Path(record["bundle_path"]).exists()
     assert any(event["event"] == "worker_recycle_dispatched" for event in events)
+
+
+def test_cancel_completion_orders_recycle_before_terminal(tmp_path: Path) -> None:
+    slow_model = tmp_path / "slow-cooperative-cancel-case.json"
+    model_data = json.loads(MODEL.read_text(encoding="utf-8"))
+    model_data["solve_delay_ms"] = 1000
+    slow_model.write_text(json.dumps(model_data), encoding="utf-8")
+    batch = request()
+    batch["model_path"] = str(slow_model)
+    batch["workers"] = 1
+    settings = Settings(
+        state_dir=tmp_path / "state",
+        max_workers=1,
+        license_slots=1,
+        scheduler_poll_s=0.02,
+        job_lease_s=2.0,
+        cancellation_grace_s=30.0,
+    )
+    scheduler = BackgroundScheduler(settings)
+    job_id = scheduler.submit(batch)
+    running = wait_for_status(
+        scheduler,
+        job_id,
+        {"running", "completed", "failed"},
+    )
+    assert running is not None and running["status"] == "running"
+    assert wait_for_active_pool(scheduler, job_id)
+    assert scheduler.cancel(job_id)
+    record = wait_for_status(
+        scheduler,
+        job_id,
+        {"cancelled", "failed", "dead_letter"},
+    )
+    events = scheduler.store.events(job_id)
+    scheduler.stop()
+    assert record is not None
+    assert record["status"] == "cancelled", record
+    assert record["finished_at"] is not None
+    recycle = next(event for event in events if event["event"] == "worker_recycle_dispatched")
+    assert recycle["created_at"] <= record["finished_at"]
