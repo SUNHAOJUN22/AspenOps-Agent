@@ -25,9 +25,7 @@ CommandGroup = tuple[Command, ...]
 
 COMMANDS: dict[str, CommandGroup] = {
     "aspenops": (("uv", "run", "pytest", "-W", "error::ResourceWarning", "-q"),),
-    "scicomputation": (
-        ("python", "scripts/verify_all.py", "--profile", "core"),
-    ),
+    "scicomputation": (("python", "scripts/verify_all.py", "--profile", "core"),),
     "processing": (
         ("python", "scripts/run_ci.py"),
         ("python", "-m", "tsao.cli", "doctor", "--root", ".", "--profile", "core"),
@@ -106,8 +104,7 @@ def remote_main_sha(repository: str) -> str:
             fields = result.stdout.strip().split()
             if len(fields) != 2 or len(fields[0]) != 40:
                 raise RuntimeError(
-                    f"unexpected ls-remote response for {repository}: "
-                    f"{result.stdout!r}"
+                    f"unexpected ls-remote response for {repository}: {result.stdout!r}"
                 )
             return fields[0]
         except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
@@ -126,8 +123,7 @@ def read_previous(path: Path | None, tested_sha: str) -> tuple[int, int]:
         raise RuntimeError(f"previous stage is not PASS: {path}")
     if payload.get("tested_sha") != tested_sha:
         raise RuntimeError(
-            "previous stage SHA mismatch: "
-            f"{payload.get('tested_sha')} != {tested_sha}"
+            f"previous stage SHA mismatch: {payload.get('tested_sha')} != {tested_sha}"
         )
     active_ns = payload.get("total_active_ns")
     cycles = payload.get("total_cycles")
@@ -211,9 +207,7 @@ def execute_cycle(commands: CommandGroup) -> tuple[int, bytes, int]:
     returncode = 0
     for command in commands:
         output_parts.append(
-            ("$ " + json.dumps(list(command), ensure_ascii=False) + "\n").encode(
-                "utf-8"
-            )
+            ("$ " + json.dumps(list(command), ensure_ascii=False) + "\n").encode("utf-8")
         )
         started_ns = time.monotonic_ns()
         completed = subprocess.run(
@@ -276,10 +270,7 @@ def run_stage(args: argparse.Namespace) -> int:
 
     initial_remote = remote_main_sha(args.repository)
     if initial_remote != args.tested_sha:
-        failure = (
-            f"STALE_MAIN before stage: tested={args.tested_sha} "
-            f"remote={initial_remote}"
-        )
+        failure = f"STALE_MAIN before stage: tested={args.tested_sha} remote={initial_remote}"
         write_terminal_summary(
             summary_path,
             summary,
@@ -338,8 +329,7 @@ def run_stage(args: argparse.Namespace) -> int:
             )
             if returncode != 0:
                 failure_log = output_dir / (
-                    f"{args.slug}-failure-stage-{args.stage}-"
-                    f"cycle-{stage_cycles}.log"
+                    f"{args.slug}-failure-stage-{args.stage}-cycle-{stage_cycles}.log"
                 )
                 failure_log.write_bytes(output)
                 failure = (
@@ -376,10 +366,7 @@ def run_stage(args: argparse.Namespace) -> int:
 
     final_remote = remote_main_sha(args.repository)
     if final_remote != args.tested_sha:
-        failure = (
-            f"STALE_MAIN at stage completion: tested={args.tested_sha} "
-            f"remote={final_remote}"
-        )
+        failure = f"STALE_MAIN at stage completion: tested={args.tested_sha} remote={final_remote}"
         write_terminal_summary(
             summary_path,
             summary,
