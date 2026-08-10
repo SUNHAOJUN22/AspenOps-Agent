@@ -1,0 +1,17 @@
+name: Dispatch probe once
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/dispatch-probe-once.yml
+permissions:
+  issues: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment 116 --body "ASPENOPS_DISPATCH_PROBE PASS sha=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
