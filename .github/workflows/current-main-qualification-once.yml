@@ -123,12 +123,23 @@ jobs:
           test "$(git rev-parse HEAD^)" = "$parent"
           git push origin HEAD:main
           echo "qualified=$qualified" >> "$GITHUB_OUTPUT"
-      - name: Record machine result
-        if: always()
+
+  record:
+    needs: [linux, windows, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record exact machine outcome
         env:
           GH_TOKEN: ${{ github.token }}
-          OUTCOME: ${{ job.status }}
-          QUALIFIED: ${{ steps.publish.outputs.qualified }}
+          LINUX: ${{ needs.linux.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          PUBLISH: ${{ needs.publish.result }}
         shell: bash
         run: |
-          gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION outcome=${OUTCOME} tested_parent=${GITHUB_SHA} qualified=${QUALIFIED:-UNPUBLISHED} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} linux=full-delivery windows=control-plane controller=self-removed licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
+          set -euo pipefail
+          outcome=failure
+          if [[ "$LINUX" == success && "$WINDOWS" == success && "$PUBLISH" == success ]]; then outcome=success; fi
+          gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION outcome=${outcome} tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} linux=${LINUX} windows=${WINDOWS} publish=${PUBLISH} controller=self-removed-on-success licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
+          test "$outcome" = success
