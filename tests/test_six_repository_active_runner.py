@@ -38,6 +38,19 @@ def test_formal_commands_are_immutable_shell_free_argument_vectors() -> None:
             assert not any(token in argument for token in forbidden for argument in command)
 
 
+def test_aspenops_cycle_matches_proven_v8_gate_sequence() -> None:
+    assert COMMANDS["aspenops"] == (
+        ("uv", "run", "ruff", "check", "."),
+        ("uv", "run", "ruff", "format", "--check", "."),
+        ("uv", "run", "mypy", "src"),
+        ("uv", "run", "python", "-m", "compileall", "-q", "src", "scripts"),
+        ("uv", "run", "pytest", "-q", "-W", "error::ResourceWarning"),
+        ("uv", "run", "aspenops", "demo"),
+        ("uv", "run", "python", "scripts/check_mcp.py"),
+        ("git", "diff", "--exit-code"),
+    )
+
+
 def test_command_identity_is_deterministic_and_order_sensitive() -> None:
     commands = (("python", "-m", "pytest"), ("python", "gate.py"))
 
