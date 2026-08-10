@@ -15,6 +15,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record workflow dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION DISPATCHED tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
   linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -99,7 +111,7 @@ jobs:
           if ($staged -ne '.github/workflows/current-main-qualification-once.yml') { throw "unexpected staged path: $staged" }
 
   publish:
-    needs: [linux, windows]
+    needs: [probe, linux, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -108,7 +120,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
       - name: Publish exact qualified clean tree
-        id: publish
         shell: bash
         run: |
           set -euo pipefail
@@ -119,13 +130,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'chore(ci): remove completed current-main qualifier'
-          qualified="$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD^)" = "$parent"
           git push origin HEAD:main
-          echo "qualified=$qualified" >> "$GITHUB_OUTPUT"
 
   record:
-    needs: [linux, windows, publish]
+    needs: [probe, linux, windows, publish]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -133,6 +142,7 @@ jobs:
       - name: Record exact machine outcome
         env:
           GH_TOKEN: ${{ github.token }}
+          PROBE: ${{ needs.probe.result }}
           LINUX: ${{ needs.linux.result }}
           WINDOWS: ${{ needs.windows.result }}
           PUBLISH: ${{ needs.publish.result }}
@@ -140,6 +150,6 @@ jobs:
         run: |
           set -euo pipefail
           outcome=failure
-          if [[ "$LINUX" == success && "$WINDOWS" == success && "$PUBLISH" == success ]]; then outcome=success; fi
-          gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION outcome=${outcome} tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} linux=${LINUX} windows=${WINDOWS} publish=${PUBLISH} controller=self-removed-on-success licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
+          if [[ "$PROBE" == success && "$LINUX" == success && "$WINDOWS" == success && "$PUBLISH" == success ]]; then outcome=success; fi
+          gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION outcome=${outcome} tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} probe=${PROBE} linux=${LINUX} windows=${WINDOWS} publish=${PUBLISH} controller=self-removed-on-success licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
           test "$outcome" = success
