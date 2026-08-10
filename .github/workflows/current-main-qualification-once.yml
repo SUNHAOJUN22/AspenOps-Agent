@@ -1,10 +1,8 @@
 name: Current main qualification once
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/current-main-qualification-once.yml
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -16,6 +14,10 @@ concurrency:
 
 jobs:
   probe:
+    if: >-
+      github.event.issue.number == 116 &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -28,11 +30,16 @@ jobs:
           gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION DISPATCHED tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
   linux:
+    if: >-
+      github.event.issue.number == 116 &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
@@ -63,11 +70,16 @@ jobs:
           test "$(git diff --cached --name-only)" = '.github/workflows/current-main-qualification-once.yml'
 
   windows:
+    if: >-
+      github.event.issue.number == 116 &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
@@ -117,6 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: true
       - name: Publish exact qualified clean tree
@@ -135,7 +148,11 @@ jobs:
 
   record:
     needs: [probe, linux, windows, publish]
-    if: always()
+    if: >-
+      always() &&
+      github.event.issue.number == 116 &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
