@@ -24,7 +24,16 @@ Command = tuple[str, ...]
 CommandGroup = tuple[Command, ...]
 
 COMMANDS: dict[str, CommandGroup] = {
-    "aspenops": (("uv", "run", "pytest", "-W", "error::ResourceWarning", "-q"),),
+    "aspenops": (
+        ("uv", "run", "ruff", "check", "."),
+        ("uv", "run", "ruff", "format", "--check", "."),
+        ("uv", "run", "mypy", "src"),
+        ("uv", "run", "python", "-m", "compileall", "-q", "src", "scripts"),
+        ("uv", "run", "pytest", "-q", "-W", "error::ResourceWarning"),
+        ("uv", "run", "aspenops", "demo"),
+        ("uv", "run", "python", "scripts/check_mcp.py"),
+        ("git", "diff", "--exit-code"),
+    ),
     "scicomputation": (("python", "scripts/verify_all.py", "--profile", "core"),),
     "processing": (
         ("python", "scripts/run_ci.py"),
@@ -89,126 +98,33 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def remote_main_sha(repository: str) -> str:
-    """Resolve a public repository's current main SHA with bounded retry."""
-    url = f"https://github.com/{repository}.git"
-    error: Exception | None = None
-    for attempt in range(1, 4):
-        try:
-            result = subprocess.run(
-                ["git", "ls-remote", url, "refs/heads/main"],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            fields = result.stdout.strip().split()
-            if len(fields) != 2 or len(fields[0]) != 40:
-                raise RuntimeError(
-                    f"unexpected ls-remote response for {repository}: {result.stdout!r}"
-                )
-            return fields[0]
-        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
-            error = exc
-            if attempt < 3:
-                time.sleep(2 * attempt)
-    raise RuntimeError(f"unable to resolve main for {repository}: {error}")
-
-
-def read_previous(path: Path | None, tested_sha: str) -> tuple[int, int]:
-    """Validate a previous stage before carrying its active time forward."""
-    if path is None:
-        return 0, 0
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("verdict") != "PASS":
-        raise RuntimeError(f"previous stage is not PASS: {path}")
-    if payload.get("tested_sha") != tested_sha:
-        raise RuntimeError(
-            f"previous stage SHA mismatch: {payload.get('tested_sha')} != {tested_sha}"
-        )
-    active_ns = payload.get("total_active_ns")
-    cycles = payload.get("total_cycles")
-    if isinstance(active_ns, bool) or not isinstance(active_ns, int) or active_ns < 0:
-        raise RuntimeError("previous total_active_ns is invalid")
-    if isinstance(cycles, bool) or not isinstance(cycles, int) or cycles < 0:
-        raise RuntimeError("previous total_cycles is invalid")
-    return active_ns, cycles
-
-
-def base_summary(
-    *,
-    slug: str,
-    kind: str,
-    repository: str,
-    tested_sha: str,
-    stage: int,
-    target_active_ns: int,
-    previous_active_ns: int,
-    previous_cycles: int,
-    commands: CommandGroup,
-    started_at: str,
-) -> dict[str, Any]:
-    """Build common immutable identity fields for a stage summary."""
-    return {
-        "schema_version": "six-repository-active-stage-3.0.0",
-        "slug": slug,
-        "kind": kind,
-        "repository": repository,
-        "tested_sha": tested_sha,
-        "stage": stage,
-        "target_active_ns": target_active_ns,
-        "previous_active_ns": previous_active_ns,
-        "previous_cycles": previous_cycles,
-        "stage_active_ns": 0,
-        "stage_cycles": 0,
-        "total_active_ns": previous_active_ns,
-        "total_cycles": previous_cycles,
-        "commands": [list(command) for command in commands],
-        "command_sha256": command_identity(commands),
-        "started_at": started_at,
-        "ended_at": None,
-        "runner_os": platform.platform(),
-        "python": platform.python_version(),
-        "workflow_run_id": os.getenv("GITHUB_RUN_ID"),
-        "workflow_run_attempt": os.getenv("GITHUB_RUN_ATTEMPT"),
-        "job": os.getenv("GITHUB_JOB"),
-        "verdict": "RUNNING",
-        "failure": None,
-    }
-
-
-def write_terminal_summary(
-    summary_path: Path,
-    summary: dict[str, Any],
-    *,
-    verdict: str,
-    failure: str | None,
-    stage_active_ns: int,
-    stage_cycles: int,
-) -> None:
-    """Finalize a stage summary without weakening an earlier failure."""
-    summary.update(
-        {
-            "stage_active_ns": stage_active_ns,
-            "stage_cycles": stage_cycles,
-            "total_active_ns": summary["previous_active_ns"] + stage_active_ns,
-            "total_cycles": summary["previous_cycles"] + stage_cycles,
-            "ended_at": utc_now(),
-            "verdict": verdict,
-            "failure": failure,
-        }
+    """Read the current remote ``main`` without mutating the local repository."""
+    completed = subprocess.run(
+        ["git", "ls-remote", f"https://github.com/{repository}.git", "refs/heads/main"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
     )
-    atomic_json(summary_path, summary)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"cannot resolve remote main for {repository}: {completed.stderr.strip()}"
+        )
+    fields = completed.stdout.strip().split()
+    if len(fields) != 2 or fields[1] != "refs/heads/main":
+        raise RuntimeError(f"unexpected ls-remote response for {repository!r}: {completed.stdout!r}")
+    return fields[0]
 
 
 def execute_cycle(commands: CommandGroup) -> tuple[int, bytes, int]:
-    """Execute a formal command sequence without a shell and sum active time."""
+    """Execute one formal cycle, stopping at the first failed command.
+
+    The returned nanoseconds cover formal command subprocesses only. No setup,
+    remote-SHA check, sleep, ledger I/O or artifact work is included.
+    """
+    output = bytearray()
     active_ns = 0
-    output_parts: list[bytes] = []
-    returncode = 0
     for command in commands:
-        output_parts.append(
-            ("$ " + json.dumps(list(command), ensure_ascii=False) + "\n").encode("utf-8")
-        )
         started_ns = time.monotonic_ns()
         completed = subprocess.run(
             list(command),
@@ -216,61 +132,127 @@ def execute_cycle(commands: CommandGroup) -> tuple[int, bytes, int]:
             stderr=subprocess.STDOUT,
             check=False,
         )
-        ended_ns = time.monotonic_ns()
-        elapsed_ns = ended_ns - started_ns
-        if elapsed_ns <= 0:
-            raise RuntimeError("monotonic clock produced a non-positive duration")
-        active_ns += elapsed_ns
-        output_parts.append(completed.stdout)
-        output_parts.append(b"\n")
-        returncode = completed.returncode
-        if returncode != 0:
-            break
-    return returncode, b"".join(output_parts), active_ns
+        active_ns += time.monotonic_ns() - started_ns
+        output.extend(b"$ ")
+        output.extend(" ".join(command).encode("utf-8"))
+        output.extend(b"\n")
+        output.extend(completed.stdout)
+        if not completed.stdout.endswith(b"\n"):
+            output.extend(b"\n")
+        if completed.returncode != 0:
+            return completed.returncode, bytes(output), active_ns
+    return 0, bytes(output), active_ns
+
+
+def read_previous(path: Path, tested_sha: str) -> tuple[int, int]:
+    """Load a prior stage only when its immutable identity is exactly aligned."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("verdict") != "PASS":
+        raise RuntimeError(f"previous stage is not PASS: {payload.get('verdict')!r}")
+    if payload.get("tested_sha") != tested_sha:
+        raise RuntimeError(
+            "previous stage SHA mismatch: "
+            f"expected {tested_sha}, observed {payload.get('tested_sha')!r}"
+        )
+    return int(payload["total_active_ns"]), int(payload["total_cycles"])
+
+
+def terminal_payload(
+    base: dict[str, Any],
+    *,
+    verdict: str,
+    failure: str | None,
+    stage_active_ns: int,
+    stage_cycles: int,
+) -> dict[str, Any]:
+    """Build one terminal summary without mutating the caller's base mapping."""
+    payload = dict(base)
+    payload.update(
+        {
+            "verdict": verdict,
+            "failure": failure,
+            "stage_active_ns": stage_active_ns,
+            "stage_cycles": stage_cycles,
+            "total_active_ns": int(base["initial_active_ns"]) + stage_active_ns,
+            "total_cycles": int(base["initial_cycles"]) + stage_cycles,
+            "ended_at": utc_now(),
+        }
+    )
+    return payload
+
+
+def write_terminal_summary(
+    path: Path,
+    base: dict[str, Any],
+    *,
+    verdict: str,
+    failure: str | None,
+    stage_active_ns: int,
+    stage_cycles: int,
+) -> None:
+    """Persist the terminal state in one atomic write."""
+    atomic_json(
+        path,
+        terminal_payload(
+            base,
+            verdict=verdict,
+            failure=failure,
+            stage_active_ns=stage_active_ns,
+            stage_cycles=stage_cycles,
+        ),
+    )
 
 
 def run_stage(args: argparse.Namespace) -> int:
-    """Execute one active-test stage."""
-    if args.kind not in COMMANDS:
-        raise ValueError(f"unsupported repository kind: {args.kind}")
-    if len(args.tested_sha) != 40:
-        raise ValueError("tested SHA must contain exactly 40 hexadecimal characters")
-    try:
-        int(args.tested_sha, 16)
-    except ValueError as exc:
-        raise ValueError("tested SHA is not hexadecimal") from exc
+    """Run one stage and fail closed on a moved remote ``main``."""
+    if args.stage <= 0:
+        raise ValueError("stage must be positive")
     if args.target_active_ns <= 0:
-        raise ValueError("target active time must be positive")
-    if args.stage not in {1, 2}:
-        raise ValueError("stage must be 1 or 2")
+        raise ValueError("target-active-ns must be positive")
+    if not args.tested_sha.strip():
+        raise ValueError("tested-sha must not be empty")
 
+    commands = COMMANDS[args.kind]
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    ledger_path = output_dir / f"{args.slug}-ledger.jsonl"
+    ledger_path = output_dir / f"{args.slug}-stage-{args.stage}.ndjson"
     summary_path = output_dir / f"{args.slug}-summary.json"
-    last_log_path = output_dir / f"{args.slug}-last-cycle.log"
-    previous_active_ns, previous_cycles = read_previous(
-        args.previous_summary,
-        args.tested_sha,
-    )
-    commands = COMMANDS[args.kind]
-    summary = base_summary(
-        slug=args.slug,
-        kind=args.kind,
-        repository=args.repository,
-        tested_sha=args.tested_sha,
-        stage=args.stage,
-        target_active_ns=args.target_active_ns,
-        previous_active_ns=previous_active_ns,
-        previous_cycles=previous_cycles,
-        commands=commands,
-        started_at=utc_now(),
-    )
-    atomic_json(summary_path, summary)
 
-    initial_remote = remote_main_sha(args.repository)
-    if initial_remote != args.tested_sha:
-        failure = f"STALE_MAIN before stage: tested={args.tested_sha} remote={initial_remote}"
+    initial_active_ns = 0
+    initial_cycles = 0
+    if args.previous_summary is not None:
+        initial_active_ns, initial_cycles = read_previous(
+            args.previous_summary.resolve(),
+            args.tested_sha,
+        )
+    if initial_active_ns >= args.target_active_ns:
+        raise ValueError(
+            "previous active time already meets/exceeds requested target; "
+            "a later stage must advance the target"
+        )
+
+    summary: dict[str, Any] = {
+        "schema_version": "six-repository-active-gate/v4",
+        "slug": args.slug,
+        "kind": args.kind,
+        "repository": args.repository,
+        "tested_sha": args.tested_sha,
+        "stage": args.stage,
+        "target_active_ns": args.target_active_ns,
+        "initial_active_ns": initial_active_ns,
+        "initial_cycles": initial_cycles,
+        "command_identity": command_identity(commands),
+        "commands": [list(command) for command in commands],
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "started_at": utc_now(),
+    }
+
+    current_remote = remote_main_sha(args.repository)
+    if current_remote != args.tested_sha:
+        failure = (
+            f"STALE_MAIN before stage: tested={args.tested_sha} remote={current_remote}"
+        )
         write_terminal_summary(
             summary_path,
             summary,
@@ -284,18 +266,15 @@ def run_stage(args: argparse.Namespace) -> int:
 
     stage_active_ns = 0
     stage_cycles = 0
-    with ledger_path.open("a", encoding="utf-8", newline="\n") as ledger:
-        while stage_active_ns < args.target_active_ns:
+    with ledger_path.open("w", encoding="utf-8", newline="\n") as ledger:
+        while initial_active_ns + stage_active_ns < args.target_active_ns:
             stage_cycles += 1
             cycle_started_at = utc_now()
             returncode, output, elapsed_ns = execute_cycle(commands)
             stage_active_ns += elapsed_ns
-            last_log_path.write_bytes(output)
             record = {
-                "schema_version": "six-repository-active-cycle-3.0.0",
+                "schema_version": "six-repository-active-cycle/v4",
                 "slug": args.slug,
-                "repository": args.repository,
-                "tested_sha": args.tested_sha,
                 "stage": args.stage,
                 "cycle": stage_cycles,
                 "started_at": cycle_started_at,
