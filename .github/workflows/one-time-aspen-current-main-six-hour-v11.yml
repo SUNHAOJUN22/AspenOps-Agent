@@ -1,0 +1,278 @@
+name: Aspen current-main six-hour active qualification v11
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: aspen-current-main-six-hour-v11
+  cancel-in-progress: false
+
+jobs:
+  stage-1:
+    if: >-
+      github.event.issue.number == 114 &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == '/run-aspen-current-main-six-hour-v11'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 210
+    outputs:
+      tested_sha: ${{ steps.publish.outputs.tested_sha }}
+      active_ns: ${{ steps.summary.outputs.active_ns }}
+      cycles: ${{ steps.summary.outputs.cycles }}
+    steps:
+      - name: Check out exact controller parent
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Publish clean current-main target before qualification
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD)"
+          remote_before="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$remote_before" = "$parent"
+          git rm .github/workflows/one-time-aspen-current-main-six-hour-v11.yml
+          python - <<'PY'
+          from pathlib import Path
+          expected = {
+              'ci.yml',
+              'generate-performance-evidence.yml',
+              'licensed-aspen-certification.yml',
+              'windows-control-plane.yml',
+          }
+          root = Path('.github/workflows')
+          observed = {p.name for p in root.glob('*.yml')} | {p.name for p in root.glob('*.yaml')}
+          if observed != expected:
+              raise SystemExit(f'workflow inventory mismatch before qualification: {sorted(observed)}')
+          PY
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(ci): publish clean AspenOps current-main v11 target'
+          tested_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$parent"
+          git push origin HEAD:main
+          remote_after="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$remote_after" = "$tested_sha"
+          echo "tested_sha=$tested_sha" >> "$GITHUB_OUTPUT"
+      - name: Record exact run start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ steps.publish.outputs.tested_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_CURRENT_MAIN_SIX_HOUR_V11 RUNNING run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID tested_sha=$TESTED_SHA required_active_ns=21600000000000 stage1_target_ns=9000000000000 duration_basis=MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY controller=already_removed licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Untimed complete exact-tree baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ steps.publish.outputs.tested_sha }}'
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = '${{ steps.publish.outputs.tested_sha }}'
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -q -W error::ResourceWarning
+          uv run aspenops demo
+          uv run python scripts/check_mcp.py
+          uv run python scripts/refresh_current_main_readme.py --check
+          uv run python scripts/verify_delivery.py --root . --output "$RUNNER_TEMP/aspenops-delivery-v11.json"
+          git diff --exit-code
+      - name: Accumulate stage 1 active qualification runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/run_six_repository_active_gate.py \
+            --slug aspenops \
+            --kind aspenops \
+            --repository SUNHAOJUN22/AspenOps-Agent \
+            --tested-sha '${{ steps.publish.outputs.tested_sha }}' \
+            --stage 1 \
+            --target-active-ns 9000000000000 \
+            --output-dir "$RUNNER_TEMP/aspen-current-main-v11-stage1"
+      - name: Export stage 1 machine outputs
+        id: summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'aspen-current-main-v11-stage1' / 'aspenops-summary.json'
+          payload = json.loads(path.read_text(encoding='utf-8'))
+          if payload.get('verdict') != 'PASS':
+              raise SystemExit(f"stage 1 is not PASS: {payload.get('verdict')}")
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as stream:
+              stream.write(f"active_ns={int(payload['total_active_ns'])}\n")
+              stream.write(f"cycles={int(payload['total_cycles'])}\n")
+          PY
+      - name: Upload stage 1 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: aspen-current-main-v11-stage1-${{ github.run_id }}
+          path: ${{ runner.temp }}/aspen-current-main-v11-stage1/
+          if-no-files-found: warn
+          retention-days: 30
+
+  stage-2:
+    needs: stage-1
+    if: >-
+      github.event.issue.number == 114 &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == '/run-aspen-current-main-six-hour-v11'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    outputs:
+      tested_sha: ${{ needs.stage-1.outputs.tested_sha }}
+      active_ns: ${{ steps.summary.outputs.active_ns }}
+      cycles: ${{ steps.summary.outputs.cycles }}
+    steps:
+      - name: Check out exact clean current-main source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.stage-1.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install exact frozen environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Reconstruct exact stage 1 identity receipt
+        shell: bash
+        env:
+          TESTED_SHA: ${{ needs.stage-1.outputs.tested_sha }}
+          ACTIVE_NS: ${{ needs.stage-1.outputs.active_ns }}
+          CYCLES: ${{ needs.stage-1.outputs.cycles }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aspen-current-main-v11-stage2"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          payload = {
+              'verdict': 'PASS',
+              'tested_sha': os.environ['TESTED_SHA'],
+              'total_active_ns': int(os.environ['ACTIVE_NS']),
+              'total_cycles': int(os.environ['CYCLES']),
+          }
+          path = Path(os.environ['RUNNER_TEMP']) / 'aspen-current-main-v11-stage2' / 'stage1-summary.json'
+          path.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+      - name: Accumulate stage 2 to six active hours
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ needs.stage-1.outputs.tested_sha }}'
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = '${{ needs.stage-1.outputs.tested_sha }}'
+          uv run python scripts/run_six_repository_active_gate.py \
+            --slug aspenops \
+            --kind aspenops \
+            --repository SUNHAOJUN22/AspenOps-Agent \
+            --tested-sha '${{ needs.stage-1.outputs.tested_sha }}' \
+            --stage 2 \
+            --target-active-ns 21600000000000 \
+            --output-dir "$RUNNER_TEMP/aspen-current-main-v11-stage2" \
+            --previous-summary "$RUNNER_TEMP/aspen-current-main-v11-stage2/stage1-summary.json"
+      - name: Export final machine outputs
+        id: summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'aspen-current-main-v11-stage2' / 'aspenops-summary.json'
+          payload = json.loads(path.read_text(encoding='utf-8'))
+          if payload.get('verdict') != 'PASS':
+              raise SystemExit(f"stage 2 is not PASS: {payload.get('verdict')}")
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as stream:
+              stream.write(f"active_ns={int(payload['total_active_ns'])}\n")
+              stream.write(f"cycles={int(payload['total_cycles'])}\n")
+          PY
+      - name: Upload final evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: aspen-current-main-v11-final-${{ github.run_id }}
+          path: ${{ runner.temp }}/aspen-current-main-v11-stage2/
+          if-no-files-found: warn
+          retention-days: 30
+
+  duration-gate:
+    needs: [stage-1, stage-2]
+    if: >-
+      always() &&
+      github.event.issue.number == 114 &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == '/run-aspen-current-main-six-hour-v11'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce exact current-main six active hours
+        shell: bash
+        env:
+          STAGE1_RESULT: ${{ needs.stage-1.result }}
+          STAGE2_RESULT: ${{ needs.stage-2.result }}
+          ACTIVE_NS: ${{ needs.stage-2.outputs.active_ns }}
+          TESTED_SHA: ${{ needs.stage-2.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
+          test "$STAGE1_RESULT" = success
+          test "$STAGE2_RESULT" = success
+          test "${ACTIVE_NS:-0}" -ge 21600000000000
+          test -n "$TESTED_SHA"
+          remote_sha="$(git ls-remote https://github.com/$GITHUB_REPOSITORY.git refs/heads/main | cut -f1)"
+          test "$remote_sha" = "$TESTED_SHA"
+      - name: Record final machine ledger
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGE1_RESULT: ${{ needs.stage-1.result }}
+          STAGE2_RESULT: ${{ needs.stage-2.result }}
+          ACTIVE_NS: ${{ needs.stage-2.outputs.active_ns }}
+          TESTED_SHA: ${{ needs.stage-2.outputs.tested_sha }}
+          STAGE1_CYCLES: ${{ needs.stage-1.outputs.cycles }}
+          STAGE2_CYCLES: ${{ needs.stage-2.outputs.cycles }}
+        run: |
+          set -euo pipefail
+          verdict=FAIL
+          remote_sha="$(git ls-remote https://github.com/$GITHUB_REPOSITORY.git refs/heads/main | cut -f1)"
+          if [[ -n "${TESTED_SHA:-}" && "$remote_sha" != "$TESTED_SHA" ]]; then
+            verdict=STALE_MAIN
+          elif [[ "$STAGE1_RESULT" == success && "$STAGE2_RESULT" == success && "${ACTIVE_NS:-0}" -ge 21600000000000 ]]; then
+            verdict=PASS
+          fi
+          gh issue comment 114 --repo "$GITHUB_REPOSITORY" --body "ASPEN_CURRENT_MAIN_SIX_HOUR_V11 verdict=$verdict run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID stage1=$STAGE1_RESULT stage2=$STAGE2_RESULT active_ns=${ACTIVE_NS:-0} required_active_ns=21600000000000 tested_sha=${TESTED_SHA:-UNRESOLVED} remote_main=$remote_sha cycles=${STAGE1_CYCLES:-0}+${STAGE2_CYCLES:-0} duration_basis=MONOTONIC_ACTIVE_TEST_EXECUTION_ONLY controller=removed_before_testing licensed_aspen=PENDING_REAL_ASPEN_CERTIFICATION"
+          test "$verdict" = PASS
