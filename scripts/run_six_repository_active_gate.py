@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import platform
 import subprocess
 import sys
@@ -101,8 +100,7 @@ def remote_main_sha(repository: str) -> str:
     """Read the current remote ``main`` without mutating the local repository."""
     completed = subprocess.run(
         ["git", "ls-remote", f"https://github.com/{repository}.git", "refs/heads/main"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         text=True,
     )
@@ -112,7 +110,9 @@ def remote_main_sha(repository: str) -> str:
         )
     fields = completed.stdout.strip().split()
     if len(fields) != 2 or fields[1] != "refs/heads/main":
-        raise RuntimeError(f"unexpected ls-remote response for {repository!r}: {completed.stdout!r}")
+        raise RuntimeError(
+            f"unexpected ls-remote response for {repository!r}: {completed.stdout!r}"
+        )
     return fields[0]
 
 
