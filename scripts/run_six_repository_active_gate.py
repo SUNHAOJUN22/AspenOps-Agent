@@ -250,9 +250,7 @@ def run_stage(args: argparse.Namespace) -> int:
 
     current_remote = remote_main_sha(args.repository)
     if current_remote != args.tested_sha:
-        failure = (
-            f"STALE_MAIN before stage: tested={args.tested_sha} remote={current_remote}"
-        )
+        failure = f"STALE_MAIN before stage: tested={args.tested_sha} remote={current_remote}"
         write_terminal_summary(
             summary_path,
             summary,

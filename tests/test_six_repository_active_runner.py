@@ -144,9 +144,7 @@ def test_run_stage_fails_closed_when_main_is_stale(
 
     assert run_stage(args) == 3
     assert executed is False
-    summary = json.loads(
-        (tmp_path / "aspenops-summary.json").read_text(encoding="utf-8")
-    )
+    summary = json.loads((tmp_path / "aspenops-summary.json").read_text(encoding="utf-8"))
     assert summary["verdict"] == "STALE_MAIN"
     assert summary["total_active_ns"] == 0
     assert "STALE_MAIN before stage" in summary["failure"]
@@ -181,9 +179,7 @@ def test_run_stage_accumulates_only_formal_cycle_time(
     )
 
     assert run_stage(args) == 0
-    summary = json.loads(
-        (tmp_path / "aspenops-summary.json").read_text(encoding="utf-8")
-    )
+    summary = json.loads((tmp_path / "aspenops-summary.json").read_text(encoding="utf-8"))
     assert summary["verdict"] == "PASS"
     assert summary["stage_active_ns"] == 10
     assert summary["total_active_ns"] == 10

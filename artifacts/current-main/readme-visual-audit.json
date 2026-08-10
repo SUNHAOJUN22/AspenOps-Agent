@@ -1,0 +1,18 @@
+{
+  "schema_version": "current-main-readme-visual-audit-2.0.0",
+  "project": "AspenOps 2.0",
+  "generated_files": [
+    "README.en.md",
+    "README.md",
+    "docs/CURRENT_MAIN_ACCEPTANCE.md",
+    "docs/current-main/aspenops-current-main-en.svg",
+    "docs/current-main/aspenops-current-main-zh.svg"
+  ],
+  "code_anchors": [
+    "src/aspenops_nexus/process_ir.py",
+    "src/aspenops_nexus/models.py",
+    "src/aspenops_nexus/pool.py"
+  ],
+  "failures": [],
+  "acceptance": "PASS"
+}
