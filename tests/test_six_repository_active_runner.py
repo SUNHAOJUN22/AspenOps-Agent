@@ -50,7 +50,11 @@ def test_execute_cycle_stops_at_first_failure(tmp_path: Path) -> None:
     commands = (
         (sys.executable, "-c", "print('first-pass')"),
         (sys.executable, "-c", "raise SystemExit(7)"),
-        (sys.executable, "-c", f"from pathlib import Path; Path({str(sentinel)!r}).write_text('bad')"),
+        (
+            sys.executable,
+            "-c",
+            f"from pathlib import Path; Path({str(sentinel)!r}).write_text('bad')",
+        ),
     )
 
     returncode, output, active_ns = execute_cycle(commands)
@@ -96,7 +100,10 @@ def test_read_previous_requires_pass_and_exact_sha(tmp_path: Path) -> None:
         read_previous(summary, tested_sha)
 
 
-def test_run_stage_fails_closed_when_main_is_stale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_stage_fails_closed_when_main_is_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tested_sha = "a" * 40
     executed = False
 
@@ -105,7 +112,11 @@ def test_run_stage_fails_closed_when_main_is_stale(tmp_path: Path, monkeypatch: 
         executed = True
         return 0, b"unexpected", 1
 
-    monkeypatch.setitem(run_stage.__globals__, "remote_main_sha", lambda _repository: "b" * 40)
+    monkeypatch.setitem(
+        run_stage.__globals__,
+        "remote_main_sha",
+        lambda _repository: "b" * 40,
+    )
     monkeypatch.setitem(run_stage.__globals__, "execute_cycle", fake_execute_cycle)
     args = SimpleNamespace(
         kind="aspenops",
@@ -120,17 +131,26 @@ def test_run_stage_fails_closed_when_main_is_stale(tmp_path: Path, monkeypatch: 
 
     assert run_stage(args) == 3
     assert executed is False
-    summary = json.loads((tmp_path / "aspenops-summary.json").read_text(encoding="utf-8"))
+    summary = json.loads(
+        (tmp_path / "aspenops-summary.json").read_text(encoding="utf-8")
+    )
     assert summary["verdict"] == "STALE_MAIN"
     assert summary["total_active_ns"] == 0
     assert "STALE_MAIN before stage" in summary["failure"]
 
 
-def test_run_stage_accumulates_only_formal_cycle_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_stage_accumulates_only_formal_cycle_time(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tested_sha = "c" * 40
     cycle_ns = iter((4, 6))
 
-    monkeypatch.setitem(run_stage.__globals__, "remote_main_sha", lambda _repository: tested_sha)
+    monkeypatch.setitem(
+        run_stage.__globals__,
+        "remote_main_sha",
+        lambda _repository: tested_sha,
+    )
     monkeypatch.setitem(
         run_stage.__globals__,
         "execute_cycle",
@@ -148,7 +168,9 @@ def test_run_stage_accumulates_only_formal_cycle_time(tmp_path: Path, monkeypatc
     )
 
     assert run_stage(args) == 0
-    summary = json.loads((tmp_path / "aspenops-summary.json").read_text(encoding="utf-8"))
+    summary = json.loads(
+        (tmp_path / "aspenops-summary.json").read_text(encoding="utf-8")
+    )
     assert summary["verdict"] == "PASS"
     assert summary["stage_active_ns"] == 10
     assert summary["total_active_ns"] == 10
