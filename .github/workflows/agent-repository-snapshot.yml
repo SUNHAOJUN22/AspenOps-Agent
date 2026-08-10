@@ -1,10 +1,8 @@
 name: Agent Repository Snapshot
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths:
-      - .github/workflows/agent-repository-snapshot.yml
   workflow_dispatch:
 
 permissions:
@@ -20,7 +18,7 @@ jobs:
       - name: Upload complete working tree
         uses: actions/upload-artifact@v4
         with:
-          name: repository-snapshot-${{ github.sha }}
+          name: repository-snapshot-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             .
             !.git
