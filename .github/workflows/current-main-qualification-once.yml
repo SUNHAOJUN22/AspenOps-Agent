@@ -1,8 +1,11 @@
 name: Current main qualification once
 
 on:
-  issue_comment:
-    types: [created]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/current-main-qualification-once.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,10 +17,6 @@ concurrency:
 
 jobs:
   probe:
-    if: >-
-      github.event.issue.number == 116 &&
-      github.event.comment.user.login == github.repository_owner &&
-      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -30,10 +29,6 @@ jobs:
           gh issue comment 116 --body "CURRENT_MAIN_EXACT_QUALIFICATION DISPATCHED tested_parent=${GITHUB_SHA} run=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
   linux:
-    if: >-
-      github.event.issue.number == 116 &&
-      github.event.comment.user.login == github.repository_owner &&
-      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -70,10 +65,6 @@ jobs:
           test "$(git diff --cached --name-only)" = '.github/workflows/current-main-qualification-once.yml'
 
   windows:
-    if: >-
-      github.event.issue.number == 116 &&
-      github.event.comment.user.login == github.repository_owner &&
-      contains(github.event.comment.body, '/qualify-current-main')
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
@@ -148,11 +139,7 @@ jobs:
 
   record:
     needs: [probe, linux, windows, publish]
-    if: >-
-      always() &&
-      github.event.issue.number == 116 &&
-      github.event.comment.user.login == github.repository_owner &&
-      contains(github.event.comment.body, '/qualify-current-main')
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
