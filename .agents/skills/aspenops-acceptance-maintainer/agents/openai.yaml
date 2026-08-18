@@ -1,0 +1,7 @@
+interface:
+  display_name: "AspenOps Acceptance Maintainer"
+  short_description: "Audit AspenOps numerical and evidence gates"
+  brand_color: "#006D77"
+  default_prompt: "Use $aspenops-acceptance-maintainer to audit this AspenOps change and preserve its evidence boundary."
+policy:
+  allow_implicit_invocation: true
