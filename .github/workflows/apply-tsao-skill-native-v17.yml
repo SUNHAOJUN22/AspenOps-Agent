@@ -32,15 +32,15 @@ jobs:
       - name: Remove temporary and non-authoritative workflow surfaces
         shell: bash
         run: rm -f .github/workflows/agent-skill-portability.yml .github/workflows/apply-tsao-skill-native-v17.yml
-      - name: Sync frozen environment
-        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Normalize materialized Python surfaces
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff check . --fix
-          uv run ruff format .
+          uv run ruff check . --fix --exit-zero 2>&1 | tee /tmp/v17-normalize-ruff.log
+          uv run ruff format . 2>&1 | tee /tmp/v17-normalize-format.log
           git diff --check
+      - name: Sync frozen environment
+        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Validate canonical Skill and bilingual assets
         shell: bash
         run: |
@@ -65,21 +65,39 @@ jobs:
                   raise SystemExit(f'Unicode/source corruption in {path}')
           PY
       - name: Run full repository tests
-        run: uv run pytest -q
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest -q 2>&1 | tee /tmp/v17-pytest.log
       - name: Verify frozen lock
         run: uv lock --check
       - name: Ruff lint
-        run: uv run ruff check .
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run ruff check . 2>&1 | tee /tmp/v17-ruff.log
       - name: Ruff formatting
-        run: uv run ruff format --check .
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run ruff format --check . 2>&1 | tee /tmp/v17-ruff-format.log
       - name: Strict mypy
-        run: uv run mypy src
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run mypy src 2>&1 | tee /tmp/v17-mypy.log
       - name: Compile Python sources
         run: uv run python -m compileall -q src scripts
       - name: Branch coverage gate
-        run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-fail-under=95.0
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-fail-under=95.0 2>&1 | tee /tmp/v17-coverage.log
       - name: Build distributions
-        run: uv build
+        shell: bash
+        run: |
+          set -o pipefail
+          uv build 2>&1 | tee /tmp/v17-build.log
       - name: MCP surface check
         run: uv run python scripts/check_mcp.py
       - name: Clean ignored runtime outputs
@@ -110,7 +128,7 @@ jobs:
           for log in /tmp/v17-*.log; do
             if [[ -f "$log" ]]; then
               printf '\n===== %s =====\n' "$(basename "$log")" >> /tmp/v17-failure.txt
-              tail -n 200 "$log" >> /tmp/v17-failure.txt
+              tail -n 220 "$log" >> /tmp/v17-failure.txt
             fi
           done
           gh issue create --title 'V17 remediation workflow failed (run ${{ github.run_id }})' --body-file /tmp/v17-failure.txt
