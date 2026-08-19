@@ -1,0 +1,63 @@
+name: Apply comprehensive skill-native V17
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+concurrency:
+  group: aspenops-skill-native-v17
+  cancel-in-progress: false
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.11.16'
+          python-version: '3.12'
+      - name: Sync frozen environment
+        run: uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Apply verified comprehensive payload
+        run: python scripts/apply_tsao_skill_native_v17.py
+      - name: Validate Skill and focused remediation contracts
+        run: |
+          uv run python scripts/validate_agent_skills.py --root . --overlay-mode
+          uv run pytest -q tests/test_v4_dimensional_contracts.py tests/test_v4_licensed_capability.py tests/test_v5_reaction_contracts.py tests/test_v5_scientific_validity.py tests/test_v6_qualification_gate.py
+      - name: Run permanent repository gates
+        run: |
+          uv lock --check
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run python -m compileall -q src scripts
+          uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-fail-under=95.0
+          uv build
+          uv run python scripts/check_mcp.py
+      - name: Clean ignored runtime outputs
+        shell: bash
+        run: git clean -fdX
+      - name: Commit verified source and remove one-shot payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .tsao-skill-native-v17 scripts/apply_tsao_skill_native_v17.py .github/workflows/apply-tsao-skill-native-v17.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: complete AspenOps skill-native V17 remediation'
+          git push origin HEAD:main
+      - name: Open diagnostic issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          printf 'Workflow run: %s/actions/runs/%s\nCommit: %s\n' '${{ github.server_url }}/${{ github.repository }}' '${{ github.run_id }}' '${{ github.sha }}' > /tmp/v17-failure.txt
+          gh issue create --title 'V17 remediation workflow failed (run ${{ github.run_id }})' --body-file /tmp/v17-failure.txt
