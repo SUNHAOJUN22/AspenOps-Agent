@@ -34,6 +34,13 @@ jobs:
         run: rm -f .github/workflows/agent-skill-portability.yml .github/workflows/apply-tsao-skill-native-v17.yml
       - name: Sync frozen environment
         run: uv sync --frozen --extra dev --extra agent --extra signing
+      - name: Normalize materialized Python surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check . --fix
+          uv run ruff format .
+          git diff --check
       - name: Validate canonical Skill and bilingual assets
         shell: bash
         run: |
@@ -100,4 +107,10 @@ jobs:
         shell: bash
         run: |
           printf 'Workflow run: %s/actions/runs/%s\nCommit: %s\n' '${{ github.server_url }}/${{ github.repository }}' '${{ github.run_id }}' '${{ github.sha }}' > /tmp/v17-failure.txt
+          for log in /tmp/v17-*.log; do
+            if [[ -f "$log" ]]; then
+              printf '\n===== %s =====\n' "$(basename "$log")" >> /tmp/v17-failure.txt
+              tail -n 200 "$log" >> /tmp/v17-failure.txt
+            fi
+          done
           gh issue create --title 'V17 remediation workflow failed (run ${{ github.run_id }})' --body-file /tmp/v17-failure.txt
