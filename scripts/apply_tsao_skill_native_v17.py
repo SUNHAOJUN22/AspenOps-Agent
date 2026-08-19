@@ -46,7 +46,31 @@ def safe_extract(tf: tarfile.TarFile, target: Path) -> None:
             raise RuntimeError(f"unsafe archive member: {member.name}")
         if member.issym() or member.islnk():
             raise RuntimeError(f"links are forbidden: {member.name}")
-    tf.extractall(target)
+    tf.extractall(target, filter="data")
+
+
+def locate_payload_root(extracted: Path) -> Path:
+    direct = extracted
+    if (
+        (direct / "files").is_dir()
+        and (direct / "readme_sections/section-en.md").is_file()
+        and (direct / "readme_sections/section-zh.md").is_file()
+    ):
+        return direct
+    candidates = [
+        files_dir.parent
+        for files_dir in extracted.rglob("files")
+        if files_dir.is_dir()
+        and (files_dir.parent / "readme_sections/section-en.md").is_file()
+        and (files_dir.parent / "readme_sections/section-zh.md").is_file()
+    ]
+    unique = sorted({candidate.resolve() for candidate in candidates})
+    if len(unique) != 1:
+        raise RuntimeError(
+            "payload layout invalid: expected exactly one root containing files/ and readme_sections/, "
+            f"found {len(unique)}"
+        )
+    return unique[0]
 
 
 def load_apply(path: Path):
@@ -96,10 +120,11 @@ def main() -> int:
     verify_tracked_payload(payload_file)
     raw = payload_file.read_bytes()
     with tempfile.TemporaryDirectory(prefix="tsao-v17-") as tmp:
-        temp = Path(tmp)
+        extracted = Path(tmp)
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tf:
-            safe_extract(tf, temp)
-        files = temp / "files"
+            safe_extract(tf, extracted)
+        payload_root = locate_payload_root(extracted)
+        files = payload_root / "files"
         for source in sorted(files.rglob("*")):
             if not source.is_file():
                 continue
@@ -112,8 +137,8 @@ def main() -> int:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, dest)
         sections = {
-            "en": (temp / "readme_sections/section-en.md").read_text(encoding="utf-8"),
-            "zh": (temp / "readme_sections/section-zh.md").read_text(encoding="utf-8"),
+            "en": (payload_root / "readme_sections/section-en.md").read_text(encoding="utf-8"),
+            "zh": (payload_root / "readme_sections/section-zh.md").read_text(encoding="utf-8"),
         }
         candidates = [
             ROOT / name
@@ -140,7 +165,7 @@ def main() -> int:
                 encoding="utf-8",
                 newline="\n",
             )
-        transforms = temp / "transforms"
+        transforms = payload_root / "transforms"
         if transforms.is_dir():
             for path in sorted(transforms.glob("*.py")):
                 load_apply(path)(ROOT)
