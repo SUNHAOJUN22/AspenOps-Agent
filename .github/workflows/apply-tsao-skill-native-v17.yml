@@ -1,4 +1,5 @@
 name: Apply comprehensive skill-native V17
+
 on:
   push:
     branches: [main]
@@ -6,15 +7,16 @@ on:
       - .tsao-skill-native-v17/payload.tar.gz
       - scripts/apply_tsao_skill_native_v17.py
       - .github/workflows/apply-tsao-skill-native-v17.yml
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
+
 permissions:
   contents: write
   issues: write
+
 concurrency:
   group: aspenops-skill-native-v17
   cancel-in-progress: false
+
 jobs:
   apply-test-commit:
     runs-on: ubuntu-24.04
@@ -29,9 +31,16 @@ jobs:
           python-version: '3.12'
       - name: Apply verified comprehensive payload
         run: python scripts/apply_tsao_skill_native_v17.py
-      - name: Remove temporary and non-authoritative workflow surfaces
+      - name: Remove one-shot and non-authoritative surfaces before validation
         shell: bash
-        run: rm -f .github/workflows/agent-skill-portability.yml .github/workflows/apply-tsao-skill-native-v17.yml
+        run: |
+          set -euo pipefail
+          rm -rf .tsao-skill-native-v17
+          rm -f scripts/apply_tsao_skill_native_v17.py
+          rm -f .github/workflows/agent-skill-portability.yml
+          rm -f .github/workflows/apply-tsao-skill-native-v17.yml
+      - name: Sync frozen environment before invoking quality tools
+        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Normalize materialized Python surfaces
         shell: bash
         run: |
@@ -39,8 +48,6 @@ jobs:
           uv run ruff check . --fix --exit-zero 2>&1 | tee /tmp/v17-normalize-ruff.log
           uv run ruff format . 2>&1 | tee /tmp/v17-normalize-format.log
           git diff --check
-      - name: Sync frozen environment
-        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Validate canonical Skill and bilingual assets
         shell: bash
         run: |
@@ -103,11 +110,10 @@ jobs:
       - name: Clean ignored runtime outputs
         shell: bash
         run: git clean -fdX
-      - name: Commit verified source and remove one-shot payload
+      - name: Commit verified final source to main
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .tsao-skill-native-v17 scripts/apply_tsao_skill_native_v17.py
           git add -A
           git diff --cached --check
           if git diff --cached --quiet; then
