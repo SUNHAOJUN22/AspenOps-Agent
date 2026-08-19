@@ -1,5 +1,11 @@
 name: Apply comprehensive skill-native V17
 on:
+  push:
+    branches: [main]
+    paths:
+      - .tsao-skill-native-v17/payload.tar.gz
+      - scripts/apply_tsao_skill_native_v17.py
+      - .github/workflows/apply-tsao-skill-native-v17.yml
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
@@ -12,7 +18,7 @@ concurrency:
 jobs:
   apply-test-commit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -21,10 +27,10 @@ jobs:
         with:
           version: '0.11.16'
           python-version: '3.12'
-      - name: Sync frozen environment
-        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Apply verified comprehensive payload
         run: python scripts/apply_tsao_skill_native_v17.py
+      - name: Sync frozen environment after source materialization
+        run: uv sync --frozen --extra dev --extra agent --extra signing
       - name: Validate Skill and focused remediation contracts
         run: |
           uv run python scripts/validate_agent_skills.py --root . --overlay-mode
@@ -49,6 +55,10 @@ jobs:
           rm -rf .tsao-skill-native-v17 scripts/apply_tsao_skill_native_v17.py .github/workflows/apply-tsao-skill-native-v17.yml
           git add -A
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'Expected verified source changes were not produced.' >&2
+            exit 1
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'feat: complete AspenOps skill-native V17 remediation'
