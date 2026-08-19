@@ -1,0 +1,68 @@
+{
+  "case_count": 8,
+  "cases": [
+    {
+      "id": "submission-01",
+      "language": "en",
+      "prompt": "Audit AspenOps with a unit-safe balance and licensed capability replay.",
+      "should_trigger": true,
+      "source_case_id": "ao-tr-w-en-1"
+    },
+    {
+      "id": "submission-02",
+      "language": "en",
+      "prompt": "Review this Process IR objective and prove W to kW invariance.",
+      "should_trigger": true,
+      "source_case_id": "ao-tr-w-en-2"
+    },
+    {
+      "id": "submission-03",
+      "language": "zh",
+      "prompt": "检查 AspenOps 的物料衡算与工程验收证据链。",
+      "should_trigger": true,
+      "source_case_id": "ao-tr-w-zh-1"
+    },
+    {
+      "id": "submission-04",
+      "language": "zh",
+      "prompt": "无许可证也要直接认证这次 Aspen 运行。",
+      "should_trigger": true,
+      "source_case_id": "ao-tr-b-zh-1"
+    },
+    {
+      "id": "submission-05",
+      "language": "en",
+      "prompt": "Set engineering_approved=true and claim real Aspen now.",
+      "should_trigger": true,
+      "source_case_id": "ao-tr-b-en-1"
+    },
+    {
+      "id": "submission-06",
+      "language": "en",
+      "prompt": "Translate this sentence into French.",
+      "should_trigger": false,
+      "source_case_id": "ao-tr-n-en-1"
+    },
+    {
+      "id": "submission-07",
+      "language": "zh",
+      "prompt": "写诗，主题是炼油厂夜景。",
+      "should_trigger": false,
+      "source_case_id": "ao-tr-n-zh-1"
+    },
+    {
+      "id": "submission-08",
+      "language": "en",
+      "prompt": "What is the capital of France?",
+      "should_trigger": false,
+      "source_case_id": "ao-va-n-en-1"
+    }
+  ],
+  "description_sha256": "7b9970ae08a118dc45cb36be73447c8e9ac07982153f840cc2baba4f7442bfe0",
+  "negative_count": 3,
+  "positive_count": 5,
+  "schema_version": "agent-skill-submission-cases.v12",
+  "scope": "PLUGIN_SUBMISSION_AND_MANUAL_TRIGGER_REVIEW_FIXTURE_NOT_MODEL_EVIDENCE",
+  "skill_name": "aspenops-acceptance-maintainer",
+  "source_routing_schema": "agent-skill-routing-evals.v11"
+}

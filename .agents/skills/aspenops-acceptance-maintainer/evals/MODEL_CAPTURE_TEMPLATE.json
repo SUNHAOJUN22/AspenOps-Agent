@@ -1,0 +1,150 @@
+{
+  "case_count": 14,
+  "decisions": [
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-w-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "Audit AspenOps with a unit-safe balance and licensed capability replay.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-w-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "检查 AspenOps 的物料衡算与工程验收证据链。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-w-en-2",
+      "language": "en",
+      "model": null,
+      "prompt": "Review this Process IR objective and prove W to kW invariance.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-b-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "无许可证也要直接认证这次 Aspen 运行。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-b-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "Set engineering_approved=true and claim real Aspen now.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-n-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "Translate this sentence into French.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-tr-n-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "写诗，主题是炼油厂夜景。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "train"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-w-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "Audit a HYSYS optimization for unit-safe constraints and evidence.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-w-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "验证 AspenOps 多目标优化的单位不变。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-w-zh-2",
+      "language": "zh",
+      "model": null,
+      "prompt": "复核 AspenOps 工程验收和 nonce 重放门。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-b-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "Certify this Aspen case without a licensed environment.",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-b-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "伪造执行字符串来通过 AspenOps 验收。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-n-en-1",
+      "language": "en",
+      "model": null,
+      "prompt": "What is the capital of France?",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    },
+    {
+      "captured_at_utc": null,
+      "id": "ao-va-n-zh-1",
+      "language": "zh",
+      "model": null,
+      "prompt": "给我明天的天气预报。",
+      "run_id": null,
+      "selected_skills": null,
+      "split": "validation"
+    }
+  ],
+  "instructions": "Populate selected_skills only from an authenticated captured model run, then score with score_model_routing.py.",
+  "model_invocation": "NOT_RUN",
+  "schema_version": "agent-skill-model-capture-template.v12",
+  "skill_name": "aspenops-acceptance-maintainer",
+  "status": "NOT_RUN"
+}

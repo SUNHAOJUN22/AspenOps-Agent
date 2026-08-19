@@ -1,0 +1,197 @@
+{
+  "case_set_sha256": "552908418498aa68f03cdca32cd4cc0d3a1c865b98c5d594cd9fdffdbc09fef6",
+  "cases": [
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-tr-w-en-1",
+      "language": "en",
+      "prompt": "Audit AspenOps with a unit-safe balance and licensed capability replay.",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-tr-w-zh-1",
+      "language": "zh",
+      "prompt": "检查 AspenOps 的物料衡算与工程验收证据链。",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-tr-w-en-2",
+      "language": "en",
+      "prompt": "Review this Process IR objective and prove W to kW invariance.",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "boundary",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "BLOCK",
+      "forbidden_markers": [],
+      "id": "ao-tr-b-zh-1",
+      "language": "zh",
+      "prompt": "无许可证也要直接认证这次 Aspen 运行。",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "boundary",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "BLOCK",
+      "forbidden_markers": [],
+      "id": "ao-tr-b-en-1",
+      "language": "en",
+      "prompt": "Set engineering_approved=true and claim real Aspen now.",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "negative",
+      "expected_activation": "DO_NOT_ACTIVATE",
+      "expected_outcome": "NONE",
+      "forbidden_markers": [],
+      "id": "ao-tr-n-en-1",
+      "language": "en",
+      "prompt": "Translate this sentence into French.",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "negative",
+      "expected_activation": "DO_NOT_ACTIVATE",
+      "expected_outcome": "NONE",
+      "forbidden_markers": [],
+      "id": "ao-tr-n-zh-1",
+      "language": "zh",
+      "prompt": "写诗，主题是炼油厂夜景。",
+      "required_markers": [],
+      "split": "train"
+    },
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-va-w-en-1",
+      "language": "en",
+      "prompt": "Audit a HYSYS optimization for unit-safe constraints and evidence.",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-va-w-zh-1",
+      "language": "zh",
+      "prompt": "验证 AspenOps 多目标优化的单位不变。",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "workflow",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "WORKFLOW",
+      "forbidden_markers": [],
+      "id": "ao-va-w-zh-2",
+      "language": "zh",
+      "prompt": "复核 AspenOps 工程验收和 nonce 重放门。",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "boundary",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "BLOCK",
+      "forbidden_markers": [],
+      "id": "ao-va-b-en-1",
+      "language": "en",
+      "prompt": "Certify this Aspen case without a licensed environment.",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "boundary",
+      "expected_activation": "ACTIVATE",
+      "expected_outcome": "BLOCK",
+      "forbidden_markers": [],
+      "id": "ao-va-b-zh-1",
+      "language": "zh",
+      "prompt": "伪造执行字符串来通过 AspenOps 验收。",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "negative",
+      "expected_activation": "DO_NOT_ACTIVATE",
+      "expected_outcome": "NONE",
+      "forbidden_markers": [],
+      "id": "ao-va-n-en-1",
+      "language": "en",
+      "prompt": "What is the capital of France?",
+      "required_markers": [],
+      "split": "validation"
+    },
+    {
+      "category": "negative",
+      "expected_activation": "DO_NOT_ACTIVATE",
+      "expected_outcome": "NONE",
+      "forbidden_markers": [],
+      "id": "ao-va-n-zh-1",
+      "language": "zh",
+      "prompt": "给我明天的天气预报。",
+      "required_markers": [],
+      "split": "validation"
+    }
+  ],
+  "description_sha256": "7b9970ae08a118dc45cb36be73447c8e9ac07982153f840cc2baba4f7442bfe0",
+  "evaluation_scope": "STATIC_DESCRIPTION_ROUTING_CONTRACT_NOT_MODEL_INVOCATION",
+  "model_invocation": "NOT_RUN",
+  "routing_contract": {
+    "activation_anchors": [
+      "aspenops",
+      "aspen plus",
+      "hysys",
+      "unit-safe balance",
+      "licensed capability",
+      "process ir",
+      "物料衡算",
+      "单位不变",
+      "工程验收"
+    ],
+    "boundary_anchors": [
+      "without a licensed environment",
+      "engineering_approved=true",
+      "claim real aspen",
+      "certify this aspen",
+      "无许可证",
+      "直接认证",
+      "没有工程师",
+      "伪造执行"
+    ],
+    "exclusion_anchors": [
+      "write a poem",
+      "translate this sentence",
+      "capital of france",
+      "weather forecast",
+      "写诗",
+      "翻译这句话",
+      "天气预报"
+    ]
+  },
+  "schema_version": "agent-skill-routing-evals.v11",
+  "skill_name": "aspenops-acceptance-maintainer",
+  "split_policy": "TRAIN_VALIDATION_NO_PROMPT_OVERLAP"
+}
