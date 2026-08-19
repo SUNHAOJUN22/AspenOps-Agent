@@ -18,7 +18,7 @@ concurrency:
 jobs:
   apply-test-commit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,12 +29,12 @@ jobs:
           python-version: '3.12'
       - name: Apply verified comprehensive payload
         run: python scripts/apply_tsao_skill_native_v17.py
-      - name: Remove temporary and non-authoritative workflow surfaces before testing
+      - name: Remove temporary and non-authoritative workflow surfaces
         shell: bash
         run: rm -f .github/workflows/agent-skill-portability.yml .github/workflows/apply-tsao-skill-native-v17.yml
-      - name: Sync frozen environment after source materialization
+      - name: Sync frozen environment
         run: uv sync --frozen --extra dev --extra agent --extra signing
-      - name: Validate the materialized Skill and run the full test suite
+      - name: Validate canonical Skill and bilingual assets
         shell: bash
         run: |
           set -euo pipefail
@@ -57,17 +57,24 @@ jobs:
               if '\ufffd' in text or '\x00' in text:
                   raise SystemExit(f'Unicode/source corruption in {path}')
           PY
-          uv run pytest -q
-      - name: Run permanent repository gates
-        run: |
-          uv lock --check
-          uv run ruff check .
-          uv run ruff format --check .
-          uv run mypy src
-          uv run python -m compileall -q src scripts
-          uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-fail-under=95.0
-          uv build
-          uv run python scripts/check_mcp.py
+      - name: Run full repository tests
+        run: uv run pytest -q
+      - name: Verify frozen lock
+        run: uv lock --check
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff formatting
+        run: uv run ruff format --check .
+      - name: Strict mypy
+        run: uv run mypy src
+      - name: Compile Python sources
+        run: uv run python -m compileall -q src scripts
+      - name: Branch coverage gate
+        run: uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-report=term-missing --cov-fail-under=95.0
+      - name: Build distributions
+        run: uv build
+      - name: MCP surface check
+        run: uv run python scripts/check_mcp.py
       - name: Clean ignored runtime outputs
         shell: bash
         run: git clean -fdX
