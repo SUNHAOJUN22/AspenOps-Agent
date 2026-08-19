@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">AspenOps 工业过程智能体——量纲安全、受控执行与证据绑定决策</title>
+  <desc id="desc">概念架构图，展示类型化流程意图、规范化物理量、受许可执行和可审计工程决策。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061326"/><stop offset="0.55" stop-color="#0b2f4a"/><stop offset="1" stop-color="#25103b"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#50e3c2"/><stop offset="0.5" stop-color="#5ca9ff"/><stop offset="1" stop-color="#c782ff"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>
+      .t{font-family:"Noto Sans CJK SC","Microsoft YaHei","PingFang SC",Arial,sans-serif;fill:#f6fbff}.m{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;fill:#d8f6ff}.muted{fill:#a8c4d9}.box{fill:#0d2238;stroke:#4fd7d0;stroke-width:2}.box2{fill:#162542;stroke:#7aa7ff;stroke-width:2}.box3{fill:#24183f;stroke:#c782ff;stroke-width:2}.small{font-size:23px}.body{font-size:29px}.head{font-size:50px;font-weight:700}.sub{font-size:27px}.eq{font-size:25px}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1260" cy="120" r="190" fill="#5ca9ff" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="250" cy="760" r="220" fill="#50e3c2" opacity="0.08" filter="url(#glow)"/>
+  <text x="86" y="95" class="t head">AspenOps 工业过程智能体</text>
+  <text x="88" y="140" class="t sub">量纲安全流程智能 · 受控执行 · 可审计工程证据</text>
+  <rect x="86" y="180" width="1428" height="4" rx="2" fill="url(#accent)"/>
+
+  <g transform="translate(90 245)">
+    <rect width="310" height="210" rx="26" class="box"/>
+    <text x="28" y="52" class="t body" font-weight="700">1. 类型化流程意图</text>
+    <text x="28" y="92" class="t small">物流 · 组分 · 单位</text>
+    <text x="28" y="126" class="t small">约束 · 工况 · 决策范围</text>
+    <text x="28" y="171" class="m eq">q = 数值 × 比例 → SI</text>
+  </g>
+  <g transform="translate(440 245)">
+    <rect width="310" height="210" rx="26" class="box2"/>
+    <text x="28" y="52" class="t body" font-weight="700">2. 规范化物理内核</text>
+    <text x="28" y="92" class="t small">逐组分守恒</text>
+    <text x="28" y="126" class="t small">无量纲多目标优化</text>
+    <text x="28" y="171" class="m eq">|Rⱼ| ≤ εₐ + εᵣ Sⱼ</text>
+  </g>
+  <g transform="translate(790 245)">
+    <rect width="310" height="210" rx="26" class="box2"/>
+    <text x="28" y="52" class="t body" font-weight="700">3. 受许可真实执行</text>
+    <text x="28" y="92" class="t small">精确模型与请求摘要</text>
+    <text x="28" y="126" class="t small">随机数 · 时效 · 撤销</text>
+    <text x="28" y="171" class="m eq">回执 ≠ 字符串自报</text>
+  </g>
+  <g transform="translate(1140 245)">
+    <rect width="310" height="210" rx="26" class="box3"/>
+    <text x="28" y="52" class="t body" font-weight="700">4. 证据绑定决策</text>
+    <text x="28" y="92" class="t small">软件 / 执行 / 科学</text>
+    <text x="28" y="126" class="t small">工程验收相互独立</text>
+    <text x="28" y="171" class="m eq">PASS ≠ 工程认证</text>
+  </g>
+
+  <path d="M400 350 H440 M750 350 H790 M1100 350 H1140" stroke="url(#accent)" stroke-width="7" stroke-linecap="round"/>
+  <g transform="translate(90 520)">
+    <rect width="1360" height="210" rx="30" fill="#071a2c" stroke="#507692" stroke-width="2"/>
+    <text x="36" y="54" class="t body" font-weight="700">科学与工程合同</text>
+    <text x="36" y="101" class="m eq">Rⱼ,b = Ṅⱼ,b,入 − Ṅⱼ,b,出 + Gⱼ,b − Cⱼ,b − dNⱼ,b/dt</text>
+    <text x="36" y="145" class="m eq">J = Σₖ wₖ (fₖ − fₖ,参考) / sₖ ，Σₖ wₖ = 1</text>
+    <text x="36" y="187" class="t small muted">每一项均绑定基准、单位、范围与证据引用；缺失或无效证据保持 HOLD。</text>
+  </g>
+  <text x="92" y="820" class="t small">愿景：从流程意图走向可复现、可治理、证据优先的工业决策</text>
+  <text x="92" y="858" class="t small muted">AI 设计概念图 · 不构成实验、真实许可模拟或工程批准证据</text>
+</svg>
