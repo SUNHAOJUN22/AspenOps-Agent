@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOAD = ROOT / ".tsao-skill-native-v17"
 EXPECTED_BLOB_SHA = "66dbdedbc04025cbbf0d46bfb4c89d7581804474"
+EXPECTED_FILE_MARKER = Path("src/aspenops_nexus/dimensional_contracts.py")
 REMOVE = [
     ".github/V15_FINAL_QUALIFICATION.md",
     "V15_RELEASE_NOTES.md",
@@ -50,27 +51,21 @@ def safe_extract(tf: tarfile.TarFile, target: Path) -> None:
 
 
 def locate_payload_root(extracted: Path) -> Path:
-    direct = extracted
-    if (
-        (direct / "files").is_dir()
-        and (direct / "readme_sections/section-en.md").is_file()
-        and (direct / "readme_sections/section-zh.md").is_file()
-    ):
-        return direct
     candidates = [
-        files_dir.parent
+        files_dir
         for files_dir in extracted.rglob("files")
-        if files_dir.is_dir()
-        and (files_dir.parent / "readme_sections/section-en.md").is_file()
-        and (files_dir.parent / "readme_sections/section-zh.md").is_file()
+        if files_dir.is_dir() and (files_dir / EXPECTED_FILE_MARKER).is_file()
     ]
+    if (extracted / "files" / EXPECTED_FILE_MARKER).is_file():
+        candidates.append(extracted / "files")
     unique = sorted({candidate.resolve() for candidate in candidates})
     if len(unique) != 1:
+        all_files = sorted(path.as_posix() for path in extracted.rglob("files") if path.is_dir())
         raise RuntimeError(
-            "payload layout invalid: expected exactly one root containing files/ and readme_sections/, "
-            f"found {len(unique)}"
+            "payload layout invalid: expected exactly one AspenOps files/ root; "
+            f"matched {len(unique)}; discovered files directories: {all_files[:20]}"
         )
-    return unique[0]
+    return unique[0].parent
 
 
 def load_apply(path: Path):
@@ -125,46 +120,52 @@ def main() -> int:
             safe_extract(tf, extracted)
         payload_root = locate_payload_root(extracted)
         files = payload_root / "files"
+        section_en = payload_root / "readme_sections/section-en.md"
+        section_zh = payload_root / "readme_sections/section-zh.md"
+        has_sections = section_en.is_file() and section_zh.is_file()
         for source in sorted(files.rglob("*")):
             if not source.is_file():
                 continue
             rel = source.relative_to(files)
             if rel.parts and rel.parts[0] == "artifacts":
                 continue
-            if len(rel.parts) == 1 and rel.name in ROOT_READMES:
+            if has_sections and len(rel.parts) == 1 and rel.name in ROOT_READMES:
                 continue
             dest = ROOT / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, dest)
-        sections = {
-            "en": (payload_root / "readme_sections/section-en.md").read_text(encoding="utf-8"),
-            "zh": (payload_root / "readme_sections/section-zh.md").read_text(encoding="utf-8"),
-        }
-        candidates = [
-            ROOT / name
-            for name in ("README.md", "README.en.md", "README.zh-CN.md", "README_CN.md")
-        ]
-        existing = [path for path in candidates if path.is_file()]
-        assigned = [(path, language(path, path.read_text(encoding="utf-8"))) for path in existing]
-        langs = {lang for _, lang in assigned}
-        if "en" not in langs:
-            path = ROOT / ("README.md" if not (ROOT / "README.md").exists() else "README.en.md")
-            path.write_text("# AspenOps-Agent\n", encoding="utf-8")
-            assigned.append((path, "en"))
-        if "zh" not in langs:
-            path = ROOT / "README.zh-CN.md"
-            path.write_text("# AspenOps-Agent\n", encoding="utf-8")
-            assigned.append((path, "zh"))
-        seen: set[Path] = set()
-        for path, lang in assigned:
-            if path in seen:
-                continue
-            seen.add(path)
-            path.write_text(
-                merge(path.read_text(encoding="utf-8"), sections[lang]),
-                encoding="utf-8",
-                newline="\n",
-            )
+        if has_sections:
+            sections = {
+                "en": section_en.read_text(encoding="utf-8"),
+                "zh": section_zh.read_text(encoding="utf-8"),
+            }
+            candidates = [
+                ROOT / name
+                for name in ("README.md", "README.en.md", "README.zh-CN.md", "README_CN.md")
+            ]
+            existing = [path for path in candidates if path.is_file()]
+            assigned = [(path, language(path, path.read_text(encoding="utf-8"))) for path in existing]
+            langs = {lang for _, lang in assigned}
+            if "en" not in langs:
+                path = ROOT / (
+                    "README.md" if not (ROOT / "README.md").exists() else "README.en.md"
+                )
+                path.write_text("# AspenOps-Agent\n", encoding="utf-8")
+                assigned.append((path, "en"))
+            if "zh" not in langs:
+                path = ROOT / "README.zh-CN.md"
+                path.write_text("# AspenOps-Agent\n", encoding="utf-8")
+                assigned.append((path, "zh"))
+            seen: set[Path] = set()
+            for path, lang in assigned:
+                if path in seen:
+                    continue
+                seen.add(path)
+                path.write_text(
+                    merge(path.read_text(encoding="utf-8"), sections[lang]),
+                    encoding="utf-8",
+                    newline="\n",
+                )
         transforms = payload_root / "transforms"
         if transforms.is_dir():
             for path in sorted(transforms.glob("*.py")):
