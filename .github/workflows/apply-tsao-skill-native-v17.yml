@@ -31,10 +31,30 @@ jobs:
         run: python scripts/apply_tsao_skill_native_v17.py
       - name: Sync frozen environment after source materialization
         run: uv sync --frozen --extra dev --extra agent --extra signing
-      - name: Validate Skill and focused remediation contracts
+      - name: Validate the materialized Skill and run the full test suite
+        shell: bash
         run: |
-          uv run python scripts/validate_agent_skills.py --root . --overlay-mode
-          uv run pytest -q tests/test_v4_dimensional_contracts.py tests/test_v4_licensed_capability.py tests/test_v5_reaction_contracts.py tests/test_v5_scientific_validity.py tests/test_v6_qualification_gate.py
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          required = [
+              Path('.agents/skills/aspenops-acceptance-maintainer/SKILL.md'),
+              Path('.agents/skills/aspenops-acceptance-maintainer/references/definition-of-done.md'),
+              Path('assets/diagrams/vision-en.svg'),
+              Path('assets/diagrams/vision-zh.svg'),
+          ]
+          missing = [path.as_posix() for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit(f'missing materialized Skill assets: {missing}')
+          skill = required[0].read_text(encoding='utf-8')
+          if not skill.startswith('---\n') or 'name: aspenops-acceptance-maintainer' not in skill[:1200]:
+              raise SystemExit('invalid canonical AspenOps SKILL.md frontmatter')
+          for path in required:
+              text = path.read_text(encoding='utf-8')
+              if '\ufffd' in text or '\x00' in text:
+                  raise SystemExit(f'Unicode/source corruption in {path}')
+          PY
+          uv run pytest -q
       - name: Run permanent repository gates
         run: |
           uv lock --check
