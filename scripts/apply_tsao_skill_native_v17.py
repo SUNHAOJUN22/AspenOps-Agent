@@ -15,6 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOAD = ROOT / ".tsao-skill-native-v17"
 EXPECTED_BLOB_SHA = "66dbdedbc04025cbbf0d46bfb4c89d7581804474"
+TEXT_SUFFIXES = {
+    ".cfg", ".css", ".html", ".ini", ".js", ".json", ".md", ".mjs", ".py",
+    ".svg", ".toml", ".ts", ".tsx", ".txt", ".yaml", ".yml",
+}
 REMOVE = [
     ".github/V15_FINAL_QUALIFICATION.md",
     "V15_RELEASE_NOTES.md",
@@ -103,6 +107,22 @@ def verify_tracked_payload(payload_file: Path) -> None:
         )
 
 
+def copy_verified(source: Path, dest: Path, rel: Path) -> None:
+    raw = source.read_bytes()
+    if source.suffix.lower() in TEXT_SUFFIXES or source.name in {"SKILL.md", "README"}:
+        if b"\x00" in raw:
+            raise RuntimeError(f"NUL byte in text payload: {rel.as_posix()}")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError(f"non-UTF-8 text payload: {rel.as_posix()}: {exc}") from exc
+        if "\ufffd" in text:
+            raise RuntimeError(f"replacement character in text payload: {rel.as_posix()}")
+        dest.write_text(text, encoding="utf-8", newline="\n")
+    else:
+        shutil.copy2(source, dest)
+
+
 def main() -> int:
     payload_file = PAYLOAD / "payload.tar.gz"
     if not payload_file.is_file():
@@ -124,11 +144,13 @@ def main() -> int:
             rel = source.relative_to(files)
             if rel.parts and rel.parts[0] == "artifacts":
                 continue
+            if len(rel.parts) >= 2 and rel.parts[:2] == (".github", "workflows"):
+                continue
             if has_sections and len(rel.parts) == 1 and rel.name in ROOT_READMES:
                 continue
             dest = ROOT / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, dest)
+            copy_verified(source, dest, rel)
         if has_sections:
             sections = {
                 "en": section_en.read_text(encoding="utf-8"),
