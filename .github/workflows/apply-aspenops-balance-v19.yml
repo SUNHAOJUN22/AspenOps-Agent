@@ -31,6 +31,8 @@ jobs:
           enable-cache: true
       - name: Apply dimension-safe balance contract and counterexamples
         run: python .aspenops-v19/apply_balance_v19.py
+      - name: Preserve compatibility while retaining the scientific V19 contract
+        run: python .aspenops-v19/post_apply_compat_v19.py
       - name: Remove one-shot application surfaces
         shell: bash
         run: |
