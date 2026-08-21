@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: aspenops-balance-v19
@@ -64,21 +65,13 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p var/v19
-          uv run pytest -q \
-            tests/test_balance_dimension_contract_v19.py \
-            tests/test_evaluation.py \
-            2>&1 | tee var/v19/focused.log
+          uv run pytest -q tests/test_balance_dimension_contract_v19.py tests/test_evaluation.py 2>&1 | tee var/v19/focused.log
       - name: Run authoritative full repository gate
         shell: bash
         run: |
           set -o pipefail
-          uv run python scripts/audit_source_tree.py \
-            --output var/v19/source-tree-audit.json
-          uv run pytest -W error::ResourceWarning \
-            --cov=aspenops_nexus \
-            --cov-branch \
-            --cov-fail-under=95.0 \
-            2>&1 | tee var/v19/full-tests.log
+          uv run python scripts/audit_source_tree.py --output var/v19/source-tree-audit.json
+          uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-fail-under=95.0 2>&1 | tee var/v19/full-tests.log
           uv build 2>&1 | tee var/v19/build.log
           uv run python scripts/check_mcp.py
           uv run python scripts/check_wheel_metadata.py --dist-dir dist
@@ -102,6 +95,14 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'feat: enforce dimension-safe canonical balances V19'
           git push origin HEAD:main
+      - name: Close the deduplicated AspenOps remediation issue with exact evidence
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment 139 --body "Dimension-safe balance V19 succeeded. workflow_run=${{ github.run_id }} source_commit=${{ github.sha }}. The pushed final commit is the current main head and the one-shot workflow was removed before qualification."
+          gh issue close 139 --reason completed
       - name: Preserve failure evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -115,3 +116,10 @@ jobs:
             tests/test_balance_dimension_contract_v19.py
           if-no-files-found: warn
           retention-days: 7
+      - name: Update the deduplicated AspenOps issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue comment 139 --body "Dimension-safe balance V19 failed. workflow_run=${{ github.run_id }} source_commit=${{ github.sha }}. Download artifact aspenops-balance-v19-failure-${{ github.run_id }} for exact logs."
