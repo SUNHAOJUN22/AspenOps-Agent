@@ -48,6 +48,16 @@ def repair_runtime_compatibility() -> None:
 
     text = text.replace("compiled_balance.base_unit", "balance_base_unit")
     text = text.replace("compiled_balance.dimension", "balance_dimension")
+    text = text.replace(
+        "balance_base_unit = (\n                balance_base_unit\n",
+        "balance_base_unit = (\n                compiled_balance.base_unit\n",
+        1,
+    )
+    text = text.replace(
+        "balance_dimension = balance_dimension or unit_dimension(balance_base_unit)",
+        "balance_dimension = compiled_balance.dimension or unit_dimension(balance_base_unit)",
+        1,
+    )
 
     old_violation = '''                violations.append(f"balance_invalid:{name}")\n                violations.append(f"balance_failed:{name}")\n'''
     new_violation = '''                violations.append(f"balance_non_finite:{name}")\n                violations.append(f"balance_invalid:{name}")\n                violations.append(f"balance_failed:{name}")\n'''
