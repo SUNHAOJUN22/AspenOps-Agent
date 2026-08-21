@@ -215,6 +215,8 @@ class BalanceSpec:
     abs_tol: float = 1e-6
     rel_tol: float = 1e-6
     floor: float = 1e-12
+    dimension: str | None = None
+    base_unit: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BalanceSpec:
@@ -230,6 +232,8 @@ class BalanceSpec:
         abs_tol = _nonnegative_number(mapping.get("abs_tol", 1e-6), "balance abs_tol")
         rel_tol = _nonnegative_number(mapping.get("rel_tol", 1e-6), "balance rel_tol")
         floor = _nonnegative_number(mapping.get("floor", 1e-12), "balance floor")
+        dimension_name = _optional_text(mapping.get("dimension"), "balance dimension")
+        base_unit = _optional_text(mapping.get("base_unit"), "balance base_unit")
         return cls(
             name=_text(mapping["name"], "balance name"),
             terms=terms,
@@ -237,6 +241,8 @@ class BalanceSpec:
             abs_tol=abs_tol,
             rel_tol=rel_tol,
             floor=floor,
+            dimension=dimension_name,
+            base_unit=base_unit,
         )
 
 
@@ -279,26 +285,30 @@ def _balance_term_dict(item: BalanceTerm) -> dict[str, Any]:
     }
 
 
-def _balance_document(item: BalanceSpec) -> dict[str, Any]:
-    return {
+def _balance_payload(item: BalanceSpec, *, identity: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "name": item.name,
-        "terms": [_balance_term_dict(term) for term in item.terms],
+        "terms": (
+            tuple(_balance_term_dict(term) for term in item.terms)
+            if identity
+            else [_balance_term_dict(term) for term in item.terms]
+        ),
         "expected": item.expected,
         "abs_tol": item.abs_tol,
         "rel_tol": item.rel_tol,
         "floor": item.floor,
     }
+    payload["dimension"] = item.dimension
+    payload["base_unit"] = item.base_unit
+    return payload
+
+
+def _balance_document(item: BalanceSpec) -> dict[str, Any]:
+    return _balance_payload(item, identity=False)
 
 
 def _balance_identity(item: BalanceSpec) -> dict[str, Any]:
-    return {
-        "name": item.name,
-        "terms": tuple(_balance_term_dict(term) for term in item.terms),
-        "expected": item.expected,
-        "abs_tol": item.abs_tol,
-        "rel_tol": item.rel_tol,
-        "floor": item.floor,
-    }
+    return _balance_payload(item, identity=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,7 +454,7 @@ class EvaluationResult:
     violations: list[str]
     diagnostics: dict[str, Any]
     elapsed_s: float
-    balance_residuals: dict[str, dict[str, float]] = field(default_factory=dict)
+    balance_residuals: dict[str, dict[str, Any]] = field(default_factory=dict)
     cache_source: CacheSource = "computed"
     cache_hit: bool = False
     request_hash: str = ""
@@ -533,15 +543,18 @@ class EvaluationResult:
             mapping.get("balance_residuals", {}),
             "result balance_residuals",
         )
-        balances: dict[str, dict[str, float]] = {}
+        balances: dict[str, dict[str, Any]] = {}
         for name, raw_detail in raw_balances.items():
             detail = _object(raw_detail, f"result balance_residuals[{name}]")
-            normalized_detail: dict[str, float] = {}
+            normalized_detail: dict[str, Any] = {}
             for key, value in detail.items():
-                normalized_detail[str(key)] = _finite_number(
-                    value,
-                    f"result balance_residuals[{name}].{key}",
-                )
+                label = f"result balance_residuals[{name}].{key}"
+                if value is None or isinstance(value, str | bool):
+                    normalized_detail[str(key)] = value
+                elif isinstance(value, int | float):
+                    normalized_detail[str(key)] = _finite_number(value, label)
+                else:
+                    raise ValueError(f"{label} must be a finite scalar JSON value or null")
             balances[str(name)] = normalized_detail
 
         cache_source = mapping.get("cache_source", "computed")

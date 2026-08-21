@@ -13,6 +13,7 @@ from .models import (
 )
 from .policy import Policy
 from .registry import NodeRegistry, RegistryError, ResolvedNode
+from .units import dimension as unit_dimension
 
 
 def _semantic_identity(key: str, identifiers: dict[str, str]) -> str:
@@ -57,6 +58,8 @@ class CompiledBalanceTerm:
 class CompiledBalance:
     spec: BalanceSpec
     terms: tuple[CompiledBalanceTerm, ...]
+    dimension: str | None = None
+    base_unit: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,10 +137,57 @@ class EvaluationPlanCompiler:
         balances: list[CompiledBalance] = []
         for balance_spec in request.balances:
             terms: list[CompiledBalanceTerm] = []
+            effective_units: list[str] = []
+            inferred_dimensions: set[str] = set()
             for term_spec in balance_spec.terms:
                 term_node, identity = resolve_read_node(term_spec.key, term_spec.identifiers)
+                native_unit = term_node.native_unit
+                if native_unit is None:
+                    raise ValueError(
+                        f"Balance {balance_spec.name} term {identity} has no registered native unit"
+                    )
+                native_dimension = unit_dimension(native_unit)
+                effective_unit = term_spec.unit or native_unit
+                effective_dimension = unit_dimension(effective_unit)
+                if native_dimension != effective_dimension:
+                    raise ValueError(
+                        f"Balance {balance_spec.name} term {identity} requests incompatible unit "
+                        f"{effective_unit!r} for registered unit {native_unit!r}"
+                    )
+                if effective_dimension is None:
+                    raise ValueError(
+                        f"Balance {balance_spec.name} term {identity} has no physical dimension"
+                    )
+                effective_units.append(effective_unit)
+                inferred_dimensions.add(effective_dimension)
                 terms.append(CompiledBalanceTerm(term_spec, term_node, identity))
-            balances.append(CompiledBalance(balance_spec, tuple(terms)))
+            if len(inferred_dimensions) != 1:
+                observed = ", ".join(sorted(inferred_dimensions))
+                raise ValueError(
+                    f"Balance {balance_spec.name} mixes physical dimensions: {observed}"
+                )
+            inferred_dimension = next(iter(inferred_dimensions))
+            if balance_spec.dimension is not None and balance_spec.dimension != inferred_dimension:
+                raise ValueError(
+                    f"Balance {balance_spec.name} declares dimension "
+                    f"{balance_spec.dimension!r} but terms are {inferred_dimension!r}"
+                )
+            resolved_dimension = balance_spec.dimension or inferred_dimension
+            resolved_base_unit = balance_spec.base_unit or effective_units[0]
+            base_dimension = unit_dimension(resolved_base_unit)
+            if base_dimension != resolved_dimension:
+                raise ValueError(
+                    f"Balance {balance_spec.name} base unit {resolved_base_unit!r} has "
+                    f"dimension {base_dimension!r}, expected {resolved_dimension!r}"
+                )
+            balances.append(
+                CompiledBalance(
+                    balance_spec,
+                    tuple(terms),
+                    resolved_dimension,
+                    resolved_base_unit,
+                )
+            )
 
         declared_reads = (
             len(output_bindings)

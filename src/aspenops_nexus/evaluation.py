@@ -11,6 +11,7 @@ from .evaluation_plan import EvaluationPlan, EvaluationPlanCompiler, node_identi
 from .models import ConstraintSpec, EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry, ResolvedNode
 from .units import convert
+from .units import dimension as unit_dimension
 
 
 def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
@@ -140,7 +141,7 @@ def evaluate(
     started = time.perf_counter()
     violations: list[str] = []
     diagnostics: dict[str, Any] = {"state_trace": ["received"]}
-    balance_residuals: dict[str, dict[str, float]] = {}
+    balance_residuals: dict[str, dict[str, Any]] = {}
     communication_ok = False
     engine_ok = False
     converged = False
@@ -349,9 +350,20 @@ def evaluate(
             if constraint_sum_saturated:
                 diagnostics["constraint_violation_sum_saturated"] = True
 
-        non_finite_balances: dict[str, list[dict[str, str]]] = {}
+        invalid_balances: dict[str, list[dict[str, str]]] = {}
         for compiled_balance in active_plan.balances:
             name = compiled_balance.spec.name
+            if not compiled_balance.terms:
+                raise ValueError(f"Compiled balance {name} has no terms")
+            first_term = compiled_balance.terms[0]
+            balance_base_unit = (
+                compiled_balance.base_unit or first_term.spec.unit or first_term.node.native_unit
+            )
+            if balance_base_unit is None:
+                raise ValueError(f"Compiled balance {name} has no canonical base unit")
+            balance_dimension = compiled_balance.dimension or unit_dimension(balance_base_unit)
+            if balance_dimension is None:
+                raise ValueError(f"Compiled balance {name} has no physical dimension")
             signed_terms: list[float] = []
             absolute_terms: list[float] = []
             invalid_terms: list[dict[str, str]] = []
@@ -359,7 +371,7 @@ def evaluate(
                 converted = _converted(
                     raw_by_identity[compiled_term.identity],
                     compiled_term.node,
-                    compiled_term.spec.unit,
+                    balance_base_unit,
                 )
                 try:
                     numeric = _numeric_value(converted)
@@ -391,18 +403,23 @@ def evaluate(
                 signed_terms.append(signed)
                 absolute_terms.append(abs(signed))
             if invalid_terms:
-                scale = max(_safe_fsum(absolute_terms), compiled_balance.spec.floor)
                 balance_residuals[name] = {
-                    "residual": 0.0,
-                    "absolute": 0.0,
-                    "scale": scale if math.isfinite(scale) else 0.0,
-                    "relative": 0.0,
+                    "status": "invalid",
+                    "passed": False,
+                    "dimension": balance_dimension,
+                    "unit": balance_base_unit,
+                    "residual": None,
+                    "absolute": None,
+                    "scale": None,
+                    "relative": None,
+                    "expected": compiled_balance.spec.expected,
                     "abs_tol": compiled_balance.spec.abs_tol,
                     "rel_tol": compiled_balance.spec.rel_tol,
-                    "passed": 0.0,
+                    "floor": compiled_balance.spec.floor,
                 }
-                non_finite_balances[name] = invalid_terms
+                invalid_balances[name] = invalid_terms
                 violations.append(f"balance_non_finite:{name}")
+                violations.append(f"balance_invalid:{name}")
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
@@ -413,18 +430,24 @@ def evaluate(
             relative = abs(residual) / scale if scale > 0 else math.inf
             if not all(math.isfinite(item) for item in (residual, scale, relative)):
                 balance_residuals[name] = {
-                    "residual": 0.0,
-                    "absolute": 0.0,
-                    "scale": 0.0,
-                    "relative": 0.0,
+                    "status": "invalid",
+                    "passed": False,
+                    "dimension": balance_dimension,
+                    "unit": balance_base_unit,
+                    "residual": None,
+                    "absolute": None,
+                    "scale": None,
+                    "relative": None,
+                    "expected": compiled_balance.spec.expected,
                     "abs_tol": compiled_balance.spec.abs_tol,
                     "rel_tol": compiled_balance.spec.rel_tol,
-                    "passed": 0.0,
+                    "floor": compiled_balance.spec.floor,
                 }
-                non_finite_balances[name] = [
+                invalid_balances[name] = [
                     {"identity": "derived_balance", "value": "derived_overflow"}
                 ]
                 violations.append(f"balance_non_finite:{name}")
+                violations.append(f"balance_invalid:{name}")
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
@@ -433,19 +456,25 @@ def evaluate(
                 or relative <= compiled_balance.spec.rel_tol
             )
             balance_residuals[name] = {
+                "status": "pass" if passed else "fail",
+                "passed": passed,
+                "dimension": balance_dimension,
+                "unit": balance_base_unit,
                 "residual": residual,
                 "absolute": abs(residual),
                 "scale": scale,
                 "relative": relative,
+                "expected": compiled_balance.spec.expected,
                 "abs_tol": compiled_balance.spec.abs_tol,
                 "rel_tol": compiled_balance.spec.rel_tol,
-                "passed": 1.0 if passed else 0.0,
+                "floor": compiled_balance.spec.floor,
             }
             if not passed:
                 violations.append(f"balance_failed:{name}")
                 feasible = False
-        if non_finite_balances:
-            diagnostics["non_finite_balances"] = non_finite_balances
+        if invalid_balances:
+            diagnostics["invalid_balances"] = invalid_balances
+            diagnostics["non_finite_balances"] = invalid_balances
 
         if not engine_ok:
             violations.append("engine_did_not_return")
