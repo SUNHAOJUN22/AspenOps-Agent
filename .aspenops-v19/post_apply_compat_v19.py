@@ -69,6 +69,13 @@ def repair_runtime_compatibility() -> None:
     else:
         raise RuntimeError(f"expected two invalid-balance violation blocks, found {count}")
 
+    old_diagnostics = '''        if invalid_balances:\n            diagnostics["invalid_balances"] = invalid_balances\n'''
+    new_diagnostics = '''        if invalid_balances:\n            diagnostics["invalid_balances"] = invalid_balances\n            diagnostics["non_finite_balances"] = invalid_balances\n'''
+    if old_diagnostics in text:
+        text = text.replace(old_diagnostics, new_diagnostics, 1)
+    elif new_diagnostics not in text:
+        raise RuntimeError("invalid balance diagnostics block was not found")
+
     compile(text, path.as_posix(), "exec")
     path.write_text(text, encoding="utf-8", newline="\n")
 
