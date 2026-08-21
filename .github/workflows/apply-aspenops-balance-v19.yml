@@ -33,6 +33,8 @@ jobs:
         run: python .aspenops-v19/apply_balance_v19.py
       - name: Preserve compatibility while retaining the scientific V19 contract
         run: python .aspenops-v19/post_apply_compat_v19.py
+      - name: Extend the fail-closed runtime branch tests
+        run: python .aspenops-v19/extend_balance_tests_v19.py
       - name: Remove one-shot application surfaces
         shell: bash
         run: |
