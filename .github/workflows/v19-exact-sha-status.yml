@@ -1,0 +1,58 @@
+name: V19 exact-SHA native CI evidence
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish exact-SHA native CI status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TARGET_URL: ${{ github.event.workflow_run.html_url }}
+          STATUS_CONTEXT: v19/native-ci/aspenops
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$CONCLUSION" in
+            success)
+              STATE=success
+              DESCRIPTION='native CI completed successfully'
+              ;;
+            failure|cancelled|timed_out|action_required|stale|startup_failure)
+              STATE=failure
+              DESCRIPTION="native CI concluded $CONCLUSION"
+              ;;
+            *)
+              STATE=error
+              DESCRIPTION="native CI concluded ${CONCLUSION:-unknown}"
+              ;;
+          esac
+          export STATE DESCRIPTION
+          python - <<'PY' > status.json
+          import json
+          import os
+
+          print(json.dumps({
+              "state": os.environ["STATE"],
+              "target_url": os.environ["TARGET_URL"],
+              "description": os.environ["DESCRIPTION"][:140],
+              "context": os.environ["STATUS_CONTEXT"],
+          }))
+          PY
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}" \
+            --input status.json
