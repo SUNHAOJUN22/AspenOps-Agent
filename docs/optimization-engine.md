@@ -39,6 +39,24 @@ generation G trials -> one Aspen batch
 This allows the persistent CasePool to use all licensed Workers and prevents a
 serial Python optimizer from leaving simulator instances idle.
 
+## Dimensionless scalarization contract
+
+A single objective may retain its native engineering unit. Multi-objective
+weighted scalarization is fail-closed unless every objective declares `unit`,
+`dimension`, `reference_value`, and a finite positive `reference_scale`. The
+optimizer then computes
+
+```text
+z_i = sign_i * (f_i - f_ref,i) / f_scale,i
+J = sum_i weight_i * z_i
+```
+
+so each `z_i` and the combined score `J` are dimensionless. Equivalent unit
+representations, such as kW and W, must transform the value, reference, and
+scale together and therefore cannot change candidate ordering. Raw
+heterogeneous values are still retained for reporting and Pareto dominance,
+but they are never added directly.
+
 ## Feasibility ordering
 
 For scalar candidates:
