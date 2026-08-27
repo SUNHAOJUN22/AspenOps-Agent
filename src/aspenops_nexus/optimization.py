@@ -21,6 +21,7 @@ from .optimizer import (
     pareto_front,
 )
 from .policy import PolicyError
+from .units import dimension as unit_dimension
 
 if TYPE_CHECKING:
     from .pool import CasePool
@@ -250,6 +251,10 @@ class ObjectiveSpec:
     output_key: str
     direction: ObjectiveDirection = "minimize"
     weight: float = 1.0
+    unit: str | None = None
+    dimension: str | None = None
+    reference_value: float | None = None
+    reference_scale: float | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> ObjectiveSpec:
@@ -274,10 +279,66 @@ class ObjectiveSpec:
         weight = _number(weight_value, label="objective weight")
         if weight <= 0:
             raise ValueError("Objective weight must be positive")
-        return cls(output_key=output_key, direction=direction, weight=weight)
+
+        normalization_names = ("unit", "dimension", "reference_value", "reference_scale")
+        normalization_present = tuple(data.get(name) is not None for name in normalization_names)
+        if any(normalization_present) and not all(normalization_present):
+            raise ValueError(
+                "Objective normalization requires unit, dimension, reference_value and "
+                "reference_scale together"
+            )
+
+        unit: str | None = None
+        declared_dimension: str | None = None
+        reference_value: float | None = None
+        reference_scale: float | None = None
+        if all(normalization_present):
+            unit = _text(data["unit"], label="objective unit").strip()
+            declared_dimension = _text(data["dimension"], label="objective dimension").strip()
+            if not unit or not declared_dimension:
+                raise ValueError("Objective unit and dimension must not be empty")
+            actual_dimension = unit_dimension(unit)
+            if actual_dimension != declared_dimension:
+                raise ValueError(
+                    f"Objective unit {unit!r} has dimension {actual_dimension!r}, not "
+                    f"{declared_dimension!r}"
+                )
+            reference_value = _number(data["reference_value"], label="objective reference_value")
+            reference_scale = _number(data["reference_scale"], label="objective reference_scale")
+            if reference_scale <= 0:
+                raise ValueError("Objective reference_scale must be positive")
+
+        return cls(
+            output_key=output_key,
+            direction=direction,
+            weight=weight,
+            unit=unit,
+            dimension=declared_dimension,
+            reference_value=reference_value,
+            reference_scale=reference_scale,
+        )
+
+    @property
+    def normalized(self) -> bool:
+        return (
+            self.unit is not None
+            and self.dimension is not None
+            and self.reference_value is not None
+            and self.reference_scale is not None
+        )
 
     def minimized_value(self, value: float) -> float:
         return value if self.direction == "minimize" else -value
+
+    def scalarized_value(self, value: float) -> float:
+        if not self.normalized:
+            return self.minimized_value(value)
+        assert self.reference_value is not None
+        assert self.reference_scale is not None
+        normalized = (value - self.reference_value) / self.reference_scale
+        if not math.isfinite(normalized):
+            raise ValueError("Objective normalization produced a non-finite value")
+        return normalized if self.direction == "minimize" else -normalized
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,6 +427,16 @@ class OptimizationProblem:
             if objective.output_key in objective_keys:
                 raise ValueError(f"Duplicate optimization objective: {objective.output_key}")
             objective_keys.add(objective.output_key)
+        if len(objectives) > 1:
+            unnormalized = [
+                objective.output_key for objective in objectives if not objective.normalized
+            ]
+            if unnormalized:
+                raise ValueError(
+                    "Multi-objective weighted scalarization requires dimensionless "
+                    "normalization for every objective; missing unit, dimension, "
+                    "reference_value or reference_scale for: " + ", ".join(unnormalized)
+                )
 
         base_request = {
             key: value for key, value in document.items() if key not in {"optimization", "points"}
@@ -428,6 +499,16 @@ class OptimizationProblem:
     def bounds(self) -> tuple[tuple[float, float], ...]:
         return tuple(variable.bound() for variable in self.variables)
 
+    def scalarization_contract(self) -> dict[str, object]:
+        dimensionless = all(objective.normalized for objective in self.objectives)
+        return {
+            "mode": (
+                "dimensionless-affine-weighted-sum" if dimensionless else "single-objective-raw"
+            ),
+            "dimensionless": dimensionless,
+            "formula": "sum(weight_i * sign_i * (value_i-reference_i)/scale_i)",
+        }
+
     def decode(self, vector: Sequence[float]) -> dict[str, VariableValue]:
         return {
             variable.name: variable.decode(value)
@@ -441,6 +522,7 @@ class OptimizationTracePoint:
     decoded: dict[str, VariableValue]
     objectives: tuple[float, ...]
     minimized_objectives: tuple[float, ...]
+    scalarized_objectives: tuple[float, ...]
     scalar_objective: float
     violation: float
     ok: bool
@@ -530,6 +612,7 @@ class _Evaluator:
             values = _optional_object_map(result.get("values", {}))
             objective_values: list[float] = []
             minimized_values: list[float] = []
+            scalarized_values: list[float] = []
             missing = False
             for objective in self.problem.objectives:
                 value = _strict_finite_output(values.get(objective.output_key))
@@ -538,12 +621,13 @@ class _Evaluator:
                     value = -1e12 if objective.direction == "maximize" else 1e12
                 objective_values.append(value)
                 minimized_values.append(objective.minimized_value(value))
+                scalarized_values.append(objective.scalarized_value(value))
             scalar = _finite_weighted_sum(
                 tuple(
                     (objective.weight, value)
                     for objective, value in zip(
                         self.problem.objectives,
-                        minimized_values,
+                        scalarized_values,
                         strict=True,
                     )
                 )
@@ -557,6 +641,7 @@ class _Evaluator:
                     decoded=self.problem.decode(vector),
                     objectives=tuple(objective_values),
                     minimized_objectives=tuple(minimized_values),
+                    scalarized_objectives=tuple(scalarized_values),
                     scalar_objective=scalar,
                     violation=violation,
                     ok=result.get("ok") is True and not missing,
@@ -665,6 +750,7 @@ def run_optimization_document(
                 "x": list(point.x),
                 "decoded": trace.decoded,
                 "objectives": list(trace.objectives),
+                "scalarized_objectives": list(trace.scalarized_objectives),
                 "violation": point.violation,
             }
         )
@@ -686,6 +772,7 @@ def run_optimization_document(
             "x": list(run.best.x),
             "decoded": best_trace.decoded,
             "objectives": list(best_trace.objectives),
+            "scalarized_objectives": list(best_trace.scalarized_objectives),
             "scalar_objective": run.best.objective,
             "violation": run.best.violation,
             "feasible": run.best.feasible,
@@ -705,6 +792,7 @@ def run_optimization_document(
         "pareto": pareto,
         "variables": [asdict(variable) for variable in problem.variables],
         "objectives": [asdict(objective) for objective in problem.objectives],
+        "scalarization": problem.scalarization_contract(),
         "budget": asdict(problem.budget),
         "qualification": qualification,
         "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",

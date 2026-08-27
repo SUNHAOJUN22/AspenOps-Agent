@@ -139,8 +139,20 @@ def test_optimization_enforces_configured_problem_limits(tmp_path: Path) -> None
 
     too_many_objectives = optimization_document()
     too_many_objectives["optimization"]["objectives"] = [
-        objective(),
-        objective("block.output.reboiler_duty:block=COL1"),
+        {
+            **objective(),
+            "unit": "fraction",
+            "dimension": "dimensionless",
+            "reference_value": 0,
+            "reference_scale": 1,
+        },
+        {
+            **objective("block.output.reboiler_duty:block=COL1"),
+            "unit": "kW",
+            "dimension": "power",
+            "reference_value": 0,
+            "reference_scale": 1,
+        },
     ]
     with pytest.raises(ValueError, match="2 objectives; limit is 1"):
         run_optimization_document(

@@ -89,12 +89,20 @@
     "objectives": [
       {
         "output_key": "block.output.reboiler_duty:block=COL1",
-        "direction": "minimize"
+        "direction": "minimize",
+        "unit": "kW",
+        "dimension": "power",
+        "reference_value": 0.0,
+        "reference_scale": 100.0
       },
       {
         "output_key": "stream.output.purity:stream=PRODUCT",
         "direction": "maximize",
-        "weight": 0.1
+        "weight": 0.1,
+        "unit": "fraction",
+        "dimension": "dimensionless",
+        "reference_value": 0.82,
+        "reference_scale": 0.18
       }
     ],
     "budget": {

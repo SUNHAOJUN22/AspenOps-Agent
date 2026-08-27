@@ -328,8 +328,24 @@ def test_evaluator_builds_points_scores_and_missing_output_penalties(
 ) -> None:
     document = minimal_document()
     document["optimization"]["objectives"] = [
-        {"output_key": "first", "direction": "minimize", "weight": 1},
-        {"output_key": "second", "direction": "maximize", "weight": 2},
+        {
+            "output_key": "first",
+            "direction": "minimize",
+            "weight": 1,
+            "unit": "1",
+            "dimension": "dimensionless",
+            "reference_value": 0,
+            "reference_scale": 1,
+        },
+        {
+            "output_key": "second",
+            "direction": "maximize",
+            "weight": 2,
+            "unit": "1",
+            "dimension": "dimensionless",
+            "reference_value": 0,
+            "reference_scale": 1,
+        },
     ]
     problem = OptimizationProblem.from_document(document)
     observed: dict[str, Any] = {}
@@ -382,6 +398,7 @@ def test_evaluator_builds_points_scores_and_missing_output_penalties(
     assert active.trace[0].decoded == {"temperature": 12.0}
     assert active.trace[0].objectives == (3.0, 2.0)
     assert active.trace[0].minimized_objectives == (3.0, -2.0)
+    assert active.trace[0].scalarized_objectives == (3.0, -2.0)
     assert active.trace[0].request_hash == "hash-1"
     assert active.trace[0].ok is True
     assert active.trace[1].ok is False
