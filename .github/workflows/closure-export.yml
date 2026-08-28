@@ -1,35 +1,62 @@
-name: Temporary closure source export
+name: One-shot AspenOps closure qualification
 
 on:
   push:
     branches: [closure/20260828-code-readme]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: aspenops-closure-20260828
+  cancel-in-progress: false
 
 jobs:
-  export:
+  apply-test-commit:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: closure/20260828-code-readme
           fetch-depth: 0
-          persist-credentials: false
-      - name: Archive exact tracked tree
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: 0.11.16
+          python-version: "3.13"
+          enable-cache: true
+      - name: Apply reviewed non-workflow patch
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain=v1)"
-          mkdir -p artifacts
-          prefix="${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}/"
-          git archive --format=tar.gz --prefix="$prefix" "$GITHUB_SHA" -o artifacts/closure-source.tar.gz
-          sha256sum artifacts/closure-source.tar.gz > artifacts/closure-source.sha256
-          printf '{"repository":"%s","sha":"%s","tree":"%s"}\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" > artifacts/closure-source.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: closure-source-${{ github.sha }}
-          path: artifacts/closure-source.*
-          if-no-files-found: error
-          retention-days: 3
+          gzip -dc .github/closure/nonworkflow.patch.gz > /tmp/closure.patch
+          git apply --index --binary /tmp/closure.patch
+          rm -rf .github/closure
+          git add -A
+      - name: Qualify canonical hashing closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest -q
+          uv run python scripts/verify_delivery.py --root . --output /tmp/delivery.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/delivery.json').read_text(encoding='utf-8'))
+          assert report['status'] == 'PASS', report
+          PY
+          git diff --check
+      - name: Commit qualified source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor(closure): centralize canonical hashes and clarify README boundaries"
+          git push origin HEAD:closure/20260828-code-readme
