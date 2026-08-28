@@ -1,0 +1,35 @@
+name: Temporary closure source export
+
+on:
+  push:
+    branches: [closure/20260828-code-readme]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive exact tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1)"
+          mkdir -p artifacts
+          prefix="${GITHUB_REPOSITORY#*/}-${GITHUB_SHA}/"
+          git archive --format=tar.gz --prefix="$prefix" "$GITHUB_SHA" -o artifacts/closure-source.tar.gz
+          sha256sum artifacts/closure-source.tar.gz > artifacts/closure-source.sha256
+          printf '{"repository":"%s","sha":"%s","tree":"%s"}\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$(git rev-parse HEAD^{tree})" > artifacts/closure-source.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: closure-source-${{ github.sha }}
+          path: artifacts/closure-source.*
+          if-no-files-found: error
+          retention-days: 3
