@@ -26,20 +26,23 @@ jobs:
           version: 0.11.16
           python-version: "3.13"
           enable-cache: true
-      - name: Apply reviewed non-workflow patch
+      - name: Apply reviewed source and expose final workflow view
         shell: bash
         run: |
           set -euo pipefail
           gzip -dc .github/closure/nonworkflow.patch.gz > /tmp/closure.patch
           git apply --index --binary /tmp/closure.patch
           rm -rf .github/closure
+          rm .github/workflows/closure-export.yml
           git add -A
-      - name: Qualify canonical hashing closure
+      - name: Normalize and qualify canonical hashing closure
         shell: bash
         run: |
           set -euo pipefail
           uv lock --check
           uv sync --frozen --extra dev --extra agent --extra signing
+          uv run ruff check --fix .
+          uv run ruff format .
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy src
@@ -52,10 +55,13 @@ jobs:
           assert report['status'] == 'PASS', report
           PY
           git diff --check
-      - name: Commit qualified source changes
+      - name: Commit qualified non-workflow source changes
         shell: bash
         run: |
           set -euo pipefail
+          git restore --source=HEAD --staged --worktree .github/workflows/closure-export.yml
+          git add -A
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "refactor(closure): centralize canonical hashes and clarify README boundaries"
