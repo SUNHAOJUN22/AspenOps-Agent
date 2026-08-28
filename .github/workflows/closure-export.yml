@@ -32,6 +32,33 @@ jobs:
           set -euo pipefail
           gzip -dc .github/closure/nonworkflow.patch.gz > /tmp/closure.patch
           git apply --index --binary /tmp/closure.patch
+          python - <<'PY'
+          from pathlib import Path
+
+          package = Path("src/aspenops_nexus")
+          for name in ("research_claims.py", "research_document.py"):
+              path = package / name
+              text = path.read_text(encoding="utf-8")
+              marker = "from .research_common import (\n"
+              if "from .hashing import canonical_hash\n" not in text:
+                  text = text.replace(marker, "from .hashing import canonical_hash\n" + marker, 1)
+              text = text.replace("    canonical_hash,\n", "", 1)
+              path.write_text(text, encoding="utf-8")
+
+          research = package / "research.py"
+          text = research.read_text(encoding="utf-8")
+          text = text.replace(
+              "from .research_common import (\n    _canonical_bytes as _canonical_bytes,\n)\n",
+              "from .hashing import canonical_bytes as _canonical_bytes\n",
+              1,
+          )
+          text = text.replace(
+              "from .research_common import (\n    canonical_hash as canonical_hash,\n)\n",
+              "from .hashing import canonical_hash as canonical_hash\n",
+              1,
+          )
+          research.write_text(text, encoding="utf-8")
+          PY
           rm -rf .github/closure
           rm .github/workflows/closure-export.yml
           git add -A
