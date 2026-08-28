@@ -15,6 +15,15 @@
 
 </div>
 
+<!-- CLOSURE_STATUS_START -->
+## Current code qualification and engineering boundary
+
+- Multi-objective scalarization requires explicit units, physical dimensions, reference values and positive reference scales; changing kW/W representation cannot change the physical ranking.
+- Canonical JSON/SHA-256 is implemented once by `aspenops_nexus.hashing.canonical_hash` and reused by requirements, compilation plans, topology, adapters and licensed-link evidence.
+- Mock/offline qualification validates control-plane software only. Without an authorized commercial solver, licence, fixed model and signed engineering review, real execution remains `PENDING_REAL_ASPEN_CERTIFICATION`.
+- README diagrams and equations document software contracts; they are not Aspen Plus/HYSYS results or plant-performance guarantees.
+<!-- CLOSURE_STATUS_END -->
+
 <!-- LOCALIZED_VISION_EN:START -->
 ## Project vision: from process intent to industrial evidence closure
 

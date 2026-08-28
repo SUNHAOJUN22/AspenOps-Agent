@@ -1,24 +1,15 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any
 
+from .hashing import canonical_hash
 from .process_ir_v2 import ProcessDesignIR
 
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
+
 TOPOLOGY_SCHEMA = "aspenops.native-topology/v1"
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _text(value: Any, label: str) -> str:
@@ -188,7 +179,7 @@ class NativeTopologySnapshot:
         return {**self.identity_dict(), "source": self.source}
 
     def digest(self) -> str:
-        return _canonical_hash(self.identity_dict())
+        return canonical_hash(self.identity_dict())
 
 
 @dataclass(frozen=True, slots=True, order=True)

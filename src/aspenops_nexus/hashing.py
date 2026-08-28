@@ -14,12 +14,17 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def canonical_hash(value: Any) -> str:
-    payload = json.dumps(
+def canonical_bytes(value: Any) -> bytes:
+    """Serialize a value once using the repository-wide deterministic JSON contract."""
+
+    return json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
         allow_nan=False,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    ).encode("utf-8")
+
+
+def canonical_hash(value: Any) -> str:
+    return hashlib.sha256(canonical_bytes(value)).hexdigest()

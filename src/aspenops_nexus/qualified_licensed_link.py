@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from dataclasses import dataclass, fields
 from typing import Any
@@ -12,23 +10,15 @@ from .licensed_certification import LicensedCertificationPlan
 from .qualified_compilation import RuntimeQualifiedCompilationPlan
 from .simulator_capabilities import SimulatorCapabilityProfile
 
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
+
 QUALIFIED_LICENSED_LINK_SCHEMA = "aspenops.qualified-licensed-link/v1"
 OFFLINE_BINDING_ONLY = "OFFLINE_BINDING_ONLY"
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _KEY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _text(value: Any, label: str) -> str:
@@ -174,7 +164,7 @@ class QualifiedLicensedCertificationLink:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
     def assert_matches(
         self,

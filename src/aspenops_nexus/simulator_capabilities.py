@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from .hashing import canonical_hash
 from .process_ir_v2 import ProcessDesignIR
+
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
 
 PROFILE_SCHEMA = "aspenops.simulator-capability-profile/v1"
 
@@ -25,17 +27,6 @@ _SUPPORTED_QUALIFICATIONS = {
     "REVOKED",
 }
 _SUPPORTED_CAPABILITY_STATES = {"DECLARED", "UNSUPPORTED"}
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _text(value: Any, label: str) -> str:
@@ -227,7 +218,7 @@ class SimulatorCapabilityProfile:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
     def assert_matches_design(self, design: ProcessDesignIR) -> None:
         if design.target_simulator != self.simulator:

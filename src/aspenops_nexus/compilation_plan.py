@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from .engineering_rules import EngineeringValidationReport, validate_process_design
 from .flowsheet_preview import render_flowsheet_preview
+from .hashing import canonical_hash
 from .native_topology import NativeTopologySnapshot
 from .process_ir_v2 import EquipmentDefinition, ProcessDesignIR
 from .simulator_capabilities import (
@@ -15,21 +14,13 @@ from .simulator_capabilities import (
     SimulatorCapabilityProfile,
 )
 
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
+
 COMPILATION_PLAN_SCHEMA = "aspenops.compilation-plan/v1"
 
 CompilationStatus = Literal["BLOCKED", "PLAN_ONLY", "EXECUTABLE"]
 IssueSeverity = Literal["ERROR", "EXECUTION_BLOCKER", "WARNING"]
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -121,7 +112,7 @@ class CompilationPlan:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
 
 def _parameter_payload(item: Any) -> dict[str, Any]:
