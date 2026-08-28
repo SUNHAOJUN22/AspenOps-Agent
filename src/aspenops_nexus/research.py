@@ -4,6 +4,7 @@ This public facade keeps the eight scientific objects separate from the Aspen ex
 control plane. Phase 1 validates immutable study manifests only; it never opens a simulator.
 """
 
+from .hashing import canonical_hash as canonical_hash
 from .research_common import (
     MAX_DOCUMENT_BYTES as MAX_DOCUMENT_BYTES,
 )
@@ -36,9 +37,6 @@ from .research_common import (
 )
 from .research_common import (
     _boolean as _boolean,
-)
-from .research_common import (
-    _canonical_bytes as _canonical_bytes,
 )
 from .research_common import (
     _enum as _enum,
@@ -84,9 +82,6 @@ from .research_common import (
 )
 from .research_common import (
     _text as _text,
-)
-from .research_common import (
-    canonical_hash as canonical_hash,
 )
 from .research_objects import (
     Assumption as Assumption,

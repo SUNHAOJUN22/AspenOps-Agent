@@ -15,6 +15,15 @@
 
 </div>
 
+<!-- CLOSURE_STATUS_START -->
+## 当前代码资格与工程边界
+
+- 多目标优化在标量化前使用显式单位、物理维度、参考值与正参考尺度；改变 kW/W 等表示不会改变物理解排序。
+- 规范 JSON/SHA-256 只由 `aspenops_nexus.hashing.canonical_hash` 实现，过程需求、编译计划、拓扑、适配器与许可链接共用同一摘要合同。
+- Mock/离线资格只验证控制面软件；没有已授权商业求解器、许可证、固定模型与签名工程审查时，真实执行状态保持 `PENDING_REAL_ASPEN_CERTIFICATION`。
+- README 中的流程图和公式是代码合同说明，不是 Aspen Plus/HYSYS 求解结果或装置性能保证。
+<!-- CLOSURE_STATUS_END -->
+
 <!-- LOCALIZED_VISION_ZH:START -->
 ## 中文项目愿景图：从过程意图到工业装置证据闭环
 

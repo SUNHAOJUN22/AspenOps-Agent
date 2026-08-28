@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeAlias, cast
 
+from .hashing import canonical_hash
 from .process_requirement import SourceStatus
+
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
 
 DESIGN_SCHEMA = "aspenops.flowsheet/v2"
 MAX_COMPONENTS = 256
@@ -170,17 +172,6 @@ def _scalar(value: Any, label: str) -> ScalarValue:
     if isinstance(value, float) and math.isfinite(value):
         return value
     raise ValueError(f"{label} must be a finite scalar JSON value")
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -898,4 +889,4 @@ class ProcessDesignIR:
         return self.normalized().to_dict()
 
     def digest(self) -> str:
-        return _canonical_hash(self.canonical_dict())
+        return canonical_hash(self.canonical_dict())

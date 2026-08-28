@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from .compilation_plan import CompilationPlan
+from .hashing import canonical_hash
+
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
 
 MANIFEST_SCHEMA = "aspenops.native-adapter-manifest/v1"
 REPORT_SCHEMA = "aspenops.native-adapter-conformance-report/v1"
@@ -20,17 +22,6 @@ _SAVE_REOPEN_OPERATIONS = {
     "readback_topology_after_reopen",
     "readback_layout_after_reopen",
 }
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _text(value: Any, label: str) -> str:
@@ -164,7 +155,7 @@ class NativeAdapterManifest:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -201,7 +192,7 @@ class NativeAdapterConformanceReport:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
     def assert_conformant(self) -> None:
         if not self.conformant:

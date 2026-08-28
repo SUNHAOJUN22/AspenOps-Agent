@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
+from .hashing import canonical_hash
 from .research_common import (
     _LIFECYCLE_RANK,
     _MATURITY_RANK,
@@ -22,7 +23,6 @@ from .research_common import (
     _sequence,
     _strings,
     _text,
-    canonical_hash,
 )
 
 

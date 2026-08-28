@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import math
 import re
 from dataclasses import dataclass
@@ -209,20 +207,6 @@ def _optional_sha256(value: Any, label: str) -> str | None:
     if _SHA256_PATTERN.fullmatch(digest) is None:
         raise ResearchValidationError(f"{label} must be a lowercase SHA-256 digest")
     return digest
-
-
-def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def canonical_hash(value: Any) -> str:
-    return hashlib.sha256(_canonical_bytes(value)).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)

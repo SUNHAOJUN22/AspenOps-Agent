@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any
 
 from .compilation_plan import CompilationPlan, CompilationStep, compile_process_design
+from .hashing import canonical_hash
 from .native_topology import NativeTopologySnapshot
 from .process_ir_v2 import ProcessDesignIR
 from .runtime_qualification import VerifiedRuntimeQualification
 from .simulator_capabilities import SimulatorCapabilityProfile
 
+# Private compatibility alias; implementation lives in hashing.py.
+_canonical_hash = canonical_hash
+
 QUALIFIED_PLAN_SCHEMA = "aspenops.runtime-qualified-compilation-plan/v1"
-
-
-def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +86,7 @@ class RuntimeQualifiedCompilationPlan:
         }
 
     def digest(self) -> str:
-        return _canonical_hash(self.to_dict())
+        return canonical_hash(self.to_dict())
 
 
 def qualify_compilation_plan(

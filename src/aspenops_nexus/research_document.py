@@ -5,6 +5,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from .hashing import canonical_hash
 from .research_common import (
     RESEARCH_SCHEMA,
     ArtifactRef,
@@ -19,7 +20,6 @@ from .research_common import (
     _reject_unknown,
     _sequence,
     _text,
-    canonical_hash,
 )
 from .research_objects import (
     Assumption,
