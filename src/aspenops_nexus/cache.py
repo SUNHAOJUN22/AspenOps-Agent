@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import threading
 from collections import Counter, OrderedDict
@@ -16,6 +17,22 @@ _HIT_FLUSH_THRESHOLD = 1024
 
 def _reject_nonfinite_constant(value: str) -> Any:
     raise ValueError(f"Non-finite JSON constant is not allowed: {value}")
+
+
+def _finite_json_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("JSON number exceeds the finite range")
+    return result
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key is not allowed: {key!r}")
+        result[key] = value
+    return result
 
 
 def _chunks(values: list[str], size: int = _SQLITE_PARAMETER_BATCH) -> Iterator[list[str]]:
@@ -140,8 +157,10 @@ class ResultCache:
                     value = json.loads(
                         payload,
                         parse_constant=_reject_nonfinite_constant,
+                        parse_float=_finite_json_float,
+                        object_pairs_hook=_unique_json_object,
                     )
-                except (json.JSONDecodeError, ValueError):
+                except (ValueError, RecursionError):
                     corrupt.append(key)
                     continue
                 if not isinstance(value, dict):

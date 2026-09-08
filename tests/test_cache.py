@@ -151,3 +151,76 @@ def test_corrupted_cache_entries_are_removed_without_poisoning_valid_hits(tmp_pa
     assert cache.get("invalid-json") is None
     assert cache.get("wrong-shape") is None
     assert cache.stats() == {"entries": 1, "hits": 2}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"value": 1e999}',
+        '{"nested": {"value": -1e999}}',
+        '{"value": NaN}',
+        '{"value": Infinity}',
+        '{"value": -Infinity}',
+        '{"value": 1, "value": 2}',
+        '{"nested": {"value": 1, "value": 2}}',
+        '{"value": 1, "\\u0076alue": 2}',
+    ],
+    ids=[
+        "overflow",
+        "nested-overflow",
+        "nan",
+        "inf",
+        "negative-inf",
+        "duplicate",
+        "nested-duplicate",
+        "escaped-duplicate",
+    ],
+)
+def test_invalid_json_payload_does_not_poison_other_cache_hits(
+    tmp_path: Path, payload: str
+) -> None:
+    path = tmp_path / "cache.sqlite3"
+    cache = ResultCache(path)
+    cache.put("good", {"value": 7.0})
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO result_cache(cache_key, payload) VALUES (?, ?)",
+            ("corrupt", payload),
+        )
+    assert cache.get_many(["corrupt", "good", "corrupt", "good"]) == {"good": {"value": 7.0}}
+    assert cache.get("corrupt") is None
+    assert "corrupt" not in cache._memory
+    assert cache.stats() == {"entries": 1, "hits": 2}
+    cache.close()
+
+
+def test_json_recursion_failure_is_discarded_without_losing_valid_hits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = ResultCache(tmp_path / "cache.sqlite3")
+    cache.put_many({"deep": {"deep": True}, "good": {"value": 7}})
+    original_loads = json.loads
+
+    def limited_loads(value: str, *args: Any, **kwargs: Any) -> Any:
+        if value == '{"deep":true}':
+            raise RecursionError("JSON decoder recursion limit")
+        return original_loads(value, *args, **kwargs)
+
+    monkeypatch.setattr("aspenops_nexus.cache.json.loads", limited_loads)
+    assert cache.get_many(["deep", "good"]) == {"good": {"value": 7}}
+    assert cache.get("deep") is None
+    assert cache.stats() == {"entries": 1, "hits": 1}
+    cache.close()
+
+
+def test_finite_nested_numbers_survive_disk_and_memory_roundtrips(tmp_path: Path) -> None:
+    path = tmp_path / "cache.sqlite3"
+    payload = {"nested": [1.5, -2.25, 1e308, 1e-308], "value": {"density": 0.92}}
+    original = ResultCache(path)
+    original.put("finite", payload)
+    original.close()
+    reopened = ResultCache(path)
+    assert reopened.get("finite") == payload
+    assert reopened.get("finite") == payload
+    assert reopened.stats() == {"entries": 1, "hits": 2}
+    reopened.close()
