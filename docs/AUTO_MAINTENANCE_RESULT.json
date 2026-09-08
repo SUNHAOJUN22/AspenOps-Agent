@@ -1,0 +1,91 @@
+{
+  "aspen_executed": false,
+  "coverage": {
+    "legacy_branch_coverage_percent": {
+      "3.11": 92.13381555153707,
+      "3.12": 92.13381555153707,
+      "3.13": 92.13381555153707,
+      "p0": 96.15384615384616
+    }
+  },
+  "decision": "PASS",
+  "dynamic_modeling_executed": false,
+  "evidence_composition": {
+    "complete_gate_run_note": "All gates except the final schema-inventory command passed; the failure was test-script indentation after Wheel, dependencies, pip check, CLI and demo had succeeded.",
+    "finalize_run_note": "Revalidated frozen dependencies, focused schemas/examples, build, Wheel metadata, hash-verified runtime dependencies, Wheel install, pip check, CLI, demo and all nine packaged schemas."
+  },
+  "focused_schema_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 7,
+    "time_seconds": 0.113
+  },
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 19.426
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 20.122
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 877,
+      "time": 17.366
+    }
+  },
+  "hard_gates": {
+    "bandit": 0,
+    "boundary-check": 0,
+    "build": 0,
+    "compileall": 0,
+    "demo": 0,
+    "dependency-audit": 0,
+    "diff-check": 0,
+    "format": 0,
+    "full-3.11": 0,
+    "full-3.12": 0,
+    "full-3.13": 0,
+    "lock-check": 0,
+    "mcp": 0,
+    "mypy": 0,
+    "order-312": 0,
+    "p0-contract": 0,
+    "p0-format-fix": 0,
+    "p0-ruff-fix": 0,
+    "process-ir": 0,
+    "restore-312": 0,
+    "ruff": 0,
+    "source-audit": 0,
+    "sync-312": 0,
+    "wheel-metadata": 0,
+    "wheel-smoke": 0
+  },
+  "machine_learning_executed": false,
+  "p0_tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 68,
+    "time": 0.995
+  },
+  "parameter_estimation_executed": false,
+  "qualification_runs": {
+    "complete_gate_run": "30505805750",
+    "wheel_finalize_attempt": "1",
+    "wheel_finalize_run": "30506006621"
+  },
+  "runtime_core_changed": false,
+  "schema": "aspenops.auto-maintenance-result/v1",
+  "source_files_changed": false
+}

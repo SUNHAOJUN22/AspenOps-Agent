@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">AspenOps Agent — dimension-safe process automation</title>
+  <desc id="desc">Conceptual architecture showing typed intent, canonical physics, licensed execution and evidence-bound engineering decisions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#061326"/><stop offset="0.55" stop-color="#0b2f4a"/><stop offset="1" stop-color="#25103b"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#50e3c2"/><stop offset="0.5" stop-color="#5ca9ff"/><stop offset="1" stop-color="#c782ff"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>
+      .t{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#f6fbff}.m{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;fill:#d8f6ff}.muted{fill:#a8c4d9}.box{fill:#0d2238;stroke:#4fd7d0;stroke-width:2}.box2{fill:#162542;stroke:#7aa7ff;stroke-width:2}.box3{fill:#24183f;stroke:#c782ff;stroke-width:2}.small{font-size:23px}.body{font-size:29px}.head{font-size:50px;font-weight:700}.sub{font-size:27px}.eq{font-size:25px}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1260" cy="120" r="190" fill="#5ca9ff" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="250" cy="760" r="220" fill="#50e3c2" opacity="0.08" filter="url(#glow)"/>
+  <text x="86" y="95" class="t head">AspenOps Agent</text>
+  <text x="88" y="140" class="t sub">Dimension-safe process intelligence · controlled execution · auditable engineering evidence</text>
+  <rect x="86" y="180" width="1428" height="4" rx="2" fill="url(#accent)"/>
+
+  <g transform="translate(90 245)">
+    <rect width="310" height="210" rx="26" class="box"/>
+    <text x="28" y="52" class="t body" font-weight="700">1. Typed process intent</text>
+    <text x="28" y="92" class="t small">Streams · components · units</text>
+    <text x="28" y="126" class="t small">constraints · scenarios · scope</text>
+    <text x="28" y="171" class="m eq">q = value × scale → SI</text>
+  </g>
+  <g transform="translate(440 245)">
+    <rect width="310" height="210" rx="26" class="box2"/>
+    <text x="28" y="52" class="t body" font-weight="700">2. Canonical physics</text>
+    <text x="28" y="92" class="t small">Per-component conservation</text>
+    <text x="28" y="126" class="t small">dimensionless optimization</text>
+    <text x="28" y="171" class="m eq">|Rⱼ| ≤ εₐ + εᵣ Sⱼ</text>
+  </g>
+  <g transform="translate(790 245)">
+    <rect width="310" height="210" rx="26" class="box2"/>
+    <text x="28" y="52" class="t body" font-weight="700">3. Licensed execution</text>
+    <text x="28" y="92" class="t small">Exact model + request digest</text>
+    <text x="28" y="126" class="t small">nonce · expiry · revocation</text>
+    <text x="28" y="171" class="m eq">receipt ≠ self-assertion</text>
+  </g>
+  <g transform="translate(1140 245)">
+    <rect width="310" height="210" rx="26" class="box3"/>
+    <text x="28" y="52" class="t body" font-weight="700">4. Evidence decision</text>
+    <text x="28" y="92" class="t small">software / execution / science</text>
+    <text x="28" y="126" class="t small">engineering acceptance separated</text>
+    <text x="28" y="171" class="m eq">PASS ≠ certification</text>
+  </g>
+
+  <path d="M400 350 H440 M750 350 H790 M1100 350 H1140" stroke="url(#accent)" stroke-width="7" stroke-linecap="round"/>
+  <g transform="translate(90 520)">
+    <rect width="1360" height="210" rx="30" fill="#071a2c" stroke="#507692" stroke-width="2"/>
+    <text x="36" y="54" class="t body" font-weight="700">Scientific contract</text>
+    <text x="36" y="101" class="m eq">Rⱼ,b = Ṅⱼ,b,in − Ṅⱼ,b,out + Gⱼ,b − Cⱼ,b − dNⱼ,b/dt</text>
+    <text x="36" y="145" class="m eq">J = Σₖ wₖ (fₖ − fₖ,ref) / sₖ ,  Σₖ wₖ = 1</text>
+    <text x="36" y="187" class="t small muted">Every term carries a declared basis, unit, scope and evidence reference. Missing or invalid evidence remains HOLD.</text>
+  </g>
+  <text x="92" y="820" class="t small">VISION: from process intent to reproducible, governable and evidence-first industrial decisions</text>
+  <text x="92" y="858" class="t small muted">AI-designed conceptual illustration · not empirical, licensed-simulator or engineering-approval evidence</text>
+</svg>

@@ -1,0 +1,100 @@
+{
+  "schema": "aspenops.phase-validation-matrix/v1",
+  "phase": "PHASE_4",
+  "status": "PASS_BUILD_CONTRACTS",
+  "qualification_scope": "QUALIFIED_LICENSED_BINDING_CONTRACTS",
+  "execution_scope": "OFFLINE_BINDING_ONLY",
+  "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "pull_request": 107,
+  "validated_head": "4f9b6951c30b95b4b1259b570a3cf57a6cbb1191",
+  "workflow_runs": {
+    "linux_ci": 30760860286,
+    "windows": 30760860277
+  },
+  "quality": {
+    "dependency_audit": "PASS",
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "strict_mypy": "PASS",
+    "compile_sources": "PASS",
+    "source_tree_audit": "PASS",
+    "bandit": "PASS",
+    "documentation_governance": "PASS",
+    "process_ir_validation": "PASS",
+    "distribution_build": "PASS",
+    "portable_demo": "PASS",
+    "performance_policy": "PASS",
+    "mcp_surface": "PASS",
+    "wheel_install_and_cli_smoke": "PASS"
+  },
+  "python_matrix": {
+    "3.11": {
+      "tests_passed": 1140,
+      "branch_coverage_percent": 95.48,
+      "result": "PASS"
+    },
+    "3.12": {
+      "tests_passed": 1140,
+      "branch_coverage_percent": 95.46,
+      "result": "PASS",
+      "order_independence": {
+        "reverse": "PASS",
+        "fixed_seed": 20260728,
+        "fixed_seed_result": "PASS",
+        "tests_checked": 1140
+      }
+    },
+    "3.13": {
+      "tests_passed": 1140,
+      "branch_coverage_percent": 95.46,
+      "result": "PASS"
+    }
+  },
+  "windows": {
+    "lockfile_and_sync": "PASS",
+    "powershell_parse": "PASS",
+    "powershell_helpers": "PASS",
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "strict_mypy": "PASS",
+    "compile_and_source_audit": "PASS",
+    "control_plane_contracts": "PASS",
+    "process_ir_validation": "PASS",
+    "cli_smoke": "PASS",
+    "result": "PASS"
+  },
+  "contract_matrix": {
+    "licensed_plan_sha256_binding": "PASS",
+    "case_id_binding": "PASS",
+    "approved_commit_binding": "PASS",
+    "backend_binding": "PASS",
+    "model_sha256_binding": "PASS",
+    "registry_sha256_binding": "PASS",
+    "licensed_signing_key_id_binding": "PASS",
+    "qualified_plan_sha256_binding": "PASS",
+    "base_plan_sha256_binding": "PASS",
+    "qualification_evidence_sha256_binding": "PASS",
+    "qualification_key_id_binding": "PASS",
+    "profile_id_and_sha256_binding": "PASS",
+    "adapter_contract_binding": "PASS",
+    "adapter_code_sha256_binding": "PASS",
+    "runtime_identity_sha256_binding": "PASS",
+    "topology_sha256_binding": "PASS",
+    "layout_sha256_binding": "PASS",
+    "golden_case_binding": "PASS",
+    "strict_round_trip": "PASS",
+    "current_input_drift_detection": "PASS",
+    "forged_execution_state_rejection": "PASS"
+  },
+  "unexecuted_real_runtime_gates": [
+    "native Aspen Plus adapter",
+    "native HYSYS adapter",
+    "commercial solver execution",
+    "native save-close-reopen",
+    "native topology and layout readback",
+    "production trust keys",
+    "real Golden Case evidence",
+    "licensed repeatability execution",
+    "human engineering acceptance"
+  ]
+}

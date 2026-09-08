@@ -1,0 +1,9 @@
+{
+  "reason": "No authenticated model invocation was available in the offline bundle environment.",
+  "schema_version": "agent-skill-model-routing-status.v11",
+  "skill_name": "aspenops-acceptance-maintainer",
+  "static_case_count": 14,
+  "status": "NOT_RUN",
+  "train_cases": 7,
+  "validation_cases": 7
+}

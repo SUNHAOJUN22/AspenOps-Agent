@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+<title id="title">Mathematical Contracts</title>
+<desc id="desc">Material balance, constraint violation, cache identity and evidence binding used by AspenOps.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#07111f"/>
+    <stop offset="1" stop-color="#102b3f"/>
+  </linearGradient>
+  <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#173b56"/>
+    <stop offset="1" stop-color="#0d2233"/>
+  </linearGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".35"/>
+  </filter>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+    <path d="M0,0 L0,6 L9,3 z" fill="#67d7ff"/>
+  </marker>
+</defs>
+<rect width="1200" height="675" rx="28" fill="url(#bg)"/>
+<text x="60" y="72" fill="#f7fbff" font-family="Arial, sans-serif" font-size="34" font-weight="700">Mathematical Contracts</text>
+<text x="60" y="108" fill="#9cc7dc" font-family="Arial, sans-serif" font-size="18">Equations are acceptance gates, not decorative documentation.</text>
+<path d="M310 235 L350 235" stroke="#67d7ff" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+<path d="M600 235 L640 235" stroke="#67d7ff" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+<path d="M890 235 L930 235" stroke="#67d7ff" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+<path d="M535 455 L665 455" stroke="#67d7ff" stroke-width="5" fill="none" marker-end="url(#arrow)"/>
+<g filter="url(#shadow)"><rect x="60" y="160" width="250" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="96" cy="198" r="15" fill="#36c5f0"/><text x="124" y="204" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Mass Balance</text><text x="88" y="242" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">dN/dt = inflow - outflow + reaction</text></g>
+<g filter="url(#shadow)"><rect x="350" y="160" width="250" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="386" cy="198" r="15" fill="#36c5f0"/><text x="414" y="204" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Validity</text><text x="378" y="242" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">OK = comm AND engine AND finite</text></g>
+<g filter="url(#shadow)"><rect x="640" y="160" width="250" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="676" cy="198" r="15" fill="#36c5f0"/><text x="704" y="204" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Optimization</text><text x="668" y="242" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">min J(x) subject to engineering gates</text></g>
+<g filter="url(#shadow)"><rect x="930" y="160" width="210" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="966" cy="198" r="15" fill="#36c5f0"/><text x="994" y="204" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Cache Identity</text><text x="958" y="242" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">SHA256(runtime | model | request)</text></g>
+<g filter="url(#shadow)"><rect x="205" y="380" width="330" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="241" cy="418" r="15" fill="#36c5f0"/><text x="269" y="424" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Unit Contract</text><text x="233" y="462" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">dimension, finite value, physical range</text></g>
+<g filter="url(#shadow)"><rect x="665" y="380" width="330" height="150" rx="18" fill="url(#card)" stroke="#3a8fb7" stroke-width="2"/><circle cx="701" cy="418" r="15" fill="#36c5f0"/><text x="729" y="424" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700">Evidence Binding</text><text x="693" y="462" fill="#b8d7e6" font-family="Arial, sans-serif" font-size="16">request + results + environment + signature</text></g>
+<rect x="55" y="610" width="1090" height="2" fill="#2e6078"/><text x="60" y="642" fill="#83afc4" font-family="Arial, sans-serif" font-size="16">Software contracts only. Licensed simulator evidence and human engineering approval remain independent.</text></svg>

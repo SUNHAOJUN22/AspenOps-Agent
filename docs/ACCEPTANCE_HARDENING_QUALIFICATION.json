@@ -1,0 +1,24 @@
+{
+  "branch_coverage_percent": 95.03,
+  "errors": 0,
+  "failed": 0,
+  "passed": 1224,
+  "python": "3.12",
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "reverse_order_gate": "PASS",
+  "schema": "aspenops.acceptance-hardening-qualification/v2",
+  "seeded_order_gate": {
+    "seed": 20260728,
+    "status": "PASS"
+  },
+  "skipped": 0,
+  "static_gates": {
+    "bandit_high_high": "PASS",
+    "compileall": "PASS",
+    "mypy_strict": "PASS",
+    "ruff": "PASS",
+    "source_tree_audit": "PASS"
+  },
+  "status": "PASS",
+  "validated_source_parent": "60562b220545a1924e9e20ac0cef554452975a96"
+}

@@ -1,0 +1,175 @@
+{
+  "schema": "aspenops.branch-archive/v1",
+  "status": "BLOCKED_WORKFLOWS_PERMISSION",
+  "tag_pattern": "archive/branch/<sanitized-name>/20260721/<short-sha>",
+  "required_tag_type": "annotated",
+  "existing_verified_tags": [
+    {
+      "source_branch": "audit/single-main-final-20260721",
+      "sha": "670e9523e915af309f16d959150cfadcd84219a6",
+      "tag": "archive/retired-branch/audit-single-main-final-20260721/20260721/670e9523e915"
+    },
+    {
+      "source_branch": "automation/final-main-evidence-trigger",
+      "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0",
+      "tag": "archive/retired-branch/automation-final-main-evidence-trigger/20260721/f4968e3209d4"
+    }
+  ],
+  "planned_annotated_tags": [
+    {
+      "branch": "agent/aspenops-1.0-production-runtime",
+      "sha": "2d5ae6cb08df1bdaad26f596f1060c4d397bf020",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-1.0-production-runtime/20260721/2d5ae6c",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.0-staging",
+      "sha": "c1453ac9830fa87fcbba1db1925b96da1de082fa",
+      "classification": "ALREADY_IN_MAIN",
+      "tag": "archive/branch/agent-aspenops-1.0-staging/20260721/c1453ac",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.1-materialize",
+      "sha": "6069845b4308d872b54b808aa1b1e0dc36b022fa",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-1.1-materialize/20260721/6069845",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.1-zstd-materialize",
+      "sha": "89fbc12ecb806f539384fde609dd9433f7271aed",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-1.1-zstd-materialize/20260721/89fbc12",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.2-materialize",
+      "sha": "51da79b3328d02435ca32ff84eb15a6f0acf26fd",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-1.2-materialize/20260721/51da79b",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.2-production-runtime",
+      "sha": "524621bd6eb99157e621f34cdb5ee31a5399f588",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-1.2-production-runtime/20260721/524621b",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.3-physical-digital-twin",
+      "sha": "8283744093a210c07da16ffe006968776dff9547",
+      "classification": "ALREADY_IN_MAIN",
+      "tag": "archive/branch/agent-aspenops-1.3-physical-digital-twin/20260721/8283744",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-1.4-mathematical-database-hardening",
+      "sha": "31464bbc8c2fb68ef18bc397dbc7ba3da1095087",
+      "classification": "UNIQUE_EXPERIMENTAL_ARCHIVED",
+      "tag": "archive/branch/agent-aspenops-1.4-mathematical-database-hardening/20260721/31464bb",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-v2-reliability-performance",
+      "sha": "5a8ef0b5f2f5ab4442345b2a38961b3e8a4b4430",
+      "classification": "MERGED_SOURCE",
+      "tag": "archive/branch/agent-aspenops-v2-reliability-performance/20260721/5a8ef0b",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/aspenops-v2-stage",
+      "sha": "8f5688f51386332b6eed10a9baa56a0444f3a9d9",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-aspenops-v2-stage/20260721/8f5688f",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/fix-runtime-safety",
+      "sha": "6bc534d648b92e0550c8fc6915ce1f4b8fe01835",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-fix-runtime-safety/20260721/6bc534d",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/harden-runtime-safety",
+      "sha": "6b01e0bf53fddf933127180ddf0b2b8b4ba17d94",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-harden-runtime-safety/20260721/6b01e0b",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/materialize-v1",
+      "sha": "b0dde83184b6c8766744dad2b3b0586847c901c0",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-materialize-v1/20260721/b0dde83",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/materialize-v1-pr",
+      "sha": "4c89a1b30578f77c74359a16fb32cf1a723e93bc",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-materialize-v1-pr/20260721/4c89a1b",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/materialize-v1-text",
+      "sha": "3b7de383d45b90e16f3785a49eeddcc5df8d522f",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-materialize-v1-text/20260721/3b7de38",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/rebuild-aspenops-v1",
+      "sha": "17b2531c7154baaa8d13fb54b690e0bbf1d31c28",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/agent-rebuild-aspenops-v1/20260721/17b2531",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "agent/tmp-base-tree-probe",
+      "sha": "1b992405b88138ddcb9c3b0f32141c336a87075c",
+      "classification": "ALREADY_IN_MAIN",
+      "tag": "archive/branch/agent-tmp-base-tree-probe/20260721/1b99240",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "bootstrap-trigger",
+      "sha": "060669a63fc6540ffeff7871e5b34439b11c6788",
+      "classification": "SUPERSEDED",
+      "tag": "archive/branch/bootstrap-trigger/20260721/060669a",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "refactor/aspenops-2.1",
+      "sha": "c1453ac9830fa87fcbba1db1925b96da1de082fa",
+      "classification": "ALREADY_IN_MAIN",
+      "tag": "archive/branch/refactor-aspenops-2.1/20260721/c1453ac",
+      "status": "NOT_CREATED_PERMISSION_BLOCKED"
+    },
+    {
+      "branch": "audit/single-main-final-20260721",
+      "sha": "670e9523e915af309f16d959150cfadcd84219a6",
+      "classification": "AUDIT_TRIGGER_ARCHIVED",
+      "tag": "archive/branch/audit-single-main-final-20260721/20260721/670e952",
+      "status": "SUPERSEDED_BY_EXISTING_VERIFIED_TAG"
+    },
+    {
+      "branch": "automation/final-main-evidence-trigger",
+      "sha": "f4968e3209d4fd76294bb9173c76ad74e74564e0",
+      "classification": "ORIGINAL_TRIGGER_ARCHIVED",
+      "tag": "archive/branch/automation-final-main-evidence-trigger/20260721/f4968e3",
+      "status": "SUPERSEDED_BY_EXISTING_VERIFIED_TAG"
+    }
+  ],
+  "blocker": {
+    "permission": "Workflows: write",
+    "rest_run_id": 29817700557,
+    "rest_error": "HTTP 403 Resource not accessible by integration while creating refs/tags/...",
+    "git_run_id": 29818039586,
+    "git_error": "refusing to allow a GitHub App to create or update workflow .github/workflows/ci.yml without workflows permission",
+    "resolution": "Use a maintainer token or GitHub App installation token with Contents: write and Workflows: write to create and verify these annotated tag refs."
+  }
+}

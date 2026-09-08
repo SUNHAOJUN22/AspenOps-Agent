@@ -1,0 +1,23 @@
+{
+  "actual_parts": [
+    0
+  ],
+  "decision": "REJECTED_INCOMPLETE_TRANSPORT",
+  "declared_baseline_sha": "5ed99b0ea6274ecab8815969f7b26ebc44d8c5ff",
+  "declared_payload_sha256": "0131c440cfe4f63440aa312153fb66f5f30b9aa5b10265003cf4ff8c33789519",
+  "expected_parts": 8,
+  "issue": 44,
+  "missing_parts": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "payload_executed": false,
+  "reason": "Seven of eight declared payload parts are absent; integrity and semantics cannot be reconstructed safely.",
+  "schema": "aspenops.issue44-hardening-audit/v1",
+  "source_changes_applied": false
+}

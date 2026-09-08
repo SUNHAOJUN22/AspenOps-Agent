@@ -1,0 +1,48 @@
+{
+  "schema": "aspenops.capability-consolidation/v1",
+  "status": "COMPLETE_WITH_ARCHIVE_PERMISSION_BLOCKER",
+  "production_source": "AspenOps 2.0 main",
+  "required_unmerged_capabilities": [],
+  "validated_main_capabilities": [
+    "failure-closed Aspen Plus and HYSYS convergence",
+    "immutable EvaluationPlan and unique semantic reads",
+    "write transaction and verified rollback",
+    "TAINTED Worker generation replacement",
+    "strict IPC and process lifecycle",
+    "Windows Job Object and process ownership",
+    "content-addressed cache, deduplication and singleflight",
+    "persistent license-aware PoolManager",
+    "durable Scheduler leases, heartbeats, fencing and cancellation",
+    "deterministic optimization and Pareto archive",
+    "bounded CLI and 14-tool MCP surface",
+    "archive safety and Ed25519 evidence",
+    "licensed certification plan, preflight and workflow",
+    "portable and public-Windows evidence",
+    "committed portable performance evidence"
+  ],
+  "experimental_archives": [
+    {
+      "source": "agent/aspenops-1.4-mathematical-database-hardening",
+      "sha": "31464bbc8c2fb68ef18bc397dbc7ba3da1095087",
+      "modules": [
+        "approval",
+        "drift",
+        "surrogate",
+        "twin"
+      ],
+      "classification": "UNIQUE_EXPERIMENTAL_ARCHIVED",
+      "decision": "ARCHIVED_NOT_SHIPPED",
+      "production_claim": false,
+      "reason": "The source branch failed its production Ruff gate and had no accepted bounded CLI, MCP or Scheduler integration.",
+      "annotated_tag_status": "BLOCKED_WORKFLOWS_PERMISSION"
+    }
+  ],
+  "archive_permission_blocker": {
+    "affects_runtime_or_main_correctness": false,
+    "affects_recovery_tag_completion": true,
+    "required_permission": "Workflows: write",
+    "rest_evidence_run_id": 29817700557,
+    "git_evidence_run_id": 29818039586
+  },
+  "real_aspen_status": "PENDING_REAL_ASPEN_CERTIFICATION"
+}

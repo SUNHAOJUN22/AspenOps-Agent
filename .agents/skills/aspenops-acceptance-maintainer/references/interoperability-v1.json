@@ -1,0 +1,22 @@
+{
+  "schema_version": "tsao-scientific-interoperability/v1",
+  "repository": "SUNHAOJUN22/AspenOps-Agent",
+  "scientific_quantity": {
+    "required": ["value", "unit", "dimension", "reference_state", "conditions", "uncertainty", "applicability", "provenance_refs"],
+    "finite_real_required": true,
+    "boolean_is_numeric": false,
+    "unknown_is_zero": false
+  },
+  "evidence_envelope": {
+    "required": ["artifact_sha256", "schema_version", "issuer", "subject", "role", "scope", "audience", "project", "task", "method", "input_sha256", "result_sha256", "issued_at", "expires_at", "nonce", "key_id", "signature", "revoked", "prev_hash"]
+  },
+  "status_lattice": {
+    "severity_order": ["FAIL", "HOLD", "CONDITIONAL", "UNKNOWN", "NOT_EVALUATED", "PASS"],
+    "workflow_order": ["planned", "prepared", "executed", "reported", "converged", "numerically_checked", "physically_validated", "accepted"],
+    "software_pass_implies_external_acceptance": false
+  },
+  "handoff_receipt": {
+    "required": ["schema_version", "source_repository", "target_repository", "audience", "scope", "quantity", "evidence", "status"],
+    "reject_on_mismatch": ["schema_version", "audience", "scope", "artifact_sha256", "unit", "dimension", "reference_state"]
+  }
+}

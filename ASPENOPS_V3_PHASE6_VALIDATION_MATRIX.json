@@ -1,0 +1,101 @@
+{
+  "schema": "aspenops.phase-validation-matrix/v1",
+  "phase": "PHASE_6",
+  "status": "PASS_BUILD_CONTRACTS",
+  "qualification_scope": "SIGNED_CHAINED_REVOCATION_POLICY_CONTRACTS",
+  "execution_scope": "SOFTWARE_AUTHORIZATION_ONLY",
+  "real_simulator_status": "PENDING_REAL_ASPEN_CERTIFICATION",
+  "pull_request": 109,
+  "validated_head": "eefb01d8659fba19e4b31ce0272e4c17aea6dcd9",
+  "workflow_runs": {
+    "linux_ci": 30762188501,
+    "windows": 30762188513
+  },
+  "quality": {
+    "dependency_audit": "PASS",
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "strict_mypy": "PASS",
+    "compile_sources": "PASS",
+    "source_tree_audit": "PASS",
+    "bandit": "PASS",
+    "documentation_governance": "PASS",
+    "process_ir_validation": "PASS",
+    "distribution_build": "PASS",
+    "portable_demo": "PASS",
+    "performance_policy": "PASS",
+    "mcp_surface": "PASS",
+    "wheel_install_and_cli_smoke": "PASS"
+  },
+  "python_matrix": {
+    "3.11": {
+      "tests_passed": 1168,
+      "branch_coverage_percent": 95.12,
+      "result": "PASS"
+    },
+    "3.12": {
+      "tests_passed": 1168,
+      "branch_coverage_percent": 95.12,
+      "result": "PASS",
+      "order_independence": {
+        "reverse": "PASS",
+        "fixed_seed": 20260728,
+        "fixed_seed_result": "PASS",
+        "tests_checked": 1168
+      }
+    },
+    "3.13": {
+      "tests_passed": 1168,
+      "branch_coverage_percent": 95.14,
+      "result": "PASS"
+    }
+  },
+  "windows": {
+    "lockfile_and_sync": "PASS",
+    "powershell_parse": "PASS",
+    "powershell_helpers": "PASS",
+    "ruff": "PASS",
+    "ruff_format": "PASS",
+    "strict_mypy": "PASS",
+    "compile_and_source_audit": "PASS",
+    "control_plane_contracts": "PASS",
+    "process_ir_validation": "PASS",
+    "cli_smoke": "PASS",
+    "result": "PASS"
+  },
+  "contract_matrix": {
+    "separate_revocation_authority_namespace": "PASS",
+    "ed25519_policy_signature": "PASS",
+    "strict_signed_statement_schema": "PASS",
+    "strict_signed_envelope_schema": "PASS",
+    "policy_sequence_binding": "PASS",
+    "signed_predecessor_binding": "PASS",
+    "current_policy_checkpoint": "PASS",
+    "exactly_next_policy_advancement": "PASS",
+    "old_sequence_rollback_rejection": "PASS",
+    "same_sequence_replacement_rejection": "PASS",
+    "same_sequence_authority_change_rejection": "PASS",
+    "skipped_sequence_rejection": "PASS",
+    "wrong_predecessor_rejection": "PASS",
+    "missing_authority_rejection": "PASS",
+    "missing_checkpoint_rejection": "PASS",
+    "legacy_unsigned_policy_rejection": "PASS",
+    "policy_authority_identity_in_authorization": "PASS",
+    "policy_sequence_in_authorization": "PASS",
+    "checkpoint_digest_in_authorization": "PASS",
+    "signed_policy_identity_in_execution_record": "PASS"
+  },
+  "unexecuted_real_runtime_gates": [
+    "externally anchored monotonic checkpoint",
+    "transparency or append-only log",
+    "production revocation-authority keys",
+    "hardware or OS protected checkpoint deployment",
+    "native Aspen Plus adapter",
+    "native HYSYS adapter",
+    "commercial solver execution",
+    "real Golden Case evidence",
+    "native persistence and topology/layout readback",
+    "licensed repeatability execution",
+    "human engineering acceptance"
+  ]
+}

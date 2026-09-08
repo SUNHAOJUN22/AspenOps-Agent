@@ -1,0 +1,36 @@
+[mcp_servers.aspenops]
+command = "uv"
+args = ["run", "--extra", "agent", "aspenops-mcp"]
+cwd = "."
+env_vars = [
+  "ASPENOPS_BACKEND",
+  "ASPENOPS_MODE",
+  "ASPENOPS_ALLOWED_ROOTS",
+  "ASPENOPS_LICENSE_SLOTS",
+  "ASPENOPS_MAX_WORKERS",
+  "ASPENOPS_TIMEOUT_S",
+  "ASPENOPS_STARTUP_TIMEOUT_S",
+  "ASPENOPS_WORKER_MAX_POINTS",
+  "ASPENOPS_WORKER_MAX_AGE_S",
+  "ASPENOPS_CACHE_FAILURES",
+  "ASPENOPS_VISIBLE",
+  "ASPENOPS_PROGID",
+  "ASPENOPS_HYSYS_PROGID",
+]
+startup_timeout_sec = 30
+tool_timeout_sec = 3600
+enabled = true
+required = false
+default_tools_approval_mode = "writes"
+
+[mcp_servers.aspenops.tools.system_info]
+approval_mode = "approve"
+
+[mcp_servers.aspenops.tools.list_semantic_variables]
+approval_mode = "approve"
+
+[mcp_servers.aspenops.tools.job_status]
+approval_mode = "approve"
+
+[mcp_servers.aspenops.tools.job_result]
+approval_mode = "approve"

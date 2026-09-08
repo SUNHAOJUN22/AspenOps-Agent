@@ -1,0 +1,617 @@
+from __future__ import annotations
+
+import math
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any, Literal, cast
+
+BackendName = Literal["mock", "aspen_plus", "hysys"]
+ConstraintOperator = Literal["<", "<=", ">", ">=", "=="]
+ResetMode = Literal["reinitialize", "warm_start"]
+CacheSource = Literal[
+    "computed",
+    "persistent_cache",
+    "same_batch_dedup",
+    "inflight_singleflight",
+]
+
+
+def _object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object")
+    return {str(key): item for key, item in value.items()}
+
+
+def _array(value: Any, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be an array")
+    return value
+
+
+def _text(value: Any, label: str, *, nonempty: bool = True) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    normalized = value.strip()
+    if nonempty and not normalized:
+        raise ValueError(f"{label} must be a non-empty string")
+    return normalized
+
+
+def _optional_text(value: Any, label: str) -> str | None:
+    if value is None:
+        return None
+    return _text(value, label)
+
+
+def _finite_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be a finite number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be a finite number")
+    return number
+
+
+def _nonnegative_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be a finite non-negative number")
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{label} must be a finite non-negative number")
+    return number
+
+
+def _positive_number(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{label} must be a finite positive number")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{label} must be a finite positive number")
+    return number
+
+
+def _identifiers(value: Any, label: str) -> dict[str, str]:
+    mapping = _object(value, label)
+    identifiers: dict[str, str] = {}
+    for raw_key, raw_value in mapping.items():
+        key = _text(raw_key, f"{label} key")
+        if isinstance(raw_value, bool):
+            identifiers[key] = "true" if raw_value else "false"
+        elif isinstance(raw_value, int | float):
+            if isinstance(raw_value, float) and not math.isfinite(raw_value):
+                raise ValueError(f"{label} values must be finite scalar JSON values")
+            identifiers[key] = str(raw_value)
+        elif isinstance(raw_value, str):
+            identifiers[key] = raw_value
+        else:
+            raise ValueError(f"{label} values must be finite scalar JSON values")
+    return identifiers
+
+
+def _scalar(value: Any, label: str) -> float | int | str | bool:
+    if isinstance(value, bool | str | int):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    raise ValueError(f"{label} must be a finite scalar JSON value")
+
+
+@dataclass(frozen=True, slots=True)
+class VariableWrite:
+    key: str
+    identifiers: dict[str, str]
+    value: float | int | str | bool
+    unit: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VariableWrite:
+        mapping = _object(data, "write")
+        if "key" not in mapping:
+            raise ValueError("write is missing key")
+        if "value" not in mapping:
+            raise ValueError("write is missing value")
+        return cls(
+            key=_text(mapping["key"], "write key"),
+            identifiers=_identifiers(mapping.get("identifiers", {}), "write identifiers"),
+            value=_scalar(mapping["value"], "write value"),
+            unit=_optional_text(mapping.get("unit"), "write unit"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VariableRead:
+    key: str
+    identifiers: dict[str, str]
+    unit: str | None = None
+    required: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VariableRead:
+        mapping = _object(data, "read")
+        if "key" not in mapping:
+            raise ValueError("read is missing key")
+        required = mapping.get("required", True)
+        if not isinstance(required, bool):
+            raise ValueError("read required must be a boolean")
+        return cls(
+            key=_text(mapping["key"], "read key"),
+            identifiers=_identifiers(mapping.get("identifiers", {}), "read identifiers"),
+            unit=_optional_text(mapping.get("unit"), "read unit"),
+            required=required,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ConstraintSpec:
+    key: str
+    identifiers: dict[str, str]
+    operator: ConstraintOperator
+    value: float
+    unit: str | None = None
+    name: str = ""
+    tolerance: float = 0.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ConstraintSpec:
+        mapping = _object(data, "constraint")
+        if "key" not in mapping:
+            raise ValueError("constraint is missing key")
+        if "value" not in mapping:
+            raise ValueError("constraint is missing value")
+        operator_raw = mapping.get("operator", ">=")
+        if not isinstance(operator_raw, str) or operator_raw not in {"<", "<=", ">", ">=", "=="}:
+            raise ValueError(f"Unsupported constraint operator: {operator_raw}")
+        tolerance = _finite_number(mapping.get("tolerance", 0.0), "constraint tolerance")
+        if tolerance < 0:
+            raise ValueError("Constraint tolerance cannot be negative")
+        name_raw = mapping.get("name", "")
+        if not isinstance(name_raw, str):
+            raise ValueError("constraint name must be a string")
+        return cls(
+            key=_text(mapping["key"], "constraint key"),
+            identifiers=_identifiers(
+                mapping.get("identifiers", {}),
+                "constraint identifiers",
+            ),
+            operator=cast(ConstraintOperator, operator_raw),
+            value=_finite_number(mapping["value"], "constraint value"),
+            unit=_optional_text(mapping.get("unit"), "constraint unit"),
+            name=name_raw,
+            tolerance=tolerance,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceTerm:
+    key: str
+    identifiers: dict[str, str]
+    coefficient: float
+    unit: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BalanceTerm:
+        mapping = _object(data, "balance term")
+        if "key" not in mapping:
+            raise ValueError("balance term is missing key")
+        return cls(
+            key=_text(mapping["key"], "balance term key"),
+            identifiers=_identifiers(
+                mapping.get("identifiers", {}),
+                "balance term identifiers",
+            ),
+            coefficient=_finite_number(
+                mapping.get("coefficient", 1.0),
+                "balance coefficient",
+            ),
+            unit=_optional_text(mapping.get("unit"), "balance term unit"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceSpec:
+    name: str
+    terms: tuple[BalanceTerm, ...]
+    expected: float = 0.0
+    abs_tol: float = 1e-6
+    rel_tol: float = 1e-6
+    floor: float = 1e-12
+    dimension: str | None = None
+    base_unit: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BalanceSpec:
+        mapping = _object(data, "balance")
+        if "name" not in mapping:
+            raise ValueError("balance is missing name")
+        terms = tuple(
+            BalanceTerm.from_dict(_object(item, f"balance terms[{index}]"))
+            for index, item in enumerate(_array(mapping.get("terms", []), "balance terms"))
+        )
+        if not terms:
+            raise ValueError("A balance requires at least one term")
+        abs_tol = _nonnegative_number(mapping.get("abs_tol", 1e-6), "balance abs_tol")
+        rel_tol = _nonnegative_number(mapping.get("rel_tol", 1e-6), "balance rel_tol")
+        floor = _nonnegative_number(mapping.get("floor", 1e-12), "balance floor")
+        dimension_name = _optional_text(mapping.get("dimension"), "balance dimension")
+        base_unit = _optional_text(mapping.get("base_unit"), "balance base_unit")
+        return cls(
+            name=_text(mapping["name"], "balance name"),
+            terms=terms,
+            expected=_finite_number(mapping.get("expected", 0.0), "balance expected"),
+            abs_tol=abs_tol,
+            rel_tol=rel_tol,
+            floor=floor,
+            dimension=dimension_name,
+            base_unit=base_unit,
+        )
+
+
+def _variable_write_dict(item: VariableWrite) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "value": item.value,
+        "unit": item.unit,
+    }
+
+
+def _variable_read_dict(item: VariableRead) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "unit": item.unit,
+        "required": item.required,
+    }
+
+
+def _constraint_dict(item: ConstraintSpec) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "operator": item.operator,
+        "value": item.value,
+        "unit": item.unit,
+        "name": item.name,
+        "tolerance": item.tolerance,
+    }
+
+
+def _balance_term_dict(item: BalanceTerm) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "identifiers": dict(item.identifiers),
+        "coefficient": item.coefficient,
+        "unit": item.unit,
+    }
+
+
+def _balance_payload(item: BalanceSpec, *, identity: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "name": item.name,
+        "terms": (
+            tuple(_balance_term_dict(term) for term in item.terms)
+            if identity
+            else [_balance_term_dict(term) for term in item.terms]
+        ),
+        "expected": item.expected,
+        "abs_tol": item.abs_tol,
+        "rel_tol": item.rel_tol,
+        "floor": item.floor,
+    }
+    payload["dimension"] = item.dimension
+    payload["base_unit"] = item.base_unit
+    return payload
+
+
+def _balance_document(item: BalanceSpec) -> dict[str, Any]:
+    return _balance_payload(item, identity=False)
+
+
+def _balance_identity(item: BalanceSpec) -> dict[str, Any]:
+    return _balance_payload(item, identity=True)
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRequest:
+    model_path: str
+    registry_path: str
+    backend: BackendName
+    writes: tuple[VariableWrite, ...]
+    reads: tuple[VariableRead, ...]
+    constraints: tuple[ConstraintSpec, ...] = ()
+    balances: tuple[BalanceSpec, ...] = ()
+    reset_mode: ResetMode = "reinitialize"
+    timeout_s: float = 1200.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvaluationRequest:
+        mapping = _object(data, "evaluation request")
+        if "model_path" not in mapping:
+            raise ValueError("evaluation request is missing model_path")
+        if "registry_path" not in mapping:
+            raise ValueError("evaluation request is missing registry_path")
+        backend_raw = mapping.get("backend", "mock")
+        if not isinstance(backend_raw, str) or backend_raw not in {"mock", "aspen_plus", "hysys"}:
+            raise ValueError(f"Unsupported backend: {backend_raw}")
+        reset_raw = mapping.get("reset_mode")
+        if reset_raw is None:
+            reinitialize = mapping.get("reinitialize", True)
+            if not isinstance(reinitialize, bool):
+                raise ValueError("reinitialize must be a boolean")
+            reset_raw = "reinitialize" if reinitialize else "warm_start"
+        if not isinstance(reset_raw, str) or reset_raw not in {"reinitialize", "warm_start"}:
+            raise ValueError(f"Unsupported reset_mode: {reset_raw}")
+        timeout_s = _positive_number(mapping.get("timeout_s", 1200.0), "timeout_s")
+        metadata = _object(mapping.get("metadata", {}), "metadata")
+        if reset_raw == "warm_start":
+            metadata = dict(metadata)
+            metadata.setdefault("warm_start_session", "unscoped-single-worker")
+            metadata.setdefault("warm_start_step", 0)
+            session = metadata.get("warm_start_session")
+            step = metadata.get("warm_start_step")
+            if not isinstance(session, str) or not session.strip():
+                raise ValueError(
+                    "warm_start requires metadata.warm_start_session as a non-empty string"
+                )
+            if isinstance(step, bool) or not isinstance(step, int) or step < 0:
+                raise ValueError(
+                    "warm_start requires metadata.warm_start_step as a non-negative integer"
+                )
+        return cls(
+            model_path=_text(mapping["model_path"], "model_path"),
+            registry_path=_text(mapping["registry_path"], "registry_path"),
+            backend=cast(BackendName, backend_raw),
+            writes=tuple(
+                VariableWrite.from_dict(_object(item, f"writes[{index}]"))
+                for index, item in enumerate(_array(mapping.get("writes", []), "writes"))
+            ),
+            reads=tuple(
+                VariableRead.from_dict(_object(item, f"reads[{index}]"))
+                for index, item in enumerate(_array(mapping.get("reads", []), "reads"))
+            ),
+            constraints=tuple(
+                ConstraintSpec.from_dict(_object(item, f"constraints[{index}]"))
+                for index, item in enumerate(_array(mapping.get("constraints", []), "constraints"))
+            ),
+            balances=tuple(
+                BalanceSpec.from_dict(_object(item, f"balances[{index}]"))
+                for index, item in enumerate(_array(mapping.get("balances", []), "balances"))
+            ),
+            reset_mode=cast(ResetMode, reset_raw),
+            timeout_s=timeout_s,
+            metadata=metadata,
+        )
+
+    @property
+    def reinitialize(self) -> bool:
+        return self.reset_mode == "reinitialize"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model_path": self.model_path,
+            "registry_path": self.registry_path,
+            "backend": self.backend,
+            "writes": [_variable_write_dict(item) for item in self.writes],
+            "reads": [_variable_read_dict(item) for item in self.reads],
+            "constraints": [_constraint_dict(item) for item in self.constraints],
+            "balances": [_balance_document(item) for item in self.balances],
+            "reset_mode": self.reset_mode,
+            "timeout_s": self.timeout_s,
+            "metadata": dict(self.metadata),
+        }
+
+    def physical_identity(self) -> dict[str, Any]:
+        """Return solver and verification semantics without filesystem locations."""
+        identity: dict[str, Any] = {
+            "backend": self.backend,
+            "reset_mode": self.reset_mode,
+            "writes": [_variable_write_dict(item) for item in self.writes],
+            "reads": [_variable_read_dict(item) for item in self.reads],
+            "constraints": [_constraint_dict(item) for item in self.constraints],
+            "balances": [_balance_identity(item) for item in self.balances],
+        }
+        if self.reset_mode == "warm_start":
+            identity["warm_start_trajectory"] = {
+                "session": self.metadata["warm_start_session"],
+                "step": self.metadata["warm_start_step"],
+            }
+        return identity
+
+
+_RESULT_PAYLOAD_SCALAR_TYPES = frozenset((str, int, float, bool, type(None)))
+
+
+def _copy_result_payload(value: Any) -> Any:
+    """Copy JSON-like result data with a safe fallback for uncommon objects."""
+    value_type = type(value)
+    if value_type in _RESULT_PAYLOAD_SCALAR_TYPES:
+        return value
+    if value_type is dict:
+        copy_payload = _copy_result_payload
+        return {
+            key if type(key) in _RESULT_PAYLOAD_SCALAR_TYPES else deepcopy(key): copy_payload(item)
+            for key, item in value.items()
+        }
+    if value_type is list:
+        copy_payload = _copy_result_payload
+        return [copy_payload(item) for item in value]
+    if value_type is tuple:
+        copy_payload = _copy_result_payload
+        return tuple(copy_payload(item) for item in value)
+    return deepcopy(value)
+
+
+@dataclass(slots=True)
+class EvaluationResult:
+    ok: bool
+    communication_ok: bool
+    engine_ok: bool
+    converged: bool
+    feasible: bool
+    values: dict[str, Any]
+    units: dict[str, str | None]
+    violations: list[str]
+    diagnostics: dict[str, Any]
+    elapsed_s: float
+    balance_residuals: dict[str, dict[str, Any]] = field(default_factory=dict)
+    cache_source: CacheSource = "computed"
+    cache_hit: bool = False
+    request_hash: str = ""
+    worker_id: int | None = None
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> EvaluationResult:
+        """Clone mutable result payloads without generic dataclass reconstruction."""
+        existing = memo.get(id(self))
+        if existing is not None:
+            return cast(EvaluationResult, existing)
+
+        clone = object.__new__(EvaluationResult)
+        memo[id(self)] = clone
+        clone.ok = self.ok
+        clone.communication_ok = self.communication_ok
+        clone.engine_ok = self.engine_ok
+        clone.converged = self.converged
+        clone.feasible = self.feasible
+        clone.values = deepcopy(self.values, memo)
+        clone.units = self.units.copy()
+        clone.violations = self.violations.copy()
+        clone.diagnostics = deepcopy(self.diagnostics, memo)
+        clone.elapsed_s = self.elapsed_s
+        clone.balance_residuals = {
+            name: detail.copy() for name, detail in self.balance_residuals.items()
+        }
+        clone.cache_source = self.cache_source
+        clone.cache_hit = self.cache_hit
+        clone.request_hash = self.request_hash
+        clone.worker_id = self.worker_id
+        return clone
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize JSON-like fields without generic dataclass traversal."""
+        return {
+            "ok": self.ok,
+            "communication_ok": self.communication_ok,
+            "engine_ok": self.engine_ok,
+            "converged": self.converged,
+            "feasible": self.feasible,
+            "values": _copy_result_payload(self.values),
+            "units": self.units.copy(),
+            "violations": self.violations.copy(),
+            "diagnostics": _copy_result_payload(self.diagnostics),
+            "elapsed_s": self.elapsed_s,
+            "balance_residuals": {
+                name: detail.copy() for name, detail in self.balance_residuals.items()
+            },
+            "cache_source": self.cache_source,
+            "cache_hit": self.cache_hit,
+            "request_hash": self.request_hash,
+            "worker_id": self.worker_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvaluationResult:
+        mapping = _object(data, "evaluation result")
+
+        def required_bool(name: str, default: bool | None = None) -> bool:
+            if name not in mapping:
+                if default is None:
+                    raise ValueError(f"evaluation result is missing {name}")
+                return default
+            value = mapping[name]
+            if not isinstance(value, bool):
+                raise ValueError(f"result {name} must be a boolean")
+            return value
+
+        communication_ok = required_bool("communication_ok")
+        engine_ok = required_bool("engine_ok", communication_ok)
+        values = _object(mapping.get("values"), "result values")
+        raw_units = _object(mapping.get("units"), "result units")
+        units: dict[str, str | None] = {}
+        for key, value in raw_units.items():
+            if value is not None and not isinstance(value, str):
+                raise ValueError("result unit values must be strings or null")
+            units[str(key)] = value
+
+        raw_violations = _array(mapping.get("violations"), "result violations")
+        if not all(isinstance(item, str) for item in raw_violations):
+            raise ValueError("result violations must contain only strings")
+        violations = [str(item) for item in raw_violations]
+        diagnostics = _object(mapping.get("diagnostics"), "result diagnostics")
+
+        raw_balances = _object(
+            mapping.get("balance_residuals", {}),
+            "result balance_residuals",
+        )
+        balances: dict[str, dict[str, Any]] = {}
+        for name, raw_detail in raw_balances.items():
+            detail = _object(raw_detail, f"result balance_residuals[{name}]")
+            normalized_detail: dict[str, Any] = {}
+            for key, value in detail.items():
+                label = f"result balance_residuals[{name}].{key}"
+                if value is None or isinstance(value, str | bool):
+                    normalized_detail[str(key)] = value
+                elif isinstance(value, int | float):
+                    normalized_detail[str(key)] = _finite_number(value, label)
+                else:
+                    raise ValueError(f"{label} must be a finite scalar JSON value or null")
+            balances[str(name)] = normalized_detail
+
+        cache_source = mapping.get("cache_source", "computed")
+        if cache_source not in {
+            "computed",
+            "persistent_cache",
+            "same_batch_dedup",
+            "inflight_singleflight",
+        }:
+            raise ValueError(f"Unsupported result cache_source: {cache_source}")
+        cache_hit = mapping.get("cache_hit", cache_source != "computed")
+        if not isinstance(cache_hit, bool):
+            raise ValueError("result cache_hit must be a boolean")
+        request_hash = mapping.get("request_hash", "")
+        if not isinstance(request_hash, str):
+            raise ValueError("result request_hash must be a string")
+        worker_id = mapping.get("worker_id")
+        if worker_id is not None and (
+            isinstance(worker_id, bool) or not isinstance(worker_id, int)
+        ):
+            raise ValueError("result worker_id must be an integer or null")
+
+        known = {
+            "ok",
+            "communication_ok",
+            "engine_ok",
+            "converged",
+            "feasible",
+            "values",
+            "units",
+            "violations",
+            "diagnostics",
+            "elapsed_s",
+            "balance_residuals",
+            "cache_source",
+            "cache_hit",
+            "request_hash",
+            "worker_id",
+        }
+        unknown = sorted(set(mapping) - known)
+        if unknown:
+            raise ValueError(f"Unsupported evaluation result fields: {', '.join(unknown)}")
+
+        return cls(
+            ok=required_bool("ok"),
+            communication_ok=communication_ok,
+            engine_ok=engine_ok,
+            converged=required_bool("converged"),
+            feasible=required_bool("feasible"),
+            values=values,
+            units=units,
+            violations=violations,
+            diagnostics=diagnostics,
+            elapsed_s=_nonnegative_number(mapping.get("elapsed_s"), "elapsed_s"),
+            balance_residuals=balances,
+            cache_source=cast(CacheSource, cache_source),
+            cache_hit=cache_hit,
+            request_hash=request_hash,
+            worker_id=worker_id,
+        )

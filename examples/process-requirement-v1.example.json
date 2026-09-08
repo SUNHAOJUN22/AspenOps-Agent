@@ -1,0 +1,86 @@
+{
+  "schema": "aspenops.process-requirement/v1",
+  "project": {
+    "name": "Ethanol-water heater flash",
+    "target_simulator": "aspen_plus",
+    "target_version": "15",
+    "language": "en"
+  },
+  "process_objective": {
+    "description": "Heat an ethanol-water feed and separate vapor and liquid products."
+  },
+  "feeds": [
+    {
+      "id": "FEED_001",
+      "display_name": "乙醇水进料",
+      "components": ["ETHANOL", "WATER"],
+      "composition": [
+        {
+          "component_id": "ETHANOL",
+          "fraction": 0.4,
+          "basis": "mole",
+          "status": "USER_PROVIDED"
+        },
+        {
+          "component_id": "WATER",
+          "fraction": 0.6,
+          "basis": "mole",
+          "status": "USER_PROVIDED"
+        }
+      ],
+      "total_flow": {
+        "value": 100.0,
+        "status": "USER_PROVIDED",
+        "unit": "kmol/h"
+      },
+      "temperature": {
+        "value": 25.0,
+        "status": "USER_PROVIDED",
+        "unit": "degC"
+      },
+      "pressure": {
+        "value": 1.2,
+        "status": "USER_PROVIDED",
+        "unit": "bar"
+      },
+      "phase": "liquid"
+    }
+  ],
+  "products": [
+    {
+      "id": "VAP_PROD_001",
+      "display_name": "Vapor product",
+      "specifications": {
+        "ETHANOL_MOLE_FRACTION_MIN": {
+          "value": 0.5,
+          "status": "USER_PROVIDED",
+          "unit": "fraction"
+        }
+      }
+    },
+    {
+      "id": "LIQ_PROD_001",
+      "display_name": "Liquid product",
+      "specifications": {
+        "WATER_MOLE_FRACTION_MIN": {
+          "value": 0.5,
+          "status": "USER_PROVIDED",
+          "unit": "fraction"
+        }
+      }
+    }
+  ],
+  "required_sections": ["heating", "separation"],
+  "property_method": {
+    "value": "NRTL",
+    "status": "APPROVED_DEFAULT"
+  },
+  "assumptions": {
+    "accepted": ["Steady-state operation"],
+    "unresolved": []
+  },
+  "requested_outputs": ["stream conditions", "overall mass balance", "energy balance"],
+  "metadata": {
+    "case_id": "HEATER_FLASH_DRAFT_001"
+  }
+}

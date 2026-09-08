@@ -1,0 +1,65 @@
+{
+  "schema": "aspenops.flowsheet/v1",
+  "name": "Water heating example",
+  "property_package": "IDEAL",
+  "components": [
+    {
+      "id": "WATER",
+      "name": "Water",
+      "formula": "H2O",
+      "cas": "7732-18-5"
+    }
+  ],
+  "units": [
+    {
+      "id": "FEED",
+      "kind": "feed",
+      "ports": [
+        {"id": "out", "direction": "out"}
+      ],
+      "parameters": [
+        {"name": "temperature", "value": 25.0, "unit": "C"},
+        {"name": "pressure", "value": 1.0, "unit": "bar"}
+      ]
+    },
+    {
+      "id": "HEATER",
+      "kind": "heater",
+      "ports": [
+        {"id": "in", "direction": "in"},
+        {"id": "out", "direction": "out"}
+      ],
+      "parameters": [
+        {"name": "outlet_temperature", "value": 80.0, "unit": "C"}
+      ]
+    },
+    {
+      "id": "PRODUCT",
+      "kind": "product",
+      "ports": [
+        {"id": "in", "direction": "in"}
+      ]
+    }
+  ],
+  "streams": [
+    {
+      "id": "S1",
+      "source": {"unit": "FEED", "port": "out"},
+      "target": {"unit": "HEATER", "port": "in"},
+      "components": ["WATER"],
+      "parameters": [
+        {"name": "mass_flow", "value": 100.0, "unit": "kg/h"}
+      ]
+    },
+    {
+      "id": "S2",
+      "source": {"unit": "HEATER", "port": "out"},
+      "target": {"unit": "PRODUCT", "port": "in"},
+      "components": ["WATER"]
+    }
+  ],
+  "metadata": {
+    "source": "human-authored example",
+    "evidence_level": "demonstration"
+  }
+}

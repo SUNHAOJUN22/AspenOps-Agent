@@ -1,0 +1,198 @@
+{
+  "aspen_executed": false,
+  "boundary": "Portable Python numerical, copying, serialization and packaging qualification; not licensed Aspen Plus/HYSYS physical solve evidence.",
+  "changes": [
+    "Finite weighted objectives use math.fsum before exact overflow fallback.",
+    "EvaluationResult uses memo-aware field-specific deepcopy.",
+    "EvaluationResult uses field-specific deeply isolated serialization.",
+    "Permanent numerical and performance regression contracts were added.",
+    "All temporary qualification workflows and patch tools were removed."
+  ],
+  "coverage_percent": 95.71852479864349,
+  "decision": "PASS",
+  "deepcopy_benchmark": {
+    "boundary": "Portable Python EvaluationResult cloning benchmark; not licensed Aspen solve evidence.",
+    "decision": "PASS",
+    "deep_isolation": true,
+    "equivalent": true,
+    "iterations": 20000,
+    "legacy_seconds": 0.3130464700000033,
+    "minimum_speedup": 1.5,
+    "optimized_seconds": 0.06860363399999869,
+    "repeats": 9,
+    "schema": "aspenops.result-deepcopy-benchmark/v1",
+    "speedup": 4.5631178954748846
+  },
+  "dynamic_modeling_executed": false,
+  "external_gate": "PENDING_LICENSED_WINDOWS_ASPEN_ENGINEERING_CERTIFICATION",
+  "full_tests": {
+    "3.11": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 915,
+      "time_seconds": 22.979
+    },
+    "3.12": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 915,
+      "time_seconds": 18.585
+    },
+    "3.13": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 915,
+      "time_seconds": 139.456
+    }
+  },
+  "gates": {
+    "bandit_high_high": "PASS",
+    "benchmark_smoke": "PASS",
+    "branch_coverage": "PASS",
+    "build": "PASS",
+    "cli_smoke": "PASS",
+    "compileall": "PASS",
+    "focused_tests": "PASS",
+    "format": "PASS",
+    "isolated_wheel_install": "PASS",
+    "mathematical_contracts": "PASS",
+    "mypy_strict": "PASS",
+    "operation_counts": "PASS",
+    "order_independence": "PASS",
+    "pip_check": "PASS",
+    "python_3_11": "PASS",
+    "python_3_12": "PASS",
+    "python_3_13": "PASS",
+    "ruff": "PASS",
+    "source_tree_audit": "PASS"
+  },
+  "machine_learning_executed": false,
+  "math_audit": {
+    "constraint_cases": [
+      {
+        "actual": 9.5,
+        "limit": 10.0,
+        "operator": "<",
+        "tolerance": 0.5,
+        "violation": 0.0
+      },
+      {
+        "actual": 9.75,
+        "limit": 10.0,
+        "operator": "<",
+        "tolerance": 0.5,
+        "violation": 0.25
+      },
+      {
+        "actual": 10.5,
+        "limit": 10.0,
+        "operator": "<=",
+        "tolerance": 0.5,
+        "violation": 0.0
+      },
+      {
+        "actual": 10.75,
+        "limit": 10.0,
+        "operator": "<=",
+        "tolerance": 0.5,
+        "violation": 0.25
+      },
+      {
+        "actual": 10.5,
+        "limit": 10.0,
+        "operator": ">",
+        "tolerance": 0.5,
+        "violation": 0.0
+      },
+      {
+        "actual": 10.25,
+        "limit": 10.0,
+        "operator": ">",
+        "tolerance": 0.5,
+        "violation": 0.25
+      },
+      {
+        "actual": 9.5,
+        "limit": 10.0,
+        "operator": ">=",
+        "tolerance": 0.5,
+        "violation": 0.0
+      },
+      {
+        "actual": 9.25,
+        "limit": 10.0,
+        "operator": ">=",
+        "tolerance": 0.5,
+        "violation": 0.25
+      },
+      {
+        "actual": 10.5,
+        "limit": 10.0,
+        "operator": "==",
+        "tolerance": 0.5,
+        "violation": 0.0
+      },
+      {
+        "actual": 10.75,
+        "limit": 10.0,
+        "operator": "==",
+        "tolerance": 0.5,
+        "violation": 0.25
+      }
+    ],
+    "decision": "PASS",
+    "equality": "absolute residual <= tolerance",
+    "finite_aggregation": true,
+    "non_strict_inequalities": "tolerance is an acceptance band",
+    "strict_inequalities": "tolerance is a safety margin",
+    "weighted_16_term_microseconds_per_call": 1.106820229999954,
+    "weighted_mixed_magnitude_result": 1.0,
+    "weighted_overflow_cancellation": true,
+    "weighted_overflow_saturation": true,
+    "weighted_performance_boundary": "Portable Python scalar aggregation only; Aspen solve time is not measured."
+  },
+  "operation_counts": {
+    "cache": {
+      "loaded_keys": 1024,
+      "pending_hit_total_after_threshold": 0,
+      "persistent_hits": 1024,
+      "requested_keys": 1024
+    },
+    "memory_cache": {
+      "deep_result_isolation": true,
+      "json_decode_calls": 2,
+      "requested_hits": 3,
+      "sqlite_connection_calls": 0,
+      "strategy": "compact_json_snapshot"
+    },
+    "pool": {
+      "cache_key_calls": 1,
+      "computed_results": 1,
+      "deep_result_isolation": true,
+      "points": 100,
+      "result_serializations": 1,
+      "same_batch_dedup_results": 99,
+      "solver_calls": 1
+    }
+  },
+  "parameter_estimation_executed": false,
+  "qualified_source_baseline": "0e12306bc49985b6a2c71d9db04ab39ed13fa15d",
+  "schema": "aspenops.math-performance-qualification/v2",
+  "serialization_benchmark": {
+    "boundary": "Portable Python EvaluationResult serialization benchmark; not licensed Aspen solve evidence.",
+    "decision": "PASS",
+    "deep_isolation": true,
+    "equivalent": true,
+    "iterations": 2000,
+    "legacy_seconds": 0.300401217000001,
+    "minimum_speedup": 1.25,
+    "optimized_seconds": 0.09123123599999872,
+    "repeats": 7,
+    "schema": "aspenops.result-serialization-benchmark/v1",
+    "speedup": 3.292745228180458
+  },
+  "workflow_run_id": "30713957485"
+}

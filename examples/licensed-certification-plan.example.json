@@ -1,0 +1,64 @@
+{
+  "schema": "aspenops.licensed-certification-plan/v1",
+  "case_id": "replace-with-approved-case-id",
+  "approved_commit": "0000000000000000000000000000000000000000",
+  "backend": "aspen_plus",
+  "request": {
+    "backend": "aspen_plus",
+    "model_path": "C:\\AspenOps\\approved\\case.bkp",
+    "registry_path": "C:\\AspenOps\\approved\\registry.json",
+    "workers": 1,
+    "reset_mode": "reinitialize",
+    "timeout_s": 1200,
+    "base_writes": [],
+    "points": [
+      {}
+    ]
+  },
+  "approved_artifacts": {
+    "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "registry_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "repeatability": {
+    "repeats": 3,
+    "workers": [
+      1
+    ],
+    "default_tolerance": {
+      "abs_tol": 0.000001,
+      "rel_tol": 0.000001
+    },
+    "output_tolerances": {}
+  },
+  "engineering_acceptance": {
+    "status": "pending",
+    "reviewer": "replace-with-qualified-engineer",
+    "approved_at": "2026-07-21T00:00:00+09:00",
+    "scope": "Replace with the approved model, outputs, balances, constraints and tolerances"
+  },
+  "runtime_expectation": {
+    "progids": [
+      "Apwn.Document.40.0"
+    ],
+    "version_patterns": [
+      "^40\\."
+    ]
+  },
+  "license_expectation": {
+    "slots": 1,
+    "server_identity": "replace-with-approved-license-server-identity",
+    "feature_names": [
+      "replace-with-approved-feature-name"
+    ]
+  },
+  "runner_expectation": {
+    "names": [
+      "replace-with-approved-runner-name"
+    ],
+    "architecture": "X64"
+  },
+  "signing": {
+    "required": true,
+    "key_id": "00000000000000000000000000000000"
+  }
+}
