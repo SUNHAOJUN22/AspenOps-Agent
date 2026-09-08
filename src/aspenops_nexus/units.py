@@ -127,5 +127,10 @@ def convert(value: float, source: str | None, target: str | None) -> float:
     source_scale, source_offset, target_offset, target_scale = conversion
     converted = (numeric * source_scale + source_offset - target_offset) / target_scale
     if not math.isfinite(converted):
+        # Avoid an overflowing base-unit intermediate when the final value fits.
+        converted = numeric * (source_scale / target_scale) + (
+            source_offset - target_offset
+        ) / target_scale
+    if not math.isfinite(converted):
         raise UnitError("Unit conversion produced a non-finite value")
     return converted
