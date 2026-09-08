@@ -59,6 +59,13 @@ class ConvergenceEvidence:
 
 _NEGATIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("not_converged", re.compile(r"\bnot[\s_-]+converged\b", re.IGNORECASE)),
+    (
+        "not_successful",
+        re.compile(
+            r"\b(?:not[\s_-]+success(?:ful(?:ly)?)?|unsuccessful(?:ly)?)\b", re.IGNORECASE
+        ),
+    ),
+    ("not_ok", re.compile(r"\bnot[\s_-]+ok\b", re.IGNORECASE)),
     ("not_completed", re.compile(r"\bnot[\s_-]+completed?\b", re.IGNORECASE)),
     ("failed", re.compile(r"\bfailed?\b|\bfailure\b", re.IGNORECASE)),
     ("error", re.compile(r"\berror(?:s)?\b", re.IGNORECASE)),
@@ -190,7 +197,15 @@ def classify_convergence(
     evidence_text = " | ".join(
         [str(item.get("value", "")) for item in normalized_nodes] + list(normalized_messages)
     )
-    negative = _markers(evidence_text, _NEGATIVE_PATTERNS)
+    # Zero error counts are observations, not failure markers. Preserve the raw evidence.
+    marker_text = re.sub(
+        r"(?<![\w.+-])0[ \t]+errors?\b|\bno[ \t]+errors?\b"
+        r"|\berrors?[ \t]*[:=][ \t]*0(?![\w.+-])",
+        "",
+        evidence_text,
+        flags=re.IGNORECASE,
+    )
+    negative = _markers(marker_text, _NEGATIVE_PATTERNS)
     positive = _markers(evidence_text, _POSITIVE_PATTERNS)
 
     if not engine_returned:
