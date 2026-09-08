@@ -61,9 +61,7 @@ _NEGATIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("not_converged", re.compile(r"\bnot[\s_-]+converged\b", re.IGNORECASE)),
     (
         "not_successful",
-        re.compile(
-            r"\b(?:not[\s_-]+success(?:ful(?:ly)?)?|unsuccessful(?:ly)?)\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:not[\s_-]+success(?:ful(?:ly)?)?|unsuccessful(?:ly)?)\b", re.IGNORECASE),
     ),
     ("not_ok", re.compile(r"\bnot[\s_-]+ok\b", re.IGNORECASE)),
     ("not_completed", re.compile(r"\bnot[\s_-]+completed?\b", re.IGNORECASE)),
