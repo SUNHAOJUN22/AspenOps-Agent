@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +19,11 @@ class CommitFailure(sqlite3.Connection):
         return bool(super().__exit__(exc_type, exc, traceback))
 
 
-def failing_connection(cache: ResultCache) -> sqlite3.Connection:
-    return sqlite3.connect(cache.path, factory=CommitFailure)
+@contextmanager
+def failing_connection(cache: ResultCache) -> Iterator[sqlite3.Connection]:
+    # Explicit test ownership complements production operation-scoped closing.
+    with closing(sqlite3.connect(cache.path, factory=CommitFailure)) as connection:
+        yield connection
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -28,8 +33,8 @@ def test_rolled_back_payload_never_becomes_a_memory_hit(
     cache = ResultCache(tmp_path / "cache.sqlite3")
     if existing:
         cache.put("key", {"value": "committed"})
-    with monkeypatch.context() as scoped:
-        scoped.setattr(cache, "_connect", lambda: failing_connection(cache))
+    with failing_connection(cache) as connection, monkeypatch.context() as scoped:
+        scoped.setattr(cache, "_connect", lambda: connection)
         with pytest.raises(sqlite3.OperationalError, match="commit failure"):
             cache.put_many({"key": {"value": "rolled-back"}, "other": {"value": 2}})
     expected = {"value": "committed"} if existing else None
@@ -50,8 +55,8 @@ def test_rolled_back_hit_accounting_remains_retryable(
     cache.put("key", {"value": 1})
     assert cache.get("key") == {"value": 1}
     before = dict(cache._memory)
-    with monkeypatch.context() as scoped:
-        scoped.setattr(cache, "_connect", lambda: failing_connection(cache))
+    with failing_connection(cache) as connection, monkeypatch.context() as scoped:
+        scoped.setattr(cache, "_connect", lambda: connection)
         with pytest.raises(sqlite3.OperationalError, match="commit failure"):
             if operation == "put":
                 cache.put("other", {"value": 2})
