@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from collections import Counter, OrderedDict
 from collections.abc import Iterator
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -96,14 +96,23 @@ class ResultCache:
             """,
             ((count, key) for key, count in self._pending_hits.items()),
         )
-        self._pending_hits.clear()
-        self._pending_hit_total = 0
+
+    @contextmanager
+    def _write_transaction(self) -> Iterator[sqlite3.Connection]:
+        # Acknowledge hit deltas only after SQLite has committed successfully.
+        # The caller holds _lock, including while publishing memory changes.
+        with closing(self._connect()) as connection:
+            with connection:
+                self._flush_hits(connection)
+                yield connection
+            self._pending_hits.clear()
+            self._pending_hit_total = 0
 
     def _flush_hits_if_needed(self) -> None:
         if self._pending_hit_total < _HIT_FLUSH_THRESHOLD:
             return
-        with closing(self._connect()) as connection, connection:
-            self._flush_hits(connection)
+        with self._write_transaction():
+            pass
 
     def _discard(self, keys: list[str]) -> None:
         if not keys:
@@ -183,16 +192,17 @@ class ResultCache:
         if not payloads:
             return
         encoded_payloads = _encode_payloads(payloads)
-        with self._lock, closing(self._connect()) as connection, connection:
-            self._flush_hits(connection)
-            connection.executemany(
-                """
-                INSERT INTO result_cache(cache_key, payload)
-                VALUES (?, ?)
-                ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload
-                """,
-                encoded_payloads.items(),
-            )
+        with self._lock:
+            with self._write_transaction() as connection:
+                connection.executemany(
+                    """
+                    INSERT INTO result_cache(cache_key, payload)
+                    VALUES (?, ?)
+                    ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload
+                    """,
+                    encoded_payloads.items(),
+                )
+            # A failed commit must never publish an uncommitted cache result.
             for key, encoded in encoded_payloads.items():
                 self._remember(key, encoded)
 
@@ -204,20 +214,20 @@ class ResultCache:
         with self._lock:
             if not self._pending_hits:
                 return
-            with closing(self._connect()) as connection, connection:
-                self._flush_hits(connection)
+            with self._write_transaction():
+                pass
 
     def stats(self) -> dict[str, int]:
-        with self._lock, closing(self._connect()) as connection, connection:
-            self._flush_hits(connection)
+        with self._lock, self._write_transaction() as connection:
             row = connection.execute(
                 "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM result_cache"
             ).fetchone()
         return {"entries": int(row[0]), "hits": int(row[1])}
 
     def clear(self) -> int:
-        with self._lock, closing(self._connect()) as connection, connection:
-            self._flush_hits(connection)
-            cursor = connection.execute("DELETE FROM result_cache")
+        with self._lock:
+            with self._write_transaction() as connection:
+                cursor = connection.execute("DELETE FROM result_cache")
+                removed = int(cursor.rowcount)
             self._memory.clear()
-            return int(cursor.rowcount)
+            return removed
