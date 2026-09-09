@@ -133,6 +133,10 @@ def _validate_parameters(
 ) -> None:
     if not bounds:
         raise ValueError("bounds must not be empty")
+    if isinstance(population_size, bool) or not isinstance(population_size, int):
+        raise ValueError("population_size must be an integer")
+    if isinstance(generations, bool) or not isinstance(generations, int):
+        raise ValueError("generations must be an integer")
     if population_size < 4:
         raise ValueError("population_size must be at least 4")
     if generations < 0:
@@ -142,10 +146,13 @@ def _validate_parameters(
     if not math.isfinite(crossover) or not 0 <= crossover <= 1:
         raise ValueError("crossover must be finite and between zero and one")
     if any(
-        not math.isfinite(lower) or not math.isfinite(upper) or upper <= lower
+        not math.isfinite(lower)
+        or not math.isfinite(upper)
+        or upper <= lower
+        or not math.isfinite(upper - lower)
         for lower, upper in bounds
     ):
-        raise ValueError("every bound must be finite and upper must exceed lower")
+        raise ValueError("every bound must have finite endpoints and a finite positive width")
 
 
 def differential_evolution_batch(
@@ -163,6 +170,10 @@ def differential_evolution_batch(
     """Run bounded DE/rand/1/bin with one batch evaluation per generation."""
     bounds_tuple = tuple(bounds)
     _validate_parameters(bounds_tuple, population_size, generations, mutation, crossover)
+    if max_evaluations is not None and (
+        isinstance(max_evaluations, bool) or not isinstance(max_evaluations, int)
+    ):
+        raise ValueError("max_evaluations must be an integer")
     budget = population_size * (generations + 1) if max_evaluations is None else max_evaluations
     if budget < population_size:
         raise ValueError("max_evaluations must cover the initial population")
