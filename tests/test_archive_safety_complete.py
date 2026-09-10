@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 import zipfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -218,3 +219,43 @@ def test_legacy_bundle_verification_covers_valid_and_invalid_hashes() -> None:
     assert _verify_v1(manifest, request, results)["verification_status"] == "legacy-unsigned-valid"
     manifest["result_count"] = 2
     assert _verify_v1(manifest, request, results)["verification_status"] == "content-invalid"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "max_archive_bytes",
+        "max_members",
+        "max_member_uncompressed_bytes",
+        "max_total_uncompressed_bytes",
+    ],
+)
+@pytest.mark.parametrize("value", [True, False, 1.5, 2.0, "2", None, math.nan, math.inf, -math.inf])
+def test_archive_count_limits_require_actual_positive_integers(field: str, value: Any) -> None:
+    with pytest.raises(ValueError, match=field):
+        ArchiveLimits(**{field: value})
+
+
+@pytest.mark.parametrize("value", [True, False, "2", None, math.nan, math.inf, -math.inf, 10**1000])
+def test_archive_ratio_limits_reject_nonfinite_or_coerced_values(value: Any) -> None:
+    with pytest.raises(ValueError, match="max_compression_ratio"):
+        ArchiveLimits(max_compression_ratio=value)
+
+
+@pytest.mark.parametrize("value", [1, 3, 10**100])
+def test_archive_count_limits_preserve_positive_integer_budgets(value: int) -> None:
+    limits = ArchiveLimits(
+        max_archive_bytes=value,
+        max_members=value,
+        max_member_uncompressed_bytes=value,
+        max_total_uncompressed_bytes=value,
+    )
+    assert limits.max_archive_bytes == value
+    assert limits.max_members == value
+    assert limits.max_member_uncompressed_bytes == value
+    assert limits.max_total_uncompressed_bytes == value
+
+
+@pytest.mark.parametrize("value", [1, 1.0, 1.5, 200.0])
+def test_archive_ratio_limits_preserve_finite_boundary_values(value: float) -> None:
+    assert ArchiveLimits(max_compression_ratio=value).max_compression_ratio == value

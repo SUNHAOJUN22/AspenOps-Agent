@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -18,16 +19,24 @@ class ArchiveLimits:
     max_compression_ratio: float = 200.0
 
     def __post_init__(self) -> None:
-        if self.max_archive_bytes < 1:
-            raise ValueError("max_archive_bytes must be positive")
-        if self.max_members < 1:
-            raise ValueError("max_members must be positive")
-        if self.max_member_uncompressed_bytes < 1:
-            raise ValueError("max_member_uncompressed_bytes must be positive")
-        if self.max_total_uncompressed_bytes < 1:
-            raise ValueError("max_total_uncompressed_bytes must be positive")
-        if self.max_compression_ratio < 1.0:
-            raise ValueError("max_compression_ratio must be at least one")
+        for field in (
+            "max_archive_bytes",
+            "max_members",
+            "max_member_uncompressed_bytes",
+            "max_total_uncompressed_bytes",
+        ):
+            value = getattr(self, field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{field} must be a positive non-boolean integer")
+        ratio = self.max_compression_ratio
+        if isinstance(ratio, bool) or not isinstance(ratio, (int, float)):
+            raise ValueError("max_compression_ratio must be a finite number at least one")
+        try:
+            valid_ratio = math.isfinite(ratio) and ratio >= 1.0
+        except OverflowError:
+            valid_ratio = False
+        if not valid_ratio:
+            raise ValueError("max_compression_ratio must be a finite number at least one")
 
 
 DEFAULT_ARCHIVE_LIMITS = ArchiveLimits()
