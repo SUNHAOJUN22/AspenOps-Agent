@@ -321,7 +321,14 @@ def evaluate(
                 violations.append(f"constraint_failed:{name}")
                 feasible = False
                 continue
-            passed = violation <= 0.0
+            # A zero distance to an open boundary does not satisfy a strict inequality.
+            spec = compiled_constraint.spec
+            if spec.operator == "<":
+                passed = actual < spec.value - spec.tolerance
+            elif spec.operator == ">":
+                passed = actual > spec.value + spec.tolerance
+            else:
+                passed = violation <= 0.0
             finite_constraint_violations.append(violation)
             constraint_details.append(
                 {
