@@ -301,6 +301,9 @@ class CasePool:
             "registry_sha256": self._registry_digest(),
             "request": request.physical_identity(),
         }
+        if any(spec.operator in {"<", ">"} for spec in request.constraints):
+            # Do not replay cached feasibility decisions from closed-boundary semantics.
+            identity["strict_constraint_semantics"] = "open-boundary-v1"
         return canonical_hash(identity)
 
     def _key_requests(
