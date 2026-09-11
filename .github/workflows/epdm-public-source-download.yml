@@ -1,0 +1,108 @@
+name: EPDM public source retrieval
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/epdm-public-source-download.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  download-public-pdfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Retrieve fixed public original sources (no checkout, no simulator)
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          from concurrent.futures import ThreadPoolExecutor
+          from datetime import datetime, timezone
+          from hashlib import sha256
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from urllib.parse import urljoin, urlparse
+          from urllib.request import Request, urlopen
+          import json
+          ROOT = Path('epdm-public-sources')
+          ROOT.mkdir(exist_ok=True)
+          SOURCES = [
+           ('S01','https://www.cetjournal.it/cet/23/100/028.pdf'),
+           ('S02','https://patentimages.storage.googleapis.com/89/8f/51/6f02bab191756d/WO2012156393A1.pdf'),
+           ('S03','https://patentimages.storage.googleapis.com/f9/01/71/ffd85dfd0298e9/WO2014202715A1.pdf'),
+           ('S04','https://patentimages.storage.googleapis.com/f5/9d/57/d3e1bad157c3d8/US6545088.pdf'),
+           ('S05','https://patents.google.com/patent/WO2022207551A1/en'),
+           ('S06','https://patents.google.com/patent/US11002653B2/en'),
+           ('S07','https://patents.google.com/patent/US6150498A/en'),
+           ('S08','https://patentimages.storage.googleapis.com/ab/45/0d/8663e4bcc37b57/US20180362684A1.pdf'),
+           ('S09','https://patentimages.storage.googleapis.com/b8/c0/e1/abf5b02faf7c1f/US6011128.pdf'),
+           ('S10','https://patents.google.com/patent/US3681306A/en'),
+           ('S11','https://www.mobt3ath.com/uplode/book/book-31783.pdf'),
+           ('S12','https://patentimages.storage.googleapis.com/be/45/17/1795461470aef6/CN102675513A.pdf'),
+           ('S13','https://patents.google.com/patent/CN105330764A/zh'),
+           ('S14','https://repository.lsu.edu/gradschool_dissertations/2655/'),
+           ('S19','https://www.dow.com/content/dam/dcc/documents/265/265-11001-01-nordel-epdm-product-selection-guide.pdf'),
+           ('S20','https://patents.google.com/patent/WO2023217397A1/en'),
+           ('S21','https://patents.google.com/patent/WO2017127184A1/en'),
+           ('S22','https://versalis.eni.com/assets/documents/versalis/it/documentazione/licensing/2024/EPDM_20x29.pdf'),
+           ('S22B','https://versalis.eni.com/en-IT/portfolio/technologies-licensing/tecnhologies-production-traditional-raw-materials.html'),
+          ]
+          ALLOWED = {'www.cetjournal.it','patentimages.storage.googleapis.com','patents.google.com','www.mobt3ath.com','mobt3ath.com','repository.lsu.edu','www.dow.com','versalis.eni.com','www.versalis.eni.com'}
+          LIMIT = 35 * 1024 * 1024
+          class Links(HTMLParser):
+           def __init__(self):
+            super().__init__(); self.pdfs=[]
+           def handle_starttag(self,tag,attrs):
+            d=dict(attrs)
+            if tag=='meta' and d.get('name','').lower()=='citation_pdf_url':
+             self.pdfs.append(d.get('content',''))
+            if tag=='a':
+             u=d.get('href','')
+             if ('EPDM' in u.upper() and '.pdf' in u.lower()) or ('viewcontent.cgi' in u and '2655' not in u):
+              self.pdfs.append(u)
+          def get(url):
+           if urlparse(url).scheme!='https' or urlparse(url).hostname not in ALLOWED:
+            raise ValueError('Source outside fixed HTTPS allowlist')
+           req=Request(url,headers={'User-Agent':'Mozilla/5.0 (compatible; EPDM-Evidence-Research/1.0)'})
+           with urlopen(req,timeout=35) as r:
+            if urlparse(r.url).scheme!='https' or urlparse(r.url).hostname not in ALLOWED:
+             raise ValueError('Redirect outside source allowlist')
+            b=r.read(LIMIT+1)
+            if len(b)>LIMIT: raise ValueError('Per-source size limit exceeded')
+            return b,r.url,r.headers.get('Content-Type','')
+          def one(source):
+           sid,url=source; rec={'id':sid,'source_url':url,'retrieved_utc':datetime.now(timezone.utc).isoformat(),'status':'failed'}
+           try:
+            b,final,ctype=get(url)
+            if not b.startswith(b'%PDF-'):
+             (ROOT/(sid+'.html')).write_bytes(b)
+             p=Links();p.feed(b.decode('utf-8','replace'))
+             choices=list(dict.fromkeys(urljoin(final,u) for u in p.pdfs))
+             rec['pdf_candidates']=choices
+             if not choices: raise ValueError('No original PDF link found; no surrogate generated')
+             last=None
+             for candidate in choices[:3]:
+              try:
+               b,final,ctype=get(candidate)
+               if b.startswith(b'%PDF-'): break
+               raise ValueError('PDF signature missing')
+              except Exception as err: last=err
+             if not b.startswith(b'%PDF-'): raise ValueError(str(last or 'No PDF'))
+            target=ROOT/(sid+'.pdf');target.write_bytes(b)
+            rec.update(status='downloaded',final_url=final,bytes=len(b),sha256=sha256(b).hexdigest(),file=target.name,content_type=ctype)
+           except Exception as err:rec['error']=f'{type(err).__name__}: {err}'
+           print(json.dumps(rec,ensure_ascii=False),flush=True)
+           return rec
+          with ThreadPoolExecutor(max_workers=4) as pool:
+           manifest=list(pool.map(one,SOURCES))
+          (ROOT/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('PDF_DOWNLOADS',sum(r['status']=='downloaded' for r in manifest))
+          PYTHON
+      - name: Return source bytes and retrieval receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: epdm-public-originals
+          path: epdm-public-sources/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
