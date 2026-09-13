@@ -4,12 +4,14 @@ import re
 from pathlib import Path
 
 WORKFLOW_DIR = Path(".github/workflows")
-WORKFLOWS = {
+REPOSITORY_WORKFLOWS = {
     "ci.yml",
     "generate-performance-evidence.yml",
     "licensed-aspen-certification.yml",
     "windows-control-plane.yml",
 }
+SOURCE_WORKFLOW = "epdm-public-source-download.yml"
+WORKFLOWS = REPOSITORY_WORKFLOWS | {SOURCE_WORKFLOW}
 UV_VERSION = "0.11.16"
 PERFORMANCE_BASELINE_SHA = "ebef32ee1f2be74df5d5c5489e7ca86d35ac7bb2"
 PINNED_ACTION = re.compile(
@@ -75,6 +77,10 @@ def test_actions_runners_and_uv_are_immutable() -> None:
         ]
         assert uses_lines, f"{name} has no external action declarations"
         assert all(PINNED_ACTION.fullmatch(line) for line in uses_lines)
+        if name == SOURCE_WORKFLOW:
+            assert "actions/checkout@" not in text
+            assert "runs-on: ubuntu-24.04" in text
+            continue
         chunks = text.split("astral-sh/setup-uv@")[1:]
         assert chunks, f"{name} has no setup-uv step"
         for chunk in chunks:
@@ -100,11 +106,17 @@ def test_workflows_are_read_only_frozen_and_fail_closed() -> None:
         assert "permissions:\n  contents: read" in text
         assert WRITE_PERMISSION.search(text) is None
         assert INLINE_WRITE_PERMISSION.search(text) is None
-        assert "persist-credentials: false" in text
         assert "pull_request_target:" not in text
         assert "continue-on-error: true" not in text
-        assert "uv lock --check" in text
-        assert "uv sync --frozen" in text
+        if name in REPOSITORY_WORKFLOWS:
+            assert "persist-credentials: false" in text
+            assert "uv lock --check" in text
+            assert "uv sync --frozen" in text
+        else:
+            # The public-source utility executes only inline standard-library code.
+            assert "actions/checkout@" not in text
+            assert "secrets." not in text
+            assert "github.token" not in text
 
     for name in ("ci.yml", "generate-performance-evidence.yml"):
         commands = shell_commands(workflow_text(name))

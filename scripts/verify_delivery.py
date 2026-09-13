@@ -14,6 +14,7 @@ BASELINE_QUALIFICATION = "docs/ACCEPTANCE_HARDENING_QUALIFICATION.json"
 CURRENT_QUALIFICATION = "docs/DELIVERY_QUALIFICATION.json"
 GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 AUTHORITATIVE_WORKFLOWS = {
+    "epdm-public-source-download.yml",
     "ci.yml",
     "generate-performance-evidence.yml",
     "licensed-aspen-certification.yml",

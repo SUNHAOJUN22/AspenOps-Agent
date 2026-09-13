@@ -14,6 +14,11 @@ jobs:
       - name: Retrieve fixed public original sources (no checkout, no simulator)
         shell: bash
         run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Public source retrieval must run from refs/heads/main" >&2
+            exit 2
+          fi
           python3 - <<'PYTHON'
           from concurrent.futures import ThreadPoolExecutor
           from datetime import datetime, timezone
@@ -21,10 +26,10 @@ jobs:
           from html.parser import HTMLParser
           from pathlib import Path
           from urllib.parse import urljoin, urlparse
-          from urllib.request import Request, urlopen
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
           import json
+
           ROOT = Path('epdm-public-sources')
-          ROOT.mkdir(exist_ok=True)
           SOURCES = [
            ('S01','https://www.cetjournal.it/cet/23/100/028.pdf'),
            ('S02','https://patentimages.storage.googleapis.com/89/8f/51/6f02bab191756d/WO2012156393A1.pdf'),
@@ -47,61 +52,129 @@ jobs:
            ('S22B','https://versalis.eni.com/en-IT/portfolio/technologies-licensing/tecnhologies-production-traditional-raw-materials.html'),
           ]
           ALLOWED = {'www.cetjournal.it','patentimages.storage.googleapis.com','patents.google.com','www.mobt3ath.com','mobt3ath.com','repository.lsu.edu','www.dow.com','versalis.eni.com','www.versalis.eni.com'}
+
           LIMIT = 35 * 1024 * 1024
+          MAX_CANDIDATES = 3
+
+
+          def validate_url(url):
+              if not isinstance(url, str) or len(url) > 8192 or any(ord(c) < 32 for c in url):
+                  raise ValueError('Invalid source URL')
+              parsed = urlparse(url)
+              if (parsed.scheme != 'https' or parsed.hostname not in ALLOWED
+                      or parsed.username is not None or parsed.password is not None
+                      or parsed.port not in (None, 443)):
+                  raise ValueError('Source outside fixed HTTPS allowlist')
+
+
+          class SourceRedirects(HTTPRedirectHandler):
+              max_redirections = 3
+              max_repeats = 2
+
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  # Reject the next hop before urllib is allowed to contact it.
+                  validate_url(newurl)
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
           class Links(HTMLParser):
-           def __init__(self):
-            super().__init__(); self.pdfs=[]
-           def handle_starttag(self,tag,attrs):
-            d=dict(attrs)
-            if tag=='meta' and d.get('name','').lower()=='citation_pdf_url':
-             self.pdfs.append(d.get('content',''))
-            if tag=='a':
-             u=d.get('href','')
-             if ('EPDM' in u.upper() and '.pdf' in u.lower()) or ('viewcontent.cgi' in u and '2655' not in u):
-              self.pdfs.append(u)
+              def __init__(self):
+                  super().__init__()
+                  self.pdfs = []
+
+              def handle_starttag(self, tag, attrs):
+                  if len(self.pdfs) >= MAX_CANDIDATES:
+                      return
+                  values = dict(attrs)
+                  candidate = ''
+                  if tag == 'meta' and (values.get('name') or '').lower() == 'citation_pdf_url':
+                      candidate = values.get('content') or ''
+                  elif tag == 'a':
+                      href = values.get('href') or ''
+                      if (('EPDM' in href.upper() and '.pdf' in href.lower())
+                              or ('viewcontent.cgi' in href and '2655' not in href)):
+                          candidate = href
+                  if candidate and candidate not in self.pdfs:
+                      self.pdfs.append(candidate)
+
+
           def get(url):
-           if urlparse(url).scheme!='https' or urlparse(url).hostname not in ALLOWED:
-            raise ValueError('Source outside fixed HTTPS allowlist')
-           req=Request(url,headers={'User-Agent':'Mozilla/5.0 (compatible; EPDM-Evidence-Research/1.0)'})
-           with urlopen(req,timeout=35) as r:
-            if urlparse(r.url).scheme!='https' or urlparse(r.url).hostname not in ALLOWED:
-             raise ValueError('Redirect outside source allowlist')
-            b=r.read(LIMIT+1)
-            if len(b)>LIMIT: raise ValueError('Per-source size limit exceeded')
-            return b,r.url,r.headers.get('Content-Type','')
+              validate_url(url)
+              request = Request(url, headers={
+                  'User-Agent': 'Mozilla/5.0 (compatible; EPDM-Evidence-Research/1.0)',
+              })
+              opener = build_opener(SourceRedirects())
+              with opener.open(request, timeout=35) as response:
+                  validate_url(response.url)
+                  payload = response.read(LIMIT + 1)
+                  if len(payload) > LIMIT:
+                      raise ValueError('Per-source size limit exceeded')
+                  return payload, response.url, response.headers.get('Content-Type', '')
+
+
           def one(source):
-           sid,url=source; rec={'id':sid,'source_url':url,'retrieved_utc':datetime.now(timezone.utc).isoformat(),'status':'failed'}
-           try:
-            b,final,ctype=get(url)
-            if not b.startswith(b'%PDF-'):
-             (ROOT/(sid+'.html')).write_bytes(b)
-             p=Links();p.feed(b.decode('utf-8','replace'))
-             choices=list(dict.fromkeys(urljoin(final,u) for u in p.pdfs))
-             rec['pdf_candidates']=choices
-             if not choices: raise ValueError('No original PDF link found; no surrogate generated')
-             last=None
-             for candidate in choices[:3]:
+              sid, url = source
+              record = {'id': sid, 'source_url': url,
+                        'retrieved_utc': datetime.now(timezone.utc).isoformat(), 'status': 'failed'}
               try:
-               b,final,ctype=get(candidate)
-               if b.startswith(b'%PDF-'): break
-               raise ValueError('PDF signature missing')
-              except Exception as err: last=err
-             if not b.startswith(b'%PDF-'): raise ValueError(str(last or 'No PDF'))
-            target=ROOT/(sid+'.pdf');target.write_bytes(b)
-            rec.update(status='downloaded',final_url=final,bytes=len(b),sha256=sha256(b).hexdigest(),file=target.name,content_type=ctype)
-           except Exception as err:rec['error']=f'{type(err).__name__}: {err}'
-           print(json.dumps(rec,ensure_ascii=False),flush=True)
-           return rec
-          with ThreadPoolExecutor(max_workers=4) as pool:
-           manifest=list(pool.map(one,SOURCES))
-          (ROOT/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
-          print('PDF_DOWNLOADS',sum(r['status']=='downloaded' for r in manifest))
+                  payload, final, content_type = get(url)
+                  if not payload.startswith(b'%PDF-'):
+                      (ROOT / (sid + '.html')).write_bytes(payload)
+                      parser = Links()
+                      parser.feed(payload.decode('utf-8', 'replace'))
+                      choices = list(dict.fromkeys(urljoin(final, value) for value in parser.pdfs))
+                      record['pdf_candidates'] = choices
+                      if not choices:
+                          raise ValueError('No original PDF link found; no surrogate generated')
+                      last = None
+                      for candidate in choices[:MAX_CANDIDATES]:
+                          try:
+                              payload, final, content_type = get(candidate)
+                              if payload.startswith(b'%PDF-'):
+                                  break
+                              raise ValueError('PDF signature missing')
+                          except Exception as error:
+                              last = error
+                      if not payload.startswith(b'%PDF-'):
+                          raise ValueError(str(last or 'No PDF'))
+                  target = ROOT / (sid + '.pdf')
+                  target.write_bytes(payload)
+                  record.update(status='downloaded', final_url=final, bytes=len(payload),
+                                sha256=sha256(payload).hexdigest(), file=target.name,
+                                content_type=content_type)
+              except Exception as error:
+                  record['error'] = f'{type(error).__name__}: {error}'
+              print(json.dumps(record, ensure_ascii=False), flush=True)
+              return record
+
+
+          def main():
+              ROOT.mkdir(exist_ok=True)
+              with ThreadPoolExecutor(max_workers=4) as pool:
+                  manifest = list(pool.map(one, SOURCES))
+              downloaded = sum(row['status'] == 'downloaded' for row in manifest)
+              summary = {
+                  'status': 'COMPLETE' if downloaded == len(manifest) else 'PARTIAL' if downloaded else 'FAILED',
+                  'sources': len(manifest), 'downloaded': downloaded,
+                  'failed': len(manifest) - downloaded,
+                  'scientific_validation': 'NOT_EVALUATED',
+              }
+              (ROOT / 'manifest.json').write_text(
+                  json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+              (ROOT / 'summary.json').write_text(
+                  json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+              print(json.dumps(summary), flush=True)
+              return 0 if downloaded else 1
+
+
+          if __name__ == '__main__':
+              raise SystemExit(main())
           PYTHON
       - name: Return source bytes and retrieval receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: epdm-public-originals
+          name: epdm-public-originals-${{ github.run_id }}-${{ github.run_attempt }}
           path: epdm-public-sources/
           if-no-files-found: error
           retention-days: 1
