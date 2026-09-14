@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from . import RUNTIME_SCHEMA, __version__
 from .cache import ResultCache
+from .evaluation_plan import validate_request_identities
 from .hashing import canonical_hash, sha256_file
 from .models import EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry
@@ -292,6 +293,7 @@ class CasePool:
         return stable
 
     def cache_key(self, request: EvaluationRequest) -> str:
+        validate_request_identities(request)
         identity = {
             "schema": RUNTIME_SCHEMA,
             "runtime_version": __version__,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import chain
 from typing import Any
 
 from .models import (
@@ -23,6 +25,28 @@ def _semantic_identity(key: str, identifiers: dict[str, str]) -> str:
 
 def node_identity(node: ResolvedNode) -> str:
     return _semantic_identity(node.key, node.identifiers)
+
+
+def validate_request_identities(request: EvaluationRequest) -> None:
+    """Reject lossy display-label collisions before execution or cached-result reuse.
+
+    Public result labels remain compatible. Repeated references may share a label
+    only when both the semantic key and the full identifier mapping are identical.
+    """
+    seen: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {}
+    references: Iterator[VariableWrite | VariableRead | ConstraintSpec | BalanceTerm] = chain(
+        request.writes,
+        request.reads,
+        request.constraints,
+        (term for balance in request.balances for term in balance.terms),
+    )
+    for spec in references:
+        identity = _semantic_identity(spec.key, spec.identifiers)
+        structural = (spec.key, tuple(sorted(spec.identifiers.items())))
+        previous = seen.get(identity)
+        if previous is not None and previous != structural:
+            raise RegistryError(f"Ambiguous semantic identity: {identity!r}")
+        seen[identity] = structural
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +113,7 @@ class EvaluationPlanCompiler:
         request: EvaluationRequest,
         policy: Policy | None = None,
     ) -> EvaluationPlan:
+        validate_request_identities(request)
         if request.writes and policy is not None:
             policy.assert_writes_allowed()
 
