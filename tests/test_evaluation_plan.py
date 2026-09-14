@@ -356,9 +356,7 @@ def test_unambiguous_keys_and_read_deduplication_remain_compatible(
             "registry_path": str(identity_case[1]),
             "writes": [],
             "reads": [{"key": key, "identifiers": identifiers}],
-            "constraints": [
-                {"key": key, "identifiers": identifiers, "value": 0, "operator": ">="}
-            ],
+            "constraints": [{"key": key, "identifiers": identifiers, "value": 0, "operator": ">="}],
         }
     )
     plan = EvaluationPlanCompiler.compile(NodeRegistry(identity_case[1]), evaluation)
