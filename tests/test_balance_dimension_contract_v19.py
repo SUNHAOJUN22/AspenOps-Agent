@@ -315,7 +315,10 @@ def test_precompiled_balance_contract_failures_are_structured_v19(
     backend = StaticBackend({"mass_hour": 1.0, "mass_second": 1.0})
     backend.open(model)
     empty_result = evaluate(
-        backend, registry, _request(tmp_path), plan=replace(plan, balances=(empty_balance,))
+        backend,
+        registry,
+        _request(tmp_path, base_unit="kg/h"),
+        plan=replace(plan, balances=(empty_balance,)),
     )
     backend.close()
     assert not empty_result.ok
@@ -330,7 +333,7 @@ def test_precompiled_balance_contract_failures_are_structured_v19(
     no_unit_result = evaluate(
         backend,
         registry,
-        _request(tmp_path),
+        _request(tmp_path, base_unit="kg/h"),
         plan=replace(plan, balances=(no_unit_balance,)),
     )
     backend.close()
