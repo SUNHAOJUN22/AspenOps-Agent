@@ -8,6 +8,7 @@ from typing import Any
 
 from .backends.base import SimulatorBackend, TransactionState, WriteTransactionError
 from .evaluation_plan import EvaluationPlan, EvaluationPlanCompiler, node_identity
+from .hashing import canonical_bytes
 from .models import ConstraintSpec, EvaluationRequest, EvaluationResult
 from .registry import NodeRegistry, ResolvedNode
 from .units import convert
@@ -149,6 +150,10 @@ def evaluate(
     values: dict[str, Any] = {}
     units: dict[str, str | None] = {}
     try:
+        if plan is not None and canonical_bytes(plan.physical_identity) != canonical_bytes(
+            request.physical_identity()
+        ):
+            raise ValueError("Precompiled evaluation plan does not match request semantics")
         active_plan = plan or EvaluationPlanCompiler.compile(registry, request)
         diagnostics["state_trace"].append("plan_compiled")
         diagnostics["io"] = {
