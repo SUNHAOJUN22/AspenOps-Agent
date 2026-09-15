@@ -291,7 +291,7 @@ def request(*, warm_start: bool = False) -> EvaluationRequest:
     )
 
 
-def failure_plan() -> EvaluationPlan:
+def failure_plan(eval_request: EvaluationRequest) -> EvaluationPlan:
     output_node = resolved_node("output", unit="fraction")
     constraint_node = resolved_node("constraint", unit="1")
     inlet_node = resolved_node("inlet", unit="kg/h")
@@ -328,19 +328,19 @@ def failure_plan() -> EvaluationPlan:
                 ),
             ),
         ),
-        physical_identity={},
+        physical_identity=eval_request.physical_identity(),
         estimated_io=IOEstimate(0, 0, 4, 4, 0),
     )
 
 
-def empty_plan() -> EvaluationPlan:
+def empty_plan(eval_request: EvaluationRequest) -> EvaluationPlan:
     return EvaluationPlan(
         writes=(),
         unique_reads=(),
         output_bindings=(),
         constraints=(),
         balances=(),
-        physical_identity={},
+        physical_identity=eval_request.physical_identity(),
         estimated_io=IOEstimate(0, 0, 0, 0, 0),
     )
 
@@ -359,12 +359,13 @@ def test_evaluation_combines_output_constraint_balance_and_engine_failures() -> 
             "converged": False,
         },
     )
+    eval_request = request(warm_start=True)
     result = evaluate(
         backend,
         object(),  # type: ignore[arg-type]
-        request(warm_start=True),
+        eval_request,
         worker_id=7,
-        plan=failure_plan(),
+        plan=failure_plan(eval_request),
     )
     assert result.ok is False
     assert result.communication_ok is True
@@ -396,11 +397,12 @@ def test_evaluation_combines_output_constraint_balance_and_engine_failures() -> 
 
 def test_evaluation_reinitializes_and_accepts_empty_success_plan() -> None:
     backend = EvaluationBackend({})
+    eval_request = request()
     result = evaluate(
         backend,
         object(),  # type: ignore[arg-type]
-        request(),
-        plan=empty_plan(),
+        eval_request,
+        plan=empty_plan(eval_request),
     )
     assert result.ok is True
     assert result.values == {}
@@ -415,11 +417,12 @@ def test_evaluation_surfaces_write_transaction_state(
 ) -> None:
     backend = EvaluationBackend({})
     backend.transaction_error = WriteTransactionError(state, RuntimeError("write failed"))
+    eval_request = request()
     result = evaluate(
         backend,
         object(),  # type: ignore[arg-type]
-        request(),
-        plan=empty_plan(),
+        eval_request,
+        plan=empty_plan(eval_request),
     )
     assert result.ok is False
     assert result.violations == [f"write_transaction:{state.value}"]
@@ -431,11 +434,12 @@ def test_evaluation_surfaces_write_transaction_state(
 def test_evaluation_surfaces_generic_execution_error() -> None:
     backend = EvaluationBackend({})
     backend.run_error = ValueError("solver exploded")
+    eval_request = request()
     result = evaluate(
         backend,
         object(),  # type: ignore[arg-type]
-        request(),
-        plan=empty_plan(),
+        eval_request,
+        plan=empty_plan(eval_request),
     )
     assert result.ok is False
     assert result.communication_ok is False
