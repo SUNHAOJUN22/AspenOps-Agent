@@ -288,6 +288,11 @@ def request(*, warm_start: bool = False) -> EvaluationRequest:
         writes=(),
         reads=(),
         reset_mode="warm_start" if warm_start else "reinitialize",
+        metadata=(
+            {"warm_start_session": "unscoped-single-worker", "warm_start_step": 0}
+            if warm_start
+            else {}
+        ),
     )
 
 
