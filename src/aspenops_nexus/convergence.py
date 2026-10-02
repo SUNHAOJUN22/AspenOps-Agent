@@ -58,7 +58,17 @@ class ConvergenceEvidence:
 
 
 _NEGATIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("not_converged", re.compile(r"\bnot[\s_-]+converged\b", re.IGNORECASE)),
+    (
+        "not_converged",
+        re.compile(
+            r"\b(?:(?:not|never)[\s_-]+"
+            r"(?:(?:yet|fully|completely|successfully)[\s_-]+)?converg(?:e[ds]?|ing)"
+            r"|(?:un|non[\s_-]?)converged"
+            r"|unable[\s_-]+to[\s_-]+converge"
+            r"|convergence[\s_-]+not[\s_-]+(?:yet[\s_-]+)?(?:achieved|reached))\b",
+            re.IGNORECASE,
+        ),
+    ),
     (
         "not_successful",
         re.compile(r"\b(?:not[\s_-]+success(?:ful(?:ly)?)?|unsuccessful(?:ly)?)\b", re.IGNORECASE),
