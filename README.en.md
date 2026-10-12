@@ -372,6 +372,16 @@ Periodic recycling is triggered by evaluation count or monotonic-clock age. Cras
 
 Source mapping: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 
+#### Polling and external-call boundary
+
+$$
+T_{\mathrm{timeout}},\Delta t\in\mathbb{R}_{>0}\cap\mathbb{R}_{\mathrm{finite}},\quad n_{\mathrm{stable}}\in\mathbb{N}_{>0}
+$$
+
+Before reading the external COM engine, timeout_s and poll_interval_s must be finite positive numbers and stable_samples a positive integer; booleans are not numeric configuration values. NaN cannot disable timeout, and an unrepresentable COM integer flag remains UNKNOWN instead of raising an unhandled overflow. Polling termination is not convergence; status nodes, negative markers and idle evidence still control classification.
+
+Source mapping: [`src/aspenops_nexus/convergence.py`](src/aspenops_nexus/convergence.py) · [`tests/test_polling_numeric_boundaries.py`](tests/test_polling_numeric_boundaries.py)
+
 ### Usage and acceptance sequence
 
 1. Check the installation environment, input structure, units, applicability and execution permissions.
