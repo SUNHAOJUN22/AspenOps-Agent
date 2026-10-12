@@ -81,6 +81,22 @@ PROFILE: dict[str, Any] = {'slug': 'aspenops',
               'uv sync --frozen --extra dev --extra agent --extra signing',
               'uv run python scripts/verify_delivery.py'],
  'accent': '#7dd3fc'}
+PROFILE["math"].append({'latex': 'T_{\\mathrm{timeout}},\\Delta '
+          't\\in\\mathbb{R}_{>0}\\cap\\mathbb{R}_{\\mathrm{finite}},\\quad '
+          'n_{\\mathrm{stable}}\\in\\mathbb{N}_{>0}',
+ 'plain': ['finite timeout > 0; Δt > 0', 'stable samples ∈ positive integers'],
+ 'zh': {'name': '轮询输入与外部调用边界',
+        'note': '在读取外部 COM 引擎之前，timeout_s 与 poll_interval_s 必须为有限正数，stable_samples '
+                '必须是正整数，布尔值不能冒充这些数值。NaN 不能使超时失效；无法转换成有限浮点数的 COM 整数状态返回 '
+                'UNKNOWN，而不是抛出未处理的溢出。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。'},
+ 'en': {'name': 'Polling and external-call boundary',
+        'note': 'Before reading the external COM engine, timeout_s and poll_interval_s must '
+                'be finite positive numbers and stable_samples a positive integer; booleans '
+                'are not numeric configuration values. NaN cannot disable timeout, and an '
+                'unrepresentable COM integer flag remains UNKNOWN instead of raising an '
+                'unhandled overflow. Polling termination is not convergence; status nodes, '
+                'negative markers and idle evidence still control classification.'},
+ 'code': ['src/aspenops_nexus/convergence.py', 'tests/test_polling_numeric_boundaries.py']})
 START = "<!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->"
 END = "<!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->"
 
@@ -127,7 +143,7 @@ def visual(lang: str) -> str:
         cards.append(f'<g><rect x="{x}" y="246" width="278" height="220" rx="20" fill="#0f2038" stroke="{accent}" stroke-opacity=".5"/><circle cx="{x+31}" cy="279" r="15" fill="{accent}" fill-opacity=".16"/><text x="{x+31}" y="284" text-anchor="middle" font-size="13" fill="{accent}">0{index+1}</text>{text_block(heading,x+20,326,237,23,28,2,"#f8fafc",700)}{text_block(detail,x+20,399,237,17,25,2)}</g>')
     arrows = ''.join(f'<path d="M{327+307*i} 357h21" fill="none" stroke="{accent}" stroke-width="2" marker-end="url(#arrow)"/>' for i in range(4))
     equations = []
-    for index, formula in enumerate(PROFILE['math']):
+    for index, formula in enumerate(PROFILE['math'][:3]):
         x = 46 + 506 * index
         content = ''.join(text_block(line,x+22,588+row*29,432,19,26,1,'#f8fafc') for row,line in enumerate(formula['plain']))
         label = text_block(f"{index+1:02d}  {formula[lang]['name']}",x+22,544,432,17,22,1,accent,650)

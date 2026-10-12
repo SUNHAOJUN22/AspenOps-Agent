@@ -2,9 +2,6 @@ name: Refresh bilingual mathematical documentation
 on:
   push:
     branches: [main]
-    paths:
-      - scripts/refresh_current_main_readme.py
-      - .github/workflows/refresh-mathematical-docs.yml
   workflow_dispatch:
 permissions:
   contents: write
@@ -14,4 +11,4 @@ concurrency:
   cancel-in-progress: false
 jobs:
   documentation:
-    uses: SUNHAOJUN22/ResinDB-Pro-by-SunHJ/.github/workflows/publish-mathematical-docs.yml@9ad1d4a59f71c3eb0e9ff465a0f7ff3497f98363
+    uses: SUNHAOJUN22/ResinDB-Pro-by-SunHJ/.github/workflows/publish-mathematical-docs.yml@64cdc2532648ae8f612a76e6d6f91f11b5b53874

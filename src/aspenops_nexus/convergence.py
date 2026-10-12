@@ -99,7 +99,10 @@ def normalize_running_flag(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
     if isinstance(value, int | float):
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
         if not math.isfinite(number):
             return None
         if number in {-1.0, 1.0}:
@@ -125,12 +128,22 @@ def poll_engine_idle(
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> IdleObservation:
-    if timeout_s <= 0:
-        raise ValueError("timeout_s must be positive")
-    if poll_interval_s <= 0:
-        raise ValueError("poll_interval_s must be positive")
-    if stable_samples <= 0:
-        raise ValueError("stable_samples must be positive")
+    # Validate before touching COM: NaN comparisons can otherwise disable timeout.
+    for name, value in (("timeout_s", timeout_s), ("poll_interval_s", poll_interval_s)):
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"{name} must be a finite positive number")
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite or value <= 0:
+            raise ValueError(f"{name} must be a finite positive number")
+    if (
+        isinstance(stable_samples, bool)
+        or not isinstance(stable_samples, int)
+        or stable_samples <= 0
+    ):
+        raise ValueError("stable_samples must be a positive integer")
 
     started = clock()
     samples = 0
