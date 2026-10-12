@@ -336,34 +336,57 @@ uv run python scripts/verify_delivery.py \
 Acceptance dashboards include `test-dashboard-quality.html`, `test-dashboard-windows.html`, `test-dashboard-licensed.html`, `test-dashboard-licensed-mock.html`, and the per-Python dashboards. Each dashboard summarizes only its own job evidence and is not real-Aspen engineering certification.
 
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
-## Current `main`: code–mathematics–evidence loop
+## Current implementation: code, mathematics and usage
 
-<p align="center"><img src="docs/current-main/aspenops-current-main-en.svg" width="100%" alt="Current `main`: code–mathematics–evidence loop"></p>
+![English code and mathematical-contract concept](docs/current-main/aspenops-current-main-en.svg)
 
-> This section is generated from current repository contracts; the visual is conceptual documentation, not simulation or experimental output.
+> Software gates are not licensed Aspen Plus/HYSYS engineering certification; the external state remains PENDING_REAL_ASPEN_CERTIFICATION.
 
-### Core mathematical contracts
-
-$$
-OK = C_comm ∧ C_engine ∧ C_conv ∧ C_finite ∧ C_constraint ∧ C_balance
-$$
+#### Bounded dispatch
 
 $$
-dN_i/dt = Σ_in ṅ_i − Σ_out ṅ_i + V Σ_r ν_ir r_r
+N_{\mathrm{dispatch}}=\min(N_{\mathrm{handles}},N_{\mathrm{unique}})
 $$
 
+This is the actual CasePool dispatch bound: the smaller of available handles and deduplicated requests. Licence, memory and stability limits still require deployment checks; the formula does not claim automatic measurement of all resource limits.
+
+Source mapping: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
+#### Warm-start isolation
+
 $$
-W_eff = min(W_config, W_license, W_memory, W_stable)
+\exists q:\neg q.\mathrm{reinitialize}\;\Longrightarrow\;N_{\mathrm{workers}}=1
 $$
 
-### Usage strategy
+Requests that reuse solver history require a single worker; incompatible pool calls are rejected. Cold-start batches may run concurrently, but cache keys, engine identity and reinitialization policy must remain consistent. Warm start is not a parallel-acceleration option.
 
-1. Run permanent CI before exact-tree current-main qualification.
-2. Reject Boolean, NaN and Infinity at scientific scalar boundaries.
-3. Any new commit invalidates six-hour evidence bound to an older SHA.
-4. Licensed Aspen qualification requires an authorized environment and accountable engineer.
+Source mapping: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 
-> **Responsibility boundary：** Software gates are not licensed Aspen Plus/HYSYS engineering certification; the external state remains PENDING_REAL_ASPEN_CERTIFICATION.
+#### Worker lifecycle
 
-Execution prompt：[`SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md`](docs/SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md)
+$$
+R_{\mathrm{periodic}}=(N_{\mathrm{eval}}\ge N_{\max})\lor(t_{\mathrm{age}}\ge t_{\max})
+$$
+
+Periodic recycling is triggered by evaluation count or monotonic-clock age. Crashes, timeouts, protocol errors and tainted state have additional recycle conditions. This Boolean expression is the periodic rule, not the complete failure taxonomy or proof of Aspen convergence.
+
+Source mapping: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
+### Usage and acceptance sequence
+
+1. Check the installation environment, input structure, units, applicability and execution permissions.
+2. Use the source mappings above to distinguish native implementation, explanatory contracts and external execution requirements.
+3. Run focused regression and full quality gates before long-duration testing of pinned commits.
+4. Preserve original logs, machine-readable reports and limitations; missing evidence must never be reported as PASS.
+
+```bash
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
+uv run python scripts/verify_delivery.py
+```
+
+Retest every changed commit. Baseline regression, two three-hour regression segments, browser visual checks and external engineering qualification are distinct evidence classes. Without original receipts, no six-hour completion is claimed.
+
+Implementation anchors: [`src/aspenops_nexus/process_ir.py`](src/aspenops_nexus/process_ir.py) · [`src/aspenops_nexus/models.py`](src/aspenops_nexus/models.py) · [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->

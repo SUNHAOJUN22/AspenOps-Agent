@@ -336,34 +336,57 @@ uv run python scripts/verify_delivery.py \
 验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。
 
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
-## 当前 `main`：代码—数学—证据闭环
+## 当前实现：代码、数学与使用策略
 
-<p align="center"><img src="docs/current-main/aspenops-current-main-zh.svg" width="100%" alt="当前 `main`：代码—数学—证据闭环"></p>
+![中文代码与数学合同概念图](docs/current-main/aspenops-current-main-zh.svg)
 
-> 本节由仓库脚本根据当前代码合同生成；图像是文档概念设计，不是仿真或实验结果。
+> 软件门禁不等于真实 Aspen Plus/HYSYS 工程认证；外部状态保持 PENDING_REAL_ASPEN_CERTIFICATION。
 
-### 核心数理合同
-
-$$
-OK = C_comm ∧ C_engine ∧ C_conv ∧ C_finite ∧ C_constraint ∧ C_balance
-$$
+#### 有界并发调度
 
 $$
-dN_i/dt = Σ_in ṅ_i − Σ_out ṅ_i + V Σ_r ν_ir r_r
+N_{\mathrm{dispatch}}=\min(N_{\mathrm{handles}},N_{\mathrm{unique}})
 $$
 
+这是 `CasePool` 的实际线程启动上界：有效工作句柄数与去重请求数取较小值。许可证、内存与稳定性仍须在部署时核实；该公式不声称程序自动测得全部资源限额。
+
+源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
+#### 热启动的状态隔离
+
 $$
-W_eff = min(W_config, W_license, W_memory, W_stable)
+\exists q:\neg q.\mathrm{reinitialize}\;\Longrightarrow\;N_{\mathrm{workers}}=1
 $$
 
-### 使用策略
+复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发，但缓存键、引擎身份与重初始化方式必须一致。这里的热启动不是并行加速选项。
 
-1. 先运行永久 CI，再运行 current-main 精确树验收。
-2. 所有数值入口拒绝 Boolean、NaN 与 Infinity。
-3. 任何新提交都会使旧 SHA 的六小时证据失效。
-4. 外部 Aspen 工程资格必须由授权环境和责任工程师完成。
+源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 
-> **责任边界：** 软件门禁不等于真实 Aspen Plus/HYSYS 工程认证；外部状态保持 PENDING_REAL_ASPEN_CERTIFICATION。
+#### 工作进程生命周期
 
-执行提示词：[`SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md`](docs/SIX_REPOSITORY_PARALLEL_6H_ACCEPTANCE_PROMPT_V2.md)
+$$
+R_{\mathrm{periodic}}=(N_{\mathrm{eval}}\ge N_{\max})\lor(t_{\mathrm{age}}\ge t_{\max})
+$$
+
+周期性回收由已处理点数或单调时钟年龄触发；崩溃、超时、协议错误和污染状态还有独立回收条件。该布尔式只表示周期性条件，不是完整故障分类，也不证明一次 Aspen 计算收敛。
+
+源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
+### 使用与验收顺序
+
+1. 先核对安装环境、输入结构、单位、有效范围与执行权限。
+2. 按上面的源码锚点区分原生实现、解释性合同和外部执行要求。
+3. 先运行快速回归和完整质量门，再用固定提交执行长期回归。
+4. 逐项保存原始日志、机器报告和限制；任何缺失证据不得写成 PASS。
+
+```bash
+uv lock --check
+uv sync --frozen --extra dev --extra agent --extra signing
+uv run python scripts/verify_delivery.py
+```
+
+每次修复均须绑定新提交重新测试。基线回归、两段各三小时的重复回归、浏览器图形检查和外部工程认证是不同证据，不可互相替代。没有原始回执时，不宣称已完成六小时验收。
+
+源码锚点: [`src/aspenops_nexus/process_ir.py`](src/aspenops_nexus/process_ir.py) · [`src/aspenops_nexus/models.py`](src/aspenops_nexus/models.py) · [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->
