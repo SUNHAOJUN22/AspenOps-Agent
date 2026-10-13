@@ -70,6 +70,23 @@ _NEGATIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
+        "convergence_denied",
+        re.compile(
+            r"\b(?:converged|convergence)[ \t]*(?:[:=]|is\b)[ \t]*"
+            r"(?:false|no|0)(?![\w.+-])",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "group_not_converged",
+        re.compile(
+            r"\b(?:not[ \t]+all|no|none[ \t]+of(?:[ \t]+the)?|zero|0)[ \t]+"
+            r"(?:(?:recycle|tear)[ \t]+)?(?:blocks|equations|streams|units|recycles)"
+            r"(?:[ \t]+have)?[ \t]+converged\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "not_successful",
         re.compile(r"\b(?:not[\s_-]+success(?:ful(?:ly)?)?|unsuccessful(?:ly)?)\b", re.IGNORECASE),
     ),
