@@ -33,51 +33,79 @@ class CoverageSummary:
 
 
 def _as_int(value: object) -> int:
-    try:
-        return int(float(str(value)))
-    except (TypeError, ValueError):
-        return 0
+    text = str(value)
+    if not text.isascii() or not text.isdigit():
+        raise ValueError(f"Invalid JUnit nonnegative integer: {value!r}")
+    return int(text)
 
 
 def _as_float(value: object) -> float:
     try:
-        return float(str(value))
-    except (TypeError, ValueError):
-        return 0.0
+        number = float(str(value))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Invalid JUnit duration") from exc
+    if not math.isfinite(number) or number < 0:
+        raise ValueError("JUnit duration must be finite and nonnegative")
+    return number
+
+
+def _add(items: Iterable[TestSummary]) -> TestSummary:
+    rows = tuple(items)
+    seconds = math.fsum(row.seconds for row in rows)
+    if not math.isfinite(seconds):
+        raise ValueError("JUnit aggregate duration exceeds the finite range")
+    return TestSummary(
+        tests=sum(r.tests for r in rows),
+        failures=sum(r.failures for r in rows),
+        errors=sum(r.errors for r in rows),
+        skipped=sum(r.skipped for r in rows),
+        seconds=seconds,
+    )
 
 
 def _suite_totals(element: ET.Element) -> TestSummary:
-    return TestSummary(
+    if element.tag not in {"testsuite", "testsuites"}:
+        raise ValueError("Unsupported JUnit root element")
+    children = list(element.findall("testsuite")) + list(element.findall("testsuites"))
+    child_summary = _add(_suite_totals(child) for child in children) if children else None
+    if "tests" not in element.attrib and child_summary is not None:
+        return child_summary
+    summary = TestSummary(
         tests=_as_int(element.attrib.get("tests")),
         failures=_as_int(element.attrib.get("failures")),
         errors=_as_int(element.attrib.get("errors")),
         skipped=_as_int(element.attrib.get("skipped")),
         seconds=_as_float(element.attrib.get("time")),
     )
+    if summary.failures + summary.errors + summary.skipped > summary.tests:
+        raise ValueError("JUnit failures/errors/skips exceed the test count")
+    if child_summary is not None and (
+        summary.tests,
+        summary.failures,
+        summary.errors,
+        summary.skipped,
+    ) != (
+        child_summary.tests,
+        child_summary.failures,
+        child_summary.errors,
+        child_summary.skipped,
+    ):
+        raise ValueError("JUnit parent summary contradicts child suites")
+    cases = element.findall("testcase")
+    if cases:
+        observed = (
+            len(cases),
+            sum(c.find("failure") is not None for c in cases),
+            sum(c.find("error") is not None for c in cases),
+            sum(c.find("skipped") is not None for c in cases),
+        )
+        if observed != (summary.tests, summary.failures, summary.errors, summary.skipped):
+            raise ValueError("JUnit summary contradicts testcase records")
+    return summary
 
 
 def parse_junit(paths: Iterable[Path]) -> TestSummary:
-    total = TestSummary()
-    for path in paths:
-        root = ET.parse(path).getroot()
-        summary = _suite_totals(root)
-        if summary.tests == 0 and root.tag == "testsuites":
-            children = [_suite_totals(child) for child in root.findall("testsuite")]
-            summary = TestSummary(
-                tests=sum(item.tests for item in children),
-                failures=sum(item.failures for item in children),
-                errors=sum(item.errors for item in children),
-                skipped=sum(item.skipped for item in children),
-                seconds=sum(item.seconds for item in children),
-            )
-        total = TestSummary(
-            tests=total.tests + summary.tests,
-            failures=total.failures + summary.failures,
-            errors=total.errors + summary.errors,
-            skipped=total.skipped + summary.skipped,
-            seconds=total.seconds + summary.seconds,
-        )
-    return total
+    return _add(_suite_totals(ET.parse(path).getroot()) for path in paths)
 
 
 def _percentage(value: object) -> float | None:
@@ -87,7 +115,7 @@ def _percentage(value: object) -> float | None:
         return None
     if math.isnan(number) or math.isinf(number):
         return None
-    return max(0.0, min(100.0, number))
+    return number if 0.0 <= number <= 100.0 else None
 
 
 def parse_coverage(paths: Iterable[Path]) -> CoverageSummary:

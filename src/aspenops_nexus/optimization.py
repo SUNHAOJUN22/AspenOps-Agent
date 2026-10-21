@@ -21,6 +21,7 @@ from .optimizer import (
     pareto_front,
 )
 from .policy import PolicyError
+from .units import UnitError, convert
 from .units import dimension as unit_dimension
 
 if TYPE_CHECKING:
@@ -72,7 +73,10 @@ def _text(value: object, *, label: str) -> str:
 def _number(value: object, *, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{label} must be numeric")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{label} must be finite") from exc
     if not math.isfinite(number):
         raise ValueError(f"{label} must be finite")
     return number
@@ -102,14 +106,20 @@ def _finite_output(value: object) -> float | None:
     """Compatibility conversion for persisted result flags and diagnostics."""
     if not isinstance(value, bool | int | float):
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
     return number if math.isfinite(number) else None
 
 
 def _strict_finite_output(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
     return number if math.isfinite(number) else None
 
 
@@ -610,12 +620,22 @@ class _Evaluator:
         for vector, raw_result in zip(vectors, results, strict=True):
             result = cast(Mapping[str, object], raw_result)
             values = _optional_object_map(result.get("values", {}))
+            actual_units = _optional_object_map(result.get("units", {}))
             objective_values: list[float] = []
             minimized_values: list[float] = []
             scalarized_values: list[float] = []
             missing = False
             for objective in self.problem.objectives:
                 value = _strict_finite_output(values.get(objective.output_key))
+                if value is not None and objective.unit is not None:
+                    actual_unit = actual_units.get(objective.output_key)
+                    if not isinstance(actual_unit, str):
+                        value = None
+                    else:
+                        try:
+                            value = convert(value, actual_unit, objective.unit)
+                        except UnitError:
+                            value = None
                 if value is None:
                     missing = True
                     value = -1e12 if objective.direction == "maximize" else 1e12

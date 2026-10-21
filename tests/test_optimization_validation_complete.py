@@ -365,6 +365,7 @@ def test_evaluator_builds_points_scores_and_missing_output_penalties(
                 "engine_ok": True,
                 "converged": True,
                 "values": {"first": 3.0, "second": 2.0},
+                "units": {"first": "1", "second": "1"},
                 "request_hash": "hash-1",
             },
             {

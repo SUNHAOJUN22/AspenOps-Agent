@@ -108,6 +108,9 @@ def convert(value: float, source: str | None, target: str | None) -> float:
         raise UnitError("Source unit must be a string or null")
     if target is not None and not isinstance(target, str):
         raise UnitError("Target unit must be a string or null")
+    for unit in (source, target):
+        if unit is not None and unit not in _UNITS:
+            raise UnitError(f"Unsupported unit conversion: {source!r} -> {target!r}")
     if source is None or target is None:
         return numeric
     if source == target:

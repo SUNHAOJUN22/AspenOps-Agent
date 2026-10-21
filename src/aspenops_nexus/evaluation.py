@@ -23,6 +23,8 @@ def _converted(raw: Any, node: ResolvedNode, unit: str | None) -> Any:
     numeric = float(raw)
     if not math.isfinite(numeric):
         return numeric
+    if node.native_unit is None and unit is not None:
+        raise ValueError(f"{node.key} has no registered native unit")
     target_unit = unit or node.native_unit
     return convert(numeric, node.native_unit, target_unit)
 

@@ -15,6 +15,7 @@ from .models import (
 )
 from .policy import Policy
 from .registry import NodeRegistry, RegistryError, ResolvedNode
+from .units import convert
 from .units import dimension as unit_dimension
 
 
@@ -148,6 +149,10 @@ class EvaluationPlanCompiler:
             read_node, identity = resolve_read_node(read_spec.key, read_spec.identifiers)
             if identity in output_identities:
                 raise ValueError(f"Duplicate read output target: {identity}")
+            if read_spec.unit is not None:
+                if read_node.native_unit is None:
+                    raise ValueError(f"Read {read_spec.key} has no registered native unit")
+                convert(0.0, read_node.native_unit, read_spec.unit)
             output_identities.add(identity)
             output_bindings.append(OutputBinding(read_spec, read_node, identity, identity))
 
@@ -157,6 +162,12 @@ class EvaluationPlanCompiler:
                 constraint_spec.key,
                 constraint_spec.identifiers,
             )
+            if constraint_spec.unit is not None:
+                if constraint_node.native_unit is None:
+                    raise ValueError(
+                        f"Constraint {constraint_spec.key} has no registered native unit"
+                    )
+                convert(0.0, constraint_node.native_unit, constraint_spec.unit)
             constraints.append(CompiledConstraint(constraint_spec, constraint_node, identity))
 
         balances: list[CompiledBalance] = []

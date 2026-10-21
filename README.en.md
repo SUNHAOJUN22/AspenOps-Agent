@@ -28,7 +28,7 @@
 ## Project vision: from process intent to industrial evidence closure
 
 <p align="center">
-  <img src="docs/localized-vision/aspenops-vision-en.svg" width="100%" alt="AspenOps English project vision and engineering mathematics architecture">
+  <img src="docs/assets/vision-en.png" width="100%" alt="AspenOps English project vision and engineering mathematics architecture">
 </p>
 
 > The modules and equations map to current software contracts. This is a control-plane vision, not Aspen Plus/HYSYS output, plant data or engineering certification.
@@ -46,8 +46,8 @@
 | Authoritative long-lived branch | `main` |
 | Qualified platforms | Linux and Windows; real Aspen COM remains licensed-Windows only |
 | Python | Python 3.11, 3.12 and 3.13 across six Linux/Windows combinations |
-| Archived qualification | `1224 passed`, zero failures, 95.03% branch coverage |
-| Current regression | 1258+ tests and 95.03% branch coverage; latest `main` CI is authoritative |
+| Archived qualification | The archived validated baseline in `docs/quality-report.md` is historical context, not an automatic claim for later commits |
+| Current regression | Check full CI, coverage and raw JUnit for the exact target commit; archived numbers are not inherited |
 | Toolchain | `uv 0.11.16`; `mcp>=1.9,<2` |
 | External qualification | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
@@ -94,77 +94,84 @@ DWSIM and IDAES remain `planned`; there is currently **no adapter** for either e
 
 ## Mathematical and engineering contracts
 
-### 1. Material and energy conservation
+These equations describe checks actually performed by this code. Dynamic conservation equations provide the physical basis for model setup and residual definitions; AspenOps does not reimplement the Aspen thermodynamic or reaction solver. Record model versions, units, parameter sources, applicability and engineering tolerances for every use.
 
-\[
-\frac{dN_i}{dt}=\sum_{in}\dot n_i-\sum_{out}\dot n_i+\sum_r\nu_{ir}r_rV,
-\qquad |R_i|\le\tau_i.
-\]
+### 1. Units before numeric comparisons
 
-\[
-\frac{dU}{dt}=\dot Q-\dot W+
-\sum_{in}\dot n_s\hat h_s-
-\sum_{out}\dot n_s\hat h_s.
-\]
+With scale/offset pairs $(s_s,b_s)$ and $(s_t,b_t)$ relative to the canonical unit,
 
-A non-finite balance uses `balance_non_finite`; a finite residual outside tolerance uses `balance_failed`.
+$$
+x_t=\frac{s_s x_s+b_s-b_t}{s_t},\qquad T_K>0.
+$$
 
-### 2. Independent validity gates
+`units.convert` checks supported units and finite numbers. `evaluation_plan` binds reads, writes and constraints to the registry's source unit: a request label cannot turn an unknown source into a measured temperature or pressure. Unitless text/Boolean status remains supported; dimensionless numerical quantities use explicit `1`, `fraction`, etc. Fractions are normalized before range checks: $50\%=0.5=500000\,\mathrm{ppm}$. Temperatures are checked in K; missing physical parameter units block the design. Counts cannot be relabeled as percentages.
 
-\[
-OK=C_{comm}\land C_{engine}\land C_{conv}\land C_{finite}
-\land C_{constraint}\land C_{balance}.
-\]
+Implementation: [units](src/aspenops_nexus/units.py), [compiled evaluation](src/aspenops_nexus/evaluation_plan.py), [engineering rules](src/aspenops_nexus/engineering_rules.py).
 
-\[
-V(x)=\sum_j\max(0,g_j(x)-\varepsilon_j)+
-\sum_k\max(0,|h_k(x)|-\varepsilon_k).
-\]
+### 2. Reaction element, charge and mass conservation
 
-A non-finite constraint uses `constraint_non_finite`; evidence JSON is written with `allow_nan=False`.
+For elemental composition $A_{ei}$, signed stoichiometric coefficients $\nu_i$ (reactants negative), explicit ionic charge $z_i$ and declared molecular weight $M_i$,
 
-### 3. Units, topology, and degrees of freedom
+$$
+A\boldsymbol\nu=\boldsymbol0,\qquad \sum_i z_i\nu_i=0,\qquad \sum_i M_i\nu_i=0.
+$$
 
-\[
-x_t=(x_s+a_s)\frac{m_s}{m_t}-a_t,
-\qquad T_K>0.
-\]
+The final equation is checked when every molecular weight is available. Element/charge tolerance is $10^{-10}\max(1,\sum_i|a_i\nu_i|)$; declared mass uses $10^{-6}$ on the same scale to allow rounding. The bounded formula grammar supports `Ca(OH)2`, `CuSO4·5H2O`, `Na+`, `Fe^3+`. Unknown composition, pseudo-components or unsupported formula syntax produce an `ENGINEERING_BLOCKER`; composition is never invented. $2H_2+O_2\to2H_2O$ conserves atoms, whereas $H_2+O_2\to H_2O$ does not. These checks run through `validate_process_design`.
 
-\[
-\forall C\in cycles(G),\quad C\cap T\neq\varnothing,
-\qquad DOF=N_c-N_s.
-\]
+### 3. Process balances and independent validity gates
 
-Tear edges must belong to real cycles. Under- and over-specification both fail closed.
+The physical balance basis is
 
-### 4. Cache and trajectory identity
+$$
+\frac{dN_i}{dt}=\sum_{\rm in}\dot n_i-\sum_{\rm out}\dot n_i+\sum_r\nu_{ir}r_rV,
+\qquad \frac{dU}{dt}=\dot Q-\dot W+\sum_{\rm in}\dot n\hat h-\sum_{\rm out}\dot n\hat h.
+$$
 
-\[
-K=SHA256(schema\Vert version\Vert backend\Vert runtime
-\Vert model\Vert registry\Vert request_{physical}).
-\]
+At runtime, supplied balance terms are converted to compatible units and the linear residual $R=\sum_j c_jy_j$ is compared with configured absolute/relative tolerances. Terms, signs and available observables must match the actual model; missing values are not replaced by zero.
 
-\[
-x_{k+1}=F(x_k,u_k),\qquad y_k=G(x_k).
-\]
+$$
+OK=C_{\rm communication}\land C_{\rm engine}\land C_{\rm convergence}
+\land C_{\rm finite}\land C_{\rm constraint}\land C_{\rm balance}.
+$$
 
-A warm-start trajectory is pinned to one Worker and runs serially. It does not use persistent cache, same-batch deduplication, or `inflight_singleflight`.
+`constraint_non_finite` and `balance_non_finite` differ from finite out-of-tolerance results. Evidence serialization uses `allow_nan=False`. One failed gate cannot be compensated by a high score elsewhere. Implementation: [evaluation](src/aspenops_nexus/evaluation.py).
 
-### 5. Optimization and license-limited concurrency
+### 4. Dimensioned optimization and feasibility ordering
 
-\[
-\min_xJ(x)=\sum_mw_mf_m(x),
-\qquad J_p(x)=J(x)+\lambda V(x).
-\]
+Each actual output $y_j$ is converted from `result.units` to its objective unit before applying reference $r_j$ and positive scale $a_j$:
 
-\[
-W_{effective}=\min(W_{configured},W_{license},W_{memory},W_{stable}).
-\]
+$$
+\widetilde f_j(x)=\sigma_j\frac{y_j(x)-r_j}{a_j},\quad J(x)=\sum_jw_j\widetilde f_j(x),\quad w_j>0,
+\qquad \sigma_j=\begin{cases}+1&\text{minimize}\\-1&\text{maximize}.\end{cases}
+$$
 
-\[
-T_{pool}\approx W(T_{start}+T_{open})+
-\frac{N_{unique}}{W_{effective}}(T_{solve}+T_{verify})+T_{IPC}.
-\]
+For $r=100\,\mathrm{kW}$ and $a=50\,\mathrm{kW}$, both $125\,\mathrm{kW}$ and $125000\,\mathrm W$ yield $0.5$. Missing/incompatible units or missing/nonfinite outputs make a candidate infeasible and exclude it from the feasible Pareto set. A single objective may retain its raw scale; multiple objectives require complete dimensionless normalization. Deb ordering prefers feasible candidates, then compares their objectives; infeasible candidates are ordered by violation, without an undeclared fixed penalty coefficient.
+
+$$
+x\prec y\iff(\forall j:f_j(x)\le f_j(y))\land(\exists j:f_j(x)<f_j(y)).
+$$
+
+Equal objectives do not dominate one another. The public Pareto API rejects nonfinite values, empty objectives, negative violations and mismatched dimensions. Implementation: [optimization](src/aspenops_nexus/optimization.py), [DE/Pareto](src/aspenops_nexus/optimizer.py).
+
+### 5. Sampling, topology, state and resource budgets
+
+LHS draws one point from each of $n$ strata per dimension and independently permutes strata. Grid size is $N=\prod_d L_d$. Generation checks finite positive-width intervals, integer levels, $N\le100000$, $Nd\le10^6$ and $d\le256$. Nearest-neighbor ordering additionally limits input to 5000 points because its work is quadratic. Fixed seeds provide reproducibility, not model validation.
+
+$$
+x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}n(u_d-\ell_d),\quad u_{kd}\in[0,1),
+\qquad \forall C\in\operatorname{cycles}(G),\ C\cap T\ne\varnothing.
+$$
+
+Tear edges must belong to their declared cycles. Equipment specification and degree-of-freedom checks block incomplete designs before construction. A warm-start sequence follows the stateful trajectory $x_{k+1}=F(x_k,u_k)$ and requires one serial Worker; only cold-start requests can use compatible caching and bounded parallelism. Implementation: [sampling](src/aspenops_nexus/design.py), [design rules](src/aspenops_nexus/engineering_rules.py).
+
+### 6. Evidence identity and honest test counts
+
+$$
+K=\operatorname{SHA256}(\operatorname{canonicalJSON}(\text{schema, runtime, model, registry, physical request})),
+\qquad N_{\rm pass}=N_{\rm total}-N_{\rm fail}-N_{\rm error}-N_{\rm skip}.
+$$
+
+A digest proves byte identity, while a verified signature proves authenticity relative to its configured trust root; neither proves physical applicability. JUnit counts must be nonnegative integers with failure/error/skip totals no larger than the test count. Durations must be finite and nonnegative. Nested suites and testcase records must agree and are not counted twice. Malformed evidence raises an error instead of becoming a zero-failure PASS. Regression: [production-entry counterexamples](tests/test_acceptance_repair.py).
 
 ## Configuration boundaries
 

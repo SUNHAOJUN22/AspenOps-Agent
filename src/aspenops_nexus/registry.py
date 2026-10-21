@@ -374,6 +374,8 @@ class NodeRegistry:
     ) -> float | int | str | bool:
         if node.access not in {"write", "readwrite"}:
             raise RegistryError(f"Semantic key is read-only: {node.key}")
+        if node.native_unit is None and unit is not None:
+            raise RegistryError(f"{node.key} has no registered native unit for a physical write")
         if isinstance(value, bool | str):
             if node.native_unit is not None:
                 value_type = type(value).__name__

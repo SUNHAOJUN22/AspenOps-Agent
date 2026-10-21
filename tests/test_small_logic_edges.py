@@ -81,7 +81,7 @@ def test_unit_conversion_and_dimension_edges() -> None:
 
 
 def test_design_generators_validate_inputs_and_are_deterministic() -> None:
-    with pytest.raises(ValueError, match="n must be positive"):
+    with pytest.raises(ValueError, match="n must be an integer"):
         latin_hypercube([(0.0, 1.0)], 0)
     with pytest.raises(ValueError, match="upper bound"):
         latin_hypercube([(1.0, 1.0)], 2)
@@ -95,7 +95,7 @@ def test_design_generators_validate_inputs_and_are_deterministic() -> None:
 
     with pytest.raises(ValueError, match="same length"):
         bounded_grid([(0.0, 1.0)], [2, 3])
-    with pytest.raises(ValueError, match="at least two"):
+    with pytest.raises(ValueError, match="each grid dimension"):
         bounded_grid([(0.0, 1.0)], [1])
     assert bounded_grid([(0.0, 1.0), (10.0, 20.0)], [2, 2]) == [
         [0.0, 10.0],

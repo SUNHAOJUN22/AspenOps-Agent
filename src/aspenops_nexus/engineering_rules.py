@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from .process_ir_v2 import (
+    ComponentDefinition,
     EquipmentDefinition,
     ParameterDefinition,
     PortDefinition,
@@ -152,7 +154,12 @@ def _finite_parameter(
     parameter = parameters.get(name)
     if parameter is None or isinstance(parameter.value, bool | str) or parameter.value is None:
         return None
-    number = float(parameter.value)
+    try:
+        number = float(parameter.value)
+        if name in _FRACTION_PARAMETERS and parameter.unit is not None:
+            number = convert(number, parameter.unit, "1")
+    except (ValueError, OverflowError):
+        return None
     return number if math.isfinite(number) else None
 
 
@@ -176,7 +183,10 @@ def _validate_parameter_contracts(
                 )
             )
             continue
-        number = float(parameter.value)
+        try:
+            number = float(parameter.value)
+        except OverflowError:
+            number = math.inf
         if not math.isfinite(number):
             issues.append(
                 _issue(
@@ -187,6 +197,15 @@ def _validate_parameter_contracts(
                 )
             )
             continue
+        if parameter.unit is None and expected_dimensions != frozenset({"dimensionless"}):
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.unit_missing",
+                    parameter_path,
+                    f"Parameter {parameter.name} requires an explicit physical unit",
+                )
+            )
         if parameter.unit is not None:
             try:
                 observed_dimension = dimension(parameter.unit)
@@ -216,6 +235,20 @@ def _validate_parameter_contracts(
                         f"Parameter {parameter.name} must be above absolute zero",
                     )
                 )
+        if parameter.name in _FRACTION_PARAMETERS and parameter.unit is not None:
+            try:
+                number = convert(number, parameter.unit, "1")
+            except UnitError:
+                continue
+        if parameter.name in _INTEGER_PARAMETERS and parameter.unit not in {None, "1"}:
+            issues.append(
+                _issue(
+                    "ENGINEERING_BLOCKER",
+                    "parameter.count_unit",
+                    parameter_path,
+                    "Integral counts require unit 1, not a scaled proportion",
+                )
+            )
         if parameter.name in _INTEGER_PARAMETERS and not number.is_integer():
             issues.append(
                 _issue(
@@ -534,10 +567,251 @@ def _cycle_paths(design: ProcessDesignIR) -> list[tuple[str, ...]]:
     return sorted(cycles)
 
 
+_ELEMENTS = frozenset(
+    [
+        "H",
+        "He",
+        "Li",
+        "Be",
+        "B",
+        "C",
+        "N",
+        "O",
+        "F",
+        "Ne",
+        "Na",
+        "Mg",
+        "Al",
+        "Si",
+        "P",
+        "S",
+        "Cl",
+        "Ar",
+        "K",
+        "Ca",
+        "Sc",
+        "Ti",
+        "V",
+        "Cr",
+        "Mn",
+        "Fe",
+        "Co",
+        "Ni",
+        "Cu",
+        "Zn",
+        "Ga",
+        "Ge",
+        "As",
+        "Se",
+        "Br",
+        "Kr",
+        "Rb",
+        "Sr",
+        "Y",
+        "Zr",
+        "Nb",
+        "Mo",
+        "Tc",
+        "Ru",
+        "Rh",
+        "Pd",
+        "Ag",
+        "Cd",
+        "In",
+        "Sn",
+        "Sb",
+        "Te",
+        "I",
+        "Xe",
+        "Cs",
+        "Ba",
+        "La",
+        "Ce",
+        "Pr",
+        "Nd",
+        "Pm",
+        "Sm",
+        "Eu",
+        "Gd",
+        "Tb",
+        "Dy",
+        "Ho",
+        "Er",
+        "Tm",
+        "Yb",
+        "Lu",
+        "Hf",
+        "Ta",
+        "W",
+        "Re",
+        "Os",
+        "Ir",
+        "Pt",
+        "Au",
+        "Hg",
+        "Tl",
+        "Pb",
+        "Bi",
+        "Po",
+        "At",
+        "Rn",
+        "Fr",
+        "Ra",
+        "Ac",
+        "Th",
+        "Pa",
+        "U",
+        "Np",
+        "Pu",
+        "Am",
+        "Cm",
+        "Bk",
+        "Cf",
+        "Es",
+        "Fm",
+        "Md",
+        "No",
+        "Lr",
+        "Rf",
+        "Db",
+        "Sg",
+        "Bh",
+        "Hs",
+        "Mt",
+        "Ds",
+        "Rg",
+        "Cn",
+        "Nh",
+        "Fl",
+        "Mc",
+        "Lv",
+        "Ts",
+        "Og",
+    ]
+)
+
+
+def _formula_composition(formula: str) -> tuple[dict[str, int], int]:
+    """Parse bounded molecular formulas and explicit terminal ionic charge.
+
+    Supports integer subscripts, nested parentheses/brackets, hydrate dots and
+    charges such as Na+, Cl-, Fe^3+ or SO4^2-. Isotopes/polymer wildcards need an
+    explicit composition contract; they are not guessed from a formula label.
+    """
+    if not formula or len(formula) > 256:
+        raise ValueError("missing or oversized formula")
+    charge = 0
+    match = re.search(r"(?:\^(\d+))?([+-])$", formula)
+    if match:
+        charge = int(match.group(1) or 1) * (1 if match.group(2) == "+" else -1)
+        formula = formula[: match.start()]
+    totals: dict[str, int] = defaultdict(int)
+    for part in re.split(r"[.·]", formula):
+        tokens = re.findall(r"[A-Z][a-z]?|\d+|[()\[\]]", part)
+        if not tokens or "".join(tokens) != part:
+            raise ValueError("unsupported formula syntax")
+        multiplier = int(tokens.pop(0)) if tokens[0].isdigit() else 1
+        stack: list[dict[str, int]] = [defaultdict(int)]
+        brackets: list[str] = []
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if token in {"(", "["}:
+                if len(stack) >= 16:
+                    raise ValueError("formula nesting budget exceeded")
+                stack.append(defaultdict(int))
+                brackets.append(token)
+                index += 1
+                continue
+            if token in {")", "]"}:
+                if len(stack) == 1 or brackets.pop() != {")": "(", "]": "["}[token]:
+                    raise ValueError("unbalanced formula group")
+                group = stack.pop()
+                if not group:
+                    raise ValueError("empty formula group")
+            elif token in _ELEMENTS:
+                group = {token: 1}
+            else:
+                raise ValueError("unknown element or misplaced count")
+            index += 1
+            count = 1
+            if index < len(tokens) and tokens[index].isdigit():
+                count = int(tokens[index])
+                index += 1
+            if not 1 <= count <= 1_000_000:
+                raise ValueError("formula subscript outside budget")
+            for element, value in group.items():
+                stack[-1][element] += value * count
+        if len(stack) != 1 or not stack[0] or not 1 <= multiplier <= 1_000_000:
+            raise ValueError("unbalanced or empty formula")
+        for element, count in stack[0].items():
+            totals[element] += multiplier * count
+            if totals[element] > 1_000_000:
+                raise ValueError("formula atom-count budget exceeded")
+    return dict(totals), charge
+
+
+def _reaction_conservation(
+    reaction: ReactionDefinition,
+    components: dict[str, ComponentDefinition] | None,
+    path: str,
+) -> list[RuleIssue]:
+    if not reaction.stoichiometry:
+        return []
+    if components is None:
+        return [
+            _issue(
+                "ENGINEERING_BLOCKER",
+                "reaction.composition_missing",
+                path,
+                "Reaction composition evidence is required before conservation can pass",
+            )
+        ]
+    terms: dict[str, list[float]] = defaultdict(list)
+    mass: list[float] = []
+    mass_complete = True
+    try:
+        for identifier, coefficient in reaction.stoichiometry.items():
+            component = components.get(identifier)
+            if component is None or not component.formula:
+                raise ValueError(f"component {identifier} needs explicit molecular composition")
+            atoms, charge = _formula_composition(component.formula)
+            for element, count in atoms.items():
+                terms[element].append(coefficient * count)
+            terms["charge"].append(coefficient * charge)
+            if component.molecular_weight is None:
+                mass_complete = False
+            else:
+                mass.append(coefficient * component.molecular_weight)
+        if mass_complete:
+            terms["mass"].extend(mass)
+        issues = []
+        for quantity, values in terms.items():
+            residual = math.fsum(values)
+            scale = math.fsum(abs(value) for value in values)
+            if not math.isfinite(residual) or not math.isfinite(scale):
+                raise ValueError("conservation residual exceeds finite numeric range")
+            tolerance = 1e-6 if quantity == "mass" else 1e-10
+            if abs(residual) > tolerance * max(1.0, scale):
+                issues.append(
+                    _issue(
+                        "ENGINEERING_BLOCKER",
+                        f"reaction.{quantity}_not_conserved",
+                        path,
+                        f"Reaction {reaction.id} does not conserve {quantity}; "
+                        f"residual={residual:.12g}",
+                    )
+                )
+        return issues
+    except (ValueError, OverflowError) as exc:
+        return [_issue("ENGINEERING_BLOCKER", "reaction.composition_unverified", path, str(exc))]
+
+
 def _validate_reaction(
     reaction: ReactionDefinition,
     component_ids: set[str],
     path: str,
+    components: dict[str, ComponentDefinition] | None = None,
 ) -> list[RuleIssue]:
     issues: list[RuleIssue] = []
     unknown = sorted(set(reaction.stoichiometry) - component_ids)
@@ -550,6 +824,7 @@ def _validate_reaction(
                 "Reaction references unknown components: " + ", ".join(unknown),
             )
         )
+    issues.extend(_reaction_conservation(reaction, components, path))
     coefficients = tuple(reaction.stoichiometry.values())
     if coefficients and not (
         any(item < 0 for item in coefficients) and any(item > 0 for item in coefficients)
@@ -824,6 +1099,7 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
                 reaction,
                 component_ids,
                 f"reactions[{reaction_index}]",
+                {component.id: component for component in design.components},
             )
         )
 

@@ -65,7 +65,23 @@ def parameter(
     status: str = "USER_PROVIDED",
     unit: str | None = None,
 ) -> dict[str, Any]:
-    return {"name": name, "value": value, "unit": unit, "status": status}
+    physical_defaults = {
+        "PRESSURE": "Pa",
+        "OUTLET_PRESSURE": "Pa",
+        "PRESSURE_DROP": "Pa",
+        "VOLUME": "m3",
+        "DISTILLATE_RATE": "kg/s",
+        "DUTY": "W",
+        "TEMPERATURE": "K",
+        "OUTLET_TEMPERATURE": "K",
+        "FLOW_SPEC": "kg/s",
+    }
+    return {
+        "name": name,
+        "value": value,
+        "unit": unit or physical_defaults.get(name),
+        "status": status,
+    }
 
 
 def equipment(
@@ -254,7 +270,10 @@ def test_parameter_and_reaction_helper_branches() -> None:
         },
         label="reaction",
     )
-    assert _validate_reaction(valid, {"A", "B"}, "reaction") == []
+    assert any(
+        issue.code == "reaction.composition_missing"
+        for issue in _validate_reaction(valid, {"A", "B"}, "reaction")
+    )
 
     invalid = replace(
         valid,
@@ -265,6 +284,7 @@ def test_parameter_and_reaction_helper_branches() -> None:
     reaction_codes = {issue.code for issue in _validate_reaction(invalid, {"A", "B"}, "reaction")}
     assert {
         "reaction.unknown_component",
+        "reaction.composition_missing",
         "reaction.stoichiometry_direction",
         "reaction.unapproved",
         "reaction.parameter_unapproved",

@@ -28,7 +28,7 @@
 ## 中文项目愿景图：从过程意图到工业装置证据闭环
 
 <p align="center">
-  <img src="docs/localized-vision/aspenops-vision-zh.svg" width="100%" alt="AspenOps 中文项目愿景与工程数理架构">
+  <img src="docs/assets/vision-zh.png" width="100%" alt="AspenOps 中文工艺与科学计算愿景图">
 </p>
 
 > 图中公式和模块来自当前代码合同；它展示的是控制平面愿景，不是 Aspen Plus/HYSYS 求解结果、装置数据或工程认证。
@@ -46,8 +46,8 @@
 | 权威长期分支 | `main` |
 | 支持平台 | Linux 与 Windows；真实 Aspen COM 仅限许可 Windows 主机 |
 | Python | Python 3.11、3.12、3.13；六种 Linux/Windows 软件组合 |
-| 归档资格 | `1224 passed`，0 failed，95.03% branch coverage |
-| 当前回归 | 1258+ tests，95.03% branch coverage；最新 `main` CI 为准 |
+| 归档资格 | `docs/quality-report.md` 中的已验证归档基线仅供历史对照，不是对任意后续提交的自动声明 |
+| 当前回归 | 必须核对目标提交的完整 CI、覆盖率与原始 JUnit；本行不继承归档数字 |
 | 工具链 | `uv 0.11.16`；`mcp>=1.9,<2` |
 | 外部资格 | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
@@ -94,77 +94,90 @@ DWSIM 与 IDAES 处于 `planned` 路线，当前**未实现**生产 adapter。�
 
 ## 数学与工程合同
 
-### 1. 物料与能量守恒
+以下公式描述代码实际执行的检查；动态守恒方程是设置模型与残差的物理依据。AspenOps 不在 Python 内重写 Aspen 热力学或反应求解器。每次使用都应保存模型版本、单位、参数来源、适用范围和工程容差。
 
-\[
-\frac{dN_i}{dt}=\sum_{in}\dot n_i-\sum_{out}\dot n_i+\sum_r\nu_{ir}r_rV,
-\qquad |R_i|\le\tau_i.
-\]
+### 1. 单位先于数值比较
 
-\[
-\frac{dU}{dt}=\dot Q-\dot W+
-\sum_{in}\dot n_s\hat h_s-
-\sum_{out}\dot n_s\hat h_s.
-\]
+设源单位和目标单位到规范单位的比例与偏移分别为 $(s_s,b_s)$ 和 $(s_t,b_t)$，则
 
-非有限衡算使用 `balance_non_finite`；有限但超差使用 `balance_failed`。
+$$
+x_t=\frac{s_s x_s+b_s-b_t}{s_t},\qquad T_K>0.
+$$
 
-### 2. 独立有效性门
+`units.convert` 检查支持单位与有限数。`evaluation_plan` 在读、写、约束编译时绑定注册表的源单位；未知源单位不能被请求中的 `K` 或 `bar` 标签变成物理证据。无单位的文本/布尔状态可保留；无量纲数值使用显式 `1`、`fraction` 等。比例先归一化为 $[0,1]$：$50\%=0.5=500000\,\mathrm{ppm}$。温度先转 K；物理参数缺少单位产生阻断，计数只能使用 `1` 或未标单位，不能用百分数冒充级数。
 
-\[
-OK=C_{comm}\land C_{engine}\land C_{conv}\land C_{finite}
-\land C_{constraint}\land C_{balance}.
-\]
+源码：[单位](src/aspenops_nexus/units.py)、[读写计划](src/aspenops_nexus/evaluation_plan.py)、[工程规则](src/aspenops_nexus/engineering_rules.py)。
 
-\[
-V(x)=\sum_j\max(0,g_j(x)-\varepsilon_j)+
-\sum_k\max(0,|h_k(x)|-\varepsilon_k).
-\]
+### 2. 反应的元素、电荷和质量守恒
 
-非有限约束使用 `constraint_non_finite`；证据 JSON 固定 `allow_nan=False`。
+令 $A_{ei}$ 为组分 $i$ 中元素 $e$ 的原子数，$\nu_i$ 为反应计量系数（反应物负、产物正），$z_i$ 为显式离子电荷，$M_i$ 为声明分子量：
 
-### 3. 单位、拓扑与自由度
+$$
+A\boldsymbol{\nu}=\boldsymbol 0,\qquad
+\sum_i z_i\nu_i=0,\qquad
+\sum_i M_i\nu_i=0.
+$$
 
-\[
-x_t=(x_s+a_s)\frac{m_s}{m_t}-a_t,
-\qquad T_K>0.
-\]
+最后一项只在全部分子量可用时检查。元素/电荷残差采用 $10^{-10}\max(1,\sum_i|a_i\nu_i|)$，声明分子量因舍入采用 $10^{-6}$ 的相同尺度容差。支持 `Ca(OH)2`、`CuSO4·5H2O`、`Na+`、`Fe^3+` 等有界分子式。未定义组成、伪组分、聚合物通配符或不支持的语法返回 `ENGINEERING_BLOCKER`，不虚构组成。例：$2H_2+O_2\to2H_2O$ 满足守恒，$H_2+O_2\to H_2O$ 不满足。完整反应检查在 `validate_process_design` 路径执行。
 
-\[
-\forall C\in cycles(G),\quad C\cap T\neq\varnothing,
-\qquad DOF=N_c-N_s.
-\]
+### 3. 流程衡算与独立有效性门
 
-撕裂边必须属于真实循环；欠规定和过度规定都 fail closed。
+动态模型的物理关系为
 
-### 4. 缓存与轨迹身份
+$$
+\frac{dN_i}{dt}=\sum_{\rm in}\dot n_i-\sum_{\rm out}\dot n_i+
+\sum_r\nu_{ir}r_rV,
+\qquad
+\frac{dU}{dt}=\dot Q-\dot W+\sum_{\rm in}\dot n\hat h-\sum_{\rm out}\dot n\hat h.
+$$
 
-\[
-K=SHA256(schema\Vert version\Vert backend\Vert runtime
-\Vert model\Vert registry\Vert request_{physical}).
-\]
+运行时读取用户声明的衡算项，先换算至同维单位，再检查线性残差 $R=\sum_jc_jy_j$ 及配置的绝对/相对容差。系数、单位、符号和实际可得项必须与模型一致；缺失项不能用零填补。
 
-\[
-x_{k+1}=F(x_k,u_k),\qquad y_k=G(x_k).
-\]
+$$
+OK=C_{\rm communication}\land C_{\rm engine}\land C_{\rm convergence}
+\land C_{\rm finite}\land C_{\rm constraint}\land C_{\rm balance}.
+$$
 
-Warm-start 轨迹固定到一个 Worker 串行执行，不使用 persistent cache、same-batch dedup 或 `inflight_singleflight`。
+`constraint_non_finite` / `balance_non_finite` 区别于有限但超差的失败；证据 JSON 使用 `allow_nan=False`。任何单门失败都不能被其他分数抵消。源码：[实际评估](src/aspenops_nexus/evaluation.py)。
 
-### 5. 优化与许可证并发
+### 4. 有量纲目标的规范化与可行性排序
 
-\[
-\min_xJ(x)=\sum_mw_mf_m(x),
-\qquad J_p(x)=J(x)+\lambda V(x).
-\]
+每一目标的实际输出 $y_j$ 首先由 `result.units` 转到目标单位，再使用参考值 $r_j$ 和正尺度 $a_j$：
 
-\[
-W_{effective}=\min(W_{configured},W_{license},W_{memory},W_{stable}).
-\]
+$$
+\widetilde f_j(x)=\sigma_j\frac{y_j(x)-r_j}{a_j},\quad
+J(x)=\sum_jw_j\widetilde f_j(x),\quad w_j>0,
+\qquad \sigma_j=\begin{cases}+1&\text{minimize}\\-1&\text{maximize}.\end{cases}
+$$
 
-\[
-T_{pool}\approx W(T_{start}+T_{open})+
-\frac{N_{unique}}{W_{effective}}(T_{solve}+T_{verify})+T_{IPC}.
-\]
+例如 $r=100\,\mathrm{kW},a=50\,\mathrm{kW}$ 时，$125\,\mathrm{kW}$ 与 $125000\,\mathrm W$ 均给出 $0.5$。缺单位、不同量纲、非有限或缺失输出使候选不可行；不会进入可行 Pareto 集。单目标可使用其原始标度，多目标要求完整的无量纲规范化合同。代码采用 Deb 可行性排序：可行优于不可行；两个可行候选比较目标，两个不可行候选比较违约量，而非未经声明的固定惩罚系数。
+
+$$
+x\prec y\iff\left(\forall j:f_j(x)\le f_j(y)\right)\land
+\left(\exists j:f_j(x)<f_j(y)\right).
+$$
+
+等价目标不互相支配；公共 Pareto 接口拒绝非有限数、空目标、负违约量和维度不一致。源码：[优化评估](src/aspenops_nexus/optimization.py)、[DE/Pareto](src/aspenops_nexus/optimizer.py)。
+
+### 5. 采样、拓扑、状态与计算预算
+
+LHS 在每维 $n$ 个等宽层内各抽取一点并独立置乱；网格点数为 $N=\prod_d L_d$。生成前检查有限正区间、正整数层数，以及 $N\le100000$、$Nd\le10^6$ 和 $d\le256$。最近邻排序额外限制 5000 点，防止二次复杂度拖垮交互任务。随机种子固定可复现；增加样本数不代表模型验证。
+
+$$
+x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}{n}(u_d-\ell_d),\quad u_{kd}\in[0,1),
+\qquad \forall C\in\operatorname{cycles}(G),\ C\cap T\ne\varnothing.
+$$
+
+循环必须有属于该循环的撕裂边；设备规范与自由度检查在构建前阻断缺失定义。Warm-start 是 $x_{k+1}=F(x_k,u_k)$ 的有状态轨迹，必须单 Worker、串行执行；冷启动才允许受限并发和缓存。源码：[采样](src/aspenops_nexus/design.py)、[流程规则](src/aspenops_nexus/engineering_rules.py)。
+
+### 6. 证据摘要与测试计数
+
+$$
+K=\operatorname{SHA256}(\operatorname{canonicalJSON}(\text{schema, runtime, model, registry, physical request})),
+\qquad N_{\rm pass}=N_{\rm total}-N_{\rm fail}-N_{\rm error}-N_{\rm skip}.
+$$
+
+摘要校验字节身份，签名校验指定信任根下的真实性；两者均不能证明模型适用性。JUnit 计数必须是非负整数，失败/错误/跳过之和不大于总数，耗时有限非负；父套件与子套件/用例不能矛盾或重复累计。损坏证据报错，不再默认为零失败。回归：[生产入口反例](tests/test_acceptance_repair.py)。
 
 ## 配置边界
 

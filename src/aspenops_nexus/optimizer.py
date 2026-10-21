@@ -101,6 +101,26 @@ def _pareto_front_two_objectives(
 def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
     """Return the ordered unique feasibility-first nondominated front."""
 
+    for point in points:
+        try:
+            valid = (
+                bool(point.objectives)
+                and point.violation >= 0
+                and all(
+                    not isinstance(v, bool) and math.isfinite(v)
+                    for v in (*point.x, *point.objectives, point.violation)
+                )
+            )
+        except (TypeError, OverflowError) as exc:
+            raise ValueError(
+                "Pareto points require finite numeric vectors and nonnegative violation"
+            ) from exc
+        if not valid:
+            raise ValueError(
+                "Pareto points require finite non-empty objectives and nonnegative violation"
+            )
+    if points and any(len(point.objectives) != len(points[0].objectives) for point in points):
+        raise ValueError("Pareto objective vectors must have equal dimensions")
     unique = tuple(dict.fromkeys(points))
     if not unique:
         return ()
@@ -112,10 +132,6 @@ def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
     objective_count = len(feasible[0].objectives)
     if any(len(point.objectives) != objective_count for point in feasible[1:]):
         raise ValueError("Pareto objective vectors must have equal dimensions")
-    if objective_count == 0:
-        return feasible
-    if not all(math.isfinite(value) for point in feasible for value in point.objectives):
-        return _pareto_front_general(feasible)
     if objective_count == 1:
         minimum = min(point.objectives[0] for point in feasible)
         return tuple(point for point in feasible if point.objectives[0] == minimum)
