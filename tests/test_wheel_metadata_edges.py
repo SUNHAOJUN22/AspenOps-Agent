@@ -25,7 +25,7 @@ def _write_wheel(
                 "Metadata-Version: 2.4\n"
                 "Name: aspenops-nexus\n"
                 "Version: 2.0.0\n"
-                "Requires-Dist: mcp<2,>=1.9; extra == 'agent'\n\n",
+                "Requires-Dist: mcp<2,>=1.30.0; extra == 'agent'\n\n",
             )
         ]
     with ZipFile(wheel, "w") as archive:
@@ -37,10 +37,10 @@ def _write_wheel(
 @pytest.mark.parametrize(
     ("requirement", "message"),
     [
-        ("other>=1.9,<2; extra == 'agent'", "unexpected package name"),
-        ("mcp>=1.9; extra == 'agent'", "must constrain"),
-        ("mcp>=1.9,<2", "scoped to the agent extra"),
-        ("mcp>=1.9,<2; extra == 'other'", "scoped to the agent extra"),
+        ("other>=1.30.0,<2; extra == 'agent'", "unexpected package name"),
+        ("mcp>=1.30.0; extra == 'agent'", "must constrain"),
+        ("mcp>=1.30.0,<2", "scoped to the agent extra"),
+        ("mcp>=1.30.0,<2; extra == 'other'", "scoped to the agent extra"),
     ],
 )
 def test_mcp_requirement_contract_rejects_every_boundary(
@@ -96,7 +96,7 @@ def test_inspect_wheel_requires_one_mcp_requirement(
     mcp_entries: int,
 ) -> None:
     requirements = "".join(
-        "Requires-Dist: mcp<2,>=1.9; extra == 'agent'\n" for _ in range(mcp_entries)
+        "Requires-Dist: mcp<2,>=1.30.0; extra == 'agent'\n" for _ in range(mcp_entries)
     )
     metadata = f"Metadata-Version: 2.4\nName: aspenops-nexus\nVersion: 2.0.0\n{requirements}\n"
     _write_wheel(

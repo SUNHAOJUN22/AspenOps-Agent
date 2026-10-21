@@ -1,10 +1,10 @@
 {
   "hash_normalization": "text-newlines-lf",
   "lock_check": "PASS",
-  "mcp_requirement": "mcp>=1.9,<2",
-  "pyproject_sha256": "980baa45b65704620fd8c71eab5084c0371eb21ae00240162dbb30f33a5f3ab7",
+  "mcp_requirement": "mcp>=1.30.0,<2",
+  "pyproject_sha256": "015d3346dbfb72b601edba250e62f6b2e700e9d3cb4269d4bd2a5ca5c55d063a",
   "schema": "aspenops.lock-sync/v1",
-  "source_sha": "final-acceptance-windows-linux-delivery",
-  "uv_lock_sha256": "5582b836b361af2d15e9c0d6c0d249b023eb035168b50a30d4ad4a232ec77856",
+  "source_sha": "c1d1c2c5914a9e3f0cae66382b9177a44f429bb1",
+  "uv_lock_sha256": "c1e32d4d19592a6b6bdad489b29e30ed96db136bcc459e8f6a4ce5d5776b5bc4",
   "uv_version": "uv 0.11.16 (x86_64-unknown-linux-gnu)"
 }

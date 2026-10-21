@@ -19,7 +19,7 @@ MODEL = ROOT / "src/aspenops_nexus/data/mock-case.json"
 REGISTRY = ROOT / "src/aspenops_nexus/data/node-registry.json"
 
 
-@pytest.mark.parametrize("version", ["1.9", "1.9.0", "1.12.3", "1.28.1"])
+@pytest.mark.parametrize("version", ["1.30", "1.30.0", "1.30.1", "1.31.0"])
 def test_mcp_sdk_accepts_only_supported_one_x_range(
     monkeypatch: pytest.MonkeyPatch,
     version: str,
@@ -28,7 +28,22 @@ def test_mcp_sdk_accepts_only_supported_one_x_range(
     assert _require_supported_mcp_sdk() == version
 
 
-@pytest.mark.parametrize("version", ["1.0", "1.8.99", "2.0", "0.99", "not-a-version"])
+@pytest.mark.parametrize(
+    "version",
+    [
+        "1.0",
+        "1.8.99",
+        "1.9.0",
+        "1.28.1",
+        "2.0",
+        "0.99",
+        "not-a-version",
+        "1.30.0rc1",
+        "1.30.0.dev1",
+        "1.30.0garbage",
+        "1.30.0\n",
+    ],
+)
 def test_mcp_sdk_rejects_versions_outside_contract(
     monkeypatch: pytest.MonkeyPatch,
     version: str,

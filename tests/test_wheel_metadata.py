@@ -34,7 +34,7 @@ def _wheel(
 
 def test_wheel_metadata_accepts_supported_agent_constraint(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
-    wheel = _wheel(dist, "mcp<2,>=1.9; extra == 'agent'")
+    wheel = _wheel(dist, "mcp<2,>=1.30.0; extra == 'agent'")
 
     report = inspect_wheel(dist)
 
@@ -42,16 +42,17 @@ def test_wheel_metadata_accepts_supported_agent_constraint(tmp_path: Path) -> No
         "ok": True,
         "wheel": wheel.name,
         "metadata_member": "aspenops_nexus-2.0.0.dist-info/METADATA",
-        "mcp_requirement": "mcp<2,>=1.9; extra == 'agent'",
+        "mcp_requirement": "mcp<2,>=1.30.0; extra == 'agent'",
     }
 
 
 @pytest.mark.parametrize(
     "requirement",
     [
-        "mcp>=1.9; extra == 'agent'",
-        "mcp<20,>=1.9; extra == 'agent'",
-        "mcp<2,>=1.9; extra == 'wrong'",
+        "mcp>=1.9,<2; extra == 'agent'",
+        "mcp>=1.30.0; extra == 'agent'",
+        "mcp<20,>=1.30.0; extra == 'agent'",
+        "mcp<2,>=1.30.0; extra == 'wrong'",
     ],
 )
 def test_wheel_metadata_rejects_unsafe_constraints(
@@ -67,10 +68,10 @@ def test_wheel_metadata_rejects_unsafe_constraints(
 
 def test_wheel_metadata_rejects_ambiguous_artifacts(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
-    _wheel(dist, "mcp<2,>=1.9; extra == 'agent'")
+    _wheel(dist, "mcp<2,>=1.30.0; extra == 'agent'")
     _wheel(
         dist,
-        "mcp<2,>=1.9; extra == 'agent'",
+        "mcp<2,>=1.30.0; extra == 'agent'",
         name="aspenops_nexus-2.0.1-py3-none-any.whl",
     )
 
@@ -82,7 +83,7 @@ def test_wheel_metadata_rejects_oversized_metadata(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     _wheel(
         dist,
-        "mcp<2,>=1.9; extra == 'agent'",
+        "mcp<2,>=1.30.0; extra == 'agent'",
         padding_bytes=256_000,
     )
 

@@ -69,8 +69,8 @@ def test_frozen_mcp_boundary_and_lock_evidence_are_current() -> None:
     lock_text = UV_LOCK.read_text(encoding="utf-8")
     evidence = json.loads(LOCK_EVIDENCE.read_text(encoding="utf-8"))
 
-    assert requirement == "mcp>=1.9,<2"
-    assert 'name = "mcp", marker = "extra == \'agent\'", specifier = ">=1.9,<2"' in lock_text
+    assert requirement == "mcp>=1.30.0,<2"
+    assert 'name = "mcp", marker = "extra == \'agent\'", specifier = ">=1.30.0,<2"' in lock_text
     assert evidence["schema"] == "aspenops.lock-sync/v1"
     assert evidence["lock_check"] == "PASS"
     assert evidence["mcp_requirement"] == requirement

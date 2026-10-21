@@ -40,8 +40,8 @@ def test_mcp_surface_is_narrow_and_typed() -> None:
 
 
 def test_mcp_sdk_major_version_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(mcp_server, "distribution_version", lambda name: "1.28.1")
-    assert mcp_server._require_supported_mcp_sdk() == "1.28.1"
+    monkeypatch.setattr(mcp_server, "distribution_version", lambda name: "1.30.0")
+    assert mcp_server._require_supported_mcp_sdk() == "1.30.0"
 
     monkeypatch.setattr(mcp_server, "distribution_version", lambda name: "2.0.0")
     with pytest.raises(RuntimeError, match="requires MCP Python SDK 1.x"):

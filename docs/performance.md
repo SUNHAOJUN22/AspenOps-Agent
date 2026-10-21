@@ -267,3 +267,7 @@ Bind every licensed result to:
 - qualified process-engineering acceptance.
 
 Portable Mock and SQLite measurements are control-plane evidence only. They must not be described as licensed Aspen solve speed or engineering-model performance.
+
+### Security dependency floor (2026-10-21)
+
+The current MCP boundary is `mcp>=1.30.0,<2`; the frozen lock resolves MCP 1.30.0 and certifi 2026.10.19. Earlier version numbers in dated performance and dependency audits are historical snapshots. This update addresses published security advisories and makes no performance claim.

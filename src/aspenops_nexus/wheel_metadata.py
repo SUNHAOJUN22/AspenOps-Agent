@@ -11,7 +11,7 @@ from zipfile import ZipFile
 
 _MCP_REQUIREMENT = re.compile(r"^\s*mcp(?:\s|\[|[<>=!~;]|$)", re.IGNORECASE)
 _MAX_METADATA_BYTES = 256_000
-_REQUIRED_SPECIFIERS = {">=1.9", "<2"}
+_REQUIRED_SPECIFIERS = {">=1.30.0", "<2"}
 
 
 def _validate_mcp_requirement(requirement: str) -> None:
@@ -22,7 +22,7 @@ def _validate_mcp_requirement(requirement: str) -> None:
 
     specifiers = {item for item in compact_requirement.removeprefix("mcp").split(",") if item}
     if not _REQUIRED_SPECIFIERS.issubset(specifiers):
-        raise RuntimeError("Built Wheel must constrain the MCP Python SDK to mcp>=1.9,<2")
+        raise RuntimeError("Built Wheel must constrain the MCP Python SDK to mcp>=1.30.0,<2")
 
     compact_marker = marker.replace(" ", "").casefold()
     if not separator or compact_marker not in {"extra=='agent'", 'extra=="agent"'}:

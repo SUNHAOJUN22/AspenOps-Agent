@@ -48,7 +48,7 @@
 | Python | Python 3.11, 3.12 and 3.13 across six Linux/Windows combinations |
 | Archived qualification | The archived validated baseline in `docs/quality-report.md` is historical context, not an automatic claim for later commits |
 | Current regression | Check full CI, coverage and raw JUnit for the exact target commit; archived numbers are not inherited |
-| Toolchain | `uv 0.11.16`; `mcp>=1.9,<2` |
+| Toolchain | `uv 0.11.16`; `mcp>=1.30.0,<2` |
 | External qualification | `PENDING_REAL_ASPEN_CERTIFICATION` |
 
 This is an **archived validated baseline**, not an automatic claim for arbitrary later commits. A historical PASS cannot override a failure in a changed source tree.

@@ -52,28 +52,28 @@ def test_wheel_smoke_uses_hashed_locked_runtime_dependencies() -> None:
 def test_mcp_runtime_lock_package_and_docs_remain_compatible() -> None:
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     agent_requirements = project["project"]["optional-dependencies"]["agent"]
-    assert agent_requirements == ["mcp>=1.9,<2"]
+    assert agent_requirements == ["mcp>=1.30.0,<2"]
     assert project["project"]["scripts"]["aspenops"] == ("aspenops_nexus.cli_bootstrap:main")
 
     lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
     packages = lock.get("package", [])
     versions = [str(package["version"]) for package in packages if package.get("name") == "mcp"]
-    assert versions == ["1.28.1"]
-    assert mcp_server._require_supported_mcp_sdk() == "1.28.1"
+    assert versions == ["1.30.0"]
+    assert mcp_server._require_supported_mcp_sdk() == "1.30.0"
 
     major, minor, patch = (int(part) for part in versions[0].split("."))
     assert major == mcp_server.SUPPORTED_MCP_MAJOR == 1
-    assert (major, minor, patch) >= (1, 9, 0)
+    assert (major, minor, patch) >= (1, 30, 0)
 
     server = Path("src/aspenops_nexus/mcp_server.py").read_text(encoding="utf-8")
     assert "SUPPORTED_MCP_MAJOR = 1" in server
-    assert 'MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"' in server
+    assert 'MCP_INSTALL_CONSTRAINT = "mcp>=1.30.0,<2"' in server
     assert "_require_supported_mcp_sdk" in server
     assert "_scheduler_lifespan" in server
 
     for readme in (Path("README.md"), Path("README.en.md")):
         text = readme.read_text(encoding="utf-8")
-        assert "mcp>=1.9,<2" in text
+        assert "mcp>=1.30.0,<2" in text
         assert "mcp-runtime-lifecycle.svg" in text
 
 
@@ -86,7 +86,7 @@ def test_built_wheel_metadata_parser_runs_on_every_software_gate(tmp_path: Path)
             "Metadata-Version: 2.4",
             "Name: aspenops-nexus",
             "Version: 2.0.0",
-            "Requires-Dist: mcp<2,>=1.9; extra == 'agent'",
+            "Requires-Dist: mcp<2,>=1.30.0; extra == 'agent'",
             "",
         ]
     )

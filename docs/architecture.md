@@ -102,7 +102,7 @@ The bootstrap and full parser help output are tested for exact equality. Real co
 
 ## MCP compatibility and ownership
 
-AspenOps 2.0 uses the MCP Python SDK 1.x API. Project and built-Wheel metadata constrain the `agent` extra to `mcp>=1.9,<2`; the frozen environment resolves `mcp 1.28.1`. CI inspects the actual Wheel `Requires-Dist` entry after `uv build`. Before importing `FastMCP`, runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions.
+AspenOps 2.0 uses the MCP Python SDK 1.x API. Project and built-Wheel metadata constrain the `agent` extra to `mcp>=1.30.0,<2`; the frozen environment resolves `mcp 1.30.0`. CI inspects the actual Wheel `Requires-Dist` entry after `uv build`. Before importing `FastMCP`, runtime reads the installed distribution version and rejects missing, unparseable or non-1.x versions.
 
 MCP server lifetime owns the durable execution fabric:
 

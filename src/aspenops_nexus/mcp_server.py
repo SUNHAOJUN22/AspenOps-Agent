@@ -20,8 +20,8 @@ from .registry import NodeRegistry
 from .scheduler import BackgroundScheduler
 
 SUPPORTED_MCP_MAJOR = 1
-SUPPORTED_MCP_MIN_MINOR = 9
-MCP_INSTALL_CONSTRAINT = "mcp>=1.9,<2"
+SUPPORTED_MCP_MIN_MINOR = 30
+MCP_INSTALL_CONSTRAINT = "mcp>=1.30.0,<2"
 _MCP_VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?")
 _KEY_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
@@ -67,7 +67,8 @@ def _require_supported_mcp_sdk() -> str:
     except PackageNotFoundError as exc:
         raise RuntimeError("Install the 'agent' extra: uv sync --frozen --extra agent") from exc
 
-    match = _MCP_VERSION_RE.match(installed)
+    # A prefix such as 1.30.0rc1 is not the patched stable 1.30.0 release.
+    match = _MCP_VERSION_RE.fullmatch(installed)
     if match is None:
         raise RuntimeError(f"Cannot determine MCP SDK major version from {installed!r}")
     major = int(match.group("major"))
@@ -75,7 +76,7 @@ def _require_supported_mcp_sdk() -> str:
     if major != SUPPORTED_MCP_MAJOR or minor < SUPPORTED_MCP_MIN_MINOR:
         raise RuntimeError(
             "AspenOps 2.0 requires MCP Python SDK 1.x in the supported range "
-            ">=1.9,<2; install "
+            ">=1.30.0,<2; install "
             f"'{MCP_INSTALL_CONSTRAINT}' instead of mcp {installed}."
         )
     return installed
