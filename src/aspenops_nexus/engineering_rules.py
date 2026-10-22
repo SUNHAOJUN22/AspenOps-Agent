@@ -4,6 +4,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, Literal
 
 from .process_ir_v2 import (
@@ -767,8 +768,8 @@ def _reaction_conservation(
                 "Reaction composition evidence is required before conservation can pass",
             )
         ]
-    terms: dict[str, list[float]] = defaultdict(list)
-    mass: list[float] = []
+    terms: dict[str, list[Fraction]] = defaultdict(list)
+    mass: list[Fraction] = []
     mass_complete = True
     try:
         for identifier, coefficient in reaction.stoichiometry.items():
@@ -776,30 +777,31 @@ def _reaction_conservation(
             if component is None or not component.formula:
                 raise ValueError(f"component {identifier} needs explicit molecular composition")
             atoms, charge = _formula_composition(component.formula)
+            # Stoichiometric coefficients have an arbitrary common scale. Preserve
+            # their actual binary values without overflowing or losing tiny terms.
+            exact_coefficient = Fraction(coefficient)
             for element, count in atoms.items():
-                terms[element].append(coefficient * count)
-            terms["charge"].append(coefficient * charge)
+                terms[element].append(exact_coefficient * count)
+            terms["charge"].append(exact_coefficient * charge)
             if component.molecular_weight is None:
                 mass_complete = False
             else:
-                mass.append(coefficient * component.molecular_weight)
+                mass.append(exact_coefficient * Fraction(component.molecular_weight))
         if mass_complete:
             terms["mass"].extend(mass)
         issues = []
         for quantity, values in terms.items():
-            residual = math.fsum(values)
-            scale = math.fsum(abs(value) for value in values)
-            if not math.isfinite(residual) or not math.isfinite(scale):
-                raise ValueError("conservation residual exceeds finite numeric range")
+            residual = sum(values, Fraction())
+            scale = sum((abs(value) for value in values), Fraction())
             tolerance = 1e-6 if quantity == "mass" else 1e-10
-            if abs(residual) > tolerance * max(1.0, scale):
+            if scale and abs(residual) > Fraction(tolerance) * scale:
                 issues.append(
                     _issue(
                         "ENGINEERING_BLOCKER",
                         f"reaction.{quantity}_not_conserved",
                         path,
                         f"Reaction {reaction.id} does not conserve {quantity}; "
-                        f"residual={residual:.12g}",
+                        f"relative_residual={float(residual / scale):.12g}",
                     )
                 )
         return issues

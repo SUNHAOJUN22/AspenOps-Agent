@@ -80,7 +80,7 @@ Additional delivery, mathematics, isolation, and trajectory visuals:
 ```text
 Human / Agent
   → ProcessRequirementDocument
-  → ProcessDesignIR / aspenops.flowsheet/v1
+  → ProcessDesignIR / aspenops.flowsheet/v2
   → engineering rules + units + DOF
   → capability profile + compilation plan
   → CasePool / scheduler / optimizer
@@ -89,6 +89,8 @@ Human / Agent
   → readback + convergence + constraints + balances
   → evidence bundle + deterministic handover
 ```
+
+`ProcessIntent` uses `aspenops.flowsheet/v1`, as demonstrated by `scripts/validate_process_ir.py`; `ProcessDesignIR` uses `aspenops.flowsheet/v2` and runs engineering rules through `validate_process_design`. These have separate data contracts, so submissions must use the corresponding schema.
 
 DWSIM and IDAES remain `planned`; there is currently **no adapter** for either engine. Unknown or unavailable capabilities are reported explicitly rather than promoted from product awareness to executable support.
 
@@ -104,7 +106,7 @@ $$
 x_t=\frac{s_s x_s+b_s-b_t}{s_t},\qquad T_K>0.
 $$
 
-`units.convert` checks supported units and finite numbers. `evaluation_plan` binds reads, writes and constraints to the registry's source unit: a request label cannot turn an unknown source into a measured temperature or pressure. Unitless text/Boolean status remains supported; dimensionless numerical quantities use explicit `1`, `fraction`, etc. Fractions are normalized before range checks: $50\%=0.5=500000\,\mathrm{ppm}$. Temperatures are checked in K; missing physical parameter units block the design. Counts cannot be relabeled as percentages.
+`units.convert` checks supported units and finite numbers. Conversions with equal offsets compose $s_s/s_t$ first, avoiding overflow or underflow in an unnecessary canonical-unit intermediate. A nonzero proportional conversion whose final result underflows to zero raises `UnitError`. Identical units and equivalent aliases preserve representable tiny values; legitimate affine zero points such as $273.15\,\mathrm K\to0\,{}^\circ\mathrm C$ remain valid. `evaluation_plan` binds reads, writes and constraints to the registry's source unit: a request label cannot turn an unknown source into a measured temperature or pressure. Unitless text/Boolean status remains supported; dimensionless numerical quantities use explicit `1`, `fraction`, etc. Fractions are normalized before range checks: $50\%=0.5=500000\,\mathrm{ppm}$. Temperatures are checked in K; missing physical parameter units block the design. Counts cannot be relabeled as percentages.
 
 Implementation: [units](src/aspenops_nexus/units.py), [compiled evaluation](src/aspenops_nexus/evaluation_plan.py), [engineering rules](src/aspenops_nexus/engineering_rules.py).
 
@@ -116,7 +118,15 @@ $$
 A\boldsymbol\nu=\boldsymbol0,\qquad \sum_i z_i\nu_i=0,\qquad \sum_i M_i\nu_i=0.
 $$
 
-The final equation is checked when every molecular weight is available. Element/charge tolerance is $10^{-10}\max(1,\sum_i|a_i\nu_i|)$; declared mass uses $10^{-6}$ on the same scale to allow rounding. The bounded formula grammar supports `Ca(OH)2`, `CuSO4·5H2O`, `Na+`, `Fe^3+`. Unknown composition, pseudo-components or unsupported formula syntax produce an `ENGINEERING_BLOCKER`; composition is never invented. $2H_2+O_2\to2H_2O$ conserves atoms, whereas $H_2+O_2\to H_2O$ does not. These checks run through `validate_process_design`.
+The final equation is checked when every molecular weight is available. For each element, charge or declared mass, let $c_i=a_i\nu_i$ denote its contribution and use the relative contribution scale:
+
+$$
+R=\sum_i c_i,\qquad S=\sum_i|c_i|,\qquad
+|R|\le\tau S,\qquad
+\tau=\begin{cases}10^{-10}&\text{element or charge},\\10^{-6}&\text{declared mass}.\end{cases}
+$$
+
+$S=0$ means that every contribution to this quantity is zero. Products and sums use exact rational arithmetic on the accepted finite floating-point inputs, without an artificial absolute tolerance floor. Common scaling that preserves the representable stoichiometric ratios leaves the conservation decision unchanged. This preserves nonzero subnormal contributions and avoids intermediate overflow from large coefficients; the mass tolerance still permits rounding in declared molecular weights. The bounded formula grammar supports `Ca(OH)2`, `CuSO4·5H2O`, `Na+`, `Fe^3+`. Unknown composition, pseudo-components or unsupported formula syntax produce an `ENGINEERING_BLOCKER`; composition is never invented. $2H_2+O_2\to2H_2O$ conserves atoms, whereas $H_2+O_2\to H_2O$ does not, even after multiplying every coefficient of the latter by $10^{-12}$. These checks run through `validate_process_design`.
 
 ### 3. Process balances and independent validity gates
 

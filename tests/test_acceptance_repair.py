@@ -130,11 +130,18 @@ def test_declared_molecular_weights_must_conserve_mass():
 
 
 @pytest.mark.parametrize(
-    ("actual_unit", "expected_ok", "expected_value"),
-    [("W", True, 1), ("kW", True, 1000), ("bar", False, None), (None, False, None)],
+    ("actual_unit", "output_value", "expected_ok", "expected_value"),
+    [
+        ("W", 1000, True, 1),
+        ("kW", 1000, True, 1000),
+        ("bar", 1000, False, None),
+        (None, 1000, False, None),
+        ("W", 5e-324, False, None),
+        ("W", 0.0, True, 0.0),
+    ],
 )
 def test_objective_evaluator_binds_actual_output_units(
-    tmp_path, monkeypatch, actual_unit, expected_ok, expected_value
+    tmp_path, monkeypatch, actual_unit, output_value, expected_ok, expected_value
 ):
     document: dict[str, Any] = {
         "backend": "mock",
@@ -156,7 +163,7 @@ def test_objective_evaluator_binds_actual_output_units(
     }
     result = {
         "ok": True,
-        "values": {"duty": 1000},
+        "values": {"duty": output_value},
         "units": {"duty": actual_unit},
         "request_hash": "synthetic",
     }
@@ -172,6 +179,8 @@ def test_objective_evaluator_binds_actual_output_units(
     assert evaluator.trace[0].ok is expected_ok
     if expected_ok:
         assert evaluator.trace[0].objectives[0] == expected_value
+    else:
+        assert evaluator.trace[0].violation > 0.0
 
 
 def _dashboard():
@@ -230,8 +239,55 @@ def test_hydrate_composition_and_explicit_charge_are_conserved():
 
 def test_conservation_overflow_is_a_blocker_not_a_zero_residual():
     assert not validate_process_design(
+        _design({"A": "H99", "B": "H99"}, {"A": -1e308, "B": 9e307})
+    ).valid
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e-12, 1e-320, 5e-324, 1e307])
+@pytest.mark.parametrize("balanced", [False, True])
+def test_element_conservation_is_invariant_to_reaction_scale(scale, balanced):
+    multiplier = 2 if balanced else 1
+    design = _design(
+        {"A": "H2", "B": "O2", "C": "H2O"},
+        {"A": -multiplier * scale, "B": -scale, "C": multiplier * scale},
+    )
+    assert validate_process_design(design).valid is balanced
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e-12, 1e-320, 5e-324, 1e307])
+@pytest.mark.parametrize("balanced", [False, True])
+def test_explicit_charge_conservation_is_invariant_to_reaction_scale(scale, balanced):
+    formulas = {"A": "Na+", "B": "Cl-" if balanced else "Cl", "C": "NaCl"}
+    design = _design(formulas, {"A": -scale, "B": -scale, "C": scale})
+    assert validate_process_design(design).valid is balanced
+
+
+@pytest.mark.parametrize("scale", [1.0, 1e-12, 1e-320, 5e-324, 1e307])
+@pytest.mark.parametrize("balanced", [False, True])
+@pytest.mark.parametrize("weight", [0.001, 2.0, 1e307])
+def test_declared_mass_conservation_is_invariant_to_reaction_scale(scale, balanced, weight):
+    design = _design(
+        {"A": "H2", "B": "H2"},
+        {"A": -scale, "B": scale},
+        weights={"A": weight, "B": weight if balanced else 2 * weight},
+    )
+    assert validate_process_design(design).valid is balanced
+
+
+def test_balanced_large_coefficients_do_not_overflow_conservation_intermediates():
+    assert validate_process_design(
         _design({"A": "H99", "B": "H99"}, {"A": -1e308, "B": 1e308})
     ).valid
+
+
+def test_tiny_unique_element_is_not_lost_next_to_large_balanced_terms():
+    design = _design(
+        {"A": "H2", "B": "H2", "C": "O2"},
+        {"A": -1e308, "B": 1e308, "C": 5e-324},
+    )
+    result = validate_process_design(design)
+    assert not result.valid
+    assert any(issue.code == "reaction.O_not_conserved" for issue in result.issues)
 
 
 @pytest.mark.parametrize("bounds", [[(True, 1)], [("bad", 1)], [(10**400, 10**401)]])

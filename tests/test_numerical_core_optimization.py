@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import random
+from fractions import Fraction
 
 import pytest
 
@@ -81,17 +83,31 @@ def test_pareto_rejects_mixed_objective_dimensions() -> None:
         )
 
 
-def test_precomputed_unit_pairs_match_original_affine_formula() -> None:
+def test_precomputed_unit_pairs_match_mathematical_unit_contract() -> None:
     values = (-273.15, -1.0, 0.0, 1.0, 25.0, 100.0, 1e6)
     for source, source_spec in units_module._UNITS.items():
         for target, target_spec in units_module._UNITS.items():
             if source_spec.dimension != target_spec.dimension:
                 continue
             for value in values:
-                expected = (
-                    value if source == target else target_spec.from_base(source_spec.to_base(value))
-                )
-                assert convert(value, source, target) == expected
+                actual = convert(value, source, target)
+                if source_spec == target_spec:
+                    assert actual == value
+                elif source_spec.to_base_offset == target_spec.to_base_offset:
+                    # Independent exact reference, not the old float operation order.
+                    expected = float(
+                        Fraction(value)
+                        * Fraction(source_spec.to_base_scale)
+                        / Fraction(target_spec.to_base_scale)
+                    )
+                    # These nonzero test results are normal floats. Two rounded
+                    # operations incur at most (2u + u**2) relative error; the
+                    # rounded exact reference adds <= 0.5 ULP. Three ULPs cover
+                    # the comparison, including power-of-two boundaries.
+                    assert abs(actual - expected) <= 3 * math.ulp(expected)
+                else:
+                    expected = target_spec.from_base(source_spec.to_base(value))
+                    assert actual == expected
 
 
 def test_supported_units_returns_an_independent_snapshot() -> None:

@@ -80,7 +80,7 @@
 ```text
 Human / Agent
   → ProcessRequirementDocument
-  → ProcessDesignIR / aspenops.flowsheet/v1
+  → ProcessDesignIR / aspenops.flowsheet/v2
   → engineering rules + units + DOF
   → capability profile + compilation plan
   → CasePool / scheduler / optimizer
@@ -89,6 +89,8 @@ Human / Agent
   → readback + convergence + constraints + balances
   → evidence bundle + deterministic handover
 ```
+
+`ProcessIntent` 使用 `aspenops.flowsheet/v1`，对应 `scripts/validate_process_ir.py` 的示例入口；`ProcessDesignIR` 使用 `aspenops.flowsheet/v2`，通过 `validate_process_design` 执行工程规则。两者具有各自的数据合同，提交时应使用对应的 schema。
 
 DWSIM 与 IDAES 处于 `planned` 路线，当前**未实现**生产 adapter。能力未知或无 adapter 时必须显式报告，不能把“知道软件名称”伪装成可执行能力。
 
@@ -104,7 +106,7 @@ $$
 x_t=\frac{s_s x_s+b_s-b_t}{s_t},\qquad T_K>0.
 $$
 
-`units.convert` 检查支持单位与有限数。`evaluation_plan` 在读、写、约束编译时绑定注册表的源单位；未知源单位不能被请求中的 `K` 或 `bar` 标签变成物理证据。无单位的文本/布尔状态可保留；无量纲数值使用显式 `1`、`fraction` 等。比例先归一化为 $[0,1]$：$50\%=0.5=500000\,\mathrm{ppm}$。温度先转 K；物理参数缺少单位产生阻断，计数只能使用 `1` 或未标单位，不能用百分数冒充级数。
+`units.convert` 检查支持单位与有限数。偏移相同的换算先合成 $s_s/s_t$，避免规范单位的中间值溢出或下溢；若非零比例换算的最终结果下溢为零，则显式抛出 `UnitError`。同单位和等价别名保持可表示的小量；$273.15\,\mathrm K\to0\,{}^\circ\mathrm C$ 等合法仿射零点仍然有效。`evaluation_plan` 在读、写、约束编译时绑定注册表的源单位；未知源单位不能被请求中的 `K` 或 `bar` 标签变成物理证据。无单位的文本/布尔状态可保留；无量纲数值使用显式 `1`、`fraction` 等。比例先归一化为 $[0,1]$：$50\%=0.5=500000\,\mathrm{ppm}$。温度先转 K；物理参数缺少单位产生阻断，计数只能使用 `1` 或未标单位，不能用百分数冒充级数。
 
 源码：[单位](src/aspenops_nexus/units.py)、[读写计划](src/aspenops_nexus/evaluation_plan.py)、[工程规则](src/aspenops_nexus/engineering_rules.py)。
 
@@ -118,7 +120,15 @@ A\boldsymbol{\nu}=\boldsymbol 0,\qquad
 \sum_i M_i\nu_i=0.
 $$
 
-最后一项只在全部分子量可用时检查。元素/电荷残差采用 $10^{-10}\max(1,\sum_i|a_i\nu_i|)$，声明分子量因舍入采用 $10^{-6}$ 的相同尺度容差。支持 `Ca(OH)2`、`CuSO4·5H2O`、`Na+`、`Fe^3+` 等有界分子式。未定义组成、伪组分、聚合物通配符或不支持的语法返回 `ENGINEERING_BLOCKER`，不虚构组成。例：$2H_2+O_2\to2H_2O$ 满足守恒，$H_2+O_2\to H_2O$ 不满足。完整反应检查在 `validate_process_design` 路径执行。
+最后一项只在全部分子量可用时检查。对每一种元素、电荷或声明质量，令相应贡献为 $c_i=a_i\nu_i$，采用相对贡献尺度：
+
+$$
+R=\sum_i c_i,\qquad S=\sum_i|c_i|,\qquad
+|R|\le\tau S,\qquad
+\tau=\begin{cases}10^{-10}&\text{元素或电荷},\\10^{-6}&\text{声明质量}.\end{cases}
+$$
+
+$S=0$ 表示该量的所有贡献均为零。代码对已接纳的有限浮点输入使用精确有理数完成乘积与求和，不设人为的绝对容差下限；整体缩放保持可表示的计量比例时，守恒判定不变。这样既保留非零次正规量，也避免大系数的中间溢出；质量容差仍允许声明分子量的舍入。支持 `Ca(OH)2`、`CuSO4·5H2O`、`Na+`、`Fe^3+` 等有界分子式。未定义组成、伪组分、聚合物通配符或不支持的语法返回 `ENGINEERING_BLOCKER`，不虚构组成。例：$2H_2+O_2\to2H_2O$ 满足守恒，$H_2+O_2\to H_2O$ 不满足；把后一反应的所有系数乘以 $10^{-12}$ 仍然不满足。完整反应检查在 `validate_process_design` 路径执行。
 
 ### 3. 流程衡算与独立有效性门
 

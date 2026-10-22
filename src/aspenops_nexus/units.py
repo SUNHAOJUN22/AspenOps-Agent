@@ -128,6 +128,15 @@ def convert(value: float, source: str | None, target: str | None) -> float:
             f"{target!r} ({target_spec.dimension})"
         )
     source_scale, source_offset, target_offset, target_scale = conversion
+    if source_offset == target_offset:
+        # Compose proportional conversions before multiplication: a base-unit
+        # intermediate may underflow even when the requested result is representable.
+        converted = numeric * (source_scale / target_scale)
+        if numeric != 0.0 and converted == 0.0:
+            raise UnitError("Unit conversion produced nonzero underflow")
+        if not math.isfinite(converted):
+            raise UnitError("Unit conversion produced a non-finite value")
+        return converted
     converted = (numeric * source_scale + source_offset - target_offset) / target_scale
     if not math.isfinite(converted):
         # Avoid an overflowing base-unit intermediate when the final value fits.
