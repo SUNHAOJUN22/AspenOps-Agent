@@ -7,6 +7,7 @@ from typing import Any
 from .design_contract import validate_design_against_requirement
 from .engineering_rules import validate_process_design
 from .flowsheet_preview import render_flowsheet_preview
+from .json_input import finite_json_float
 from .process_ir_v2 import ProcessDesignIR
 from .process_requirement import ProcessRequirementDocument
 
@@ -29,6 +30,7 @@ def load_strict_json_object(path: str | Path) -> dict[str, Any]:
         Path(path).read_text(encoding="utf-8"),
         object_pairs_hook=_duplicate_key_rejected,
         parse_constant=_nonfinite_rejected,
+        parse_float=finite_json_float,
     )
     if not isinstance(value, dict):
         raise ValueError("JSON document root must be an object")

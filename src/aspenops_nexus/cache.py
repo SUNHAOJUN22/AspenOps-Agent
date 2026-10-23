@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 import threading
 from collections import Counter, OrderedDict
@@ -10,6 +9,8 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
+from .json_input import finite_json_float as _finite_json_float
+
 _SQLITE_PARAMETER_BATCH = 900
 _MEMORY_MAX_ENTRIES = 4096
 _HIT_FLUSH_THRESHOLD = 1024
@@ -17,13 +18,6 @@ _HIT_FLUSH_THRESHOLD = 1024
 
 def _reject_nonfinite_constant(value: str) -> Any:
     raise ValueError(f"Non-finite JSON constant is not allowed: {value}")
-
-
-def _finite_json_float(value: str) -> float:
-    result = float(value)
-    if not math.isfinite(result):
-        raise ValueError("JSON number exceeds the finite range")
-    return result
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

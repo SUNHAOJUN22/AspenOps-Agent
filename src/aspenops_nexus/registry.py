@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .json_input import finite_json_float
 from .units import UnitError, convert, dimension
 
 
@@ -173,10 +174,13 @@ class NodeRegistry:
             data = json.loads(
                 raw,
                 parse_constant=_reject_nonfinite_json_constant,
+                parse_float=finite_json_float,
                 object_pairs_hook=_unique_json_object,
             )
         except json.JSONDecodeError as exc:
             raise RegistryError(f"Invalid registry JSON: {exc}") from exc
+        except ValueError as exc:
+            raise RegistryError(str(exc)) from exc
         if not isinstance(data, dict):
             raise RegistryError("Registry root must be an object")
         nodes = data.get("nodes", {})

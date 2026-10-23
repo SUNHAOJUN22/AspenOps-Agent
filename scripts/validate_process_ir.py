@@ -6,12 +6,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from aspenops_nexus.json_input import strict_json_loads
 from aspenops_nexus.process_ir import ProcessIntent, validate_process_intent
 from aspenops_nexus.simulation_agents import agent_pipeline, capability_matrix
 
 
 def _load(path: str | Path) -> dict[str, Any]:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    value = strict_json_loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError("Process intent root must be a JSON object")
     return value

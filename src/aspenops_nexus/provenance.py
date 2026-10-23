@@ -22,6 +22,7 @@ from .archive_safety import (
     validate_archive,
 )
 from .hashing import canonical_hash, sha256_file
+from .json_input import finite_json_float
 
 KeySource: TypeAlias = str | Path | bytes
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -75,6 +76,7 @@ def _strict_json(payload: bytes) -> Any:
     return json.loads(
         payload,
         parse_constant=_reject_json_constant,
+        parse_float=finite_json_float,
         object_pairs_hook=_unique_json_object,
     )
 

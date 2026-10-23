@@ -19,6 +19,7 @@ from .durable_request import (
     pin_durable_request_paths,
     submission_directory,
 )
+from .json_input import load_request_object as _load
 from .licensed_certification import (
     certification_preflight,
     execute_licensed_certification,
@@ -43,30 +44,6 @@ def _resource_path(name: str) -> Path:
     resource = files("aspenops_nexus.data").joinpath(name)
     with as_file(resource) as path:
         return Path(path)
-
-
-def _duplicate_key_rejected(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    output: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in output:
-            raise ValueError(f"Duplicate request JSON key: {key}")
-        output[key] = value
-    return output
-
-
-def _nonfinite_rejected(value: str) -> Any:
-    raise ValueError(f"Request JSON contains non-finite constant: {value}")
-
-
-def _load(path: str | Path) -> dict[str, Any]:
-    value = json.loads(
-        Path(path).read_text(encoding="utf-8"),
-        parse_constant=_nonfinite_rejected,
-        object_pairs_hook=_duplicate_key_rejected,
-    )
-    if not isinstance(value, dict):
-        raise ValueError("Request root must be a JSON object")
-    return value
 
 
 def _controlled_path(path: str | Path, settings: Any) -> Path:

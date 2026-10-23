@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from .hashing import canonical_hash
+from .json_input import strict_json_loads
 from .research_common import (
     RESEARCH_SCHEMA,
     ArtifactRef,
@@ -160,8 +160,8 @@ class ResearchStudyDocument:
         if len(payload) > limit:
             raise ResearchValidationError(f"research document exceeds {limit} bytes")
         try:
-            value = json.loads(payload)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            value = strict_json_loads(payload)
+        except (UnicodeDecodeError, ValueError) as exc:
             raise ResearchValidationError(f"invalid research JSON: {exc}") from exc
         return cls.from_dict(_mapping(value, "research document"))
 

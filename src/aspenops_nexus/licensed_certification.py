@@ -32,6 +32,7 @@ from .certification import (
 from .compat import compatibility_report
 from .config import Settings
 from .hashing import canonical_hash, sha256_file
+from .json_input import strict_json_loads
 from .models import BalanceSpec, VariableRead
 
 PLAN_SCHEMA = "aspenops.licensed-certification-plan/v1"
@@ -509,7 +510,7 @@ class LicensedCertificationPlan:
 
 
 def load_licensed_plan(path: str | Path) -> LicensedCertificationPlan:
-    value = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    value = strict_json_loads(Path(path).expanduser().read_text(encoding="utf-8"))
     return LicensedCertificationPlan.from_document(value)
 
 
@@ -834,7 +835,7 @@ def _read_json_object_member(
     limits: ArchiveLimits,
 ) -> tuple[dict[str, Any], bytes]:
     payload = read_member_bounded(archive, infos[name], limits)
-    value = json.loads(payload)
+    value = strict_json_loads(payload)
     if not isinstance(value, dict):
         raise ValueError(f"{name} root must be an object")
     return {str(key): item for key, item in value.items()}, payload
@@ -969,11 +970,11 @@ def verify_licensed_certification_bundle(
                     "member_checks": member_checks,
                 }
 
-            plan_value = json.loads(member_payloads["plan.json"])
+            plan_value = strict_json_loads(member_payloads["plan.json"])
             plan = LicensedCertificationPlan.from_document(plan_value)
-            preflight_value = json.loads(member_payloads["preflight.json"])
-            report_value = json.loads(member_payloads["report.json"])
-            environment_value = json.loads(member_payloads["environment.json"])
+            preflight_value = strict_json_loads(member_payloads["preflight.json"])
+            report_value = strict_json_loads(member_payloads["report.json"])
+            environment_value = strict_json_loads(member_payloads["environment.json"])
             if not isinstance(preflight_value, dict):
                 raise ValueError("preflight.json root must be an object")
             if not isinstance(report_value, dict):

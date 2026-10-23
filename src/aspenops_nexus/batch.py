@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from .config import Settings
 from .evaluation_plan import EvaluationPlanCompiler
+from .json_input import load_request_object
 from .models import EvaluationRequest, VariableWrite
 from .policy import Policy, PolicyError
 from .pool import CasePool
@@ -347,7 +348,5 @@ def run_batch_document(
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Batch request must be a JSON object")
+    data = load_request_object(path, root_label="Batch request")
     return run_batch_document(data, settings)

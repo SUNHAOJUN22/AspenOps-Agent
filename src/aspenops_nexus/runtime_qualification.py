@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeAlias
 
+from .json_input import finite_json_float
 from .simulator_capabilities import SimulatorCapabilityProfile
 
 STATEMENT_SCHEMA = "aspenops.runtime-profile-qualification/v1"
@@ -51,6 +52,7 @@ def _strict_json(payload: bytes) -> Any:
         payload,
         object_pairs_hook=_strict_object_pairs,
         parse_constant=_reject_constant,
+        parse_float=finite_json_float,
     )
 
 

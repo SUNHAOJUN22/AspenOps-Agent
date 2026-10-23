@@ -108,6 +108,17 @@ $$
 
 `units.convert` checks supported units and finite numbers. Conversions with equal offsets compose $s_s/s_t$ first, avoiding overflow or underflow in an unnecessary canonical-unit intermediate. A nonzero proportional conversion whose final result underflows to zero raises `UnitError`. Identical units and equivalent aliases preserve representable tiny values; legitimate affine zero points such as $273.15\,\mathrm K\to0\,{}^\circ\mathrm C$ remain valid. `evaluation_plan` binds reads, writes and constraints to the registry's source unit: a request label cannot turn an unknown source into a measured temperature or pressure. Unitless text/Boolean status remains supported; dimensionless numerical quantities use explicit `1`, `fraction`, etc. Fractions are normalized before range checks: $50\%=0.5=500000\,\mathrm{ppm}$. Temperatures are checked in K; missing physical parameter units block the design. Counts cannot be relabeled as percentages.
 
+JSON file decoding belongs to the same boundary. Let $x$ be a decimal number in the file and $\operatorname{fl}(x)$ its decoded floating-point value:
+
+$$
+\neg\operatorname{isfinite}(\operatorname{fl}(x))
+\;\lor\;
+\bigl(x\ne0\;\land\;\operatorname{fl}(x)=0\bigr)
+\quad\Longrightarrow\quad\text{reject input}.
+$$
+
+Request, batch execution, registry, design/process IR, research document, licensed plan and evidence readers reject overflow such as `1e999` and nonzero underflow to zero such as `1e-400`. Batch files use the same duplicate-key check as other requests, so a later key cannot replace earlier scientific input. `0e-9999`, signed true zero and representable `5e-324` remain valid; JSON integers retain their integer type during decoding. A corrupt cache row containing underflow is discarded as a cache miss instead of reused as a successful result. On rejection, check the original data and unit scale and export the corrected file; do not replace a nonzero observation with zero to pass acceptance. This guarantee applies to original JSON files: the original decimal cannot be recovered from a Python float already rounded to zero by its caller. Implementation and public-entrypoint regressions: [JSON input](src/aspenops_nexus/json_input.py) · [boundary tests](tests/test_json_numeric_boundaries.py).
+
 Implementation: [units](src/aspenops_nexus/units.py), [compiled evaluation](src/aspenops_nexus/evaluation_plan.py), [engineering rules](src/aspenops_nexus/engineering_rules.py).
 
 ### 2. Reaction element, charge and mass conservation

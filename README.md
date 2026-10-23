@@ -108,6 +108,17 @@ $$
 
 `units.convert` 检查支持单位与有限数。偏移相同的换算先合成 $s_s/s_t$，避免规范单位的中间值溢出或下溢；若非零比例换算的最终结果下溢为零，则显式抛出 `UnitError`。同单位和等价别名保持可表示的小量；$273.15\,\mathrm K\to0\,{}^\circ\mathrm C$ 等合法仿射零点仍然有效。`evaluation_plan` 在读、写、约束编译时绑定注册表的源单位；未知源单位不能被请求中的 `K` 或 `bar` 标签变成物理证据。无单位的文本/布尔状态可保留；无量纲数值使用显式 `1`、`fraction` 等。比例先归一化为 $[0,1]$：$50\%=0.5=500000\,\mathrm{ppm}$。温度先转 K；物理参数缺少单位产生阻断，计数只能使用 `1` 或未标单位，不能用百分数冒充级数。
 
+JSON 文件的数值解析也属于这个边界。设 $x$ 为文件中的十进制数、$\operatorname{fl}(x)$ 为解析后的浮点值，则：
+
+$$
+\neg\operatorname{isfinite}(\operatorname{fl}(x))
+\;\lor\;
+\bigl(x\ne0\;\land\;\operatorname{fl}(x)=0\bigr)
+\quad\Longrightarrow\quad\text{拒绝输入}.
+$$
+
+请求、批量执行文件、注册表、设计/过程 IR、研究文档、许可计划及证据读取会拒绝 `1e999` 等溢出，以及 `1e-400` 等非零数下溢为零；批量文件与其他请求入口采用同一重复键检查，后出现的键不能覆盖先前的科学输入。`0e-9999`、带符号的真正零和可表示的 `5e-324` 仍然有效；JSON 整数在解析时保留整数类型。损坏缓存中的下溢数值按缓存失效处理，不会当作成功结果复用。遇到拒绝时，应检查原始数据和单位量级并重新导出文件；不能把非零观测手动改为零以通过验收。此保证针对原始 JSON 文件；已经由调用方舍入成零的 Python 浮点数无法恢复其原始十进制值。实现与公开入口回归：[JSON 输入](src/aspenops_nexus/json_input.py) · [边界测试](tests/test_json_numeric_boundaries.py)。
+
 源码：[单位](src/aspenops_nexus/units.py)、[读写计划](src/aspenops_nexus/evaluation_plan.py)、[工程规则](src/aspenops_nexus/engineering_rules.py)。
 
 ### 2. 反应的元素、电荷和质量守恒
