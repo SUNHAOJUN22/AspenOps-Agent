@@ -83,6 +83,10 @@ def _number(value: object, *, label: str) -> float:
 
 
 def _integer(value: object, *, label: str) -> int:
+    # JSON integers are arbitrary precision in Python. Preserve them directly
+    # instead of rounding them through IEEE-754 binary64.
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
     number = _number(value, label=label)
     integer = int(number)
     if number != integer:

@@ -229,6 +229,8 @@ uv run aspenops run-batch examples/request.example.json --output var/results.jso
 uv run aspenops verify-bundle var/run-bundle.zip
 ```
 
+Before JSON parsing, `run-batch` bounds file input by `ASPENOPS_MAX_REQUEST_BYTES` (10,000,000 bytes by default) and rejects non-regular files; it then checks the normalized request size as before. In-memory Python requests remain subject to the normalized request-size gate.
+
 ## Independent validity gates
 
 Each point records communication, engine, convergence, finite, constraint, and balance status independently. No solver success string or aggregate score can override a failed gate.

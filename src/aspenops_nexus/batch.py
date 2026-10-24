@@ -348,5 +348,9 @@ def run_batch_document(
 
 
 def run_batch_file(path: str | Path, settings: Settings) -> list[dict[str, Any]]:
-    data = load_request_object(path, root_label="Batch request")
+    data = load_request_object(
+        path,
+        root_label="Batch request",
+        max_bytes=settings.max_request_bytes,
+    )
     return run_batch_document(data, settings)

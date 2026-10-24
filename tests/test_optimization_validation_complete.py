@@ -80,6 +80,10 @@ def test_scalar_validation_helpers_reject_ambiguous_values() -> None:
     with pytest.raises(ValueError, match="field must be an integer"):
         optimization_module._integer(2.5, label="field")
 
+    large_seed = 9007199254740993
+    assert optimization_module._integer(large_seed, label="seed") == large_seed
+    assert OptimizationBudget.from_mapping({"seed": large_seed}).seed == large_seed
+
     for value in (True, "mode", 2, 2.5):
         assert optimization_module._choice(value) == value
     with pytest.raises(ValueError, match="choices must be finite"):

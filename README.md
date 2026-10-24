@@ -235,6 +235,8 @@ uv run aspenops run-batch examples/request.example.json --output var/results.jso
 uv run aspenops verify-bundle var/run-bundle.zip
 ```
 
+`run-batch` 在解析 JSON 前将文件输入限制为 `ASPENOPS_MAX_REQUEST_BYTES`（默认 10,000,000 字节），并拒绝非普通文件；解析后仍会校验规范化请求大小。内存中的 Python 请求继续由同一请求大小门校验。
+
 ## 独立有效性门
 
 每个点分别记录 communication、engine、convergence、finite、constraint 和 balance 状态。任何门失败都不能被求解器“成功”或平均分数覆盖。

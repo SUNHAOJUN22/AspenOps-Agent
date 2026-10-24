@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,29 @@ def test_batch_enforces_point_operation_and_byte_budgets(tmp_path: Path) -> None
         dry_run_document(
             document(),
             Settings(state_dir=tmp_path, max_request_bytes=10),
+        )
+
+
+def test_batch_file_enforces_raw_byte_limit_before_json_parse(tmp_path: Path) -> None:
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b"{" + b" " * 4096)
+
+    with pytest.raises(ValueError, match=r"Batch request file is 4097 bytes; limit is 32"):
+        batch.run_batch_file(
+            path,
+            Settings(state_dir=tmp_path / "state", max_request_bytes=32),
+        )
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation requires POSIX")
+def test_batch_file_rejects_fifo_without_blocking(tmp_path: Path) -> None:
+    fifo = tmp_path / "request.fifo"
+    os.mkfifo(fifo)
+
+    with pytest.raises(ValueError, match="must be a regular file"):
+        batch.run_batch_file(
+            fifo,
+            Settings(state_dir=tmp_path / "state", max_request_bytes=32),
         )
 
 
