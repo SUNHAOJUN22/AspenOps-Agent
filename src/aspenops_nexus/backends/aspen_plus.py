@@ -16,6 +16,7 @@ from ..convergence import (
     classify_convergence,
     normalize_running_flag,
     poll_engine_idle,
+    validate_polling_config,
 )
 from ..registry import ResolvedNode
 from ..windows_job import (
@@ -321,21 +322,31 @@ class AspenPlusBackend(SimulatorBackend):
             raise BackendError("No Aspen document is open")
         started = time.perf_counter()
         engine = self.document.Engine
+        status_timeout_default = os.getenv("ASPENOPS_TIMEOUT_S", "1200") if self.visible else "2.0"
+        timeout_s = float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", status_timeout_default))
+        poll_interval_s = float(os.getenv("ASPENOPS_STATUS_POLL_S", "0.1"))
+        stable_samples = int(os.getenv("ASPENOPS_STATUS_STABLE_SAMPLES", "2"))
+        startup_timeout = (
+            float(os.getenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "30.0")) if self.visible else None
+        )
+        validate_polling_config(
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            stable_samples=stable_samples,
+            require_running_observation=self.visible,
+            startup_timeout_s=startup_timeout,
+        )
         # Aspen's ActiveX guide requires asynchronous execution when the GUI
         # is visible; the existing IsRunning poll observes completion.
         if self.visible:
             engine.Run2(True)
         else:
             engine.Run2()
-        status_timeout_default = os.getenv("ASPENOPS_TIMEOUT_S", "1200") if self.visible else "2.0"
-        startup_timeout = (
-            float(os.getenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "30.0")) if self.visible else None
-        )
         idle = poll_engine_idle(
             lambda: self._engine_running(engine),
-            timeout_s=float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", status_timeout_default)),
-            poll_interval_s=float(os.getenv("ASPENOPS_STATUS_POLL_S", "0.1")),
-            stable_samples=int(os.getenv("ASPENOPS_STATUS_STABLE_SAMPLES", "2")),
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            stable_samples=stable_samples,
             require_running_observation=self.visible,
             startup_timeout_s=startup_timeout,
         )

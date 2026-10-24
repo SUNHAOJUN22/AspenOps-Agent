@@ -136,18 +136,15 @@ def normalize_running_flag(value: Any) -> bool | None:
     return None
 
 
-def poll_engine_idle(
-    read_running: Callable[[], bool | None],
+def validate_polling_config(
     *,
     timeout_s: float,
     poll_interval_s: float,
     stable_samples: int,
     require_running_observation: bool = False,
     startup_timeout_s: float | None = None,
-    clock: Callable[[], float] = time.monotonic,
-    sleeper: Callable[[float], None] = time.sleep,
-) -> IdleObservation:
-    # Validate before touching COM: NaN comparisons can otherwise disable timeout.
+) -> None:
+    """Validate polling settings before starting or polling a simulator."""
     for name, value in (("timeout_s", timeout_s), ("poll_interval_s", poll_interval_s)):
         if isinstance(value, bool) or not isinstance(value, int | float):
             raise ValueError(f"{name} must be a finite positive number")
@@ -174,6 +171,26 @@ def poll_engine_idle(
             startup_timeout_finite = False
         if not startup_timeout_finite or startup_timeout_s <= 0:
             raise ValueError("startup_timeout_s must be a finite positive number")
+
+
+def poll_engine_idle(
+    read_running: Callable[[], bool | None],
+    *,
+    timeout_s: float,
+    poll_interval_s: float,
+    stable_samples: int,
+    require_running_observation: bool = False,
+    startup_timeout_s: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> IdleObservation:
+    validate_polling_config(
+        timeout_s=timeout_s,
+        poll_interval_s=poll_interval_s,
+        stable_samples=stable_samples,
+        require_running_observation=require_running_observation,
+        startup_timeout_s=startup_timeout_s,
+    )
 
     started = clock()
     startup_window_s = min(timeout_s, startup_timeout_s or timeout_s)

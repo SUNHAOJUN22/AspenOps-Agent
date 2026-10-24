@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 import aspenops_nexus.backends.aspen_plus as aspen_module
 from aspenops_nexus.backends.aspen_plus_strict import AspenPlusBackend
 from aspenops_nexus.backends.factory import create_backend
@@ -209,6 +211,36 @@ def test_aspen_backend_runs_visible_simulation_asynchronously(monkeypatch: Any) 
     assert backend.document.Engine.run_calls == 1
     assert backend.document.Engine.async_modes == [True]
     assert result["engine_idle"] is True
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("ASPENOPS_STATUS_TIMEOUT_S", "nan"),
+        ("ASPENOPS_STATUS_POLL_S", "0"),
+        ("ASPENOPS_STATUS_STABLE_SAMPLES", "0"),
+        ("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "not-a-number"),
+    ],
+)
+def test_invalid_aspen_poll_configuration_does_not_start_simulation(
+    monkeypatch: Any, setting: str, value: str
+) -> None:
+    for name in (
+        "ASPENOPS_STATUS_TIMEOUT_S",
+        "ASPENOPS_STATUS_POLL_S",
+        "ASPENOPS_STATUS_STABLE_SAMPLES",
+        "ASPENOPS_STATUS_STARTUP_TIMEOUT_S",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(setting, value)
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.visible = True
+
+    with pytest.raises(ValueError):
+        backend.run()
+
+    assert backend.document.Engine.run_calls == 0
 
 
 def test_aspen_visible_backend_allows_delayed_startup(monkeypatch: Any) -> None:
