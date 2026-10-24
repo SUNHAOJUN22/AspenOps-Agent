@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from copy import deepcopy
 from typing import Any
 
@@ -50,6 +51,9 @@ def test_single_cached_result_avoids_redundant_deepcopy(monkeypatch: Any) -> Non
 
     pool = object.__new__(CasePool)
     pool._handles = [object()]  # type: ignore[list-item]
+    pool._replace_lock = threading.RLock()
+    pool._operation_lock = threading.Lock()
+    pool._warm_start_loss_reason = None
     pool.cache = Cache()  # type: ignore[assignment]
     pool.cache_key = lambda request: "same"  # type: ignore[method-assign]
 
@@ -75,6 +79,9 @@ def test_duplicate_cached_results_are_parsed_once_and_isolated(monkeypatch: Any)
 
     pool = object.__new__(CasePool)
     pool._handles = [object()]  # type: ignore[list-item]
+    pool._replace_lock = threading.RLock()
+    pool._operation_lock = threading.Lock()
+    pool._warm_start_loss_reason = None
     pool.cache = Cache()  # type: ignore[assignment]
     pool._key_requests = lambda requests: [  # type: ignore[method-assign]
         ("same", request) for request in requests

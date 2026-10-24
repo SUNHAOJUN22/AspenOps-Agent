@@ -183,7 +183,7 @@ x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}n(u_d-\ell_d),\quad u_{kd}\in[0,1),
 \qquad \forall C\in\operatorname{cycles}(G),\ C\cap T\ne\varnothing.
 $$
 
-Tear edges must belong to their declared cycles. Equipment specification and degree-of-freedom checks block incomplete designs before construction. A warm-start sequence follows the stateful trajectory $x_{k+1}=F(x_k,u_k)$ and requires one serial Worker; only cold-start requests can use compatible caching and bounded parallelism. Implementation: [sampling](src/aspenops_nexus/design.py), [design rules](src/aspenops_nexus/engineering_rules.py).
+Tear edges must belong to their declared cycles. Equipment specification and degree-of-freedom checks block incomplete designs before construction. A warm-start sequence follows the stateful trajectory $x_{k+1}=F(x_k,u_k)$ and requires one serial Worker. Cold-start requests may use bounded parallelism and persistent caching, but a cache hit is an independent historical result and does not load state into the current Worker; after close, replacement or budget recycling loses state, same-trajectory warm requests fail with `warm_start_state_lost` before writes or solve, and continuation is restored only by a `reinitialize` executed on the current Worker's current engine with successful communication, engine execution, and convergence. Mock regressions do not qualify real Aspen. Implementation: [sampling](src/aspenops_nexus/design.py), [design rules](src/aspenops_nexus/engineering_rules.py), [Worker state contract](docs/architecture.md).
 
 ### 6. Evidence identity and honest test counts
 
@@ -264,7 +264,7 @@ Durable states include `retry_wait` and `dead_letter`. Leases, heartbeats, cance
 
 ## Cache, batch deduplication and singleflight
 
-Identical immutable requests may use same-batch deduplication, persistent cache, and `inflight_singleflight`. Failures are not cached by default and returned objects remain deeply isolated.
+Identical immutable cold-start requests may use same-batch deduplication, persistent cache, and `inflight_singleflight`. A cache hit can be returned as an independent result, but it does not execute parameter writes or restore simulator state in the current Worker; warm-start continuation uses only that Worker's live state. Failures are not cached by default and returned objects remain deeply isolated.
 
 ## Worker ownership and recycling
 
@@ -388,7 +388,7 @@ $$
 \exists q:\neg q.\mathrm{reinitialize}\;\Longrightarrow\;N_{\mathrm{workers}}=1
 $$
 
-Requests that reuse solver history require a single worker; incompatible pool calls are rejected. Cold-start batches may run concurrently, but cache keys, engine identity and reinitialization policy must remain consistent. Warm start is not a parallel-acceleration option.
+Requests that reuse solver history require a single worker; incompatible pool calls are rejected. Cold-start batches may run concurrently and use persistent cache, but a cache hit is an independent historical result and does not restore simulator state in the current Worker. After state loss, warm requests fail before writes or solve; continuation requires a reinitialize executed on the current Worker with successful communication, engine execution and convergence. Mock regressions do not qualify real Aspen.
 
 Source mapping: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 

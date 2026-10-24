@@ -152,9 +152,11 @@ Startup failure terminates the spawned process, closes both pipe endpoints and d
 A `warm_start` continuation also depends on the live state of that Worker. If the pool is closed,
 the Worker is replaced, or a point/age/crash budget would require replacement, subsequent warm
 points return `ok=false` with `warm_start_state_lost` before writing parameters or solving. The
-pool keeps this condition across calls. Recovery requires a converged **executed**
-`reinitialize` request, or an explicitly new pool/trajectory starting from the model; a cached
-result from an earlier cold solve cannot restore simulator state. Ordinary constraint failure
+pool keeps this condition across calls. Recovery in the same pool requires a `reinitialize` request
+executed on its current Worker with communication success, engine success, and convergence. A new pool
+may start a separately declared trajectory from the model initial state, but it does not continue
+the prior trajectory; a cached cold result is only an independent historical result and cannot
+restore simulator state. Ordinary constraint failure
 or nonconvergence without Worker replacement retains the live state and may still be followed
 by a corrective warm point. Worker resource limits and recycling remain enabled.
 

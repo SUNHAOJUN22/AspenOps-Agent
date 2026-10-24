@@ -117,6 +117,11 @@ class CasePool:
             "worker_generation": getattr(handle, "generation", 0),
         }
 
+    def _mark_warm_start_state_lost(self, reason: str) -> None:
+        with self._replace_lock:
+            if self._warm_start_loss_reason is None:
+                self._warm_start_loss_reason = reason
+
     def start(self) -> None:
         with self._replace_lock:
             if self._handles:
@@ -424,6 +429,11 @@ class CasePool:
         request_hash = self.cache_key(request)
         cached = self.cache.get(request_hash)
         if cached is not None:
+            # A persisted reinitialize result describes an earlier execution; it did
+            # not apply that state to this live simulator instance. Serialize the
+            # invalidation with evaluations so a following warm point cannot race it.
+            with self._operation_lock:
+                self._mark_warm_start_state_lost("cached_reinitialize")
             result = EvaluationResult.from_dict(cached)
             result.cache_source = "persistent_cache"
             result.cache_hit = True
@@ -500,9 +510,11 @@ class CasePool:
         output: list[EvaluationResult | None] = [None] * len(requests)
         unique: dict[str, tuple[EvaluationRequest, list[int]]] = {}
         cached_results: dict[str, EvaluationResult] = {}
+        cached_reinitialize_indexes: set[int] = set()
         for index, (key, request) in enumerate(keyed_requests):
             cached = cached_payloads.get(key) if request.reinitialize else None
             if cached is not None:
+                cached_reinitialize_indexes.add(index)
                 template = cached_results.get(key)
                 if template is None:
                     result = EvaluationResult.from_dict(cached)
@@ -515,6 +527,11 @@ class CasePool:
                 output[index] = result
                 continue
             unique.setdefault(key, (request, []))[1].append(index)
+
+        if cached_reinitialize_indexes:
+            # A cache hit cannot restore live simulator state. Mark it lost before
+            # dispatch so a later executed, converged reinitialize can clear it.
+            self._mark_warm_start_state_lost("cached_reinitialize")
 
         if not unique:
             if any(item is None for item in output):
@@ -616,6 +633,10 @@ class CasePool:
             thread.join()
         if cache_payloads:
             self.cache.put_many(cache_payloads)
+        if len(requests) - 1 in cached_reinitialize_indexes:
+            # If the final requested cold point was cached, no executed reinitialize
+            # after it established the state a later continuation would inherit.
+            self._mark_warm_start_state_lost("cached_reinitialize")
         if errors:
             raise RuntimeError(f"CasePool dispatch failed: {errors[0]}") from errors[0]
         if any(item is None for item in output):

@@ -58,12 +58,15 @@ PROFILE: dict[str, Any] = {'slug': 'aspenops',
           {'latex': '\\exists q:\\neg q.\\mathrm{reinitialize}\\;\\Longrightarrow\\;N_{\\mathrm{workers}}=1',
            'plain': ['warm start ⇒ N_workers = 1'],
            'zh': {'name': '热启动的状态隔离',
-                  'note': '复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发，但缓存键、引擎身份与重初始化方式必须一致。这里的热启动不是并行加速选项。'},
+                  'note': '复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发并使用持久缓存，但缓存命中只返回独立历史结果，不会恢复当前 Worker 的模拟器状态。关闭、替换或预算回收丢失状态后，warm 请求在写入/求解前以 warm_start_state_lost 拒绝；只有当前池当前 Worker 实际执行、通信和引擎状态成功且收敛的 reinitialize 才能恢复延续。Mock 回归不等于真实 Aspen 验收。'},
            'en': {'name': 'Warm-start isolation',
                   'note': 'Requests that reuse solver history require a single worker; incompatible pool '
-                          'calls are rejected. Cold-start batches may run concurrently, but cache keys, '
-                          'engine identity and reinitialization policy must remain consistent. Warm start is '
-                          'not a parallel-acceleration option.'},
+                          'calls are rejected. Cold-start batches may run concurrently and use persistent '
+                          'cache, but a cache hit is an independent historical result and does not restore '
+                          'simulator state in the current Worker. After state loss, warm requests fail before '
+                          'writes or solve; continuation requires a reinitialize executed on the current '
+                          'Worker with successful communication, engine execution and convergence. Mock '
+                          'regressions do not qualify real Aspen.'},
            'code': ['src/aspenops_nexus/pool.py']},
           {'latex': 'R_{\\mathrm{periodic}}=(N_{\\mathrm{eval}}\\ge N_{\\max})\\lor(t_{\\mathrm{age}}\\ge '
                     't_{\\max})',

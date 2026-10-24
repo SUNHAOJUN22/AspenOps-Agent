@@ -253,3 +253,17 @@ def test_readmes_preserve_evidence_and_certification_boundaries() -> None:
     assert "archived validated baseline" in english.casefold()
     assert "not an automatic claim" in english.casefold()
     assert "PENDING_REAL_ASPEN_CERTIFICATION" in english
+
+
+def test_warm_start_docs_distinguish_cache_results_from_live_state() -> None:
+    chinese = _read(ROOT / "README.md")
+    english = _read(ROOT / "README.en.md")
+    architecture = _read(ROOT / "docs" / "architecture.md")
+    assert "缓存命中只返回独立历史结果" in chinese
+    assert "warm_start_state_lost" in chinese
+    assert "Mock 回归验证不代表真实 Aspen 已验收" in chinese
+    assert "a cache hit is an independent historical result" in english
+    assert "warm_start_state_lost" in english
+    assert "Mock regressions do not qualify real Aspen" in english
+    assert "communication success, engine success, and convergence" in architecture
+    assert "cached cold result is only an independent historical result" in architecture

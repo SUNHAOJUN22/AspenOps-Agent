@@ -189,7 +189,7 @@ x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}{n}(u_d-\ell_d),\quad u_{kd}\in[0,1),
 \qquad \forall C\in\operatorname{cycles}(G),\ C\cap T\ne\varnothing.
 $$
 
-循环必须有属于该循环的撕裂边；设备规范与自由度检查在构建前阻断缺失定义。Warm-start 是 $x_{k+1}=F(x_k,u_k)$ 的有状态轨迹，必须单 Worker、串行执行；冷启动才允许受限并发和缓存。源码：[采样](src/aspenops_nexus/design.py)、[流程规则](src/aspenops_nexus/engineering_rules.py)。
+循环必须有属于该循环的撕裂边；设备规范与自由度检查在构建前阻断缺失定义。Warm-start 是 $x_{k+1}=F(x_k,u_k)$ 的有状态轨迹，必须单 Worker、串行执行。冷启动可受限并发并复用持久缓存，但缓存命中只返回独立历史结果，不会把状态写入当前 Worker；关闭、替换或预算回收丢失状态后，同轨迹 warm 请求会在写入/求解前以 `warm_start_state_lost` 拒绝，只有当前池当前 Worker 实际执行、通信和引擎状态成功且收敛的 `reinitialize` 才能恢复延续。Mock 回归验证不代表真实 Aspen 已验收。源码：[采样](src/aspenops_nexus/design.py)、[流程规则](src/aspenops_nexus/engineering_rules.py)、[Worker 状态合同](docs/architecture.md)。
 
 ### 6. 证据摘要与测试计数
 
@@ -270,7 +270,7 @@ MCP lifespan 拥有 scheduler 启停和异常回收，不公开真实 Aspen 认�
 
 ## 缓存、批内去重与单航班
 
-相同不可变请求可使用 same-batch dedup、持久缓存和 `inflight_singleflight`。失败默认不缓存，返回对象保持深度隔离。
+相同不可变冷启动请求可使用 same-batch dedup、持久缓存和 `inflight_singleflight`。缓存命中可作为该请求的独立结果，但不会执行参数写入或恢复新 Worker 的模拟器状态；warm-start 延续只使用当前 Worker 的实时状态。失败默认不缓存，返回对象保持深度隔离。
 
 ## Worker 所有权与回收
 
@@ -394,7 +394,7 @@ $$
 \exists q:\neg q.\mathrm{reinitialize}\;\Longrightarrow\;N_{\mathrm{workers}}=1
 $$
 
-复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发，但缓存键、引擎身份与重初始化方式必须一致。这里的热启动不是并行加速选项。
+复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发并使用持久缓存，但缓存命中只返回独立历史结果，不会恢复当前 Worker 的模拟器状态。关闭、替换或预算回收丢失状态后，warm 请求在写入/求解前以 warm_start_state_lost 拒绝；只有当前池当前 Worker 实际执行、通信和引擎状态成功且收敛的 reinitialize 才能恢复延续。Mock 回归不等于真实 Aspen 验收。
 
 源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 

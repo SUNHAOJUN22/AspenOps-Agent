@@ -110,6 +110,135 @@ def test_cached_cold_result_does_not_restore_state_but_new_cold_solve_does(tmp_p
         assert continued.ok and continued.values[FLOW] == 250
 
 
+def test_cached_cold_result_from_previous_pool_cannot_restore_state(tmp_path: Path) -> None:
+    cache_path = tmp_path / "shared-cache.sqlite3"
+    cold = request(0, flow=200, cold=True)
+
+    first_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    first = first_pool.evaluate_many([cold])[0]
+    assert first.ok and not first.cache_hit
+    first_pool.close()
+
+    second_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    try:
+        cached = second_pool.evaluate_many([cold])[0]
+        assert cached.ok and cached.cache_hit
+
+        continuation = second_pool.evaluate_many([request(1)])[0]
+        assert not continuation.ok
+        assert "warm_start_state_lost" in continuation.violations
+        assert continuation.values == {}
+    finally:
+        second_pool.close()
+
+
+def test_cached_reinitialize_batch_does_not_restore_state(tmp_path: Path) -> None:
+    cache_path = tmp_path / "shared-cache.sqlite3"
+    cold_points = [request(0, flow=200, cold=True), request(1, flow=300, cold=True)]
+
+    first_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    first = first_pool.evaluate_many(cold_points)
+    assert all(item.ok and not item.cache_hit for item in first)
+    first_pool.close()
+
+    second_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    try:
+        cached = second_pool.evaluate_many(cold_points)
+        assert all(item.ok and item.cache_hit for item in cached)
+
+        continuation = second_pool.evaluate_many([request(2)])[0]
+        assert not continuation.ok
+        assert "warm_start_state_lost" in continuation.violations
+        assert continuation.values == {}
+    finally:
+        second_pool.close()
+
+
+def test_executed_reinitialize_after_cached_point_restores_continuation(tmp_path: Path) -> None:
+    cache_path = tmp_path / "shared-cache.sqlite3"
+    cached_cold = request(0, flow=200, cold=True)
+
+    first_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    assert first_pool.evaluate_many([cached_cold])[0].ok
+    first_pool.close()
+
+    second_pool = CasePool(
+        backend_name="mock",
+        model_path=MODEL,
+        registry_path=REGISTRY,
+        workers=1,
+        visible=False,
+        cache_path=cache_path,
+    )
+    try:
+        executed_cold = request(1, flow=300, cold=True)
+        cached, executed = second_pool.evaluate_many([cached_cold, executed_cold])
+        assert cached.ok and cached.cache_hit
+        assert executed.ok and not executed.cache_hit
+
+        continuation = second_pool.evaluate_many([request(2)])[0]
+        assert continuation.ok
+        assert continuation.values[FLOW] == 300
+    finally:
+        second_pool.close()
+
+
+def test_nonconverged_reinitialize_does_not_restore_lost_state(tmp_path: Path) -> None:
+    failed_cold = request(0, flow=200, cold=True).to_dict()
+    failed_cold["writes"].append(
+        {
+            "key": "stream.input.temperature",
+            "identifiers": {"stream": "FEED"},
+            "value": 250,
+            "unit": "C",
+        }
+    )
+    with pool_at(tmp_path) as pool:
+        pool.force_recycle_all()
+        failed = pool.evaluate_many([EvaluationRequest.from_dict(failed_cold)])[0]
+        assert not failed.ok and not failed.converged and not failed.cache_hit
+
+        continuation = pool.evaluate_many([request(1)])[0]
+        assert not continuation.ok
+        assert "warm_start_state_lost" in continuation.violations
+        assert continuation.values == {}
+
+
 def test_nonconverged_solve_can_recover_if_live_state_is_retained(tmp_path: Path) -> None:
     bad = request(0, flow=200).to_dict()
     bad["writes"].append(
