@@ -408,7 +408,7 @@ $$
 T_{\mathrm{timeout}},\Delta t\in\mathbb{R}_{>0}\cap\mathbb{R}_{\mathrm{finite}},\quad n_{\mathrm{stable}}\in\mathbb{N}_{>0}
 $$
 
-Before reading the external COM engine, timeout_s and poll_interval_s must be finite positive numbers and stable_samples a positive integer; booleans are not numeric configuration values. NaN cannot disable timeout, and an unrepresentable COM integer flag remains UNKNOWN instead of raising an unhandled overflow. Polling termination is not convergence; status nodes, negative markers and idle evidence still control classification.
+Before reading the external COM engine, timeout_s and poll_interval_s must be finite positive numbers and stable_samples a positive integer; booleans are not numeric configuration values. NaN cannot disable timeout, and an unrepresentable COM integer flag remains UNKNOWN instead of raising an unhandled overflow. Visible Aspen runs must first be observed running before stable idle and status nodes can qualify as convergence evidence; the startup confirmation window defaults to 30 seconds and can be adjusted with ASPENOPS_STATUS_STARTUP_TIMEOUT_S. If no running state is observed within the window, the run fails closed as a timeout even if the status tree retains old success text. Polling termination is not convergence; status nodes, negative markers and idle evidence still control classification.
 
 Source mapping: [`src/aspenops_nexus/convergence.py`](src/aspenops_nexus/convergence.py) · [`tests/test_polling_numeric_boundaries.py`](tests/test_polling_numeric_boundaries.py)
 

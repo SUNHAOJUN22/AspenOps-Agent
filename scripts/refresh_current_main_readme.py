@@ -91,14 +91,19 @@ PROFILE["math"].append({'latex': 'T_{\\mathrm{timeout}},\\Delta '
  'zh': {'name': '轮询输入与外部调用边界',
         'note': '在读取外部 COM 引擎之前，timeout_s 与 poll_interval_s 必须为有限正数，stable_samples '
                 '必须是正整数，布尔值不能冒充这些数值。NaN 不能使超时失效；无法转换成有限浮点数的 COM 整数状态返回 '
-                'UNKNOWN，而不是抛出未处理的溢出。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。'},
+                'UNKNOWN，而不是抛出未处理的溢出。可见 Aspen 异步运行须先观察到本次请求进入运行态，再接受稳定空闲和状态节点；默认启动确认窗口为 30 秒，可由 ASPENOPS_STATUS_STARTUP_TIMEOUT_S 调整。窗口内未观察到运行态会以 timeout 失败关闭，即使状态树残留旧成功文本。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。'},
  'en': {'name': 'Polling and external-call boundary',
         'note': 'Before reading the external COM engine, timeout_s and poll_interval_s must '
                 'be finite positive numbers and stable_samples a positive integer; booleans '
                 'are not numeric configuration values. NaN cannot disable timeout, and an '
                 'unrepresentable COM integer flag remains UNKNOWN instead of raising an '
-                'unhandled overflow. Polling termination is not convergence; status nodes, '
-                'negative markers and idle evidence still control classification.'},
+                'unhandled overflow. Visible Aspen runs must first be observed running before '
+                'stable idle and status nodes can qualify as convergence evidence; the startup '
+                'confirmation window defaults to 30 seconds and can be adjusted with '
+                'ASPENOPS_STATUS_STARTUP_TIMEOUT_S. If no running state is observed within the '
+                'window, the run fails closed as a timeout even if the status tree retains old '
+                'success text. Polling termination is not convergence; status nodes, negative '
+                'markers and idle evidence still control classification.'},
  'code': ['src/aspenops_nexus/convergence.py', 'tests/test_polling_numeric_boundaries.py']})
 START = "<!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->"
 END = "<!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->"

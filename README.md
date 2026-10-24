@@ -414,7 +414,7 @@ $$
 T_{\mathrm{timeout}},\Delta t\in\mathbb{R}_{>0}\cap\mathbb{R}_{\mathrm{finite}},\quad n_{\mathrm{stable}}\in\mathbb{N}_{>0}
 $$
 
-在读取外部 COM 引擎之前，timeout_s 与 poll_interval_s 必须为有限正数，stable_samples 必须是正整数，布尔值不能冒充这些数值。NaN 不能使超时失效；无法转换成有限浮点数的 COM 整数状态返回 UNKNOWN，而不是抛出未处理的溢出。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。
+在读取外部 COM 引擎之前，timeout_s 与 poll_interval_s 必须为有限正数，stable_samples 必须是正整数，布尔值不能冒充这些数值。NaN 不能使超时失效；无法转换成有限浮点数的 COM 整数状态返回 UNKNOWN，而不是抛出未处理的溢出。可见 Aspen 异步运行须先观察到本次请求进入运行态，再接受稳定空闲和状态节点；默认启动确认窗口为 30 秒，可由 ASPENOPS_STATUS_STARTUP_TIMEOUT_S 调整。窗口内未观察到运行态会以 timeout 失败关闭，即使状态树残留旧成功文本。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。
 
 源码对应: [`src/aspenops_nexus/convergence.py`](src/aspenops_nexus/convergence.py) · [`tests/test_polling_numeric_boundaries.py`](tests/test_polling_numeric_boundaries.py)
 

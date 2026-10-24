@@ -328,11 +328,16 @@ class AspenPlusBackend(SimulatorBackend):
         else:
             engine.Run2()
         status_timeout_default = os.getenv("ASPENOPS_TIMEOUT_S", "1200") if self.visible else "2.0"
+        startup_timeout = (
+            float(os.getenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "30.0")) if self.visible else None
+        )
         idle = poll_engine_idle(
             lambda: self._engine_running(engine),
             timeout_s=float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", status_timeout_default)),
             poll_interval_s=float(os.getenv("ASPENOPS_STATUS_POLL_S", "0.1")),
             stable_samples=int(os.getenv("ASPENOPS_STATUS_STABLE_SAMPLES", "2")),
+            require_running_observation=self.visible,
+            startup_timeout_s=startup_timeout,
         )
         status_values = self._status_values()
         messages = self._engine_messages()

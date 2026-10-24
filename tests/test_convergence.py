@@ -69,6 +69,69 @@ def test_poll_requires_a_stable_idle_window() -> None:
     assert result.state is ConvergenceState.UNKNOWN
 
 
+def test_poll_fails_closed_after_async_startup_window_without_running() -> None:
+    clock = FakeClock()
+    result = poll_engine_idle(
+        sequence_reader([False]),
+        timeout_s=1200.0,
+        startup_timeout_s=0.3,
+        poll_interval_s=0.1,
+        stable_samples=2,
+        require_running_observation=True,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    assert result.state is ConvergenceState.TIMEOUT
+    assert result.engine_idle is True
+    assert result.samples == 4
+    assert abs(result.elapsed_s - 0.3) < 1e-12
+    assert result.error == "engine never reported running within the startup confirmation window"
+
+
+def test_poll_allows_delayed_async_start_before_startup_deadline() -> None:
+    clock = FakeClock()
+    result = poll_engine_idle(
+        sequence_reader([False, False, True, False, False]),
+        timeout_s=1200.0,
+        startup_timeout_s=0.3,
+        poll_interval_s=0.1,
+        stable_samples=2,
+        require_running_observation=True,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    assert result.state is ConvergenceState.UNKNOWN
+    assert result.engine_idle is True
+    assert result.samples == 5
+    assert abs(result.elapsed_s - 0.4) < 1e-12
+
+
+def test_poll_rejects_first_async_start_observed_after_startup_deadline() -> None:
+    clock = FakeClock()
+    idle = poll_engine_idle(
+        sequence_reader([False, False, False, True, False, False]),
+        timeout_s=1200.0,
+        startup_timeout_s=0.25,
+        poll_interval_s=0.1,
+        stable_samples=2,
+        require_running_observation=True,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    evidence = classify_convergence(
+        engine_returned=True,
+        idle=idle,
+        status_nodes=[{"path": "status", "value": "Run completed and converged"}],
+        messages=[],
+        source="fake-aspen",
+    )
+    assert idle.state is ConvergenceState.TIMEOUT
+    assert idle.engine_idle is False
+    assert idle.samples == 4
+    assert abs(idle.elapsed_s - 0.3) < 1e-12
+    assert evidence.state is ConvergenceState.TIMEOUT
+
+
 def test_poll_times_out_when_engine_never_stops() -> None:
     clock = FakeClock()
     result = poll_engine_idle(

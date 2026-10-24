@@ -39,6 +39,15 @@ property methods, kinetic models or process feasibility.
 - HYSYS convergence Spreadsheet contract;
 - stable-idle sample and timeout behavior.
 
+For visible Aspen Plus execution, the certification evidence must also show that the
+engine entered the running state after `Run2(True)` before a stable-idle observation
+can qualify as this run's completion. The startup confirmation window defaults to
+30 seconds and is configurable with `ASPENOPS_STATUS_STARTUP_TIMEOUT_S`. If the
+engine never reports running during that window, stale success text cannot qualify
+the run; the result fails closed as a timeout. The fake-COM regression covers delayed
+startup and the no-start path, but real-Aspen timing remains part of the pending
+licensed self-hosted certification.
+
 ### Repeatability
 
 - at least three independent cold-state repetitions;

@@ -67,6 +67,23 @@ class FakeDelayedAspenEngine(FakeAspenEngine):
         return False
 
 
+class FakeLateStartingAspenEngine(FakeAspenEngine):
+    def __init__(self, idle_samples: int, running_samples: int) -> None:
+        super().__init__()
+        self._idle_samples = idle_samples
+        self._running_samples = running_samples
+
+    @property
+    def IsRunning(self) -> bool:
+        if self._idle_samples > 0:
+            self._idle_samples -= 1
+            return False
+        if self._running_samples > 0:
+            self._running_samples -= 1
+            return True
+        return False
+
+
 class FakeAspenDocument:
     def __init__(self, status: Any | None) -> None:
         self.Engine = FakeAspenEngine()
@@ -155,6 +172,7 @@ def empty_request() -> EvaluationRequest:
 
 def configure_fast_aspen_poll(monkeypatch: Any) -> None:
     monkeypatch.setenv("ASPENOPS_STATUS_TIMEOUT_S", "0.05")
+    monkeypatch.setenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "0.05")
     monkeypatch.setenv("ASPENOPS_STATUS_POLL_S", "0.001")
     monkeypatch.setenv("ASPENOPS_STATUS_STABLE_SAMPLES", "1")
 
@@ -193,9 +211,41 @@ def test_aspen_backend_runs_visible_simulation_asynchronously(monkeypatch: Any) 
     assert result["engine_idle"] is True
 
 
+def test_aspen_visible_backend_allows_delayed_startup(monkeypatch: Any) -> None:
+    configure_fast_aspen_poll(monkeypatch)
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.document.Engine = FakeLateStartingAspenEngine(idle_samples=3, running_samples=2)
+    backend.visible = True
+
+    result = backend.run()
+
+    assert result["converged"] is True
+    assert backend.document.Engine.async_modes == [True]
+    assert result["convergence_evidence"]["samples"] == 6
+
+
+def test_aspen_visible_backend_rejects_stale_success_without_running(monkeypatch: Any) -> None:
+    configure_fast_aspen_poll(monkeypatch)
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.visible = True
+
+    result = backend.run()
+
+    assert backend.document.Engine.run_calls == 1
+    assert backend.document.Engine.async_modes == [True]
+    assert result["converged"] is False
+    assert result["convergence_state"] == "timeout"
+    assert result["convergence_evidence"]["error"] == (
+        "engine never reported running within the startup confirmation window"
+    )
+
+
 def test_visible_aspen_poll_uses_runtime_timeout_by_default(monkeypatch: Any) -> None:
     monkeypatch.delenv("ASPENOPS_STATUS_TIMEOUT_S", raising=False)
     monkeypatch.delenv("ASPENOPS_TIMEOUT_S", raising=False)
+    monkeypatch.delenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", raising=False)
     backend = AspenPlusBackend()
     backend.document = FakeAspenDocument("Run completed and converged")
     backend.visible = True
@@ -208,13 +258,19 @@ def test_visible_aspen_poll_uses_runtime_timeout_by_default(monkeypatch: Any) ->
         timeout_s: float,
         poll_interval_s: float,
         stable_samples: int,
+        require_running_observation: bool = False,
+        startup_timeout_s: float | None = None,
     ) -> Any:
         captured["timeout_s"] = timeout_s
+        captured["startup_timeout_s"] = startup_timeout_s
+        captured["require_running_observation"] = require_running_observation
         return real_poll(
             read_running,
             timeout_s=0.05,
             poll_interval_s=0.001,
             stable_samples=1,
+            require_running_observation=require_running_observation,
+            startup_timeout_s=startup_timeout_s,
         )
 
     monkeypatch.setattr(aspen_module, "poll_engine_idle", capture_timeout)
@@ -222,6 +278,8 @@ def test_visible_aspen_poll_uses_runtime_timeout_by_default(monkeypatch: Any) ->
     backend.run()
 
     assert captured["timeout_s"] == 1200.0
+    assert captured["startup_timeout_s"] == 30.0
+    assert captured["require_running_observation"] is True
 
 
 def test_aspen_backend_rejects_negative_evidence(monkeypatch: Any) -> None:

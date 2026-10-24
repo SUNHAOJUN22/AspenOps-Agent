@@ -142,6 +142,8 @@ def poll_engine_idle(
     timeout_s: float,
     poll_interval_s: float,
     stable_samples: int,
+    require_running_observation: bool = False,
+    startup_timeout_s: float | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> IdleObservation:
@@ -161,8 +163,20 @@ def poll_engine_idle(
         or stable_samples <= 0
     ):
         raise ValueError("stable_samples must be a positive integer")
+    if not isinstance(require_running_observation, bool):
+        raise ValueError("require_running_observation must be a boolean")
+    if startup_timeout_s is not None:
+        if isinstance(startup_timeout_s, bool) or not isinstance(startup_timeout_s, int | float):
+            raise ValueError("startup_timeout_s must be a finite positive number")
+        try:
+            startup_timeout_finite = math.isfinite(startup_timeout_s)
+        except OverflowError:
+            startup_timeout_finite = False
+        if not startup_timeout_finite or startup_timeout_s <= 0:
+            raise ValueError("startup_timeout_s must be a finite positive number")
 
     started = clock()
+    startup_window_s = min(timeout_s, startup_timeout_s or timeout_s)
     samples = 0
     consecutive_idle = 0
     observed_running = False
@@ -181,6 +195,19 @@ def poll_engine_idle(
         samples += 1
         if running is not None and not isinstance(running, bool):
             running = None
+        sample_elapsed = max(0.0, clock() - started)
+        if (
+            require_running_observation
+            and not observed_running
+            and sample_elapsed > startup_window_s
+        ):
+            return IdleObservation(
+                state=ConvergenceState.TIMEOUT,
+                engine_idle=not running if isinstance(running, bool) else None,
+                elapsed_s=sample_elapsed,
+                samples=samples,
+                error="engine never reported running within the startup confirmation window",
+            )
         if running is None:
             consecutive_idle = 0
         else:
@@ -190,7 +217,9 @@ def poll_engine_idle(
                 consecutive_idle = 0
             else:
                 consecutive_idle += 1
-                if consecutive_idle >= stable_samples:
+                if consecutive_idle >= stable_samples and (
+                    not require_running_observation or observed_running
+                ):
                     return IdleObservation(
                         state=ConvergenceState.UNKNOWN,
                         engine_idle=True,
@@ -199,6 +228,14 @@ def poll_engine_idle(
                     )
 
         elapsed = max(0.0, clock() - started)
+        if require_running_observation and not observed_running and elapsed >= startup_window_s:
+            return IdleObservation(
+                state=ConvergenceState.TIMEOUT,
+                engine_idle=not running if isinstance(running, bool) else None,
+                elapsed_s=elapsed,
+                samples=samples,
+                error="engine never reported running within the startup confirmation window",
+            )
         if elapsed >= timeout_s:
             if not observed_known_state:
                 state = ConvergenceState.UNKNOWN
