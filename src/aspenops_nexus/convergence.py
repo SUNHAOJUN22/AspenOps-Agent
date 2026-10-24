@@ -221,9 +221,15 @@ def poll_engine_idle(
                     not require_running_observation or observed_running
                 ):
                     return IdleObservation(
-                        state=ConvergenceState.UNKNOWN,
+                        # The state read itself can block. A late idle sample is
+                        # an observation, but cannot prove completion in budget.
+                        state=(
+                            ConvergenceState.TIMEOUT
+                            if sample_elapsed >= timeout_s
+                            else ConvergenceState.UNKNOWN
+                        ),
                         engine_idle=True,
-                        elapsed_s=max(0.0, clock() - started),
+                        elapsed_s=sample_elapsed,
                         samples=samples,
                     )
 

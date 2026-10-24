@@ -242,6 +242,55 @@ def test_aspen_visible_backend_rejects_stale_success_without_running(monkeypatch
     )
 
 
+def test_evaluate_rejects_success_read_after_aspen_status_deadline(monkeypatch: Any) -> None:
+    now = [0.0]
+    calls = [0]
+
+    class SlowStatusEngine(FakeAspenEngine):
+        @property
+        def IsRunning(self) -> bool:
+            calls[0] += 1
+            if calls[0] == 1:
+                return True
+            now[0] += 2.0
+            return False
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    real_poll = aspen_module.poll_engine_idle
+
+    def controlled_poll(reader: Any, **kwargs: Any) -> Any:
+        return real_poll(reader, **kwargs, clock=lambda: now[0], sleeper=sleep)
+
+    monkeypatch.setattr(aspen_module, "poll_engine_idle", controlled_poll)
+    monkeypatch.setenv("ASPENOPS_STATUS_TIMEOUT_S", "1")
+    monkeypatch.setenv("ASPENOPS_STATUS_STARTUP_TIMEOUT_S", "0.5")
+    monkeypatch.setenv("ASPENOPS_STATUS_POLL_S", "0.1")
+    monkeypatch.setenv("ASPENOPS_STATUS_STABLE_SAMPLES", "1")
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.document.Engine = SlowStatusEngine()
+    backend.visible = True
+    request = EvaluationRequest.from_dict(
+        {
+            "model_path": str(MODEL),
+            "registry_path": str(REGISTRY),
+            "backend": "aspen_plus",
+            "writes": [],
+            "reads": [],
+            "reinitialize": False,
+        }
+    )
+
+    result = evaluate(backend, NodeRegistry(REGISTRY), request)
+
+    assert result.ok is False
+    assert "simulator_not_converged:timeout" in result.violations
+    assert backend.document.Engine.async_modes == [True]
+    assert calls[0] == 2
+
+
 def test_visible_aspen_poll_uses_runtime_timeout_by_default(monkeypatch: Any) -> None:
     monkeypatch.delenv("ASPENOPS_STATUS_TIMEOUT_S", raising=False)
     monkeypatch.delenv("ASPENOPS_TIMEOUT_S", raising=False)

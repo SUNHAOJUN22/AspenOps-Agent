@@ -134,6 +134,13 @@ A batched transaction is sent over one duplex pipe message with a correlation ID
 
 The backend run protocol is typed rather than truthy. `engine_returned` and `converged` must be actual Boolean fields, and `convergence_state` must be a non-empty string. Aspen Plus and HYSYS running properties are normalized from explicit booleans, COM `-1/0/1` and bounded known strings. Unknown values become `None`, preserving an unknown state instead of guessing.
 
+A stable idle observation must finish before the total status-poll deadline. A
+blocking state read that completes at or after that deadline is classified as a
+timeout, even if it reports idle and status text says converged. The observed idle
+flag is retained as evidence; it cannot make the public evaluation successful.
+This deadline check classifies returned observations; the isolated worker timeout
+remains responsible for a COM call that never returns.
+
 ## Worker ownership and recycling
 
 A Worker is an ownership unit, not a thread around a shared COM object:

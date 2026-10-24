@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
+
 from aspenops_nexus.convergence import (
     ConvergenceState,
     IdleObservation,
@@ -190,6 +192,65 @@ def test_poll_reports_status_access_errors() -> None:
     )
     assert result.state is ConvergenceState.ERROR
     assert result.error == "RuntimeError: status unavailable"
+
+
+@pytest.mark.parametrize(
+    ("read_duration_s", "expected"),
+    [
+        (0.2, ConvergenceState.UNKNOWN),
+        (0.9, ConvergenceState.TIMEOUT),
+        (2.0, ConvergenceState.TIMEOUT),
+    ],
+    ids=["before-deadline", "at-deadline", "after-deadline"],
+)
+def test_stable_idle_observation_must_arrive_before_total_deadline(
+    read_duration_s: float, expected: ConvergenceState
+) -> None:
+    clock = FakeClock()
+    reads = 0
+
+    def read_running() -> bool:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            return True
+        clock.sleep(read_duration_s)
+        return False
+
+    idle = poll_engine_idle(
+        read_running,
+        timeout_s=1.0,
+        poll_interval_s=0.1,
+        stable_samples=1,
+        require_running_observation=True,
+        startup_timeout_s=0.5,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    assert idle.state is expected
+    assert idle.engine_idle is True
+    assert idle.samples == 2
+    assert idle.elapsed_s == pytest.approx(0.1 + read_duration_s)
+
+
+def test_late_idle_without_a_running_sample_is_also_a_timeout() -> None:
+    clock = FakeClock()
+
+    def slow_idle() -> bool:
+        clock.sleep(2.0)
+        return False
+
+    idle = poll_engine_idle(
+        slow_idle,
+        timeout_s=1.0,
+        poll_interval_s=0.1,
+        stable_samples=1,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    assert idle.state is ConvergenceState.TIMEOUT
+    assert idle.engine_idle is True
+    assert idle.elapsed_s == 2.0
 
 
 def idle_observation() -> IdleObservation:
