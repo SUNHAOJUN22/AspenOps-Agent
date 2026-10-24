@@ -415,14 +415,14 @@ def _check_workflows(root: Path, issues: list[dict[str, str]]) -> list[str]:
             _issue(
                 issues,
                 "workflow_write_permission",
-                str(path.relative_to(root)),
+                path.relative_to(root).as_posix(),
                 "Permanent workflows must be read-only",
             )
         if TEMPORARY_NAME.search(path.name):
             _issue(
                 issues,
                 "temporary_workflow_present",
-                str(path.relative_to(root)),
+                path.relative_to(root).as_posix(),
                 path.name,
             )
     return sorted(names)
@@ -435,7 +435,7 @@ def temporary_artifacts(root: Path) -> list[str]:
             continue
         for path in base.iterdir():
             if path.is_file() and TEMPORARY_NAME.search(path.name):
-                candidates.append(str(path.relative_to(root)))
+                candidates.append(path.relative_to(root).as_posix())
     return sorted(candidates)
 
 
