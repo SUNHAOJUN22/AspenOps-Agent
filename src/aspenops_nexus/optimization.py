@@ -94,6 +94,19 @@ def _integer(value: object, *, label: str) -> int:
     return integer
 
 
+def _seed(value: object) -> int:
+    """Preserve exact integer seeds and reject imprecise JSON float seeds."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    number = _number(value, label="seed")
+    integer = int(number)
+    if number != integer:
+        raise ValueError("seed must be an integer")
+    if abs(integer) > 2**53 - 1:
+        raise ValueError("seed exceeds binary64 integer precision")
+    return integer
+
+
 def _choice(value: object) -> VariableValue:
     if isinstance(value, bool | str | int | float):
         if isinstance(value, float) and not math.isfinite(value):
@@ -375,7 +388,7 @@ class OptimizationBudget:
         )
         mutation = _number(data.get("mutation", 0.8), label="mutation")
         crossover = _number(data.get("crossover", 0.9), label="crossover")
-        seed = _integer(data.get("seed", 0), label="seed")
+        seed = _seed(data.get("seed", 0))
         if population_size < 4:
             raise ValueError("population_size must be at least four")
         if generations < 0 or max_evaluations < population_size:

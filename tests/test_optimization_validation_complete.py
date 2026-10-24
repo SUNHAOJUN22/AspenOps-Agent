@@ -7,6 +7,7 @@ import pytest
 
 from aspenops_nexus import optimization as optimization_module
 from aspenops_nexus.config import Settings
+from aspenops_nexus.json_input import load_request_object
 from aspenops_nexus.optimization import (
     ObjectiveSpec,
     OptimizationBudget,
@@ -83,6 +84,7 @@ def test_scalar_validation_helpers_reject_ambiguous_values() -> None:
     large_seed = 9007199254740993
     assert optimization_module._integer(large_seed, label="seed") == large_seed
     assert OptimizationBudget.from_mapping({"seed": large_seed}).seed == large_seed
+    assert OptimizationBudget.from_mapping({"seed": 4.0}).seed == 4
 
     for value in (True, "mode", 2, 2.5):
         assert optimization_module._choice(value) == value
@@ -97,6 +99,17 @@ def test_scalar_validation_helpers_reject_ambiguous_values() -> None:
     assert optimization_module._finite_output("2.5") is None
     assert optimization_module._output_key("key", {}) == "key"
     assert optimization_module._output_key("key", {"z": "2", "a": "1"}) == ("key:a=1,z=2")
+
+
+def test_json_decimal_seed_beyond_binary64_integer_precision_is_rejected(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "optimization-request.json"
+    request_path.write_text('{"seed":9007199254740993.0}', encoding="utf-8")
+    request = load_request_object(request_path)
+
+    with pytest.raises(ValueError, match="seed.*precision"):
+        OptimizationBudget.from_mapping(request)
 
 
 def test_variable_spec_clamps_decodes_and_emits_writes() -> None:
