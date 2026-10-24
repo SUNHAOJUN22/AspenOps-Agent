@@ -263,12 +263,12 @@ def poll_engine_idle(
             if not observed_known_state:
                 state = ConvergenceState.UNKNOWN
                 engine_idle = None
-            elif observed_running:
-                state = ConvergenceState.TIMEOUT
-                engine_idle = False
             else:
-                state = ConvergenceState.UNKNOWN
-                engine_idle = None
+                # A known state that never reaches the stable-idle threshold
+                # still exhausted the polling budget. Preserve timeout
+                # semantics without claiming a stable idle observation.
+                state = ConvergenceState.TIMEOUT
+                engine_idle = False if observed_running else None
             return IdleObservation(
                 state=state,
                 engine_idle=engine_idle,

@@ -253,6 +253,36 @@ def test_late_idle_without_a_running_sample_is_also_a_timeout() -> None:
     assert idle.elapsed_s == 2.0
 
 
+def test_unstable_idle_after_total_deadline_is_a_timeout() -> None:
+    clock = FakeClock()
+
+    def slow_idle() -> bool:
+        clock.sleep(1.1)
+        return False
+
+    idle = poll_engine_idle(
+        slow_idle,
+        timeout_s=1.0,
+        poll_interval_s=0.1,
+        stable_samples=2,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    evidence = classify_convergence(
+        engine_returned=True,
+        idle=idle,
+        status_nodes=[{"path": "status", "value": "Run completed and converged"}],
+        messages=[],
+        source="Aspen",
+    )
+    assert idle.state is ConvergenceState.TIMEOUT
+    assert idle.engine_idle is None
+    assert evidence.state is ConvergenceState.TIMEOUT
+    assert set(evidence.positive_markers) == {"completed", "converged"}
+    assert idle.samples == 1
+    assert idle.elapsed_s == pytest.approx(1.1)
+
+
 def idle_observation() -> IdleObservation:
     return IdleObservation(
         state=ConvergenceState.UNKNOWN,
