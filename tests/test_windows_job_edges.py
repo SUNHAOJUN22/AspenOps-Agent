@@ -77,9 +77,9 @@ def fake_pywin32(monkeypatch: pytest.MonkeyPatch) -> tuple[list[Any], dict[str, 
         "process_handle": object(),
     }
 
-    def create_job(security: Any, name: str) -> Any:
+    def create_job(security: Any, name: str | None) -> Any:
         assert security is None
-        assert name == f"AspenOps-{os.getpid()}"
+        assert name is None
         return state["job_handle"]
 
     def query_information(handle: Any, information_class: int) -> dict[str, Any]:

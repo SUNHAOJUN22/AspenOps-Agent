@@ -95,7 +95,9 @@ class WindowsJobScope:
             # incorrectly model CreateJobObject as returning None. Keep the dynamic
             # boundary local and preserve strict typing everywhere else.
             job_api = cast(Any, win32job)
-            handle = job_api.CreateJobObject(None, f"AspenOps-{os.getpid()}")
+            # The job is private to this Worker; an unnamed object cannot resolve
+            # to a same-name job held by another process.
+            handle = job_api.CreateJobObject(None, None)
             limits = job_api.QueryInformationJobObject(
                 handle,
                 job_api.JobObjectExtendedLimitInformation,
