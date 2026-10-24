@@ -149,6 +149,15 @@ source model
 
 Startup failure terminates the spawned process, closes both pipe endpoints and deletes the staged directory. Normal shutdown requests a correlated `closed` response before escalation. Recycling is triggered by crash, timeout, protocol failure, tainted transaction, point budget, age, cancellation or lease loss. Pool generation increments when a handle is replaced, preserving provenance for the old and new Worker.
 
+A `warm_start` continuation also depends on the live state of that Worker. If the pool is closed,
+the Worker is replaced, or a point/age/crash budget would require replacement, subsequent warm
+points return `ok=false` with `warm_start_state_lost` before writing parameters or solving. The
+pool keeps this condition across calls. Recovery requires a converged **executed**
+`reinitialize` request, or an explicitly new pool/trajectory starting from the model; a cached
+result from an earlier cold solve cannot restore simulator state. Ordinary constraint failure
+or nonconvergence without Worker replacement retains the live state and may still be followed
+by a corrective warm point. Worker resource limits and recycling remain enabled.
+
 AspenOps only terminates a process it created and still verifies as owned. On Windows, Job Object supervision supplies the primary ownership boundary; process fingerprints and descendant checks provide the fallback. Unrelated simulator processes are never legitimate cleanup targets.
 
 ## Semantic registry

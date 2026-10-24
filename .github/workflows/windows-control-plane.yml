@@ -203,6 +203,7 @@ jobs:
             tests/test_backends_convergence.py `
             tests/test_v2_reliability.py `
             tests/test_singleflight.py `
+            tests/test_warm_start_continuity.py `
             tests/test_worker_contracts.py `
             tests/test_worker_protocol_hardening.py `
             tests/test_pool_manager_creation.py `

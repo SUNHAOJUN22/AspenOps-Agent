@@ -72,6 +72,9 @@ class CasePool:
         self._operation_lock = threading.Lock()
         self._singleflight_lock = threading.Lock()
         self._inflight: dict[str, _InflightEvaluation] = {}
+        # A continuation depends on live simulator state, not only on its model digest.
+        # Once that state is lost, only an executed reinitialization may restore it.
+        self._warm_start_loss_reason: str | None = None
 
     def __enter__(self) -> CasePool:
         self.start()
@@ -147,6 +150,8 @@ class CasePool:
         with self._replace_lock:
             handles = list(self._handles)
             self._handles.clear()
+            if handles:
+                self._warm_start_loss_reason = "pool_closed"
         for handle in handles:
             stop_worker(handle)
         self.cache.close()
@@ -220,6 +225,7 @@ class CasePool:
             current = self._handles[index]
             if expected is not None and current is not expected:
                 return current
+            self._warm_start_loss_reason = "worker_replaced"
             if force:
                 abort_worker(current)
             else:
@@ -346,6 +352,26 @@ class CasePool:
             result.communication_ok
             and result.engine_ok
             and not bool(result.diagnostics.get("worker_tainted"))
+        )
+
+    @staticmethod
+    def _warm_start_lost_result(request_hash: str, reason: str) -> EvaluationResult:
+        return EvaluationResult(
+            ok=False,
+            communication_ok=False,
+            engine_ok=False,
+            converged=False,
+            feasible=False,
+            values={},
+            units={},
+            violations=["warm_start_state_lost"],
+            diagnostics={
+                "state_trace": ["received", "warm_start_state_lost"],
+                "warm_start_loss_reason": reason,
+                "requires_executed_reinitialization": True,
+            },
+            elapsed_s=0.0,
+            request_hash=request_hash,
         )
 
     @staticmethod
@@ -520,12 +546,32 @@ class CasePool:
 
                     recycle_event: tuple[str, int, int] | None = None
                     pre_reason = self._recycle_reason(handle)
+                    if not request.reinitialize:
+                        loss_reason = self._warm_start_loss_reason or pre_reason
+                        if loss_reason is not None:
+                            self._warm_start_loss_reason = loss_reason
+                            lost = self._warm_start_lost_result(key, loss_reason)
+                            with result_lock:
+                                for index in indexes:
+                                    output[index] = deepcopy(lost)
+                            continue
                     if pre_reason is not None:
                         old_generation = handle.generation
                         handle = self._replace(handle_index, expected=handle)
                         recycle_event = (pre_reason, old_generation, handle.generation)
 
                     result = evaluate_on_worker(handle, request)
+                    # Reading a cached cold result never reaches this branch. It must
+                    # not certify that the current simulator has restored its state.
+                    if (
+                        request.reinitialize
+                        and result.communication_ok
+                        and result.engine_ok
+                        and result.converged
+                    ):
+                        with self._replace_lock:
+                            if self._handles[handle_index] is handle:
+                                self._warm_start_loss_reason = None
                     self._bind_execution_identity(result, handle)
                     result.cache_source = "computed"
                     result.cache_hit = False

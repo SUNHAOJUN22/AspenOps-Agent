@@ -841,7 +841,7 @@ class BackgroundScheduler:
         last = -1
         for index, result in enumerate(results):
             violations = set(result.get("violations", []))
-            if "batch_cancelled" in violations:
+            if violations.intersection({"batch_cancelled", "warm_start_state_lost"}):
                 break
             if violations.intersection(
                 {"worker_receive_failed", "worker_send_failed", "worker_protocol_error"}
