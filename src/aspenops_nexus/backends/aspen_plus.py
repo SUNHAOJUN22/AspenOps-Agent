@@ -77,6 +77,7 @@ class AspenPlusBackend(SimulatorBackend):
 
     def __init__(self) -> None:
         self.document: Any = None
+        self.visible = False
         self.progid: str | None = None
         self.model_path: Path | None = None
         self.path_cache: dict[str, str] = {}
@@ -112,6 +113,7 @@ class AspenPlusBackend(SimulatorBackend):
                 self._open_document(document, path)
                 self._set_if_available(document, "Visible", int(visible))
                 self.document = document
+                self.visible = visible
                 self.progid = candidate.progid
                 self.model_path = path
                 break
@@ -319,10 +321,16 @@ class AspenPlusBackend(SimulatorBackend):
             raise BackendError("No Aspen document is open")
         started = time.perf_counter()
         engine = self.document.Engine
-        engine.Run2()
+        # Aspen's ActiveX guide requires asynchronous execution when the GUI
+        # is visible; the existing IsRunning poll observes completion.
+        if self.visible:
+            engine.Run2(True)
+        else:
+            engine.Run2()
+        status_timeout_default = os.getenv("ASPENOPS_TIMEOUT_S", "1200") if self.visible else "2.0"
         idle = poll_engine_idle(
             lambda: self._engine_running(engine),
-            timeout_s=float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", "2.0")),
+            timeout_s=float(os.getenv("ASPENOPS_STATUS_TIMEOUT_S", status_timeout_default)),
             poll_interval_s=float(os.getenv("ASPENOPS_STATUS_POLL_S", "0.1")),
             stable_samples=int(os.getenv("ASPENOPS_STATUS_STABLE_SAMPLES", "2")),
         )

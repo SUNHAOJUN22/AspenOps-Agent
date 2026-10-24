@@ -79,7 +79,7 @@ def test_pareto_rejects_invalid_scientific_evidence(point):
 
 
 def _design(formulas, coefficients, *, weights=None):
-    doc = json.loads(Path("examples/process-design-v2.example.json").read_text())
+    doc = json.loads(Path("examples/process-design-v2.example.json").read_text(encoding="utf-8"))
     doc["components"] = [
         {
             "id": key,

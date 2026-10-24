@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import aspenops_nexus.backends.aspen_plus as aspen_module
 from aspenops_nexus.backends.aspen_plus_strict import AspenPlusBackend
 from aspenops_nexus.backends.factory import create_backend
 from aspenops_nexus.backends.hysys import HysysBackend
@@ -40,9 +41,30 @@ class FakeAspenEngine:
         self.Messages = None
         self.Warnings = None
         self.run_calls = 0
+        self.async_modes: list[bool] = []
 
-    def Run2(self) -> None:
+    def Run2(self, asynchronous: bool = False) -> None:
         self.run_calls += 1
+        self.async_modes.append(asynchronous)
+
+
+class FakeDelayedAspenEngine(FakeAspenEngine):
+    def __init__(self, running_samples: int) -> None:
+        super().__init__()
+        self._configured_running_samples = running_samples
+        self._remaining_running_samples = 0
+
+    def Run2(self, asynchronous: bool = False) -> None:
+        super().Run2(asynchronous)
+        if asynchronous:
+            self._remaining_running_samples = max(self._configured_running_samples, 0)
+
+    @property
+    def IsRunning(self) -> bool:
+        if self._remaining_running_samples > 0:
+            self._remaining_running_samples -= 1
+            return True
+        return False
 
 
 class FakeAspenDocument:
@@ -153,6 +175,53 @@ def test_aspen_backend_accepts_explicit_success_when_idle(monkeypatch: Any) -> N
     assert result["converged"] is True
     assert result["convergence_state"] == "converged"
     assert backend.document.Engine.run_calls == 1
+    assert backend.document.Engine.async_modes == [False]
+
+
+def test_aspen_backend_runs_visible_simulation_asynchronously(monkeypatch: Any) -> None:
+    configure_fast_aspen_poll(monkeypatch)
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.document.Engine = FakeDelayedAspenEngine(running_samples=3)
+    backend.visible = True
+
+    result = backend.run()
+
+    assert result["converged"] is True
+    assert backend.document.Engine.run_calls == 1
+    assert backend.document.Engine.async_modes == [True]
+    assert result["engine_idle"] is True
+
+
+def test_visible_aspen_poll_uses_runtime_timeout_by_default(monkeypatch: Any) -> None:
+    monkeypatch.delenv("ASPENOPS_STATUS_TIMEOUT_S", raising=False)
+    monkeypatch.delenv("ASPENOPS_TIMEOUT_S", raising=False)
+    backend = AspenPlusBackend()
+    backend.document = FakeAspenDocument("Run completed and converged")
+    backend.visible = True
+    captured: dict[str, float] = {}
+    real_poll = aspen_module.poll_engine_idle
+
+    def capture_timeout(
+        read_running: Any,
+        *,
+        timeout_s: float,
+        poll_interval_s: float,
+        stable_samples: int,
+    ) -> Any:
+        captured["timeout_s"] = timeout_s
+        return real_poll(
+            read_running,
+            timeout_s=0.05,
+            poll_interval_s=0.001,
+            stable_samples=1,
+        )
+
+    monkeypatch.setattr(aspen_module, "poll_engine_idle", capture_timeout)
+
+    backend.run()
+
+    assert captured["timeout_s"] == 1200.0
 
 
 def test_aspen_backend_rejects_negative_evidence(monkeypatch: Any) -> None:

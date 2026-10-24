@@ -33,6 +33,7 @@
 
 ## Unreleased
 
+- run visible Aspen Plus simulations through the asynchronous ActiveX `Run2` mode and poll for completion;
 - added simulator-neutral `aspenops.flowsheet/v1` Process Intent IR;
 - added deterministic normalization, SHA-256 identity and fail-closed topology validation;
 - added explicit execution-versus-compiler capability declarations for Mock, Aspen Plus, HYSYS, DWSIM, IDAES and Modelica;

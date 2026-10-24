@@ -437,6 +437,7 @@ def test_aspen_open_rejects_nonwindows_and_tracks_owned_descendants(
     monkeypatch.setenv("ASPENOPS_COM_SETTLE_S", "0")
     backend.open(model, visible=True)
     assert backend.document is document
+    assert backend.visible is True
     assert backend.progid == "Apwn.Document.40.0"
     assert backend.model_path == model.resolve()
     assert backend.owned_processes == {101: fingerprint}
