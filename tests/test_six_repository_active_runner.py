@@ -80,37 +80,44 @@ def test_execute_cycle_stops_at_first_failure(tmp_path: Path) -> None:
 
 def test_read_previous_requires_pass_and_exact_sha(tmp_path: Path) -> None:
     tested_sha = "a" * 40
+    tree = "b" * 40
+    context = {
+        "repository": "SUNHAOJUN22/AspenOps-Agent",
+        "kind": "aspenops",
+        "slug": "aspenops",
+        "commands": [list(command) for command in COMMANDS["aspenops"]],
+        "command_identity": command_identity(COMMANDS["aspenops"]),
+    }
+    payload = {
+        **context,
+        "schema_version": "six-repository-active-gate/v5",
+        "verdict": "PASS",
+        "tested_sha": tested_sha,
+        "source_identity": {"head": tested_sha, "tree": tree},
+        "stage": 1,
+        "target_active_ns": 100,
+        "initial_active_ns": 0,
+        "initial_cycles": 0,
+        "stage_active_ns": 123,
+        "stage_cycles": 4,
+        "total_active_ns": 123,
+        "total_cycles": 4,
+        "failure": None,
+    }
     summary = tmp_path / "stage-one.json"
-    summary.write_text(
-        json.dumps(
-            {
-                "verdict": "PASS",
-                "tested_sha": tested_sha,
-                "total_active_ns": 123,
-                "total_cycles": 4,
-            }
-        ),
-        encoding="utf-8",
-    )
+    summary.write_text(json.dumps(payload), encoding="utf-8")
 
-    assert read_previous(summary, tested_sha) == (123, 4)
+    def read(sha: str) -> tuple[int, int]:
+        return read_previous(summary, sha, expected_context=context, next_stage=2, source_tree=tree)
+
+    assert read(tested_sha) == (123, 4)
 
     with pytest.raises(RuntimeError, match="SHA mismatch"):
-        read_previous(summary, "b" * 40)
+        read("b" * 40)
 
-    summary.write_text(
-        json.dumps(
-            {
-                "verdict": "FAIL",
-                "tested_sha": tested_sha,
-                "total_active_ns": 123,
-                "total_cycles": 4,
-            }
-        ),
-        encoding="utf-8",
-    )
+    summary.write_text(json.dumps({**payload, "verdict": "FAIL"}), encoding="utf-8")
     with pytest.raises(RuntimeError, match="not PASS"):
-        read_previous(summary, tested_sha)
+        read(tested_sha)
 
 
 def test_run_stage_fails_closed_when_main_is_stale(
@@ -161,6 +168,13 @@ def test_run_stage_accumulates_only_formal_cycle_time(
         run_stage.__globals__,
         "remote_main_sha",
         lambda _repository: tested_sha,
+    )
+    # This test isolates the active-time accounting contract. Real Git checkout
+    # rejection/continuation cases are exercised in test_active_source_identity.
+    monkeypatch.setitem(
+        run_stage.__globals__,
+        "local_source_identity",
+        lambda _sha: {"repository_root": "/fixture", "head": tested_sha, "tree": "d" * 40},
     )
     monkeypatch.setitem(
         run_stage.__globals__,

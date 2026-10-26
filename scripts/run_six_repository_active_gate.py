@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -144,9 +145,57 @@ def execute_cycle(commands: CommandGroup) -> tuple[int, bytes, int]:
     return 0, bytes(output), active_ns
 
 
-def read_previous(path: Path, tested_sha: str) -> tuple[int, int]:
-    """Load a prior stage only when its immutable identity is exactly aligned."""
+def local_source_identity(tested_sha: str) -> dict[str, str]:
+    """Check the actual checkout used by commands, including staged/untracked work.
+
+    These are Git-state checkpoints, not an immutable filesystem or dependency
+    sandbox. Runtime artifacts must be ignored by Git or outside the checkout.
+    """
+    cwd = Path.cwd().resolve()
+
+    def git(*arguments: str) -> str:
+        result = subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "-C", str(cwd), *arguments],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"local Git identity check failed: {result.stderr.strip()}")
+        return result.stdout.strip()
+
+    root = Path(git("rev-parse", "--show-toplevel")).resolve()
+    if cwd != root:
+        raise RuntimeError(f"formal commands must run from repository root: {cwd} != {root}")
+    head = git("rev-parse", "--verify", "HEAD")
+    if head != tested_sha:
+        raise RuntimeError(f"local HEAD mismatch: tested={tested_sha} local={head}")
+    index_entries = git("ls-files", "-v", "-z").split("\0")
+    if any(entry and (entry[0].islower() or entry[0] == "S") for entry in index_entries):
+        raise RuntimeError("local source uses assume-unchanged or skip-worktree index flags")
+    status = git("status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=none")
+    if status:
+        raise RuntimeError(f"local source is not clean: {status}")
+    return {"repository_root": str(root), "head": head, "tree": git("rev-parse", "HEAD^{tree}")}
+
+
+def read_previous(
+    path: Path,
+    tested_sha: str,
+    *,
+    expected_context: dict[str, Any],
+    next_stage: int,
+    source_tree: str,
+) -> tuple[int, int]:
+    """Continue only a matching, internally consistent v5 stage receipt.
+
+    The caller must trust the prior local receipt; hashes and field consistency
+    do not authenticate its author or independently prove the recorded runtime.
+    """
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("previous stage must be a JSON object")
     if payload.get("verdict") != "PASS":
         raise RuntimeError(f"previous stage is not PASS: {payload.get('verdict')!r}")
     if payload.get("tested_sha") != tested_sha:
@@ -154,7 +203,48 @@ def read_previous(path: Path, tested_sha: str) -> tuple[int, int]:
             "previous stage SHA mismatch: "
             f"expected {tested_sha}, observed {payload.get('tested_sha')!r}"
         )
-    return int(payload["total_active_ns"]), int(payload["total_cycles"])
+    if payload.get("schema_version") != "six-repository-active-gate/v5":
+        raise RuntimeError("previous stage lacks v5 local-source and command identity")
+    for key in ("repository", "kind", "slug", "command_identity", "commands"):
+        if payload.get(key) != expected_context[key]:
+            raise RuntimeError(f"previous stage {key} mismatch")
+    source_identity = payload.get("source_identity")
+    if not isinstance(source_identity, dict) or (
+        source_identity.get("head"),
+        source_identity.get("tree"),
+    ) != (tested_sha, source_tree):
+        raise RuntimeError("previous stage local-source identity mismatch")
+    for key in (
+        "stage",
+        "target_active_ns",
+        "initial_active_ns",
+        "initial_cycles",
+        "stage_active_ns",
+        "stage_cycles",
+        "total_active_ns",
+        "total_cycles",
+    ):
+        if type(payload.get(key)) is not int or payload[key] < 0:
+            raise RuntimeError(f"previous stage {key} must be a nonnegative integer")
+    if payload["stage"] != next_stage - 1 or payload["stage"] < 1:
+        raise RuntimeError("previous stage is not the immediately preceding stage")
+    if (
+        payload.get("failure") is not None
+        or payload["stage_active_ns"] == 0
+        or payload["stage_cycles"] == 0
+        or payload["total_active_ns"] != payload["initial_active_ns"] + payload["stage_active_ns"]
+        or payload["total_cycles"] != payload["initial_cycles"] + payload["stage_cycles"]
+        or not payload["initial_active_ns"]
+        < payload["target_active_ns"]
+        <= payload["total_active_ns"]
+        or (payload["stage"] == 1 and (payload["initial_active_ns"] or payload["initial_cycles"]))
+        or (
+            payload["stage"] > 1
+            and (not payload["initial_active_ns"] or not payload["initial_cycles"])
+        )
+    ):
+        raise RuntimeError("previous stage totals do not describe a completed formal stage")
+    return payload["total_active_ns"], payload["total_cycles"]
 
 
 def terminal_payload(
@@ -204,13 +294,16 @@ def write_terminal_summary(
 
 
 def run_stage(args: argparse.Namespace) -> int:
-    """Run one stage and fail closed on a moved remote ``main``."""
+    """Run one stage bound to remote main, the local checkout and its commands."""
     if args.stage <= 0:
         raise ValueError("stage must be positive")
     if args.target_active_ns <= 0:
         raise ValueError("target-active-ns must be positive")
-    if not args.tested_sha.strip():
-        raise ValueError("tested-sha must not be empty")
+    if (
+        not isinstance(args.tested_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", args.tested_sha) is None
+    ):
+        raise ValueError("tested-sha must be a complete lowercase SHA-1 commit identity")
 
     commands = COMMANDS[args.kind]
     output_dir = args.output_dir.resolve()
@@ -220,19 +313,8 @@ def run_stage(args: argparse.Namespace) -> int:
 
     initial_active_ns = 0
     initial_cycles = 0
-    if args.previous_summary is not None:
-        initial_active_ns, initial_cycles = read_previous(
-            args.previous_summary.resolve(),
-            args.tested_sha,
-        )
-    if initial_active_ns >= args.target_active_ns:
-        raise ValueError(
-            "previous active time already meets/exceeds requested target; "
-            "a later stage must advance the target"
-        )
-
     summary: dict[str, Any] = {
-        "schema_version": "six-repository-active-gate/v4",
+        "schema_version": "six-repository-active-gate/v5",
         "slug": args.slug,
         "kind": args.kind,
         "repository": args.repository,
@@ -248,6 +330,30 @@ def run_stage(args: argparse.Namespace) -> int:
         "started_at": utc_now(),
     }
 
+    stage_active_ns = 0
+    stage_cycles = 0
+
+    def check_local_source(where: str) -> bool:
+        try:
+            observed = local_source_identity(args.tested_sha)
+            previous = summary.get("source_identity")
+            if previous is not None and observed != previous:
+                raise RuntimeError("local checkout identity changed during the stage")
+            summary["source_identity"] = observed
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            failure = f"SOURCE_MISMATCH {where}: {exc}"
+            write_terminal_summary(
+                summary_path,
+                summary,
+                verdict="SOURCE_MISMATCH",
+                failure=failure,
+                stage_active_ns=stage_active_ns,
+                stage_cycles=stage_cycles,
+            )
+            print(failure, file=sys.stderr)
+            return False
+        return True
+
     current_remote = remote_main_sha(args.repository)
     if current_remote != args.tested_sha:
         failure = f"STALE_MAIN before stage: tested={args.tested_sha} remote={current_remote}"
@@ -262,16 +368,48 @@ def run_stage(args: argparse.Namespace) -> int:
         print(failure, file=sys.stderr)
         return 3
 
-    stage_active_ns = 0
-    stage_cycles = 0
+    if not check_local_source("before stage"):
+        return 3
+
+    try:
+        if args.previous_summary is not None:
+            initial_active_ns, initial_cycles = read_previous(
+                args.previous_summary.resolve(),
+                args.tested_sha,
+                expected_context=summary,
+                next_stage=args.stage,
+                source_tree=summary["source_identity"]["tree"],
+            )
+        elif args.stage != 1:
+            raise RuntimeError("stages after stage 1 require the immediately preceding receipt")
+        if initial_active_ns >= args.target_active_ns:
+            raise RuntimeError(
+                "a later stage must advance the previous completed active-time total"
+            )
+    except (OSError, ValueError, RuntimeError) as exc:
+        failure = f"INVALID_PREVIOUS_STAGE: {exc}"
+        write_terminal_summary(
+            summary_path,
+            summary,
+            verdict="INVALID_PREVIOUS_STAGE",
+            failure=failure,
+            stage_active_ns=0,
+            stage_cycles=0,
+        )
+        print(failure, file=sys.stderr)
+        return 2
+    summary.update(initial_active_ns=initial_active_ns, initial_cycles=initial_cycles)
+
     with ledger_path.open("w", encoding="utf-8", newline="\n") as ledger:
         while initial_active_ns + stage_active_ns < args.target_active_ns:
+            if not check_local_source(f"before cycle {stage_cycles + 1}"):
+                return 3
             stage_cycles += 1
             cycle_started_at = utc_now()
             returncode, output, elapsed_ns = execute_cycle(commands)
             stage_active_ns += elapsed_ns
             record = {
-                "schema_version": "six-repository-active-cycle/v4",
+                "schema_version": "six-repository-active-cycle/v5",
                 "slug": args.slug,
                 "stage": args.stage,
                 "cycle": stage_cycles,
@@ -340,6 +478,8 @@ def run_stage(args: argparse.Namespace) -> int:
                 )
                 print(failure, file=sys.stderr)
                 return 3
+            if not check_local_source(f"after cycle {stage_cycles}"):
+                return 3
 
     final_remote = remote_main_sha(args.repository)
     if final_remote != args.tested_sha:
@@ -353,6 +493,8 @@ def run_stage(args: argparse.Namespace) -> int:
             stage_cycles=stage_cycles,
         )
         print(failure, file=sys.stderr)
+        return 3
+    if not check_local_source("at stage completion"):
         return 3
 
     write_terminal_summary(

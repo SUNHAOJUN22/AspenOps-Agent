@@ -102,6 +102,36 @@ A software qualification is acceptable only when every required command succeeds
 
 只有全部要求的命令通过，软件资格才成立。
 
+### Repeated active-stage receipts / 重复运行阶段回执
+
+`scripts/run_six_repository_active_gate.py` v5 binds each active stage to the
+actual local checkout as well as the declared remote `main`. Run it from the
+repository root at the complete target commit, with no staged, unstaged or
+unignored untracked changes, and without assume-unchanged/skip-worktree index
+flags that can hide source changes. Keep runtime evidence outside the checkout or in a
+Git-ignored output directory. The runner checks local HEAD, tree and clean Git
+state before the stage, before and after each formal cycle, and before emitting
+PASS. A mismatch produces `SOURCE_MISMATCH`; successful subprocess exits alone
+cannot qualify a different or changed source tree.
+
+The argument vectors and active-time accounting are unchanged: only time inside
+formal command subprocesses contributes to active duration. Continuing stage N
+requires a matching, completed stage N−1 v5 receipt, including repository, command
+sequence/digest, source commit/tree and consistent duration/cycle totals. Older
+v4 receipts lack these bindings and remain historical records; start a fresh
+v5 stage instead of copying their elapsed time into a new qualification.
+
+These checks require a trusted local workspace and prior receipt. They do not
+authenticate the receipt's author, freeze every file between checkpoints, bind
+the full dependency environment or establish scientific/real-Aspen acceptance.
+
+v5 阶段回执同时核对远程 `main` 与实际运行目录的本地提交、树和 Git 工作区状态，
+拒绝错误 HEAD、工作区改动及未忽略的新文件。每轮正式命令运行前后以及最终 PASS
+写入前均复核；日志应放在仓库外或已忽略的目录。只有正式命令子进程耗时计入累计
+时间。阶段继承必须来自同一仓库、同一命令序列、同一源码且内部计数一致的紧邻
+已完成 v5 阶段；旧 v4 记录不自动转为新资格证据。该检查是可信工作区内的证据
+一致性检查，不能代替作者认证、不可变执行环境、科学审阅或真实 Aspen 验收。
+
 ## 4. Qualification writer / 资格证据写入器
 
 `scripts/write_delivery_qualification.py` converts existing machine evidence into `docs/DELIVERY_QUALIFICATION.json`.

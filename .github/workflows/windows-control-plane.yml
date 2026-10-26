@@ -217,6 +217,8 @@ jobs:
             tests/test_wheel_smoke_governance.py `
             tests/test_wheel_metadata_edges.py `
             tests/test_source_tree_audit.py `
+            tests/test_six_repository_active_runner.py `
+            tests/test_active_source_identity.py `
             --junitxml=var/ci/windows-contracts.xml `
             --durations=20 *>&1 |
             Tee-Object -FilePath var/ci/contracts.log
