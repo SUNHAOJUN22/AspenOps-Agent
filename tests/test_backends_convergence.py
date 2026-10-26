@@ -403,6 +403,28 @@ def test_hysys_running_state_does_not_use_string_truthiness() -> None:
     assert HysysBackend._solver_running(SimpleNamespace(IsSolving="unknown")) is None
 
 
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("ASPENOPS_HYSYS_STATUS_TIMEOUT_S", "nan"),
+        ("ASPENOPS_HYSYS_STATUS_POLL_S", "0"),
+        ("ASPENOPS_HYSYS_STATUS_STABLE_SAMPLES", "0"),
+        ("ASPENOPS_HYSYS_STATUS_TIMEOUT_S", "not-a-number"),
+    ],
+)
+def test_invalid_hysys_poll_configuration_does_not_enable_solver(
+    monkeypatch: Any, setting: str, value: str
+) -> None:
+    configure_fast_hysys_poll(monkeypatch)
+    monkeypatch.setenv(setting, value)
+    backend = FakeHysysBackend(True)
+
+    with pytest.raises(ValueError):
+        backend.run()
+
+    assert backend.case.Solver.CanSolve is False
+
+
 def test_hysys_backend_uses_project_boolean_convergence_node(monkeypatch: Any) -> None:
     configure_fast_hysys_poll(monkeypatch)
     backend = FakeHysysBackend(True)

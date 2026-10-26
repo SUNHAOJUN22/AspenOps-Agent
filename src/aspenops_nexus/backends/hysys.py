@@ -14,6 +14,7 @@ from ..convergence import (
     classify_convergence,
     normalize_running_flag,
     poll_engine_idle,
+    validate_polling_config,
 )
 from ..registry import ResolvedNode
 from .base import BackendError, SimulatorBackend
@@ -227,14 +228,23 @@ class HysysBackend(SimulatorBackend):
     def run(self) -> dict[str, Any]:
         if self.case is None:
             raise BackendError("No HYSYS case is open")
+        # Reject invalid monitoring settings before enabling the real solver.
+        timeout_s = float(os.getenv("ASPENOPS_HYSYS_STATUS_TIMEOUT_S", "1200"))
+        poll_interval_s = float(os.getenv("ASPENOPS_HYSYS_STATUS_POLL_S", "0.25"))
+        stable_samples = int(os.getenv("ASPENOPS_HYSYS_STATUS_STABLE_SAMPLES", "3"))
+        validate_polling_config(
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            stable_samples=stable_samples,
+        )
         started = time.perf_counter()
         solver = self.case.Solver
         solver.CanSolve = True
         idle = poll_engine_idle(
             lambda: self._solver_running(solver),
-            timeout_s=float(os.getenv("ASPENOPS_HYSYS_STATUS_TIMEOUT_S", "1200")),
-            poll_interval_s=float(os.getenv("ASPENOPS_HYSYS_STATUS_POLL_S", "0.25")),
-            stable_samples=int(os.getenv("ASPENOPS_HYSYS_STATUS_STABLE_SAMPLES", "3")),
+            timeout_s=timeout_s,
+            poll_interval_s=poll_interval_s,
+            stable_samples=stable_samples,
         )
         status_values = self._status_values()
         evidence = classify_convergence(
