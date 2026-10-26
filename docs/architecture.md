@@ -57,6 +57,38 @@ The graph declares components, property package, units, typed ports, streams and
 
 Process understanding is separated from simulator execution. A concept, parameter or repair Agent may produce only validated Process Intent IR. It cannot directly own COM, write arbitrary Python/VBA/Shell or call unrestricted simulator methods.
 
+### Requirement-bound feed quantities
+
+Offline `validate-design` validates the current requirement hash and also binds each
+required feed to its unique outgoing material stream by the source equipment ID.
+That stream must declare exactly the feed's component IDs and approved `TOTAL_FLOW`,
+`TEMPERATURE` and `PRESSURE` values. Missing parameters, unapproved values, incompatible
+dimensions and changed setpoints block the plan and suppress its preview. Stream order,
+display names and stream IDs do not determine which feed a stream represents.
+
+The comparison uses the declared units and canonical physical units. For example,
+100 kmol/h equals 100000 mol/h, 25 degC equals 298.15 K, and 1.2 bar equals 120 kPa.
+Only relative unit-conversion roundoff of eight machine epsilons is allowed, with no
+absolute tolerance (including for subnormal flows); measurement
+uncertainty does not authorize a different design setpoint. Molar, mass and volumetric
+flows remain distinct bases. No molecular-weight, density or state assumption is used
+to convert between them. Physical quantities require explicit units on both documents.
+
+The boundary stream is the single parameter source for these feed quantities. Placing
+the same quantity names on the feed equipment or its design specifications is ambiguous
+because the compiler emits separate equipment and stream parameter steps, so the
+contract rejects that placement. Multiple outgoing material streams likewise require an
+explicit downstream splitter rather than an inferred allocation of the approved feed.
+
+This check does not complete the native material specification. ProcessDesignIR v2
+streams have component IDs but no typed composition fractions, composition basis or
+phase fields. The requirement hash preserves those approved requirements; it does not
+prove they have been transferred to a native simulator. Separate configuration and
+readback are still needed for composition and phase, and conservation, convergence and
+engineering acceptance still require their existing gates. The standalone compiler,
+which receives only a design, cannot compare it with a requirement document; callers
+that claim requirement conformance must use `validate-design` with both documents.
+
 ## Compiler boundary
 
 Backend execution and automatic flowsheet compilation are independent capabilities. Aspen Plus and HYSYS execution exist for approved models on licensed Windows, but their IR compilers remain planned. DWSIM, IDAES and Modelica/FMI are roadmap backends only; no adapter is claimed until a compiler conformance suite and execution tests exist.
@@ -163,9 +195,18 @@ pool keeps this condition across calls. Recovery in the same pool requires a `re
 executed on its current Worker with communication success, engine success, and convergence. A new pool
 may start a separately declared trajectory from the model initial state, but it does not continue
 the prior trajectory; a cached cold result is only an independent historical result and cannot
-restore simulator state. Ordinary constraint failure
+restore simulator state. This also applies to a same-batch deduplicated final cold point and
+an `inflight_singleflight` waiter: another solve may have changed the live state since the
+reused result was produced. Only an actually executed subsequent cold point can restore
+continuation. Ordinary constraint failure
 or nonconvergence without Worker replacement retains the live state and may still be followed
 by a corrective warm point. Worker resource limits and recycling remain enabled.
+
+The Process Design IR recycle gate removes each owned tear stream by its stream identity
+and requires the remaining material graph to be acyclic. Checking only the cycles first
+encountered by a traversal is insufficient for overlapping cycles. A parallel material
+stream with the same source and target as a tear remains part of the residual graph.
+Passing this structural gate does not establish convergence or qualify a real simulator.
 
 AspenOps only terminates a process it created and still verifies as owned. On Windows, Job Object supervision supplies the primary ownership boundary; process fingerprints and descendant checks provide the fallback. Unrelated simulator processes are never legitimate cleanup targets.
 

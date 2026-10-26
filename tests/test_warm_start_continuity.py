@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
 
 from aspenops_nexus.models import EvaluationRequest
-from aspenops_nexus.pool import CasePool
+from aspenops_nexus.pool import CasePool, _InflightEvaluation
 from aspenops_nexus.scheduler import BackgroundScheduler
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,60 @@ def pool_at(tmp_path: Path, *, points: int = 20) -> CasePool:
         cache_path=tmp_path / "cache.sqlite3",
         worker_max_points=points,
     )
+
+
+def test_same_batch_cold_dedup_cannot_establish_continuation(tmp_path: Path) -> None:
+    with pool_at(tmp_path) as pool:
+        cold = pool.evaluate_many(
+            [
+                request(0, flow=200, cold=True),
+                request(1, flow=300, cold=True),
+                request(2, flow=200, cold=True),
+            ]
+        )
+        assert [item.values[FLOW] for item in cold] == [200, 300, 200]
+        assert cold[-1].cache_source == "same_batch_dedup"
+        continuation = pool.evaluate_many([request(3)])[0]
+        assert not continuation.ok, continuation.to_dict()
+        assert continuation.values == {}
+        assert "warm_start_state_lost" in continuation.violations
+
+        executed = pool.evaluate_many([request(4, flow=400, cold=True)])[0]
+        restored = pool.evaluate_many([request(5)])[0]
+        assert executed.ok and not executed.cache_hit
+        assert restored.ok and restored.values[FLOW] == 400
+
+
+def test_executed_cold_after_same_batch_dedup_establishes_continuation(tmp_path: Path) -> None:
+    with pool_at(tmp_path) as pool:
+        cold = pool.evaluate_many(
+            [
+                request(0, flow=200, cold=True),
+                request(1, flow=200, cold=True),
+                request(2, flow=300, cold=True),
+            ]
+        )
+        assert cold[1].cache_source == "same_batch_dedup"
+        assert cold[-1].cache_source == "computed"
+        continued = pool.evaluate_many([request(3)])[0]
+        assert continued.ok and continued.values[FLOW] == 300
+
+
+def test_singleflight_result_does_not_certify_later_worker_state(tmp_path: Path) -> None:
+    with pool_at(tmp_path) as pool:
+        first = pool.evaluate_many([request(0, flow=200, cold=True)])[0]
+        assert first.ok
+        flight = _InflightEvaluation(Event(), result=first)
+        # A waiting duplicate can be scheduled after another operation has completed.
+        assert pool.evaluate_many([request(1, flow=300, cold=True)])[0].ok
+        flight.event.set()
+        duplicate = pool._wait_for_flight(flight, first.request_hash, None)
+        assert duplicate.cache_source == "inflight_singleflight"
+        assert duplicate.values[FLOW] == 200
+        continuation = pool.evaluate_many([request(2)])[0]
+        assert not continuation.ok, continuation.to_dict()
+        assert "warm_start_state_lost" in continuation.violations
+        assert continuation.values == {}
 
 
 def test_uninterrupted_warm_start_retains_inputs_across_batch_and_calls(tmp_path: Path) -> None:

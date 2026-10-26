@@ -533,11 +533,15 @@ def _validate_equipment_contract(
     return issues
 
 
-def _cycle_paths(design: ProcessDesignIR) -> list[tuple[str, ...]]:
+def _cycle_paths(
+    design: ProcessDesignIR,
+    *,
+    excluded_stream_ids: frozenset[str] = frozenset(),
+) -> list[tuple[str, ...]]:
     known = {item.id for item in design.equipment}
     adjacency: dict[str, set[str]] = defaultdict(set)
     for stream in design.streams:
-        if stream.domain == "material":
+        if stream.domain == "material" and stream.id not in excluded_stream_ids:
             adjacency[stream.source.equipment_id].add(stream.target.equipment_id)
     visited: set[str] = set()
     active: list[str] = []
@@ -1140,22 +1144,24 @@ def validate_process_design(design: ProcessDesignIR) -> EngineeringValidationRep
         recycle_streams.update({recycle.stream_id, recycle.tear_stream_id})
 
     cycles = _cycle_paths(design)
-    owned_tear_edges = {
-        (tear.source.equipment_id, tear.target.equipment_id)
+    owned_tear_ids = frozenset(
+        tear.id
         for recycle in design.recycles
         if (tear := stream_map.get(recycle.tear_stream_id)) is not None and tear.kind == "tear"
-    }
-    for cycle in cycles:
-        cycle_edges = set(zip(cycle, cycle[1:], strict=False))
-        if not cycle_edges.intersection(owned_tear_edges):
-            issues.append(
-                _issue(
-                    "ENGINEERING_BLOCKER",
-                    "topology.recycle_contract_missing",
-                    "streams",
-                    "Directed material cycle has no owned tear edge: " + " -> ".join(cycle),
-                )
+    )
+    # DFS witnesses from the original graph do not enumerate every overlapping
+    # cycle. Removing the actual owned streams must leave an acyclic graph; an
+    # uncut parallel material stream remains present even if its endpoints match.
+    for cycle in _cycle_paths(design, excluded_stream_ids=owned_tear_ids):
+        issues.append(
+            _issue(
+                "ENGINEERING_BLOCKER",
+                "topology.recycle_contract_missing",
+                "streams",
+                "Directed material cycle remains after removing owned tear streams: "
+                + " -> ".join(cycle),
             )
+        )
     if design.recycles and not cycles:
         issues.append(
             _issue(

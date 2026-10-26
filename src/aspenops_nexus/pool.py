@@ -413,6 +413,10 @@ class CasePool:
         result = deepcopy(flight.result)
         result.cache_source = "inflight_singleflight"
         result.cache_hit = True
+        # The leader's solve may have been followed by a different operation before
+        # this waiter resumed. Reusing its result cannot certify the current state.
+        with self._operation_lock:
+            self._mark_warm_start_state_lost("cached_reinitialize")
         return result
 
     def _evaluate_singleflight(
@@ -633,9 +637,10 @@ class CasePool:
             thread.join()
         if cache_payloads:
             self.cache.put_many(cache_payloads)
-        if len(requests) - 1 in cached_reinitialize_indexes:
-            # If the final requested cold point was cached, no executed reinitialize
-            # after it established the state a later continuation would inherit.
+        final_result = output[-1]
+        if requests[-1].reinitialize and final_result is not None and final_result.cache_hit:
+            # The final requested cold point must actually execute, including when
+            # its independent result was reused from an earlier point in this batch.
             self._mark_warm_start_state_lost("cached_reinitialize")
         if errors:
             raise RuntimeError(f"CasePool dispatch failed: {errors[0]}") from errors[0]

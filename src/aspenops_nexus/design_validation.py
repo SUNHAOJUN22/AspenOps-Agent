@@ -60,7 +60,11 @@ def validate_design_documents(
         "preview": None if preview is None else preview.to_dict(),
         "boundary": (
             "A valid result authorizes only an offline deterministic design plan. It does not "
-            "authorize COM execution or prove Aspen/HYSYS native topology or physics."
+            "authorize COM execution or prove Aspen/HYSYS native topology or physics. "
+            "Feed component IDs, total flow, temperature and pressure are bound to the "
+            "requirement. Composition fractions, composition basis and phase have no typed "
+            "stream fields in ProcessDesignIR v2; their native configuration and readback "
+            "still require separate verification."
         ),
     }
 
