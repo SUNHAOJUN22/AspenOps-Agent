@@ -627,14 +627,24 @@ class CasePool:
                     with result_lock:
                         errors.append(exc)
 
-        threads = [
-            threading.Thread(target=worker_loop, args=(index,), name=f"aspenops-dispatch-{index}")
-            for index in range(min(len(self._handles), len(unique)))
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        dispatch_count = min(len(self._handles), len(unique))
+        if dispatch_count == 1:
+            # evaluate_many is synchronous and already holds the operation lock.
+            # With one active worker, another dispatch thread adds no concurrency.
+            # The simulator still runs in its existing isolated worker process;
+            # warm-start affinity, cancellation and recycling use the same loop.
+            worker_loop(0)
+        else:
+            threads = [
+                threading.Thread(
+                    target=worker_loop, args=(index,), name=f"aspenops-dispatch-{index}"
+                )
+                for index in range(dispatch_count)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
         if cache_payloads:
             self.cache.put_many(cache_payloads)
         final_result = output[-1]

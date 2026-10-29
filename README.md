@@ -272,6 +272,8 @@ MCP lifespan 拥有 scheduler 启停和异常回收，不公开真实 Aspen 认�
 
 相同不可变冷启动请求可使用 same-batch dedup、持久缓存和 `inflight_singleflight`。缓存命中可作为该请求的独立结果，但不会执行参数写入或恢复新 Worker 的模拟器状态；warm-start 延续只使用当前 Worker 的实时状态。失败默认不缓存，返回对象保持深度隔离。
 
+同步调用只有一个实际派发 Worker 时，主进程直接运行派发循环，避免逐次创建与等待额外线程；模拟器仍留在原有隔离进程中。多个实际派发 Worker 仍使用并行派发，许可证上限、轨迹亲和性、取消、超时、回收及冷态缓存边界保持原合同。此优化减少控制程序操作次数，不构成真实 Aspen 求解器提速证据；回归见 [单 Worker 派发测试](tests/test_pool_inline_dispatch.py)。
+
 ## Worker 所有权与回收
 
 每个 Windows Worker 独占 COM session、私有模型副本与 job scope。point budget、age、timeout、protocol error、tainted state 或 cancellation deadline 触发回收。

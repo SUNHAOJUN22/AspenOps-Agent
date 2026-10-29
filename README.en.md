@@ -266,6 +266,8 @@ Durable states include `retry_wait` and `dead_letter`. Leases, heartbeats, cance
 
 Identical immutable cold-start requests may use same-batch deduplication, persistent cache, and `inflight_singleflight`. A cache hit can be returned as an independent result, but it does not execute parameter writes or restore simulator state in the current Worker; warm-start continuation uses only that Worker's live state. Failures are not cached by default and returned objects remain deeply isolated.
 
+When a synchronous call has only one active dispatch worker, the parent runs the dispatch loop directly, avoiding an extra thread creation and join for each call. The simulator remains in its existing isolated process. Multiple active workers retain parallel dispatch, and license limits, trajectory affinity, cancellation, timeouts, recycling and cold-result cache boundaries retain their contracts. This reduces control-plane operations; it is not evidence of faster licensed Aspen solves. See the [single-worker dispatch regressions](tests/test_pool_inline_dispatch.py).
+
 ## Worker ownership and recycling
 
 Each Windows Worker owns one COM session, private model snapshot, and job scope. Point budget, age, timeout, protocol error, taint, or cancellation deadline triggers verified recycling.
