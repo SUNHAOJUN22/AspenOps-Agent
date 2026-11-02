@@ -161,6 +161,8 @@ $$
 
 `constraint_non_finite` / `balance_non_finite` 区别于有限但超差的失败；证据 JSON 使用 `allow_nan=False`。任何单门失败都不能被其他分数抵消。源码：[实际评估](src/aspenops_nexus/evaluation.py)。
 
+运行时守恒项的非零乘积若下溢为零，返回 `balance_underflow` 与无效衡算，不能作为零残差通过。非零相对残差若下溢，则以最小正浮点数作为上界，并标记 `relative_upper_bound=true`；因此零容差仍拒绝非零失衡，正容差比较保持正确。含衡算的请求使用更新后的缓存语义，旧判定不会直接复用。
+
 ### 4. 有量纲目标的规范化与可行性排序
 
 每一目标的实际输出 $y_j$ 首先由 `result.units` 转到目标单位，再使用参考值 $r_j$ 和正尺度 $a_j$：

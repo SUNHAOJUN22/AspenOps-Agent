@@ -406,6 +406,14 @@ def evaluate(
                     )
                     continue
                 signed = compiled_term.spec.coefficient * numeric
+                if signed == 0.0 and compiled_term.spec.coefficient != 0.0 and numeric != 0.0:
+                    invalid_terms.append(
+                        {
+                            "identity": compiled_term.identity,
+                            "value": "derived_underflow",
+                        }
+                    )
+                    continue
                 if not math.isfinite(signed):
                     invalid_terms.append(
                         {
@@ -432,7 +440,10 @@ def evaluate(
                     "floor": compiled_balance.spec.floor,
                 }
                 invalid_balances[name] = invalid_terms
-                violations.append(f"balance_non_finite:{name}")
+                if any(term["value"] == "derived_underflow" for term in invalid_terms):
+                    violations.append(f"balance_underflow:{name}")
+                if any(term["value"] != "derived_underflow" for term in invalid_terms):
+                    violations.append(f"balance_non_finite:{name}")
                 violations.append(f"balance_invalid:{name}")
                 violations.append(f"balance_failed:{name}")
                 feasible = False
@@ -465,6 +476,12 @@ def evaluate(
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
+            relative_underflow = residual != 0.0 and relative == 0.0
+            if relative_underflow:
+                # A positive residual ratio rounded to zero must not satisfy an exact
+                # zero tolerance. The smallest positive float bounds the true ratio
+                # from above and preserves comparisons with every float tolerance.
+                relative = math.nextafter(0.0, 1.0)
             passed = (
                 abs(residual) <= compiled_balance.spec.abs_tol
                 or relative <= compiled_balance.spec.rel_tol
@@ -483,12 +500,20 @@ def evaluate(
                 "rel_tol": compiled_balance.spec.rel_tol,
                 "floor": compiled_balance.spec.floor,
             }
+            if relative_underflow:
+                balance_residuals[name]["relative_upper_bound"] = True
             if not passed:
                 violations.append(f"balance_failed:{name}")
                 feasible = False
         if invalid_balances:
             diagnostics["invalid_balances"] = invalid_balances
-            diagnostics["non_finite_balances"] = invalid_balances
+            non_finite_balances = {
+                name: [term for term in terms if term["value"] != "derived_underflow"]
+                for name, terms in invalid_balances.items()
+            }
+            diagnostics["non_finite_balances"] = {
+                name: terms for name, terms in non_finite_balances.items() if terms
+            }
 
         if not engine_ok:
             violations.append("engine_did_not_return")

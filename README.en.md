@@ -157,6 +157,8 @@ $$
 
 `constraint_non_finite` and `balance_non_finite` differ from finite out-of-tolerance results. Evidence serialization uses `allow_nan=False`. One failed gate cannot be compensated by a high score elsewhere. Implementation: [evaluation](src/aspenops_nexus/evaluation.py).
 
+If a nonzero runtime balance product underflows to zero, the balance is invalid with `balance_underflow`; it cannot pass as a zero residual. If a nonzero relative residual underflows, the smallest positive float is reported as an upper bound with `relative_upper_bound=true`. Zero tolerance still rejects a nonzero imbalance, and comparisons with positive floating-point tolerances remain correct. Balance requests use updated cache semantics so earlier decisions are not replayed.
+
 ### 4. Dimensioned optimization and feasibility ordering
 
 Each actual output $y_j$ is converted from `result.units` to its objective unit before applying reference $r_j$ and positive scale $a_j$:

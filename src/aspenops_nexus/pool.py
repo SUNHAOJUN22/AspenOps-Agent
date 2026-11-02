@@ -317,6 +317,9 @@ class CasePool:
         if any(spec.operator in {"<", ">"} for spec in request.constraints):
             # Do not replay cached feasibility decisions from closed-boundary semantics.
             identity["strict_constraint_semantics"] = "open-boundary-v1"
+        if request.balances:
+            # Older evaluations could accept nonzero balances after float underflow.
+            identity["balance_arithmetic_semantics"] = "underflow-aware-v1"
         return canonical_hash(identity)
 
     def _key_requests(

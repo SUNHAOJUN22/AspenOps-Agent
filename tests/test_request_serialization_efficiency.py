@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from aspenops_nexus import RUNTIME_SCHEMA, __version__
 from aspenops_nexus.hashing import canonical_hash
@@ -139,8 +141,11 @@ def test_physical_identity_preserves_exact_python_shape_and_isolation() -> None:
     assert request.balances[0].terms[0].identifiers["stream"] == "FEED"
 
 
-def test_cache_key_bytes_are_unchanged() -> None:
+@pytest.mark.parametrize("with_balances", [False, True])
+def test_cache_key_bytes_preserve_serialization_and_balance_semantics(with_balances: bool) -> None:
     request = _request()
+    if not with_balances:
+        request = replace(request, balances=())
     pool = object.__new__(CasePool)
     pool.backend_name = "mock"
     pool.model_sha256 = "m" * 64
@@ -156,4 +161,9 @@ def test_cache_key_bytes_are_unchanged() -> None:
         "registry_sha256": "r" * 64,
         "request": _legacy_physical_identity(request),
     }
-    assert pool.cache_key(request) == canonical_hash(legacy_cache_identity)
+    expected_identity = dict(legacy_cache_identity)
+    if with_balances:
+        expected_identity["balance_arithmetic_semantics"] = "underflow-aware-v1"
+    key = pool.cache_key(request)
+    assert key == canonical_hash(expected_identity)
+    assert (key != canonical_hash(legacy_cache_identity)) is with_balances
