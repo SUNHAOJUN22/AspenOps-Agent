@@ -33,7 +33,7 @@ EXPECTED = {
     "validity-gates.svg",
     "worker-ownership-recycle.svg",
 }
-IMAGE_LINK = re.compile(r"!\[[^\]]*\]\((docs/assets/readme/[^)]+\.svg)\)")
+IMAGE_LINK = re.compile(r"!\[[^\]]*\]\((readme/[^)]+\.svg)\)")
 CJK_TEXT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 SHELL_PLACEHOLDER = re.compile(r"(?m)^uv run aspenops .*<[^>]+>")
 FORBIDDEN = (
@@ -162,11 +162,19 @@ def test_readme_visual_asset_inventory_is_complete_and_referenced() -> None:
     actual = {path.name for path in ASSET_DIR.glob("*.svg")}
     assert actual == EXPECTED
 
-    expected_paths = {f"docs/assets/readme/{name}" for name in EXPECTED}
-    for readme in (ROOT / "README.md", ROOT / "README.en.md"):
+    expected_paths = {f"readme/{name}" for name in EXPECTED}
+    gallery = (ROOT / "docs/assets/README.md").read_text(encoding="utf-8")
+    assert set(IMAGE_LINK.findall(gallery)) == expected_paths
+    for filename, asset in (
+        ("README.md", "hero.zh-CN.svg"),
+        ("README.en.md", "hero.en.svg"),
+    ):
+        readme = ROOT / filename
         text = readme.read_text(encoding="utf-8")
         assert "AI" in text
-        assert set(IMAGE_LINK.findall(text)) == expected_paths
+        assert "(docs/assets/README.md)" in text
+        assert f"](docs/assets/readme-vnext/{asset})" in text
+        assert (ROOT / "docs/assets/readme-vnext" / asset).is_file()
         assert "twenty-three" in text.casefold() or "二十三" in text
 
 

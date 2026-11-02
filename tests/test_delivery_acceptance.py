@@ -24,7 +24,7 @@ def test_repository_delivery_contract_passes() -> None:
     report = module.verify_delivery(ROOT)
     assert report["schema"] == "aspenops.delivery-acceptance/v1"
     assert report["status"] == "PASS"
-    assert report["visual_asset_count"] == 27
+    assert report["visual_asset_count"] == 29
     assert report["required_file_count"] >= 16
     assert report["baseline_qualification"]["passed"] >= 1200
     assert report["baseline_qualification"]["branch_coverage_percent"] >= 95.0
@@ -145,3 +145,46 @@ def test_cli_writes_json_report(tmp_path: Path, capsys: pytest.CaptureFixture[st
     printed = json.loads(capsys.readouterr().out)
     assert written == printed
     assert written["schema"] == "aspenops.delivery-acceptance/v1"
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        '<svg viewBox="0 0 10 10" role="img" lang="en"><title>Missing desc</title></svg>',
+        '<svg viewBox="0 0 10 10" role="img" lang="zh-CN"><title>A</title><desc>B</desc></svg>',
+        '<svg viewBox="0 0 10 10" role="img" lang="en"><title>A</title><desc>\ufffd</desc></svg>',
+        '<svg viewBox="0 0 10 10" role="img" lang="en">'
+        "<title>A</title><desc>B</desc><script/></svg>",
+        '<svg viewBox="0 0 10 10" role="img" lang="en" onload="bad()">'
+        "<title>A</title><desc>B</desc></svg>",
+        '<svg viewBox="0 0 10 10" role="img" lang="en"><title>A</title><desc>B</desc><image href="https://example.invalid/a.png"/></svg>',
+        '<svg viewBox="0 0 10 10" role="img" lang="en"><title>A</title><desc>B</desc>'
+        '<image href="data:image/svg+xml;base64,PHN2Zz4="/></svg>',
+        '<svg viewBox="0 0 10 10" role="img" lang="en"><title>A</title><desc>B</desc><style>.a{fill:url(https://example.invalid/a)}</style></svg>',
+    ],
+)
+def test_localized_art_rejects_wrong_language_corrupt_text_and_active_resources(
+    tmp_path: Path, changed: str
+) -> None:
+    module = _load_module()
+    art = tmp_path / "hero.en.svg"
+    art.write_text(changed, encoding="utf-8")
+    issues: list[dict[str, str]] = []
+    module._check_localized_visual(art, "en", issues)
+    assert [issue["code"] for issue in issues] == ["localized_visual_invalid"]
+
+
+def test_localized_art_accepts_self_contained_vector_and_raster(tmp_path: Path) -> None:
+    module = _load_module()
+    art = tmp_path / "hero.zh-CN.svg"
+    art.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" role="img" lang="zh-CN">'
+        "<title>中文概念图</title><desc>控制面示意，不是实测结果。</desc>"
+        '<defs><linearGradient id="g"/></defs><rect style="fill:url(#g)"/>'
+        '<image href="data:image/png;base64,iVBORw0KGgo="/>'
+        "</svg>",
+        encoding="utf-8",
+    )
+    issues: list[dict[str, str]] = []
+    module._check_localized_visual(art, "zh-CN", issues)
+    assert issues == []

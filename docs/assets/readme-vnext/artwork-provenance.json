@@ -1,0 +1,87 @@
+{
+  "schema": "tsao.readme-concept-art/v1",
+  "repository": "AspenOps-Agent",
+  "generation_date_utc": "2026-11-02",
+  "artwork_tool": "OpenAI image_gen",
+  "artwork_scope": "Synthetic artistic concept. Not measured scientific data, a product screenshot, or engineering certification.",
+  "artwork_sha256": "3c52de3973b92b0cc805e975f2fc4e7d195abceca872bbd105cb692cbb2035bd",
+  "composition": "Original AI PNG embedded without raster modification; exact localized facts and formulas are SVG outlines.",
+  "fonts": [
+    "Noto Sans CJK SC Regular",
+    "DejaVu Sans"
+  ],
+  "font_independent_rendering": true,
+  "implementation_references": [
+    "src/aspenops_nexus/evaluation.py",
+    "src/aspenops_nexus/units.py",
+    "src/aspenops_nexus/pool.py"
+  ],
+  "localized_assets": [
+    {
+      "locale": "zh-CN",
+      "path": "docs/assets/readme-vnext/hero.zh-CN.svg",
+      "bytes": 2565066,
+      "sha256": "1221ef8dcabd76403244112b951eed8928e9917961db2efbe8fded5539bd574f",
+      "outlined_glyphs": 129,
+      "visible_text": {
+        "eyebrow": "过程仿真 · 受控执行 · 证据工程",
+        "headline": [
+          "让每次过程计算",
+          "都有可核验的证据"
+        ],
+        "features": [
+          "语义变量与单位边界",
+          "隔离 Worker 与许可预算",
+          "收敛、约束、衡算与证据包"
+        ],
+        "scope": "Mock 软件演示；真实 Aspen 需许可环境与工程验收",
+        "cards": [
+          [
+            "补偿求和保留可表示残差",
+            "r = fsum(c₁q₁, …, cₙqₙ, −b)",
+            "线性衡算：系数 c、观测 q、目标 b"
+          ],
+          [
+            "绝对或相对容差逐项验核",
+            "|r| ≤ a_tol  ∨  |r| / s ≤ r_tol",
+            "s = max(Σ|cᵢqᵢ|, floor)；请求定义容差与 floor"
+          ]
+        ]
+      },
+      "synthetic_label": "AI 合成概念示意 · 非测量结果"
+    },
+    {
+      "locale": "en",
+      "path": "docs/assets/readme-vnext/hero.en.svg",
+      "bytes": 2555617,
+      "sha256": "4528511bd69954509ffe8b6ea4c561ad904798448fd4875529b1f6d073041802",
+      "outlined_glyphs": 65,
+      "visible_text": {
+        "eyebrow": "PROCESS SIMULATION / CONTROL / EVIDENCE",
+        "headline": [
+          "Every process run.",
+          "Evidence you can inspect."
+        ],
+        "features": [
+          "Semantic variables and unit boundaries",
+          "Isolated workers and license budgets",
+          "Convergence, constraints, balances, evidence"
+        ],
+        "scope": "Mock demonstration; real Aspen needs licensed engineering acceptance",
+        "cards": [
+          [
+            "Compensated summation preserves representable residuals",
+            "r = fsum(c₁q₁, …, cₙqₙ, −b)",
+            "Linear balance: coefficients c, observations q, target b"
+          ],
+          [
+            "Absolute or relative tolerance, explicitly checked",
+            "|r| ≤ a_tol  ∨  |r| / s ≤ r_tol",
+            "s = max(Σ|cᵢqᵢ|, floor); the request supplies tolerances and floor"
+          ]
+        ]
+      },
+      "synthetic_label": "SYNTHETIC CONCEPT / AI ARTWORK / NOT MEASURED DATA"
+    }
+  ]
+}

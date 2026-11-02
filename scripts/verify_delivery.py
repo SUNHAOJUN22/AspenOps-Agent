@@ -6,6 +6,7 @@ import math
 import re
 import subprocess
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,7 @@ AI_ACCEPTANCE_ASSETS = {
     "native-failure-isolation.svg",
     "warm-start-trajectory.svg",
 }
+LOCALIZED_README_ASSETS = {"hero.zh-CN.svg": "zh-CN", "hero.en.svg": "en"}
 TEMPORARY_NAME = re.compile(
     r"(?:once|finali[sz]er|diagnostic|running|temporary|tmp-do-not-use)",
     re.IGNORECASE,
@@ -449,6 +451,55 @@ def _check_temporary_artifacts(root: Path, issues: list[dict[str, str]]) -> None
         )
 
 
+def _check_localized_visual(path: Path, language: str, issues: list[dict[str, str]]) -> None:
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 16_000_000:
+            raise ValueError("Localized SVG must be a regular file no larger than 16 MB")
+        raw = path.read_text(encoding="utf-8")
+        if "\ufffd" in raw or "\x00" in raw:
+            raise ValueError("Localized SVG contains invalid text")
+        svg = ET.fromstring(raw)
+        if svg.tag.rsplit("}", 1)[-1] != "svg" or not svg.attrib.get("viewBox"):
+            raise ValueError("Localized SVG requires an SVG root and viewBox")
+        actual_language = svg.attrib.get(
+            "lang", svg.attrib.get("{http://www.w3.org/XML/1998/namespace}lang")
+        )
+        if actual_language != language or svg.attrib.get("role") != "img":
+            raise ValueError("Localized SVG language or accessibility role is incorrect")
+        for tag in ("title", "desc"):
+            labels = [child for child in svg if child.tag.rsplit("}", 1)[-1] == tag]
+            if len(labels) != 1 or not "".join(labels[0].itertext()).strip():
+                raise ValueError(f"Localized SVG requires one nonempty {tag}")
+        for element in svg.iter():
+            name = element.tag.rsplit("}", 1)[-1].casefold()
+            if name in {"script", "foreignobject"}:
+                raise ValueError("Localized SVG cannot contain active content")
+            for key, value in element.attrib.items():
+                local_key = key.rsplit("}", 1)[-1].casefold()
+                if local_key.startswith("on"):
+                    raise ValueError("Localized SVG cannot contain event handlers")
+                if (
+                    local_key in {"href", "src"}
+                    and not value.startswith("#")
+                    and (
+                        name != "image"
+                        or not value.startswith(
+                            ("data:image/png;base64,", "data:image/jpeg;base64,")
+                        )
+                    )
+                ):
+                    raise ValueError("Localized SVG permits only embedded PNG/JPEG images")
+        folded = raw.casefold()
+        if (
+            "javascript:" in folded
+            or "@import" in folded
+            or re.search(r"url\(\s*[\"']?(?!#)[^\s\"']", folded)
+        ):
+            raise ValueError("Localized SVG cannot load external or active resources")
+    except (OSError, UnicodeError, ET.ParseError, ValueError) as exc:
+        _issue(issues, "localized_visual_invalid", str(path), str(exc))
+
+
 def _check_visuals(root: Path, issues: list[dict[str, str]]) -> list[str]:
     directory = root / "docs" / "assets" / "readme"
     names = {path.name for path in directory.glob("*.svg")}
@@ -468,7 +519,10 @@ def _check_visuals(root: Path, issues: list[dict[str, str]]) -> list[str]:
             "docs/assets/ai",
             f"Expected {sorted(AI_ACCEPTANCE_ASSETS)}, observed {sorted(ai_names)}",
         )
-    return sorted(names | ai_names)
+    localized = root / "docs/assets/readme-vnext"
+    for name, language in LOCALIZED_README_ASSETS.items():
+        _check_localized_visual(localized / name, language, issues)
+    return sorted(names | ai_names | set(LOCALIZED_README_ASSETS))
 
 
 def _check_markers(
@@ -489,8 +543,21 @@ def _check_markers(
 
 
 def _check_readmes(root: Path, issues: list[dict[str, str]]) -> None:
-    expected_paths = {f"docs/assets/readme/{name}" for name in GOVERNED_VISUAL_ASSETS}
-    pattern = re.compile(r"!\[[^\]]*\]\((docs/assets/readme/[^)]+\.svg)\)")
+    gallery_path = root / "docs/assets/README.md"
+    gallery = gallery_path.read_text(encoding="utf-8") if gallery_path.is_file() else ""
+    expected_paths = {f"readme/{name}" for name in GOVERNED_VISUAL_ASSETS}
+    pattern = re.compile(r"!\[[^\]]*\]\((readme/[^)]+\.svg)\)")
+    observed = set(pattern.findall(gallery))
+    if observed != expected_paths:
+        _issue(
+            issues,
+            "readme_visual_inventory_mismatch",
+            "docs/assets/README.md",
+            f"Expected {len(expected_paths)} unique SVG references; observed {len(observed)}",
+        )
+    for name in sorted(AI_ACCEPTANCE_ASSETS):
+        if f"](ai/{name})" not in gallery:
+            _issue(issues, "readme_ai_visual_missing", "docs/assets/README.md", name)
     for relative, markers in README_MARKERS.items():
         path = root / relative
         if not path.is_file():
@@ -503,22 +570,17 @@ def _check_readmes(root: Path, issues: list[dict[str, str]]) -> None:
             markers=markers,
             code="readme_marker_missing",
         )
-        observed = set(pattern.findall(text))
-        if observed != expected_paths:
+        if "(docs/assets/README.md)" not in text:
             _issue(
                 issues,
-                "readme_visual_inventory_mismatch",
+                "readme_gallery_link_missing",
                 relative,
-                f"Expected {len(expected_paths)} unique SVG references; observed {len(observed)}",
+                "README must link the complete technical gallery",
             )
-        for name in sorted(AI_ACCEPTANCE_ASSETS):
-            if f"docs/assets/ai/{name}" not in text:
-                _issue(
-                    issues,
-                    "readme_ai_visual_missing",
-                    relative,
-                    f"docs/assets/ai/{name}",
-                )
+        asset = "hero.zh-CN.svg" if relative == "README.md" else "hero.en.svg"
+        asset_path = f"docs/assets/readme-vnext/{asset}"
+        if f"]({asset_path})" not in text or not (root / asset_path).is_file():
+            _issue(issues, "readme_localized_ai_visual_missing", relative, asset_path)
         if "REAL_ASPEN_CERTIFIED" in text:
             _issue(
                 issues,

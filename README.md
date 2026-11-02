@@ -1,257 +1,291 @@
-<div align="center">
-
 # AspenOps 2.0
 
-## 面向 Aspen Plus / Aspen HYSYS 与 AI Agent 的确定性工程控制平面
+**把 AI 的流程建议转成有边界的执行请求，再用单位、约束、衡算与证据决定一个计算点能否接受。**
 
-**受控需求 → 强类型过程意图 → 工程规则 → 可验证编译 → 隔离执行 → 工程判定 → 可审计证据 → 确定性交付**
-
-[English](README.en.md) · [最终验收](README_ACCEPTANCE.md) · [Architecture](docs/architecture.md) · [Delivery Acceptance](docs/delivery-acceptance.md) · [Delivery Bundle](docs/delivery-bundle.md) · [Windows Setup](docs/windows-setup.md) · [Certification](docs/certification.md) · [Quality Report](docs/quality-report.md)
+[English](README.en.md) · [架构](docs/architecture.md) · [Windows 部署](docs/windows-setup.md) · [Agent 使用](docs/agent-usage.md) · [交付验收](docs/delivery-acceptance.md)
 
 ![version-2.0.0-delivery](https://img.shields.io/badge/version-2.0.0-111827)
-![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-2563EB)
-![License](https://img.shields.io/badge/license-Apache--2.0-0F766E)
+![Python 3.11–3.13](https://img.shields.io/badge/Python-3.11--3.13-3776AB)
+![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)
 
-</div>
+![AspenOps 中文 AI 概念设计：过程意图、隔离执行、数学验核与证据闭环](docs/assets/readme-vnext/hero.zh-CN.svg)
 
-<!-- CLOSURE_STATUS_START -->
-## 当前代码资格与工程边界
+图是基于实现边界的 AI 概念设计。精确公式、单位与状态以本文及链接源码为准；图中装置不代表真实 Aspen 运行、现场数据或认证。英文版使用独立英文图；历史工程技术图保留在[图集与来源说明](docs/assets/README.md)。
 
-- 多目标优化在标量化前使用显式单位、物理维度、参考值与正参考尺度；改变 kW/W 等表示不会改变物理解排序。
-- 规范 JSON/SHA-256 只由 `aspenops_nexus.hashing.canonical_hash` 实现，过程需求、编译计划、拓扑、适配器与许可链接共用同一摘要合同。
-- Mock/离线资格只验证控制面软件；没有已授权商业求解器、许可证、固定模型与签名工程审查时，真实执行状态保持 `PENDING_REAL_ASPEN_CERTIFICATION`。
-- README 中的流程图和公式是代码合同说明，不是 Aspen Plus/HYSYS 求解结果或装置性能保证。
-<!-- CLOSURE_STATUS_END -->
+## 系统定位与当前能力
 
-<!-- LOCALIZED_VISION_ZH:START -->
-## 中文项目愿景图：从过程意图到工业装置证据闭环
+`aspenops-nexus 2.0.0` 是 Aspen Plus / Aspen HYSYS 自动化的 Python 控制面。它统一 CLI、MCP、持久任务队列和仿真 Worker，管理**怎么执行、什么结果可接受、如何复查**。热力学物性和流程求解由获许可的外部模拟器及用户模型承担。
 
-<p align="center">
-  <img src="docs/assets/vision-zh.png" width="100%" alt="AspenOps 中文工艺与科学计算愿景图">
-</p>
-
-> 图中公式和模块来自当前代码合同；它展示的是控制平面愿景，不是 Aspen Plus/HYSYS 求解结果、装置数据或工程认证。
-
-<!-- LOCALIZED_VISION_ZH:END -->
-
-![最终验收架构](docs/assets/acceptance/final-acceptance-map.svg)
-
-> **资格边界：** `aspenops-nexus 2.0.0` 对控制面、过程意图、隔离执行、缓存、调度、优化、证据链和确定性交付进行软件资格验证。没有真实商业求解器、许可证、固定模型、Golden Case、硬件指纹、工程容差和签名审查时，不得自授 Aspen 工程资格；状态保持 `PENDING_REAL_ASPEN_CERTIFICATION`。
-
-## 验收状态
-
-| 项目 | 当前合同 |
-|---|---|
-| 权威长期分支 | `main` |
-| 支持平台 | Linux 与 Windows；真实 Aspen COM 仅限许可 Windows 主机 |
-| Python | Python 3.11、3.12、3.13；六种 Linux/Windows 软件组合 |
-| 归档资格 | `docs/quality-report.md` 中的已验证归档基线仅供历史对照，不是对任意后续提交的自动声明 |
-| 当前回归 | 必须核对目标提交的完整 CI、覆盖率与原始 JUnit；本行不继承归档数字 |
-| 工具链 | `uv 0.11.16`；`mcp>=1.30.0,<2` |
-| 外部资格 | `PENDING_REAL_ASPEN_CERTIFICATION` |
-
-这是**已验证归档基线**，不是对任意后续提交的自动声明。历史 PASS 不能覆盖新代码失败。
-
-## AI 辅助视觉系统
-
-以下二十三幅仓库内 SVG 解释真实软件合同，不是流程模拟、Golden Case、实验数据或商业软件执行证据。
-
-| 架构与意图 | 执行与安全 | 证据与工程 |
+| 能力 | 已实现内容 | 代码及边界 |
 |---|---|---|
-| ![hero](docs/assets/readme/hero-architecture.svg) | ![agent](docs/assets/readme/agent-pipeline.svg) | ![intent](docs/assets/readme/process-intent-ir.svg) |
-| ![backend](docs/assets/readme/backend-capabilities.svg) | ![adapter](docs/assets/readme/adapter-conformance.svg) | ![COM](docs/assets/readme/com-isolation.svg) |
-| ![worker](docs/assets/readme/worker-ownership-recycle.svg) | ![validity](docs/assets/readme/validity-gates.svg) | ![optimization](docs/assets/readme/optimization-lifecycle.svg) |
-| ![scheduler](docs/assets/readme/scheduler-lifecycle.svg) | ![paths](docs/assets/readme/durable-path-portability.svg) | ![cache](docs/assets/readme/cache-singleflight.svg) |
-| ![chain](docs/assets/readme/evidence-chain.svg) | ![integrity](docs/assets/readme/evidence-integrity.svg) | ![licensed](docs/assets/readme/licensed-certification.svg) |
-| ![CLI](docs/assets/readme/cli-mcp-workflow.svg) | ![MCP](docs/assets/readme/mcp-runtime-lifecycle.svg) | ![policy](docs/assets/readme/policy-path-safety.svg) |
-| ![hotspot](docs/assets/readme/performance-hotspot-map.svg) | ![startup](docs/assets/readme/cold-warm-startup.svg) | ![matrix](docs/assets/readme/test-matrix.svg) |
-| ![industrial](docs/assets/readme/industrial-scenarios.svg) | ![roadmap](docs/assets/readme/roadmap.svg) |  |
+| 语义读写 | 注册表变量、标识符、权限、单位、上下界、读去重、写冲突检查 | [registry](src/aspenops_nexus/registry.py)、[evaluation_plan](src/aspenops_nexus/evaluation_plan.py)；示例路径须针对实际模型确认 |
+| 批量执行 | 私有模型快照、独立进程、超时、有限并发、逐点校验 | [batch](src/aspenops_nexus/batch.py)、[worker](src/aspenops_nexus/worker.py)、[pool](src/aspenops_nexus/pool.py) |
+| 后端 | 可移植 Mock；已有模型的 Aspen Plus COM、HYSYS Spreadsheet 适配器 | [工厂](src/aspenops_nexus/backends/factory.py)；真实后端需要许可 Windows 和审核过的模型注册表 |
+| 长任务 | SQLite 队列、租约、心跳、取消、重试、死信、幂等提交 | [scheduler](src/aspenops_nexus/scheduler.py)；独立 CLI 提交需要运行 scheduler 服务 |
+| 优化与采样 | 有界 DE、混合变量、约束优先排序、Pareto、LHS、网格 | [optimization](src/aspenops_nexus/optimization.py)、[optimizer](src/aspenops_nexus/optimizer.py)、[design](src/aspenops_nexus/design.py) |
+| 过程意图 | v1 图校验；v2 需求绑定、工程规则、编译计划、受资格约束的原生构建协议 | [IR](src/aspenops_nexus/process_ir.py)、[v2 校验](src/aspenops_nexus/design_validation.py)、[计划](src/aspenops_nexus/compilation_plan.py) |
+| 研究与证据 | 研究对象/主张追踪、规范 JSON、SHA-256、可选 Ed25519、归档安全、确定性交付 | [研究层](src/aspenops_nexus/research.py)、[证据](src/aspenops_nexus/provenance.py)；研究清单通过不授予执行权 |
 
-交付、数学、原生隔离和 warm-start 的补充视觉：
+DWSIM、IDAES、Modelica/FMI 执行后端以及通用 `aspenops.flowsheet/v1` 流程编译器尚未实现，能力表标记 `planned`。现有 v2 计划对象、原生构建协议和离线测试不能替代生产适配器资格。[能力声明](src/aspenops_nexus/simulation_agents.py)区分“已有模型执行”与“IR 编译”。
 
-![delivery acceptance](docs/assets/ai/delivery-acceptance.svg)
-![mathematical contracts](docs/assets/ai/mathematical-contracts.svg)
-![native failure isolation](docs/assets/ai/native-failure-isolation.svg)
-![warm-start trajectory](docs/assets/ai/warm-start-trajectory.svg)
+**真实工程资格保持 `PENDING_REAL_ASPEN_CERTIFICATION`。** Mock 回归验证不代表真实 Aspen 已验收。真实验收需要目标 Windows 主机、商业许可证、固定模型/注册表、Golden Case、工程容差、签名证据与工程师批准。发现 ProgID 也不证明对应商业版本已认证。
 
-## 系统定位
+## 快速开始
 
-```text
-Human / Agent
-  → ProcessRequirementDocument
-  → ProcessDesignIR / aspenops.flowsheet/v2
-  → engineering rules + units + DOF
-  → capability profile + compilation plan
-  → CasePool / scheduler / optimizer
-  → isolated Windows Worker + owned COM session
-  → Aspen Plus / HYSYS / Mock
-  → readback + convergence + constraints + balances
-  → evidence bundle + deterministic handover
-```
-
-`ProcessIntent` 使用 `aspenops.flowsheet/v1`，对应 `scripts/validate_process_ir.py` 的示例入口；`ProcessDesignIR` 使用 `aspenops.flowsheet/v2`，通过 `validate_process_design` 执行工程规则。两者具有各自的数据合同，提交时应使用对应的 schema。
-
-DWSIM 与 IDAES 处于 `planned` 路线，当前**未实现**生产 adapter。能力未知或无 adapter 时必须显式报告，不能把“知道软件名称”伪装成可执行能力。
-
-## 数学与工程合同
-
-以下公式描述代码实际执行的检查；动态守恒方程是设置模型与残差的物理依据。AspenOps 不在 Python 内重写 Aspen 热力学或反应求解器。每次使用都应保存模型版本、单位、参数来源、适用范围和工程容差。
-
-### 1. 单位先于数值比较
-
-设源单位和目标单位到规范单位的比例与偏移分别为 $(s_s,b_s)$ 和 $(s_t,b_t)$，则
-
-$$
-x_t=\frac{s_s x_s+b_s-b_t}{s_t},\qquad T_K>0.
-$$
-
-`units.convert` 检查支持单位与有限数。偏移相同的换算先合成 $s_s/s_t$，避免规范单位的中间值溢出或下溢；若非零比例换算的最终结果下溢为零，则显式抛出 `UnitError`。同单位和等价别名保持可表示的小量；$273.15\,\mathrm K\to0\,{}^\circ\mathrm C$ 等合法仿射零点仍然有效。`evaluation_plan` 在读、写、约束编译时绑定注册表的源单位；未知源单位不能被请求中的 `K` 或 `bar` 标签变成物理证据。无单位的文本/布尔状态可保留；无量纲数值使用显式 `1`、`fraction` 等。比例先归一化为 $[0,1]$：$50\%=0.5=500000\,\mathrm{ppm}$。温度先转 K；物理参数缺少单位产生阻断，计数只能使用 `1` 或未标单位，不能用百分数冒充级数。
-
-JSON 文件的数值解析也属于这个边界。设 $x$ 为文件中的十进制数、$\operatorname{fl}(x)$ 为解析后的浮点值，则：
-
-$$
-\neg\operatorname{isfinite}(\operatorname{fl}(x))
-\;\lor\;
-\bigl(x\ne0\;\land\;\operatorname{fl}(x)=0\bigr)
-\quad\Longrightarrow\quad\text{拒绝输入}.
-$$
-
-请求、批量执行文件、注册表、设计/过程 IR、研究文档、许可计划及证据读取会拒绝 `1e999` 等溢出，以及 `1e-400` 等非零数下溢为零；批量文件与其他请求入口采用同一重复键检查，后出现的键不能覆盖先前的科学输入。`0e-9999`、带符号的真正零和可表示的 `5e-324` 仍然有效；JSON 整数在解析时保留整数类型。损坏缓存中的下溢数值按缓存失效处理，不会当作成功结果复用。遇到拒绝时，应检查原始数据和单位量级并重新导出文件；不能把非零观测手动改为零以通过验收。此保证针对原始 JSON 文件；已经由调用方舍入成零的 Python 浮点数无法恢复其原始十进制值。实现与公开入口回归：[JSON 输入](src/aspenops_nexus/json_input.py) · [边界测试](tests/test_json_numeric_boundaries.py)。
-
-源码：[单位](src/aspenops_nexus/units.py)、[读写计划](src/aspenops_nexus/evaluation_plan.py)、[工程规则](src/aspenops_nexus/engineering_rules.py)。
-
-### 2. 反应的元素、电荷和质量守恒
-
-令 $A_{ei}$ 为组分 $i$ 中元素 $e$ 的原子数，$\nu_i$ 为反应计量系数（反应物负、产物正），$z_i$ 为显式离子电荷，$M_i$ 为声明分子量：
-
-$$
-A\boldsymbol{\nu}=\boldsymbol 0,\qquad
-\sum_i z_i\nu_i=0,\qquad
-\sum_i M_i\nu_i=0.
-$$
-
-最后一项只在全部分子量可用时检查。对每一种元素、电荷或声明质量，令相应贡献为 $c_i=a_i\nu_i$，采用相对贡献尺度：
-
-$$
-R=\sum_i c_i,\qquad S=\sum_i|c_i|,\qquad
-|R|\le\tau S,\qquad
-\tau=\begin{cases}10^{-10}&\text{元素或电荷},\\10^{-6}&\text{声明质量}.\end{cases}
-$$
-
-$S=0$ 表示该量的所有贡献均为零。代码对已接纳的有限浮点输入使用精确有理数完成乘积与求和，不设人为的绝对容差下限；整体缩放保持可表示的计量比例时，守恒判定不变。这样既保留非零次正规量，也避免大系数的中间溢出；质量容差仍允许声明分子量的舍入。支持 `Ca(OH)2`、`CuSO4·5H2O`、`Na+`、`Fe^3+` 等有界分子式。未定义组成、伪组分、聚合物通配符或不支持的语法返回 `ENGINEERING_BLOCKER`，不虚构组成。例：$2H_2+O_2\to2H_2O$ 满足守恒，$H_2+O_2\to H_2O$ 不满足；把后一反应的所有系数乘以 $10^{-12}$ 仍然不满足。完整反应检查在 `validate_process_design` 路径执行。
-
-### 3. 流程衡算与独立有效性门
-
-动态模型的物理关系为
-
-$$
-\frac{dN_i}{dt}=\sum_{\rm in}\dot n_i-\sum_{\rm out}\dot n_i+
-\sum_r\nu_{ir}r_rV,
-\qquad
-\frac{dU}{dt}=\dot Q-\dot W+\sum_{\rm in}\dot n\hat h-\sum_{\rm out}\dot n\hat h.
-$$
-
-运行时读取用户声明的衡算项，先换算至同维单位，再检查线性残差 $R=\sum_jc_jy_j$ 及配置的绝对/相对容差。系数、单位、符号和实际可得项必须与模型一致；缺失项不能用零填补。
-
-$$
-OK=C_{\rm communication}\land C_{\rm engine}\land C_{\rm convergence}
-\land C_{\rm finite}\land C_{\rm constraint}\land C_{\rm balance}.
-$$
-
-`constraint_non_finite` / `balance_non_finite` 区别于有限但超差的失败；证据 JSON 使用 `allow_nan=False`。任何单门失败都不能被其他分数抵消。源码：[实际评估](src/aspenops_nexus/evaluation.py)。
-
-运行时守恒项的非零乘积若下溢为零，返回 `balance_underflow` 与无效衡算，不能作为零残差通过。非零相对残差若下溢，则以最小正浮点数作为上界，并标记 `relative_upper_bound=true`；因此零容差仍拒绝非零失衡，正容差比较保持正确。含衡算的请求使用更新后的缓存语义，旧判定不会直接复用。
-
-### 4. 有量纲目标的规范化与可行性排序
-
-每一目标的实际输出 $y_j$ 首先由 `result.units` 转到目标单位，再使用参考值 $r_j$ 和正尺度 $a_j$：
-
-$$
-\widetilde f_j(x)=\sigma_j\frac{y_j(x)-r_j}{a_j},\quad
-J(x)=\sum_jw_j\widetilde f_j(x),\quad w_j>0,
-\qquad \sigma_j=\begin{cases}+1&\text{minimize}\\-1&\text{maximize}.\end{cases}
-$$
-
-例如 $r=100\,\mathrm{kW},a=50\,\mathrm{kW}$ 时，$125\,\mathrm{kW}$ 与 $125000\,\mathrm W$ 均给出 $0.5$。缺单位、不同量纲、非有限或缺失输出使候选不可行；不会进入可行 Pareto 集。单目标可使用其原始标度，多目标要求完整的无量纲规范化合同。代码采用 Deb 可行性排序：可行优于不可行；两个可行候选比较目标，两个不可行候选比较违约量，而非未经声明的固定惩罚系数。
-
-$$
-x\prec y\iff\left(\forall j:f_j(x)\le f_j(y)\right)\land
-\left(\exists j:f_j(x)<f_j(y)\right).
-$$
-
-等价目标不互相支配；公共 Pareto 接口拒绝非有限数、空目标、负违约量和维度不一致。源码：[优化评估](src/aspenops_nexus/optimization.py)、[DE/Pareto](src/aspenops_nexus/optimizer.py)。
-
-### 5. 采样、拓扑、状态与计算预算
-
-LHS 在每维 $n$ 个等宽层内各抽取一点并独立置乱；网格点数为 $N=\prod_d L_d$。生成前检查有限正区间、正整数层数，以及 $N\le100000$、$Nd\le10^6$ 和 $d\le256$。最近邻排序额外限制 5000 点，防止二次复杂度拖垮交互任务。随机种子固定可复现；增加样本数不代表模型验证。
-
-$$
-x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}{n}(u_d-\ell_d),\quad u_{kd}\in[0,1),
-\qquad \forall C\in\operatorname{cycles}(G),\ C\cap T\ne\varnothing.
-$$
-
-循环必须有属于该循环的撕裂边；设备规范与自由度检查在构建前阻断缺失定义。Warm-start 是 $x_{k+1}=F(x_k,u_k)$ 的有状态轨迹，必须单 Worker、串行执行。冷启动可受限并发并复用持久缓存，但缓存命中只返回独立历史结果，不会把状态写入当前 Worker；关闭、替换或预算回收丢失状态后，同轨迹 warm 请求会在写入/求解前以 `warm_start_state_lost` 拒绝，只有当前池当前 Worker 实际执行、通信和引擎状态成功且收敛的 `reinitialize` 才能恢复延续。Mock 回归验证不代表真实 Aspen 已验收。源码：[采样](src/aspenops_nexus/design.py)、[流程规则](src/aspenops_nexus/engineering_rules.py)、[Worker 状态合同](docs/architecture.md)。
-
-### 6. 证据摘要与测试计数
-
-$$
-K=\operatorname{SHA256}(\operatorname{canonicalJSON}(\text{schema, runtime, model, registry, physical request})),
-\qquad N_{\rm pass}=N_{\rm total}-N_{\rm fail}-N_{\rm error}-N_{\rm skip}.
-$$
-
-摘要校验字节身份，签名校验指定信任根下的真实性；两者均不能证明模型适用性。JUnit 计数必须是非负整数，失败/错误/跳过之和不大于总数，耗时有限非负；父套件与子套件/用例不能矛盾或重复累计。损坏证据报错，不再默认为零失败。回归：[生产入口反例](tests/test_acceptance_repair.py)。
-
-## 配置边界
-
-永久质量工作流使用 `ubuntu-24.04`，Windows 控制面与真实 COM 预检使用 `windows-2025`。Python 3.11、3.12、3.13 在 Linux 与 Windows 形成六种组合。
+从仓库根目录执行。推荐与 CI 相同的 **uv 0.11.16**、Python 3.12；项目支持 Python 3.11、3.12、3.13。
 
 ```bash
 git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git
 cd AspenOps-Agent
 uv lock --check
 uv sync --frozen --extra dev --extra agent --extra signing
+uv run aspenops --version
+uv run aspenops doctor --probe
+uv run aspenops demo
+uv run aspenops dry-run examples/guarded-mock-batch.example.json
+uv run aspenops run-batch examples/guarded-mock-batch.example.json \
+  --output var/guarded-results.json --bundle var/guarded-run-bundle.zip
+uv run aspenops verify-bundle var/guarded-run-bundle.zip
 ```
+
+这个[可运行请求](examples/guarded-mock-batch.example.json)包含三个温度/回流比点、必要输出、纯度约束，以及进料设定值的线性一致性检查。`declared_feed_setpoint` 检查流量读回值是否等于 `120 kg/h`，**它不是全装置质量守恒证明**：Mock 未提供全部出口。原始[最小批量示例](examples/batch-request.example.json)继续保留，用于检查连接和执行链。
+
+`dry-run` 不开启 Aspen，返回路径、注册表摘要、有效 Worker 数和 I/O 预算。`run-batch` 写入逐点 JSON 和证据 ZIP；任一点 `ok=false` 时退出码为 `2`，诊断仍被保存。`verify-bundle` 校验归档及摘要；未签名包只提供完整性证据。[CLI 实现](src/aspenops_nexus/cli.py)
+
+Windows 同步依赖时另加 `--extra windows`。真实环境步骤见 [Windows 指南](docs/windows-setup.md)。`.env.example` 是模板，应把变量导入实际进程环境。
+
+## 配置边界
+
+| 环境变量 | 默认值 | 含义 |
+|---|---|---|
+| `ASPENOPS_BACKEND` | `mock` | `mock`、`aspen_plus`、`hysys` |
+| `ASPENOPS_MODE` | `default` | `readonly` 禁止参数写入；部分扩展操作需要 `enhanced` |
+| `ASPENOPS_ALLOWED_ROOTS` | 空 | 分号分隔的允许根目录；真实后端必须声明绝对路径 |
+| `ASPENOPS_STATE_DIR` | `var` | 缓存和任务目录；真实后端要求允许根目录内的绝对路径 |
+| `ASPENOPS_LICENSE_SLOTS` / `ASPENOPS_MAX_WORKERS` | `1` / 许可证槽数 | 管理员声明的并发上限，代码不自动证明许可容量 |
+| `ASPENOPS_TIMEOUT_S` / `ASPENOPS_STARTUP_TIMEOUT_S` | `1200` / `90` 秒 | 点请求默认响应预算 / Worker 启动预算 |
+| `ASPENOPS_WORKER_MAX_POINTS` / `ASPENOPS_WORKER_MAX_AGE_S` | `200` / `14400` 秒 | 周期回收条件 |
+| `ASPENOPS_MAX_REQUEST_BYTES` / `ASPENOPS_MAX_BATCH_POINTS` | `10000000` / `10000` | 请求大小 / 批次点数上限 |
+| `ASPENOPS_MAX_SEMANTIC_OPERATIONS` | `1000000` | 批次声明的语义操作预算 |
+| `ASPENOPS_MAX_OPTIMIZATION_EVALUATIONS` | `10000` | 优化评估上限；另限制 64 个变量与 16 个目标 |
+
+其余调度选项及类型检查以 [Settings](src/aspenops_nexus/config.py) 为准。[资源预算](tests/test_config_resource_budgets.py)与[批次限制](tests/test_batch_resource_limits.py)测试覆盖拒绝路径。
 
 ## 配置与路径安全策略
 
-`.env.example` 默认 Mock。真实 model、registry、state 与 output 必须位于 allowed roots。持久请求固定 `paths_pinned` 和 `submission_cwd`；重复 JSON key、非有限数值、越界路径和不平衡配置 fail closed。
+路径先展开并解析，再检查允许范围。真实后端拒绝空根目录、相对根目录和范围外状态目录。主模型只用于生成私有快照；Worker 开启前后核对模型/注册表摘要。`readonly` 按实际写入行为拒绝请求。[策略](src/aspenops_nexus/policy.py) · [快照身份测试](tests/test_phase0_artifact_identity.py)
 
-## 原生适配器一致性门
+持久提交把模型、注册表及 checkpoint 路径固定为绝对路径，记录 `paths_pinned`、`submission_cwd`。scheduler 从另一目录启动仍指向提交时的文件，内容身份继续由摘要保护。[路径实现](src/aspenops_nexus/durable_request.py) · [CLI 回归](tests/test_cli_durable_queue.py)
 
-原生 adapter 必须通过 manifest、输入/输出 Schema、单位、failure isolation 与确定性对照。
+`run-batch` 在解析前限制普通文件大小，解析后检查规范化请求预算；重复 JSON 键与无效数值不会被静默改写。不要把输出路径设为主模型，也不要让 Agent 使用旁路 `win32com`、任意 Shell、VBA 或未经注册的模拟器路径。
 
-```bash
-uv run aspenops doctor --probe
-uv run python scripts/validate_process_ir.py examples/process-intent.example.json
-```
+## 数学与工程合同
 
-`process-ir-dashboard.html` 是合同图，不是模拟结果。
+以下公式对应真实代码路径。它们说明数值如何计算、结果如何接受；单位维度、收敛与模型适用性各自需要验证。
 
-## 快速开始
+### 1. 输入与单位
 
-```bash
-uv run aspenops demo
-uv run aspenops dry-run examples/request.example.json
-uv run aspenops run-batch examples/request.example.json --output var/results.json --bundle var/run-bundle.zip
-uv run aspenops verify-bundle var/run-bundle.zip
-```
+对 JSON 十进制输入 $x$，设 $\operatorname{fl}(x)$ 是解析后的二进制浮点值：
 
-`run-batch` 在解析 JSON 前将文件输入限制为 `ASPENOPS_MAX_REQUEST_BYTES`（默认 10,000,000 字节），并拒绝非普通文件；解析后仍会校验规范化请求大小。内存中的 Python 请求继续由同一请求大小门校验。
+$$
+\neg\operatorname{finite}(\operatorname{fl}(x))\ \lor\
+(x\ne0\land\operatorname{fl}(x)=0)\quad\Longrightarrow\quad\text{拒绝输入}.
+$$
+
+`1e999`、`1e-400` 被拒绝，真正的零与可表示次正规数保留。此保证针对原始 JSON；调用方已舍入为零的 Python 数值无法恢复。[实现](src/aspenops_nexus/json_input.py) · [边界测试](tests/test_json_numeric_boundaries.py)
+
+注册表源单位到目标单位的变换为：
+
+$$
+y=\frac{a_sx+b_s-b_t}{a_t}.
+$$
+
+$a_s,a_t$ 为到同一基准的比例，$b_s,b_t$ 为偏移。相同偏移的比例变换先组合 $a_s/a_t$，避免中间量下溢；最终非零量下溢为零会被拒绝。`273.15 K = 0 C` 这类合法仿射零点仍允许。未知或不兼容单位被拒绝，不能靠添加输出标签把未知源单位变成物理量；无量纲值用 `1`、`fraction`、`%`、`ppm`。[单位实现](src/aspenops_nexus/units.py) · [测试](tests/test_unit_intermediate_overflow.py)
+
+### 2. 标量约束与开边界
+
+令 $y$ 为约束单位下的读值，$b$ 为限值，$\tau\ge0$ 为相同单位的容差：
+
+| 运算符 | 真正通过条件 | 非负违约距离 $v$ |
+|---|---|---|
+| `<` | $y<b-\tau$ | $\max(0,y-(b-\tau))$ |
+| `<=` | $y\le b+\tau$ | $\max(0,y-(b+\tau))$ |
+| `>` | $y>b+\tau$ | $\max(0,(b+\tau)-y)$ |
+| `>=` | $y\ge b-\tau$ | $\max(0,(b-\tau)-y)$ |
+| `==` | $\lvert y-b\rvert\le\tau$ | $\max(0,\lvert y-b\rvert-\tau)$ |
+
+严格不等式的边界距离可以为零，但 `passed` 仍为 `false`。布尔值、文本、非有限读值及溢出违约量不满足数值约束。[实现](src/aspenops_nexus/evaluation.py) · [开边界与优化接纳回归](tests/test_evaluation.py)
+
+### 3. 线性衡算
+
+`BalanceSpec` 把 $q_i$ 转到同一 `base_unit`，使用有限、无量纲系数 $c_i$：
+
+$$
+r=\operatorname{fsum}(c_1q_1,\ldots,c_nq_n,-b),\qquad
+S=\max\left(\operatorname{fsum}(|c_1q_1|,\ldots,|c_nq_n|),f\right),\qquad
+\rho=|r|/S.
+$$
+
+$$
+\text{passed}\iff\text{所有项与派生量有效}\land
+\left(|r|\le a_{\rm tol}\ \lor\ \rho\le r_{\rm tol}\right).
+$$
+
+$b$ 是 `expected`；$r,b,S,f,a_{\rm tol}$ 使用 `base_unit`；$\rho,r_{\rm tol}$ 无量纲。`floor=f` 默认为 $10^{-12}$，应按工况选择正的尺度；若主动设 $f=0$ 且各项皆零，则分母为零，衡算无效。质量流率与功率不能相加；真实能量衡算需要模型提供完整且一致单位的功率/焓流项，缺失项不能以零补齐。
+
+本版把 $-b$ 放入同一次补偿求和，修复 `fsum(1e16, 1) - 1e16` 先舍入导致的假零残差。非零乘积下溢产生 `balance_underflow`；非零比值下溢时以最小正浮点数作保守上界，并记录 `relative_upper_bound=true`。含衡算请求使用 `compensated-residual-v2` 缓存语义，旧判定不复用。该算法处理有限浮点输入，不恢复模型或测量已丢失的精度。
+
+[定义](src/aspenops_nexus/models.py) · [量纲编译](src/aspenops_nexus/evaluation_plan.py) · [评估](src/aspenops_nexus/evaluation.py) · [目标抵消测试](tests/test_balance_residual_cancellation.py) · [下溢测试](tests/test_balance_underflow.py) · [量纲测试](tests/test_balance_dimension_contract_v19.py)
+
+### 4. 点接受门
+
+$$
+\mathrm{ok}=C\land E\land V\land F.
+$$
+
+$C$ 是 `communication_ok`；$E$ 是 `engine_ok`；$V$ 要求收敛布尔标志为真且 `convergence_state="converged"`；$F$ 要求有效输出、JSON 安全诊断、已声明约束和衡算通过。必需数值输出必须有限；可选无效输出保存为 `null` 并附诊断。`ok=true` 仅证明本请求实际声明的检查，系统不会补造未声明的产品约束或完整守恒项。[实现](src/aspenops_nexus/evaluation.py) · [非有限证据](tests/test_nonfinite_evidence.py) · [结果协议](tests/test_result_protocol_contracts.py)
+
+### 5. 反应守恒与循环拓扑
+
+v2 工程验证采用反应物负、产物正的计量系数 $\nu_i$。$A_{ei}$ 为元素原子数，$z_i$ 为电荷，$M_i$ 为声明分子量：
+
+$$
+A\boldsymbol\nu=0,\qquad \sum_i z_i\nu_i=0,\qquad \sum_i M_i\nu_i=0.
+$$
+
+分子量齐全时才检查最后一项。对任一种守恒贡献 $a_i\nu_i$，使用已接纳浮点输入的精确有理数完成乘积和求和：
+
+$$
+|R|\le\tau S,\quad R=\sum_i a_i\nu_i,\quad S=\sum_i|a_i\nu_i|,\qquad
+\tau=\begin{cases}10^{-10}&\text{元素、电荷},\\10^{-6}&\text{声明质量}.\end{cases}
+$$
+
+不设掩盖小计量数的绝对容差底线；未知组成或不支持的分子式产生 `ENGINEERING_BLOCKER`。物料流图 $G$ 必须由有效 recycle 合同拥有的 tear 边集合 $T_{\rm owned}$ 切断循环：
+
+$$
+G\setminus T_{\rm owned}\ \text{是有向无环图}.
+$$
+
+这属于 **v2 工程规则**。v1 IR 对循环默认给出警告，使用 `--disallow-recycles` 才拒绝循环。[工程规则](src/aspenops_nexus/engineering_rules.py) · [v2 测试](tests/test_process_ir_v2_rules.py) · [数理反例](tests/test_acceptance_repair.py)
+
+### 6. 试验设计
+
+LHS 在每维 $n$ 个分层中各取一点并独立置乱。$\ell_d,h_d$ 是边界，$\pi_d$ 是排列，$u_{kd}\in[0,1)$：
+
+$$
+x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}{n}(h_d-\ell_d),\qquad
+N_{\rm grid}=\prod_d L_d.
+$$
+
+端点和区间宽度必须有限且 $h_d>\ell_d$。生成上限为 $N\le100000$、$Nd\le10^6$、$d\le256$；网格每维至少两级；最近邻排序另限制 5000 点。固定 seed 用于复现，不证明样本统计充分性。[实现](src/aspenops_nexus/design.py) · [测试](tests/test_design.py)
+
+### 7. 目标规范化、Pareto 与优化预算
+
+读值先从 `result.units` 转到目标单位，再规范化：
+
+$$
+z_j=\sigma_j\frac{y_j-r_j}{s_j},\quad J=\sum_jw_jz_j,\quad s_j>0,\ w_j>0,
+\qquad\sigma_j=\begin{cases}+1&\text{minimize},\\-1&\text{maximize}.\end{cases}
+$$
+
+$r_j,s_j$ 使用目标单位，$z_j$ 无量纲。多目标要求 `unit`、`dimension`、`reference_value`、`reference_scale` 全部声明；单目标允许原始标度。更换 kW/W 表示时也要换算参考值与尺度。[实现](src/aspenops_nexus/optimization.py) · [合同测试](tests/test_optimization_contracts.py)
+
+可行候选优于不可行；两个可行候选比较 $J$，两个不可行候选比较诊断违约量。违约量是排序信号，不是统一物理单位的工程损失。将目标表示为最小化方向后：
+
+$$
+x\prec y\iff[\forall j:f_j(x)\le f_j(y)]\land[\exists j:f_j(x)<f_j(y)].
+$$
+
+DE/rand/1/bin 的变异为 $v_d=a_d+F_m(b_d-c_d)$；交叉后裁剪至 $[\ell_d,h_d]$，至少一维使用变异分支。若种群数 $P\ge4$、计划代数 $G\ge0$、预算 $B\ge P$，正常、未取消执行满足：
+
+$$
+G_* =\min\left(G,\left\lfloor\frac{B-P}{P}\right\rfloor\right),\qquad
+N_{\rm eval}=P(1+G_*)\le B.
+$$
+
+这是候选评估计数；缓存可减少真实求解次数。剩余预算不足一整代时不会启动该代；算法不保证全局最优。[DE/Pareto](src/aspenops_nexus/optimizer.py) · [预算边界测试](tests/test_optimizer_complete_edges.py)
+
+### 8. 并发、I/O 与身份
+
+$$
+W_{\rm eff}=\min(W_{\rm request},W_{\max},L),\quad
+W_{\rm dispatch}=\min(N_{\rm handles},N_{\rm unique}),\quad
+\Delta N_{\rm read}=N_{\rm declared}-N_{\rm unique\ read}.
+$$
+
+$L$ 为声明的许可证槽数。PoolManager 把正在创建的 Worker 计入全局驻留预算。同一节点在输出、约束和衡算中重复出现时只读取一次，但分别保留检查语义；操作预算按声明数计，不能利用去重绕过限制。[批次](src/aspenops_nexus/batch.py) · [池管理](src/aspenops_nexus/pool_manager.py) · [I/O 测试](tests/test_evaluation_plan.py)
+
+$$
+K=\operatorname{SHA256}\!\left(\operatorname{UTF8}\bigl(\operatorname{canonicalJSON}(I)\bigr)\right).
+$$
+
+缓存身份 $I$ 含运行时 schema/version、后端与稳定运行时身份、模型/注册表摘要、物理请求语义及算法版本标签。规范 JSON 排序键、固定分隔符、保留 Unicode，使用 `allow_nan=False`。[摘要](src/aspenops_nexus/hashing.py) · [缓存身份](src/aspenops_nexus/pool.py) · [单一摘要测试](tests/test_canonical_hash_single_source.py)
 
 ## 独立有效性门
 
-每个点分别记录 communication、engine、convergence、finite、constraint 和 balance 状态。任何门失败都不能被求解器“成功”或平均分数覆盖。
+逐点检查 `communication_ok`、`engine_ok`、`converged`、`feasible`、`violations`、`balance_residuals`。`constraint_non_finite` / `balance_non_finite` 表示无效数值证据；`constraint_failed` / `balance_failed` 表示声明检查未通过。进程返回、引擎空闲及任务 `completed` 都不能代替逐点 `ok`。
+
+Mock 使用可复查的合成关系：
+
+$$
+X=\frac{1}{1+\exp(-(T-80)/18)},\quad
+p=\operatorname{clip}(0.78+0.018R+0.003N-0.0002F,0,0.9999),
+$$
+
+$$
+Q=\max\left(0,\frac{F(0.06T+1.4R+0.08N)}{\max(P,0.1)}\right),\qquad
+F_{\rm product}=FXp.
+$$
+
+$T,P,F,R,N$ 是 Mock 文件约定的摄氏温度、bar 压力、kg/h 进料、回流比、级数；$Q$ 输出合成 kW。系数是测试用经验数，不能用于设备设计或物性预测。[Mock 源码](src/aspenops_nexus/backends/mock.py)
 
 ## 典型工作流
 
+**小批次：** 先 `doctor`、检查注册表，再 `dry-run`、`run-batch`。验证少量点的单位、约束和收敛证据后扩大范围。只注册已确认的模型节点，不猜测 Aspen Tree Path 或 HYSYS 对象链。
+
+**耐久批次：** 在终端 A 启动服务，在相同环境的终端 B 提交；两者必须共享 `ASPENOPS_STATE_DIR`。
+
 ```bash
-uv run aspenops submit examples/request.example.json
-JOB_ID=$(uv run aspenops submit examples/request.example.json | python -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
-uv run aspenops job "$JOB_ID"
-uv run aspenops cancel "$JOB_ID" --grace-s 2
+# 终端 A：保持运行，Ctrl+C 停止
 uv run aspenops scheduler
-uv run aspenops optimize examples/optimization-request.example.json
+```
+
+```bash
+# 终端 B：Bash；只提交一次
+JOB_ID=$(uv run aspenops submit examples/guarded-mock-batch.example.json \
+  | python -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
+uv run aspenops job "$JOB_ID"
+# 仅在确需取消时执行：
+uv run aspenops cancel "$JOB_ID" --grace-s 2
+```
+
+PowerShell 可保存 `uv run aspenops submit ... | ConvertFrom-Json` 的结果，再读取 `.job_id`，不要照搬 Bash 赋值。提交成功不代表 scheduler 已执行。[任务指南](docs/agent-usage.md)
+
+**Python：** 保存为仓库根目录 `run_guarded.py`，执行 `uv run python run_guarded.py`。进程生成需要 `__main__` 保护。
+
+```python
+from pathlib import Path
+from aspenops_nexus.batch import dry_run_document, run_batch_document
+from aspenops_nexus.config import Settings
+from aspenops_nexus.json_input import load_request_object
+
+
+def main():
+    settings = Settings.from_env()
+    request = load_request_object(
+        Path("examples/guarded-mock-batch.example.json"),
+        max_bytes=settings.max_request_bytes,
+    )
+    print(dry_run_document(request, settings))
+    results = run_batch_document(request, settings)
+    for point in results:
+        print(point["ok"], point["values"], point["violations"])
+    if not all(point["ok"] for point in results):
+        raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## MCP 兼容性与服务生命周期
@@ -260,92 +294,106 @@ uv run aspenops optimize examples/optimization-request.example.json
 uv run aspenops mcp
 ```
 
-MCP lifespan 拥有 scheduler 启停和异常回收，不公开真实 Aspen 认证，也不绕过显式执行权限。
+安装 `agent` extra 后提供本地 stdio MCP，依赖合同为 `mcp>=1.30.0,<2`。服务 lifespan 启停同一 scheduler/PoolManager。[实现](src/aspenops_nexus/mcp_server.py) · [兼容性检查](scripts/check_mcp.py) · [MCP 生命周期技术图](docs/assets/readme/mcp-runtime-lifecycle.svg)
+
+Agent 顺序：`system_info` → `list_semantic_variables` → `dry_run_request` → `submit_batch` → `job_status` / `job_result` → `verify_evidence_bundle`。`run_batch_sync` 上限 16 点；长求解即使点数少也应后台提交。优化工具为 `submit_optimization`、`optimization_status`、`optimization_result`、`cancel_optimization`。只接受 `ok=true` 的点，证据校验与工程解释另行完成。
 
 ## 约束优化闭环
 
-优化器保存 evaluation budget、原子 checkpoint、Deb-style feasibility 排序与 Pareto archive；求解失败和非有限目标不能被最佳分数覆盖。
+```bash
+uv run aspenops optimize examples/optimization-request.example.json \
+  --output var/optimization-result.json
+```
 
-## 调度与恢复
+[示例](examples/optimization-request.example.json)使用温度和有序回流比，设置最小纯度约束、目标单位和规范化尺度。先确认可行域，再增加种群、代数；实际预算受 Settings 限制。输出保留 trace、候选、可行 Pareto 集、请求身份及预算。checkpoint 在初始种群及每代后原子写入，作为复查快照；当前 CLI 不宣称可从任意 checkpoint 自动恢复 DE 状态。[优化指南](docs/optimization-engine.md)
 
-持久状态包括 `retry_wait` 与 `dead_letter`。租约、心跳、取消截止、worker crash、幂等提交和恢复均有事务边界。
+## Process Intent 与工程设计
+
+```bash
+uv run python scripts/validate_process_ir.py examples/process-intent.example.json \
+  --canonical-output var/ci/process-intent-canonical.json \
+  --report-output var/ci/process-intent-report.json
+uv run python scripts/render_process_ir_dashboard.py \
+  --input var/ci/process-intent-report.json \
+  --output-html var/ci/process-ir-dashboard.html \
+  --output-svg var/ci/process-ir-dashboard.svg
+uv run python scripts/validate_process_design_v2.py \
+  examples/process-requirement-v1.example.json examples/process-design-v2.example.json \
+  --report-output var/ci/process-design-report.json
+```
+
+v1 检查组件、设备、端口、流股、引用和资源上限；规范化排序使相同图的不同输入顺序不影响摘要。`process-ir-dashboard.html` 是合同检查面板，不是模拟结果。v2 增加需求绑定、参数、组成、电荷、质量和 recycle 合同检查。[IR 指南](docs/process-intent-ir.md)
+
+## 原生适配器一致性门
+
+v2 原生构建要求 `NativeBuildAdapter` 协议、manifest、输入/输出 schema、单位、失败隔离、事务和拓扑/layout 读回，并绑定适配器代码、运行时身份、签名资格、撤销策略与有效见证。缺证据的计划必须阻断；声明兼容版本不是目标商业软件认证。[适配器门](src/aspenops_nexus/native_adapter_conformance.py) · [受控执行](src/aspenops_nexus/native_builder.py) · [指南](docs/native-adapter-conformance.md)
 
 ## 缓存、批内去重与单航班
 
-相同不可变冷启动请求可使用 same-batch dedup、持久缓存和 `inflight_singleflight`。缓存命中可作为该请求的独立结果，但不会执行参数写入或恢复新 Worker 的模拟器状态；warm-start 延续只使用当前 Worker 的实时状态。失败默认不缓存，返回对象保持深度隔离。
+独立 `reinitialize` 请求可使用持久缓存、`same_batch_dedup`、`inflight_singleflight`。默认不缓存失败；启用 `ASPENOPS_CACHE_FAILURES` 仍排除通信/引擎失败及污染 Worker。SQLite WAL、内存 LRU 减少重复访问；结果深复制隔离调用方修改。[缓存](src/aspenops_nexus/cache.py) · [回归](tests/test_pool_cache_efficiency.py)
 
-同步调用只有一个实际派发 Worker 时，主进程直接运行派发循环，避免逐次创建与等待额外线程；模拟器仍留在原有隔离进程中。多个实际派发 Worker 仍使用并行派发，许可证上限、轨迹亲和性、取消、超时、回收及冷态缓存边界保持原合同。此优化减少控制程序操作次数，不构成真实 Aspen 求解器提速证据；回归见 [单 Worker 派发测试](tests/test_pool_inline_dispatch.py)。
+**缓存命中只返回独立历史结果**，不会把参数写回当前 Worker。`warm_start` 禁用结果缓存，要求单 Worker、同一 session、递增且唯一的 step，不能与冷点混在一个 pool 调用。实时池在跨调用、跨租约复用时继续绑定 session 与最后派发的 step；跨 session、重复或倒退步骤在任何参数写入和读回之前拒绝，返回 `warm_start_session_mismatch` 或 `warm_start_step_not_increasing`，原轨迹状态保持不变。
+
+已派发的步骤即使不收敛也占用其编号；派发前取消不消耗编号。需要恢复时使用同一 session 的更大 step，或实际执行一次冷初始化后开启新 session。这些标签是轨迹顺序合同，不是用户身份认证。关闭、替换、超时、失败冷初始化或冷请求只命中缓存会阻断延续；只有当前 Worker 真正完成通信/引擎成功且收敛的 `reinitialize` 才清除旧绑定并恢复延续资格。失败约束与实时状态有效性仍分开判断。[热启动回归](tests/test_warm_start_continuity.py) · [跨调用/租约绑定回归](tests/test_warm_start_session_binding.py)
 
 ## Worker 所有权与回收
 
-每个 Windows Worker 独占 COM session、私有模型副本与 job scope。point budget、age、timeout、protocol error、tainted state 或 cancellation deadline 触发回收。
+Worker 在私有模型快照上开启模拟器，IPC 绑定协议版本、请求 ID、结果 schema。真实后端要求 Windows Job Object 监督；进程清理核对 PID、创建时间、可执行文件指纹及后代关系，不能终止用户独立开启的 Aspen。[Worker](src/aspenops_nexus/worker.py) · [监督](src/aspenops_nexus/windows_job.py) · [所有权回归](tests/test_aspen_process_ownership.py)
+
+$$
+R_{\rm periodic}=(n_{\rm evaluated}\ge n_{\max})\lor(t_{\rm age}\ge t_{\max}).
+$$
+
+点数和单调时钟年龄是周期条件；崩溃、协议错误、污染状态、超时和取消截止还有独立回收路径。替换后 generation 增加，旧实时状态不会隐式恢复。
 
 ## 原生失败隔离
 
-原生/商业 backend 的进程、COM apartment、临时模型、Windows Job Object 和日志边界必须隔离；一个 Worker 的 timeout、protocol error 或 crash 不得污染其他 Worker。失败后先终止所属进程树、记录 violation 与 generation，再创建替代 Worker；禁止在未知状态的同一 COM 实例上继续计算。
+`timeout_s` 是一次 Worker 请求等待响应的预算，不是排队、启动、重建、证据打包的总耗时 SLA。超时会终止所属 Worker 并返回 `worker_timeout`；启动有独立预算，终止/回收有清理时间。协议或 request ID 不匹配的响应不能被当成成功。[IPC 回归](tests/test_worker_protocol_hardening.py) · [轮询数值边界](tests/test_polling_numeric_boundaries.py)
 
-## 性能工程与证据
+## 调度与恢复
 
-```bash
-uv run python scripts/measure_cli_startup.py --output var/ci/cli-startup.json
-uv run python scripts/measure_operation_counts.py --output var/ci/operation-counts.json
-uv run python scripts/measure_job_store_queries.py --output var/ci/job-store-query-plan.json
-uv run python scripts/render_test_dashboard.py --input-dir var/ci --output-html var/ci/test-dashboard-quality.html --output-svg var/ci/test-dashboard-quality.svg
-```
-
-治理工件包括 `cli-startup.json`、`operation-counts.json`、`job-store-query-plan.json`、`test-dashboard-quality.html` 与 Python/Windows/licensed dashboard；解释规则见 Performance Audit V2。当前运行证据仅写入 `RUNNER_TEMP`/`${{ runner.temp }}`，artifact 名包含 `github.run_id` 与 `github.run_attempt`。
-
-## 工业应用场景
-
-支持批量参数扫描、受约束优化、牌号切换、故障复算和受控数字孪生交接；不替代流程工程师、HAZOP/LOPA/SIL、客户模型批准或现场授权。
-
-## 交付验收
-
-`scripts/verify_delivery.py` 验证版本、README、工作流、AI 图、归档基线和真实 Aspen 边界。软件 PASS 只表示交付树满足声明合同；外部状态保持 `PENDING_REAL_ASPEN_CERTIFICATION`。
-
-```bash
-uv run python scripts/verify_delivery.py --root . --output var/ci/delivery-acceptance.json
-```
-
-## 确定性交付包
-
-`scripts/build_delivery_bundle.py` 从干净 Git tree 生成：
-
-```text
-aspenops-source-<sha12>.zip
-aspenops-handover-<sha12>.zip
-aspenops-sbom-<sha12>.spdx.json
-SHA256SUMS
-```
-
-SBOM 使用 `SPDX-2.3`；所有工件具有规范时间戳、排序成员和 SHA-256。`<sha12>` 是 commit 前 12 位，不是运行时占位输入。
-
-```bash
-uv run python scripts/build_delivery_bundle.py --root . --output-dir var/delivery --source-sha 0123456789abcdef0123456789abcdef01234567
-```
+队列保存 owner、租约、心跳、完成位置和取消状态。可恢复失败进入 `retry_wait`，耗尽尝试进入 `dead_letter`；租约 fencing 防止旧执行者覆盖重新认领后的任务结果。取消先请求停止，宽限到期回收活跃 Worker。任务完成后仍须检查逐点 `ok`。[实现](src/aspenops_nexus/scheduler.py) · [竞争测试](tests/test_scheduler_multiprocess_races.py) · [租约回归](tests/test_scheduler_claimed_lease_fencing.py)
 
 ## 证据包完整性与真实性
 
-永久工作流为 `ci.yml`、`windows-control-plane.yml`、`generate-performance-evidence.yml`、`licensed-aspen-certification.yml`。手动证据仅接受 `refs/heads/main`；dispatch guard 在 `actions/checkout` 前检查 ref，不满足时**显式失败**并返回 status 2，而不是 all-skipped 假绿。候选和基线在 `detached` worktree 中验证。
+运行包绑定请求、结果、模型/注册表和环境摘要。归档读取拒绝不安全路径、重复声明、超限成员与不匹配摘要。Ed25519 以外部信任的公钥验证签名，包内公钥不能自行成为信任根。完整性、真实性和模型适用性分别判断。[证据实现](src/aspenops_nexus/provenance.py) · [归档测试](tests/test_provenance_zip_safety.py)
 
-许可环境要求 `expected_head_sha == GITHUB_SHA`，记录 `GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`LICENSED_EVIDENCE_DIR`、`run-metadata.txt`、`job_status` 和 `aspenops-licensed-artifact`。上传使用 `if-no-files-found: error`，路径位于 `runner.temp`，真实 Aspen 任务串行。
+核心质量与执行工作流包括 `ci.yml`、`windows-control-plane.yml`、`generate-performance-evidence.yml`、`licensed-aspen-certification.yml`。质量作业使用 `ubuntu-24.04`，Windows 控制面使用 `windows-2025`。冻结依赖分别审计 Linux 与 Windows、Python 3.11、3.12、3.13 六种组合；执行矩阵以工作流文件为准。 另有 [EPDM 公开来源下载](.github/workflows/epdm-public-source-download.yml)工作流，用于原始公开资料与下载回执，不执行模拟器。
 
-## 项目结构
+手动流程只接受 `refs/heads/main`，在 `actions/checkout` 前进行 dispatch guard；非 main **显式失败**并返回 status 2。候选/基线使用 `detached` worktree。许可任务在受保护、自托管 Windows 环境串行运行，要求 `expected_head_sha == GITHUB_SHA`，记录 `GITHUB_RUN_ID`、`GITHUB_RUN_ATTEMPT`、`LICENSED_EVIDENCE_DIR`、`run-metadata.txt`、`job_status`。手动性能/许可证据目录为 `RUNNER_TEMP` / `${{ runner.temp }}`，工件名同时包含 `github.run_id` 与 `github.run_attempt`，区分不同运行及同一运行的重试，许可上传使用 `aspenops-licensed-artifact` 和 `if-no-files-found: error`。[许可控制面](docs/licensed-certification-control-plane.md)
 
-- `src/aspenops_nexus/`：控制面、Process IR、scheduler、cache、optimizer、evidence、adapter；
-- `tests/`：数值、并发、文件安全、文档、artifact 与 workflow 合同；
-- `scripts/`：审计、性能、dashboard、Process IR 和 delivery bundle；
-- `.github/workflows/`：四个永久工作流；
-- `docs/assets/readme/`：二十三幅确定性 SVG。
+## 性能工程与证据
 
-## 故障排查
-
-先运行 `uv run aspenops doctor --probe`，再检查 allowed roots、registry SHA、model identity、license、worker generation、state database 与 evidence bundle。禁止关闭测试、降低容差或把非收敛重解释为成功。
-
-## 最终验收命令
+可测指标包括冷/热 CLI 启动、导入时间、读节点数、缓存访问、序列化次数、SQLite 查询计划及内存峰值。单 Worker 同步派发减少额外线程，仿真仍在隔离进程。性能结论需要同环境、同工作量前后对比；Mock 时间不是 Aspen 加速比。
 
 ```bash
-python scripts/final_acceptance_preflight.py --root . --json
+uv run aspenops benchmark --points 4 --workers 1,2
+uv run python scripts/measure_cli_startup.py --output var/ci/cli-startup.json
+uv run python scripts/measure_operation_counts.py --output var/ci/operation-counts.json
+uv run python scripts/measure_job_store_queries.py --output var/ci/job-store-query-plan.json
+```
+
+解读 `cli-startup.json`、`operation-counts.json`、`job-store-query-plan.json` 时参考 [Performance Audit V2](docs/performance-audit-2026-07-27-v2.md)。历史报告只作对照，本次交付使用目标提交的新记录。
+
+## 工业应用场景
+
+| 场景 | 使用策略 |
+|---|---|
+| 分离/反应条件扫描 | 少量冷点验证后扩大 LHS/网格，先声明产品约束和完整流股项 |
+| 能耗与质量折中 | 固定单位、参考尺度、可行域和预算，再解释 Pareto 候选 |
+| 延续轨迹、牌号切换研究 | 单 Worker 与明确 session/step；丢失状态后重建受控初始条件 |
+| 故障重现、模型交接 | 固定摘要、注册表、运行时、seed 和原始结果，保留失败点 |
+| Agent 过程方案 | 输出受限 IR 与引用假设，通过图/工程规则后进入授权执行 |
+
+这些是工作流用途；具体设计仍需批准模型及工程审查，代码不提供工厂级安全认证。
+
+## 交付验收
+
+只维护一个长期分支 `main`。[质量报告](docs/quality-report.md)中的**已验证归档基线**供历史对照，**不是对任意后续提交的自动声明**。此次交付需绑定目标 SHA 的完整日志、JUnit、分支覆盖率、构建与工件摘要；收集数、跳过数、旧截图均不是通过数。
+
+原冻结门禁如下，Windows 同步时另加 `--extra windows`：
+
+```bash
 uv lock --check
 uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
@@ -353,90 +401,73 @@ uv run ruff format --check .
 uv run mypy src
 uv run python -m compileall -q src scripts
 uv run python scripts/audit_source_tree.py
-uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-fail-under=95.0
+uv run pytest -W error::ResourceWarning \
+  --cov=aspenops_nexus --cov-branch --cov-fail-under=95.0
 uv build
+uv run python scripts/check_mcp.py
+uv run python scripts/check_wheel_metadata.py --dist-dir dist
+uv run python scripts/validate_process_ir.py examples/process-intent.example.json
+uv run aspenops --version
+uv run aspenops demo
+uv run python scripts/verify_delivery.py --root . --output var/ci/delivery-acceptance.json
 ```
 
-## License
+CI 另执行六组合冻结依赖审计、Bandit `1.9.4` high/high 和 Python 3.12 逆序/固定随机顺序测试。面板由 `scripts/render_test_dashboard.py` 从原始证据生成：`test-dashboard-quality.html` 展示通用软件质量门禁，`test-dashboard-windows.html` 展示 Windows 软件门禁，`test-dashboard-licensed.html` 展示受保护的真实引擎资格验证证据。三者的运行平台和证据范围不同，阅读面板时应核对源码 SHA 与原始结果。长时间稳定性运行必须记录真实活动测试时间、循环结果及源码身份；单次回归不能代替六小时完成证明。
 
-Apache-2.0 仅覆盖本仓库。Aspen Plus、Aspen HYSYS、Windows、许可证服务、客户模型和工艺数据受各自许可、保密与安全制度约束。
+## 确定性交付包
 
-
-### 当前交付树强制验收
-
-最终交付必须把测试结果、覆盖率与 Git 身份绑定到当前树；历史 PASS 不能代替当前源码资格。
+`scripts/build_delivery_bundle.py` 要求干净 Git tree 及真实当前 SHA，拒绝未提交文件与不匹配身份。产物为 `aspenops-source-<sha12>.zip`、`aspenops-handover-<sha12>.zip`、`aspenops-sbom-<sha12>.spdx.json`、`SHA256SUMS`，使用排序成员、规范时间戳与 `SPDX-2.3` SBOM。
 
 ```bash
+# 在已提交、已验证的干净 main 上执行，使用真实 SHA。
+uv run python scripts/build_delivery_bundle.py \
+  --root . --output-dir var/delivery --source-sha "$(git rev-parse HEAD)"
 uv run python scripts/verify_delivery.py \
-  --root . \
-  --require-current-qualification \
+  --root . --require-current-qualification \
   --output var/ci/delivery-acceptance-current.json
 ```
 
-验收面板包括 `test-dashboard-quality.html`、`test-dashboard-windows.html`、`test-dashboard-licensed.html`、`test-dashboard-licensed-mock.html` 与各 Python 版本面板。面板只汇总对应作业证据，不构成真实 Aspen 工程认证。
+`--require-current-qualification` 需要当前源码的合格证据记录；仅构建 ZIP 不会自动授予 PASS。按[交付指南](docs/delivery-acceptance.md)从原始证据写入该记录，保留真实工程资格边界。
+
+## 项目结构
+
+| 路径 | 责任 |
+|---|---|
+| `src/aspenops_nexus/` | 唯一运行时：模型、单位、注册表、执行、队列、优化、IR、研究、证据 |
+| `examples/` | Mock、注册表、优化、过程及研究合同示例 |
+| `tests/` | 数值、协议、并发、文件安全、打包、文档与工作流回归 |
+| `scripts/` | 审计、IR、基准、面板及确定性交付 |
+| `.github/workflows/` | 软件、Windows 控制面、性能和许可工作流 |
+| `docs/assets/readme-vnext/` | 分语言的 README AI 设计资产 |
+| `docs/assets/README.md` | 二十三幅工程 SVG 与验收图的历史技术图集 |
+
+## 故障排查
+
+| 现象 | 排查方向 |
+|---|---|
+| `dry-run` 失败 | 允许路径、键/标识符、权限、单位、上下界和预算 |
+| `worker_timeout` | 点预算、求解状态和回收；终止不表示收敛 |
+| `warm_start_session_mismatch` / `warm_start_step_not_increasing` | 核对池的活跃 session 与最后派发步骤；换轨迹需真正完成冷初始化 |
+| `warm_start_state_lost` | 在当前 Worker 实际完成受控 `reinitialize`，缓存不能恢复状态 |
+| `constraint_non_finite` / `balance_non_finite` | 原始值、单位量级、缺失项和派生溢出 |
+| `balance_underflow` 或零容差失败 | 检查尺度与实际误差要求，不能把小非零量改为零 |
+| 长期 pending | scheduler 是否运行，提交端和服务端状态目录是否一致 |
+| 缓存不复用 | 模型、注册表、运行时、请求与算法语义摘要是否改变 |
+| 许可/签名失败 | 受信公钥、目标 SHA、有效期、撤销状态与原始阻断证据 |
+
+## License
+
+[Apache-2.0](LICENSE) 覆盖本仓库代码。Aspen Plus、Aspen HYSYS、Windows、客户模型及商业工艺数据遵循各自许可和数据使用要求。
 
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
-## 当前实现：代码、数学与使用策略
+## 可再生实现索引
 
-![中文代码与数学合同概念图](docs/current-main/aspenops-current-main-zh.svg)
+本索引由 `scripts/refresh_current_main_readme.py --write` 生成，使用 `--check` 检查固定点。正文中的数理定义与可执行流程是主要使用说明；下列源文件与历史概念图保留用于追溯。
 
-> 软件门禁不等于真实 Aspen Plus/HYSYS 工程认证；外部状态保持 PENDING_REAL_ASPEN_CERTIFICATION。
+[`src/aspenops_nexus/process_ir.py`](src/aspenops_nexus/process_ir.py) · [`src/aspenops_nexus/models.py`](src/aspenops_nexus/models.py) · [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
 
-#### 有界并发调度
+[历史中文代码合同图](docs/current-main/aspenops-current-main-zh.svg)
 
-$$
-N_{\mathrm{dispatch}}=\min(N_{\mathrm{handles}},N_{\mathrm{unique}})
-$$
-
-这是 `CasePool` 的实际线程启动上界：有效工作句柄数与去重请求数取较小值。许可证、内存与稳定性仍须在部署时核实；该公式不声称程序自动测得全部资源限额。
-
-源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
-
-#### 热启动的状态隔离
-
-$$
-\exists q:\neg q.\mathrm{reinitialize}\;\Longrightarrow\;N_{\mathrm{workers}}=1
-$$
-
-复用求解器历史的请求必须使用单工作进程；否则代码拒绝执行。冷启动批次可以并发并使用持久缓存，但缓存命中只返回独立历史结果，不会恢复当前 Worker 的模拟器状态。关闭、替换或预算回收丢失状态后，warm 请求在写入/求解前以 warm_start_state_lost 拒绝；只有当前池当前 Worker 实际执行、通信和引擎状态成功且收敛的 reinitialize 才能恢复延续。Mock 回归不等于真实 Aspen 验收。
-
-源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
-
-#### 工作进程生命周期
-
-$$
-R_{\mathrm{periodic}}=(N_{\mathrm{eval}}\ge N_{\max})\lor(t_{\mathrm{age}}\ge t_{\max})
-$$
-
-周期性回收由已处理点数或单调时钟年龄触发；崩溃、超时、协议错误和污染状态还有独立回收条件。该布尔式只表示周期性条件，不是完整故障分类，也不证明一次 Aspen 计算收敛。
-
-源码对应: [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
-
-#### 轮询输入与外部调用边界
-
-$$
-T_{\mathrm{timeout}},\Delta t\in\mathbb{R}_{>0}\cap\mathbb{R}_{\mathrm{finite}},\quad n_{\mathrm{stable}}\in\mathbb{N}_{>0}
-$$
-
-在读取外部 COM 引擎之前，timeout_s 与 poll_interval_s 必须为有限正数，stable_samples 必须是正整数，布尔值不能冒充这些数值。NaN 不能使超时失效；无法转换成有限浮点数的 COM 整数状态返回 UNKNOWN，而不是抛出未处理的溢出。可见 Aspen 异步运行须先观察到本次请求进入运行态，再接受稳定空闲和状态节点；默认启动确认窗口为 30 秒，可由 ASPENOPS_STATUS_STARTUP_TIMEOUT_S 调整。窗口内未观察到运行态会以 timeout 失败关闭，即使状态树残留旧成功文本。轮询停止不等于求解收敛；收敛仍由状态节点、否定标记和引擎空闲证据共同判断。
-
-源码对应: [`src/aspenops_nexus/convergence.py`](src/aspenops_nexus/convergence.py) · [`tests/test_polling_numeric_boundaries.py`](tests/test_polling_numeric_boundaries.py)
-
-### 使用与验收顺序
-
-1. 先核对安装环境、输入结构、单位、有效范围与执行权限。
-2. 按上面的源码锚点区分原生实现、解释性合同和外部执行要求。
-3. 先运行快速回归和完整质量门，再用固定提交执行长期回归。
-4. 逐项保存原始日志、机器报告和限制；任何缺失证据不得写成 PASS。
-
-```bash
-uv lock --check
-uv sync --frozen --extra dev --extra agent --extra signing
-uv run python scripts/verify_delivery.py
-```
-
-每次修复均须绑定新提交重新测试。基线回归、两段各三小时的重复回归、浏览器图形检查和外部工程认证是不同证据，不可互相替代。没有原始回执时，不宣称已完成六小时验收。
-
-源码锚点: [`src/aspenops_nexus/process_ir.py`](src/aspenops_nexus/process_ir.py) · [`src/aspenops_nexus/models.py`](src/aspenops_nexus/models.py) · [`src/aspenops_nexus/pool.py`](src/aspenops_nexus/pool.py)
+软件门禁不等于真实 Aspen Plus/HYSYS 工程认证；外部状态保持 PENDING_REAL_ASPEN_CERTIFICATION。
 
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:END -->

@@ -448,9 +448,10 @@ def evaluate(
                 violations.append(f"balance_failed:{name}")
                 feasible = False
                 continue
-            signed_sum = _safe_fsum(signed_terms)
             absolute_sum = _safe_fsum(absolute_terms)
-            residual = signed_sum - compiled_balance.spec.expected
+            # Include the target in the compensated sum. Rounding a subtotal first
+            # can erase a representable residual (for example 1e16 + 1 - 1e16).
+            residual = _safe_fsum([*signed_terms, -compiled_balance.spec.expected])
             scale = max(absolute_sum, compiled_balance.spec.floor)
             relative = abs(residual) / scale if scale > 0 else math.inf
             if not all(math.isfinite(item) for item in (residual, scale, relative)):

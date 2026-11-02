@@ -75,6 +75,7 @@ class CasePool:
         # A continuation depends on live simulator state, not only on its model digest.
         # Once that state is lost, only an executed reinitialization may restore it.
         self._warm_start_loss_reason: str | None = None
+        self._warm_start_trajectory: tuple[str, int] | None = None
 
     def __enter__(self) -> CasePool:
         self.start()
@@ -318,8 +319,9 @@ class CasePool:
             # Do not replay cached feasibility decisions from closed-boundary semantics.
             identity["strict_constraint_semantics"] = "open-boundary-v1"
         if request.balances:
-            # Older evaluations could accept nonzero balances after float underflow.
-            identity["balance_arithmetic_semantics"] = "underflow-aware-v1"
+            # Older evaluations could lose nonzero products or a residual after
+            # rounding the subtotal before subtracting a nonzero balance target.
+            identity["balance_arithmetic_semantics"] = "compensated-residual-v2"
         return canonical_hash(identity)
 
     def _key_requests(
@@ -381,6 +383,46 @@ class CasePool:
             elapsed_s=0.0,
             request_hash=request_hash,
         )
+
+    def _reserve_warm_start_step(
+        self, request: EvaluationRequest, request_hash: str
+    ) -> EvaluationResult | None:
+        session = str(request.metadata["warm_start_session"])
+        step = int(request.metadata["warm_start_step"])
+        with self._replace_lock:
+            active = self._warm_start_trajectory
+            reason = None
+            if active is not None:
+                if session != active[0]:
+                    reason = "warm_start_session_mismatch"
+                elif step <= active[1]:
+                    reason = "warm_start_step_not_increasing"
+            if reason is None:
+                # Once dispatched, even a nonconverged point may have changed live
+                # state. Consume its step before IPC rather than only after ok=true.
+                self._warm_start_trajectory = (session, step)
+                return None
+            assert active is not None
+            return EvaluationResult(
+                ok=False,
+                communication_ok=False,
+                engine_ok=False,
+                converged=False,
+                feasible=False,
+                values={},
+                units={},
+                violations=[reason],
+                diagnostics={
+                    "state_trace": ["received", "warm_start_trajectory_rejected"],
+                    "rejected_before_execution": True,
+                    "requested_session": session,
+                    "requested_step": step,
+                    "active_session": active[0],
+                    "last_dispatched_step": active[1],
+                },
+                elapsed_s=0.0,
+                request_hash=request_hash,
+            )
 
     @staticmethod
     def _cancelled_result(request_hash: str) -> EvaluationResult:
@@ -495,6 +537,13 @@ class CasePool:
             ]
             if len(set(trajectories)) != len(trajectories):
                 raise ValueError("warm_start trajectory steps must be unique")
+            if len({session for session, _ in trajectories}) != 1:
+                raise ValueError("warm_start pool calls require one trajectory session")
+            if any(
+                left[1] >= right[1]
+                for left, right in zip(trajectories, trajectories[1:], strict=False)
+            ):
+                raise ValueError("warm_start trajectory steps must be increasing")
             with self._operation_lock:
                 return self._evaluate_many_locked(requests, cancel_check=cancel_check)
         if len(requests) == 1:
@@ -584,6 +633,17 @@ class CasePool:
                         handle = self._replace(handle_index, expected=handle)
                         recycle_event = (pre_reason, old_generation, handle.generation)
 
+                    if request.reinitialize:
+                        # A failed reset must not leave the preceding warm trajectory
+                        # authorized to continue on potentially different state.
+                        self._mark_warm_start_state_lost("reinitialize_incomplete")
+                    else:
+                        rejected = self._reserve_warm_start_step(request, key)
+                        if rejected is not None:
+                            with result_lock:
+                                for index in indexes:
+                                    output[index] = deepcopy(rejected)
+                            continue
                     result = evaluate_on_worker(handle, request)
                     # Reading a cached cold result never reaches this branch. It must
                     # not certify that the current simulator has restored its state.
@@ -596,6 +656,7 @@ class CasePool:
                         with self._replace_lock:
                             if self._handles[handle_index] is handle:
                                 self._warm_start_loss_reason = None
+                                self._warm_start_trajectory = None
                     self._bind_execution_identity(result, handle)
                     result.cache_source = "computed"
                     result.cache_hit = False

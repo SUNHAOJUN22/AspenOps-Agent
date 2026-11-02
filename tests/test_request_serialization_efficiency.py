@@ -163,7 +163,7 @@ def test_cache_key_bytes_preserve_serialization_and_balance_semantics(with_balan
     }
     expected_identity = dict(legacy_cache_identity)
     if with_balances:
-        expected_identity["balance_arithmetic_semantics"] = "underflow-aware-v1"
+        expected_identity["balance_arithmetic_semantics"] = "compensated-residual-v2"
     key = pool.cache_key(request)
     assert key == canonical_hash(expected_identity)
     assert (key != canonical_hash(legacy_cache_identity)) is with_balances
