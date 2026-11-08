@@ -12,6 +12,22 @@
 
 图是基于实现边界的 AI 概念设计。精确公式、单位与状态以本文及链接源码为准；图中装置不代表真实 Aspen 运行、现场数据或认证。英文版使用独立英文图；历史工程技术图保留在[图集与来源说明](docs/assets/README.md)。
 
+## 可审查的执行链
+
+```mermaid
+flowchart LR
+  A["已有工艺模型"] --> B["变量注册与权限"]
+  B --> C["单位、边界、dry-run"]
+  C --> D["隔离 Worker / 许可求解器"]
+  D --> E["收敛、约束、衡算"]
+  E --> F["证据包与工程审核"]
+  F -->|"拒绝或补证"| B
+  classDef quality fill:#0E7490,color:#fff,stroke:#67E8F9;
+  class B,C,E,F quality;
+```
+
+这是**可编辑的技术概念图**，不是 Aspen 的运行截图。Mock 成功不代表真实 Aspen 合格；真实后端仍需 Windows 主机、有效许可证、审核过的变量注册表、固定 Golden Case 与工程师签认。先执行 `uv run aspenops dry-run examples/guarded-mock-batch.example.json`，确认执行前的策略与资源预算，再决定是否启动许可仿真。
+
 ## 系统定位与当前能力
 
 `aspenops-nexus 2.0.0` 是 Aspen Plus / Aspen HYSYS 自动化的 Python 控制面。它统一 CLI、MCP、持久任务队列和仿真 Worker，管理**怎么执行、什么结果可接受、如何复查**。热力学物性和流程求解由获许可的外部模拟器及用户模型承担。
