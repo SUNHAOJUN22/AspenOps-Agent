@@ -12,6 +12,12 @@
 
 This AI concept design follows the implementation boundaries. Exact equations, units and states are defined below and in the linked code; the illustrated plant is not a real Aspen run, measured plant data or certification. The Chinese edition uses its own Chinese artwork. Earlier engineering diagrams remain in the [technical gallery and provenance notes](docs/assets/README.md).
 
+## Scientific execution architecture — editable figure
+
+![Four-stage evidence flow](docs/assets/atlas-v2/architecture-en.svg)
+
+This source-editable vector diagram describes the software boundary, not a validated solver run or a measured scientific result.
+
 ## System position and current capabilities
 
 `aspenops-nexus 2.0.0` is a Python control plane for Aspen Plus / Aspen HYSYS automation. It unifies the CLI, MCP, durable queue and simulator workers to govern **how a request executes, which results are acceptable, and how they can be checked later**. Thermodynamic properties and flowsheet solutions come from the licensed external simulator and the user's model.
