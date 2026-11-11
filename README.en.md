@@ -1,40 +1,33 @@
 # AspenOps 2.0
 
-**Turn an AI process proposal into a bounded execution request, then use units, constraints, balances and evidence to decide whether each calculated point is acceptable.**
+**Turn a process proposal into a dimensioned, bounded execution request; judge every point using convergence, constraints, balances and original evidence.**
 
-[简体中文](README.md) · [Architecture](docs/architecture.md) · [Windows setup](docs/windows-setup.md) · [Agent usage](docs/agent-usage.md) · [Delivery acceptance](docs/delivery-acceptance.md)
+[简体中文](README.md) · [Implementation guide](docs/implementation-guide.en.md) · [Windows setup](docs/windows-setup.md) · [Delivery acceptance](docs/delivery-acceptance.md)
 
 ![version-2.0.0-delivery](https://img.shields.io/badge/version-2.0.0-111827)
 ![Python 3.11–3.13](https://img.shields.io/badge/Python-3.11--3.13-3776AB)
 ![Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-0F766E)
 
-![AspenOps English AI concept design: process intent, isolated execution, mathematical checks and traceable evidence](docs/assets/readme-vnext/hero.en.svg)
+`aspenops-nexus 2.0.0` is the Python control plane for Aspen Plus / Aspen HYSYS. It unifies CLI, MCP, a durable queue and isolated workers. Thermodynamic properties, equipment models and flowsheet solutions remain the responsibility of the external licensed simulator and reviewed user model.
 
-This AI concept design follows the implementation boundaries. Exact equations, units and states are defined below and in the linked code; the illustrated plant is not a real Aspen run, measured plant data or certification. The Chinese edition uses its own Chinese artwork. Earlier engineering diagrams remain in the [technical gallery and provenance notes](docs/assets/README.md).
+## Execution architecture
 
-## Scientific execution architecture — editable figure
+![AI-generated AspenOps architecture: declare, govern, isolate execution and verify independent gates](docs/assets/ai-generated/architecture.png)
 
-![Four-stage evidence flow](docs/assets/atlas-v2/architecture-en.svg)
+**Figure 1 · AI-generated schematic.** Requests pass path, registry, unit and resource checks before controlled execution. Search candidates are not automatically feasible. The illustrated plant and records explain software relationships; they are not Aspen results, measurements or engineering certification.
 
-This source-editable vector diagram describes the software boundary, not a validated solver run or a measured scientific result.
-
-## System position and current capabilities
-
-`aspenops-nexus 2.0.0` is a Python control plane for Aspen Plus / Aspen HYSYS automation. It unifies the CLI, MCP, durable queue and simulator workers to govern **how a request executes, which results are acceptable, and how they can be checked later**. Thermodynamic properties and flowsheet solutions come from the licensed external simulator and the user's model.
-
-| Capability | Implemented behavior | Code and boundary |
+| Work to perform | Implementation | Operating boundary |
 |---|---|---|
-| Semantic I/O | Registry keys, identifiers, access, units, bounds, read deduplication and conflicting-write checks | [registry](src/aspenops_nexus/registry.py), [evaluation_plan](src/aspenops_nexus/evaluation_plan.py); example paths require confirmation against each model |
-| Batch execution | Private model snapshots, separate processes, timeouts, bounded concurrency and point verification | [batch](src/aspenops_nexus/batch.py), [worker](src/aspenops_nexus/worker.py), [pool](src/aspenops_nexus/pool.py) |
-| Backends | Portable Mock; Aspen Plus COM and HYSYS Spreadsheet adapters for existing models | [factory](src/aspenops_nexus/backends/factory.py); real backends require licensed Windows and a reviewed model registry |
-| Long jobs | SQLite queue, leases, heartbeat, cancellation, retries, dead letters and idempotent submission | [scheduler](src/aspenops_nexus/scheduler.py); standalone CLI submissions require a running scheduler service |
-| Optimization and sampling | Bounded DE, mixed variables, feasibility ordering, Pareto, LHS and grids | [optimization](src/aspenops_nexus/optimization.py), [optimizer](src/aspenops_nexus/optimizer.py), [design](src/aspenops_nexus/design.py) |
-| Process intent | v1 graph validation; v2 requirement binding, engineering rules, compilation plans and qualified native-build protocols | [IR](src/aspenops_nexus/process_ir.py), [v2 validation](src/aspenops_nexus/design_validation.py), [plans](src/aspenops_nexus/compilation_plan.py) |
-| Research and evidence | Research-object/claim tracking, canonical JSON, SHA-256, optional Ed25519, archive safety and deterministic delivery | [research layer](src/aspenops_nexus/research.py), [provenance](src/aspenops_nexus/provenance.py); a valid study manifest grants no execution authority |
+| Bind model variables to dimensioned inputs and outputs | [registry](src/aspenops_nexus/registry.py), [evaluation_plan](src/aspenops_nexus/evaluation_plan.py) | Confirm actual model nodes and access rights |
+| Run batches and isolate failures | [batch](src/aspenops_nexus/batch.py), [worker](src/aspenops_nexus/worker.py), [scheduler](src/aspenops_nexus/scheduler.py) | Private snapshots, declared licenses, timeouts and cancellation |
+| Sample and optimize | [design](src/aspenops_nexus/design.py), [optimizer](src/aspenops_nexus/optimizer.py) | LHS, grids and bounded DE; feasibility first, no global-optimum guarantee |
+| Validate process intent and engineering rules | [process_ir](src/aspenops_nexus/process_ir.py), [engineering_rules](src/aspenops_nexus/engineering_rules.py) | Valid IR does not authorize arbitrary execution |
+| Bind identity and preserve failed evidence | [provenance](src/aspenops_nexus/provenance.py), [archive_safety](src/aspenops_nexus/archive_safety.py) | Assess digest integrity, signer trust and engineering applicability separately |
 
-There is **no adapter** for DWSIM, IDAES or Modelica/FMI execution. These backends and general `aspenops.flowsheet/v1` compilers remain `planned`. Existing v2 plan objects, native-build protocols and offline tests do not replace production adapter qualification. The [capability matrix](src/aspenops_nexus/simulation_agents.py) distinguishes existing-model execution from IR compilation.
+There is **no adapter** for DWSIM, IDAES or Modelica/FMI execution. These adapters and general `aspenops.flowsheet/v1` compilers remain `planned`. Existing v2 plan objects and native-build protocols still require adapter qualification and conformance tests.
 
-**Real engineering qualification remains `PENDING_REAL_ASPEN_CERTIFICATION`.** Mock regressions do not qualify real Aspen. Real acceptance requires the target Windows host, commercial licenses, fixed model/registry, Golden Cases, engineering tolerances, signed evidence and engineer approval. Discovering a ProgID also does not certify that commercial software version.
+Real engineering status remains **`PENDING_REAL_ASPEN_CERTIFICATION`**. Mock regressions do not qualify real Aspen; finding a ProgID does not certify the commercial version. Real acceptance needs the fixed Windows host, license, model and registry, Golden Cases, engineering tolerances, signed evidence and engineer acceptance.
+
 
 ## Quick start
 
@@ -59,6 +52,95 @@ This [executable request](examples/guarded-mock-batch.example.json) contains thr
 `dry-run` opens no Aspen instance and reports paths, registry digest, effective workers and I/O budget. `run-batch` writes per-point JSON and an evidence ZIP; it exits with code `2` if any point has `ok=false`, while preserving diagnostics. `verify-bundle` checks the archive and hashes; an unsigned bundle supplies integrity evidence only. [CLI implementation](src/aspenops_nexus/cli.py)
 
 Add `--extra windows` when synchronizing dependencies on Windows. Follow the [Windows guide](docs/windows-setup.md) for real environments. `.env.example` is a template: import its settings into the actual process environment.
+
+## Concise technical route
+
+![AI-generated AspenOps technical route: discover, bind, preflight, execute and verify evidence](docs/assets/ai-generated/roadmap.png)
+
+**Figure 2 · AI-generated schematic.** `system_info` → `list_semantic_variables` → `dry_run_request` → `submit_batch` → `job_status` / `job_result` → `verify_evidence_bundle`. Use the background queue for more than 16 points or long solves; preflight every new batch definition.
+
+$$
+W_{\rm eff}=\min(W_{\rm request},W_{\max},L),\qquad
+\mathrm{ok}=C\land E\land V\land F.
+$$
+
+$L$ is declared license capacity, not entitlement discovered by the program. $C,E,V,F$ denote communication, engine, convergence and declared constraint/balance qualification. A failed mandatory gate retains diagnostics and stops acceptance. Digests establish declared byte integrity; signatures also require externally trusted keys, and real engineering acceptance needs licensed execution and human review.
+
+
+## Mathematical and engineering contracts
+
+![AI-generated AspenOps algorithm figure: objective normalization, bounded DE, linear balances and evaluation budgets](docs/assets/ai-generated/algorithm.png)
+
+**Figure 3 · AI-generated schematic.** These relations map to implemented code. The [implementation guide](docs/implementation-guide.en.md) retains full definitions, units, rejection paths and regression entry points.
+
+### Admit interpretable inputs first
+
+JSON rejects nonfinite values and nonzero decimals that parse to zero. A Python float already rounded to zero cannot reveal its original decimal value. Source units must come from the registry; conversion handles scale and offset together.
+
+$$
+y=\frac{a_sx+b_s-b_t}{a_t}.
+$$
+
+$a_s,a_t$ are scales to a common base unit; $b_s,b_t$ are offsets. Treat an absolute temperature reference and a difference scale separately: an absolute $20\,{}^\circ\mathrm C$ is $293.15\,\mathrm K$, whereas a $10\,{}^\circ\mathrm C$ difference remains $10\,\mathrm K$. [Unit implementation](src/aspenops_nexus/units.py)
+
+### Establish numerical validity before applying balance tolerances
+
+Each $q_i$ first enters the common `base_unit`; $c_i$ is finite and dimensionless, $b$ is the declared target, and $f$ is the scale floor:
+
+$$
+r=\operatorname{fsum}(c_1q_1,\ldots,c_nq_n,-b),\qquad
+S=\max\left(\sum_i|c_iq_i|,f\right),\qquad \rho=|r|/S.
+$$
+
+$$
+\mathrm{passed}\iff\mathrm{valid}\land
+\left(|r|\le a_{\rm tol}\ \lor\ \rho\le r_{\rm tol}\right).
+$$
+
+`valid` includes finite-value, domain and underflow checks. $S$ excludes $|b|$. The quantities $r,S,f,a_{\rm tol}$ share one unit; $\rho,r_{\rm tol}$ are dimensionless, and $S=0$ is invalid. If a nonzero ratio underflows, the implementation uses the smallest positive float as a conservative upper bound and records `relative_upper_bound`. Actual mass or energy conservation needs complete material or power/enthalpy-flow terms. [Balance implementation](src/aspenops_nexus/evaluation.py)
+
+### Separate candidates, feasibility and objective values
+
+$$
+z_j=\sigma_j\frac{y_j-r_j}{s_j},\qquad J=\sum_jw_jz_j,
+\qquad s_j>0,\ w_j>0.
+$$
+
+$\sigma_j=+1$ means minimize and $-1$ means maximize; readbacks first enter the declared unit. Feasible points precede infeasible points. Compare objectives between feasible points and diagnostic violations between infeasible points. Violation is not an engineering loss in a single physical unit. DE/rand/1/bin uses
+
+$$
+v_d=a_d+F_m(b_d-c_d),\qquad x_d\in[\ell_d,h_d].
+$$
+
+For normal uncancelled execution, population $P\ge4$, budget $B\ge P$ and requested generations $G\ge0$ give
+
+$$
+G_* =\min\left(G,\left\lfloor\frac{B-P}{P}\right\rfloor\right),\qquad
+N_{\rm eval}=P(1+G_*)\le B.
+$$
+
+A generation starts only if its whole population fits. These are candidate evaluations; caching may reduce physical solves. The population is not a thermodynamic ensemble. [Optimizer implementation](src/aspenops_nexus/optimizer.py)
+
+
+## Seven-repository route and statistical-mechanics context
+
+![AI-generated seven-repository roadmap: dotted proposed interfaces and canonical-equilibrium context](docs/assets/ai-generated/seven-repo-roadmap.png)
+
+**Figure 4 · AI-generated schematic.** The repositories remain independent. Dotted links are proposed handoffs, not proof of an implemented end-to-end integration. For a canonical equilibrium system at fixed $N,V,T$ and $T>0$,
+
+$$
+\beta=\frac{1}{k_BT},\qquad Z=\sum_i e^{-\beta E_i},\qquad
+p_i=\frac{e^{-\beta E_i}}{Z},\qquad F_{\rm Helmholtz}=-k_BT\ln Z.
+$$
+
+$E_i$ is a microstate energy and $k_B$ is Boltzmann's constant. These relations explain the theoretical competition between energy and entropy; AspenOps does not implement a partition-function or property-package solver. Open-process inlet, outlet, reaction and energy-transfer terms still require separate balances. DE candidates do not follow this Boltzmann distribution. [Tong's statistical-physics notes](https://www.damtp.cam.ac.uk/user/tong/statphys/statmechhtml/S1.html)
+
+The four current scientific schematics retain [provenance and prompts](docs/assets/ai-generated/README.md). English in-image labels are shared, with localized Chinese and English captions. The original twenty-three engineering SVGs remain in the explicitly [historical gallery](docs/assets/README.md); the [earlier English hero](docs/assets/readme-vnext/hero.en.svg) is an ordinary historical link.
+
+
+<details>
+<summary>Operating, deployment and acceptance detail</summary>
+
 
 ## Configuration boundaries
 
@@ -85,165 +167,11 @@ Durable submission pins model, registry and checkpoint locations to absolute pat
 
 `run-batch` limits regular-file size before parsing and checks canonical request size afterward. Duplicate JSON keys and invalid numbers are not silently rewritten. Keep output paths distinct from the master model; agents must not bypass the runtime through raw `win32com`, arbitrary Shell/VBA or unregistered simulator paths.
 
-## Mathematical and engineering contracts
-
-These equations map to executable code. They describe calculation and acceptance; dimensional consistency, convergence and model applicability each require their own verification.
-
-### 1. Input and units
-
-For a JSON decimal $x$, let $\operatorname{fl}(x)$ be its parsed binary floating-point value:
-
-$$
-\neg\operatorname{finite}(\operatorname{fl}(x))\ \lor\
-(x\ne0\land\operatorname{fl}(x)=0)\quad\Longrightarrow\quad\text{reject input}.
-$$
-
-`1e999` and `1e-400` are rejected; exact zeros and representable subnormals remain valid. This guarantee applies to original JSON text: a Python value already rounded to zero cannot be recovered. [Implementation](src/aspenops_nexus/json_input.py) · [Boundary tests](tests/test_json_numeric_boundaries.py)
-
-Conversion from the registry's source unit to a target unit is:
-
-$$
-y=\frac{a_sx+b_s-b_t}{a_t}.
-$$
-
-$a_s,a_t$ are scales to a common base; $b_s,b_t$ are offsets. Proportional conversions with equal offsets compose $a_s/a_t$ first to avoid intermediate underflow; a nonzero final quantity that underflows to zero is rejected. Legitimate affine zeros such as `273.15 K = 0 C` remain valid. Unknown or incompatible units fail validation, and adding an output label cannot supply an unknown source unit. Use `1`, `fraction`, `%`, or `ppm` for dimensionless values. [Units](src/aspenops_nexus/units.py) · [Tests](tests/test_unit_intermediate_overflow.py)
-
-### 2. Scalar constraints and open boundaries
-
-Let $y$ be the readback in the constraint unit, $b$ the limit, and $\tau\ge0$ a tolerance in that same unit:
-
-| Operator | Actual passing condition | Nonnegative violation distance $v$ |
-|---|---|---|
-| `<` | $y<b-\tau$ | $\max(0,y-(b-\tau))$ |
-| `<=` | $y\le b+\tau$ | $\max(0,y-(b+\tau))$ |
-| `>` | $y>b+\tau$ | $\max(0,(b+\tau)-y)$ |
-| `>=` | $y\ge b-\tau$ | $\max(0,(b-\tau)-y)$ |
-| `==` | $\lvert y-b\rvert\le\tau$ | $\max(0,\lvert y-b\rvert-\tau)$ |
-
-At an open boundary the distance can be zero while `passed` is still `false`. Booleans, text, nonfinite readbacks and overflowing derived violations cannot satisfy numerical constraints. [Implementation](src/aspenops_nexus/evaluation.py) · [Boundary and optimizer-admission regressions](tests/test_evaluation.py)
-
-### 3. Linear balances
-
-`BalanceSpec` converts every $q_i$ into one `base_unit` and applies finite dimensionless coefficients $c_i$:
-
-$$
-r=\operatorname{fsum}(c_1q_1,\ldots,c_nq_n,-b),\qquad
-S=\max\left(\operatorname{fsum}(|c_1q_1|,\ldots,|c_nq_n|),f\right),\qquad
-\rho=|r|/S.
-$$
-
-$$
-\text{passed}\iff\text{all terms and derived quantities are valid}\land
-\left(|r|\le a_{\rm tol}\ \lor\ \rho\le r_{\rm tol}\right).
-$$
-
-$b$ is `expected`; $r,b,S,f,a_{\rm tol}$ use `base_unit`, while $\rho,r_{\rm tol}$ are dimensionless. `floor=f` defaults to $10^{-12}$ and should be chosen as a positive scale for the operating range. If the user sets $f=0$ and every term is zero, the zero denominator makes the balance invalid. Mass flow and power cannot be added. Real energy balances require complete, consistently dimensioned power/enthalpy-flow terms; missing terms cannot be replaced by zeros.
-
-This revision includes $-b$ in the same compensated sum, repairing the false zero from rounding `fsum(1e16, 1) - 1e16` in two stages. A nonzero product that underflows triggers `balance_underflow`. A nonzero ratio that underflows uses the smallest positive float as a conservative upper bound, with `relative_upper_bound=true`. Balance requests use the `compensated-residual-v2` cache semantics so previous acceptance decisions are not replayed. This handles finite float inputs; it cannot recover precision already lost in measurements or a model.
-
-[Definitions](src/aspenops_nexus/models.py) · [Dimension compilation](src/aspenops_nexus/evaluation_plan.py) · [Evaluation](src/aspenops_nexus/evaluation.py) · [Target-cancellation tests](tests/test_balance_residual_cancellation.py) · [Underflow tests](tests/test_balance_underflow.py) · [Dimension tests](tests/test_balance_dimension_contract_v19.py)
-
-### 4. Point acceptance
-
-$$
-\mathrm{ok}=C\land E\land V\land F.
-$$
-
-$C$ is `communication_ok`; $E$ is `engine_ok`; $V$ requires a true convergence flag and `convergence_state="converged"`; $F$ requires valid outputs, JSON-safe diagnostics and passing declared constraints/balances. Required numerical outputs must be finite; invalid optional outputs become `null` with diagnostics. `ok=true` covers the checks actually declared by the request. It does not invent missing product limits or a complete conservation model. [Implementation](src/aspenops_nexus/evaluation.py) · [Nonfinite evidence](tests/test_nonfinite_evidence.py) · [Result protocol](tests/test_result_protocol_contracts.py)
-
-### 5. Reaction conservation and recycle topology
-
-The v2 engineering validator uses negative stoichiometric coefficients $\nu_i$ for reactants and positive ones for products. $A_{ei}$ is the element count, $z_i$ charge, and $M_i$ the declared molecular weight:
-
-$$
-A\boldsymbol\nu=0,\qquad \sum_i z_i\nu_i=0,\qquad \sum_i M_i\nu_i=0.
-$$
-
-The last check applies only when every molecular weight is available. For one conserved contribution $a_i\nu_i$, products and sums use exact rational representations of the accepted float inputs:
-
-$$
-|R|\le\tau S,\quad R=\sum_i a_i\nu_i,\quad S=\sum_i|a_i\nu_i|,\qquad
-\tau=\begin{cases}10^{-10}&\text{elements, charge},\\10^{-6}&\text{declared mass}.\end{cases}
-$$
-
-There is no absolute tolerance floor that could conceal small stoichiometric coefficients. Unknown composition or unsupported formula syntax produces `ENGINEERING_BLOCKER`. The material-flow graph $G$ must have its cycles cut by the set $T_{\rm owned}$ of tear edges owned by valid recycle contracts:
-
-$$
-G\setminus T_{\rm owned}\ \text{is a directed acyclic graph}.
-$$
-
-This is a **v2 engineering rule**. v1 IR emits warnings for cycles by default; `--disallow-recycles` makes them errors. [Engineering rules](src/aspenops_nexus/engineering_rules.py) · [v2 tests](tests/test_process_ir_v2_rules.py) · [Numerical counterexamples](tests/test_acceptance_repair.py)
-
-### 6. Design of experiments
-
-LHS samples each of $n$ strata in each dimension and independently permutes them. $\ell_d,h_d$ are bounds, $\pi_d$ a permutation, and $u_{kd}\in[0,1)$:
-
-$$
-x_{kd}=\ell_d+\frac{\pi_d(k)+u_{kd}}{n}(h_d-\ell_d),\qquad
-N_{\rm grid}=\prod_d L_d.
-$$
-
-Endpoints and interval width must be finite, with $h_d>\ell_d$. Generation limits are $N\le100000$, $Nd\le10^6$, and $d\le256$; a grid requires at least two levels per dimension. Nearest-neighbor ordering has a separate 5000-point limit. A fixed seed supports reproduction, not a claim of statistical sufficiency. [Implementation](src/aspenops_nexus/design.py) · [Tests](tests/test_design.py)
-
-### 7. Objective normalization, Pareto and optimization budget
-
-Readbacks are converted from `result.units` into each objective's unit before normalization:
-
-$$
-z_j=\sigma_j\frac{y_j-r_j}{s_j},\quad J=\sum_jw_jz_j,\quad s_j>0,\ w_j>0,
-\qquad\sigma_j=\begin{cases}+1&\text{minimize},\\-1&\text{maximize}.\end{cases}
-$$
-
-$r_j,s_j$ use the objective unit and $z_j$ is dimensionless. Multiple objectives require all of `unit`, `dimension`, `reference_value`, and `reference_scale`; a single objective may retain its raw scale. When changing kW/W representation, convert reference values and scales too. [Implementation](src/aspenops_nexus/optimization.py) · [Contract tests](tests/test_optimization_contracts.py)
-
-Feasible candidates outrank infeasible ones. Two feasible candidates are compared by $J$; two infeasible ones by diagnostic violation. Violation is a search-ordering signal, not an engineering loss in a single physical unit. After expressing objectives as minimization:
-
-$$
-x\prec y\iff[\forall j:f_j(x)\le f_j(y)]\land[\exists j:f_j(x)<f_j(y)].
-$$
-
-DE/rand/1/bin mutates with $v_d=a_d+F_m(b_d-c_d)$, crosses over, and clips to $[\ell_d,h_d]$; at least one dimension takes the mutation branch. With population $P\ge4$, requested generations $G\ge0$, and budget $B\ge P$, normal uncancelled execution satisfies:
-
-$$
-G_* =\min\left(G,\left\lfloor\frac{B-P}{P}\right\rfloor\right),\qquad
-N_{\rm eval}=P(1+G_*)\le B.
-$$
-
-This counts candidate evaluations; caching can reduce physical solves. A generation is not started unless its full population fits the remaining budget. The algorithm does not guarantee a global optimum. [DE/Pareto](src/aspenops_nexus/optimizer.py) · [Budget boundary tests](tests/test_optimizer_complete_edges.py)
-
-### 8. Concurrency, I/O and identity
-
-$$
-W_{\rm eff}=\min(W_{\rm request},W_{\max},L),\quad
-W_{\rm dispatch}=\min(N_{\rm handles},N_{\rm unique}),\quad
-\Delta N_{\rm read}=N_{\rm declared}-N_{\rm unique\ read}.
-$$
-
-$L$ is the declared license-slot count. PoolManager includes workers being created in its global resident budget. A node shared by outputs, constraints and balances is read once, while each check retains its semantics. Operation budgets count declarations so deduplication cannot bypass them. [Batch](src/aspenops_nexus/batch.py) · [Pool manager](src/aspenops_nexus/pool_manager.py) · [I/O tests](tests/test_evaluation_plan.py)
-
-$$
-K=\operatorname{SHA256}\!\left(\operatorname{UTF8}\bigl(\operatorname{canonicalJSON}(I)\bigr)\right).
-$$
-
-Cache identity $I$ includes runtime schema/version, backend and stable runtime identity, model/registry digests, physical request semantics and algorithm-version tags. Canonical JSON sorts keys, fixes separators, preserves Unicode and uses `allow_nan=False`. [Hashing](src/aspenops_nexus/hashing.py) · [Cache identity](src/aspenops_nexus/pool.py) · [Single-source hashing tests](tests/test_canonical_hash_single_source.py)
-
 ## Independent validity gates
 
 Inspect `communication_ok`, `engine_ok`, `converged`, `feasible`, `violations`, and `balance_residuals` for each point. `constraint_non_finite` / `balance_non_finite` indicate invalid numerical evidence; `constraint_failed` / `balance_failed` indicate unsuccessful declared checks. A returned process, idle engine or `completed` job does not substitute for per-point `ok`.
 
-The Mock uses inspectable synthetic relationships:
-
-$$
-X=\frac{1}{1+\exp(-(T-80)/18)},\quad
-p=\operatorname{clip}(0.78+0.018R+0.003N-0.0002F,0,0.9999),
-$$
-
-$$
-Q=\max\left(0,\frac{F(0.06T+1.4R+0.08N)}{\max(P,0.1)}\right),\qquad
-F_{\rm product}=FXp.
-$$
-
-$T,P,F,R,N$ are the Mock-file conventions for Celsius temperature, pressure in bar, feed in kg/h, reflux ratio and stage count. $Q$ is a synthetic kW output. These coefficients are test-fixture parameters and must not be used for equipment sizing or property prediction. [Mock source](src/aspenops_nexus/backends/mock.py)
+Mock uses synthetic relationships to exercise software contracts. Its equations and unit conventions remain in the [implementation guide](docs/implementation-guide.en.md); they are not fitted properties or plant models.
 
 ## Common workflows
 
@@ -267,32 +195,7 @@ uv run aspenops cancel "$JOB_ID" --grace-s 2
 
 In PowerShell, save the output of `uv run aspenops submit ... | ConvertFrom-Json` and read `.job_id`; do not copy the Bash assignment syntax. A successful submission does not mean the scheduler has executed the job. [Job guide](docs/agent-usage.md)
 
-**Python:** save as `run_guarded.py` at the repository root and execute `uv run python run_guarded.py`. Process spawning requires the `__main__` guard.
-
-```python
-from pathlib import Path
-from aspenops_nexus.batch import dry_run_document, run_batch_document
-from aspenops_nexus.config import Settings
-from aspenops_nexus.json_input import load_request_object
-
-
-def main():
-    settings = Settings.from_env()
-    request = load_request_object(
-        Path("examples/guarded-mock-batch.example.json"),
-        max_bytes=settings.max_request_bytes,
-    )
-    print(dry_run_document(request, settings))
-    results = run_batch_document(request, settings)
-    for point in results:
-        print(point["ok"], point["values"], point["violations"])
-    if not all(point["ok"] for point in results):
-        raise SystemExit(2)
-
-
-if __name__ == "__main__":
-    main()
-```
+The [Python example](docs/implementation-guide.en.md) protects the process entry with `__main__`.
 
 ## MCP compatibility and server lifecycle
 
@@ -300,7 +203,7 @@ if __name__ == "__main__":
 uv run aspenops mcp
 ```
 
-Install the `agent` extra for local stdio MCP; the dependency contract is `mcp>=1.30.0,<2`. The service lifespan starts and stops one scheduler/PoolManager. [Implementation](src/aspenops_nexus/mcp_server.py) · [Compatibility check](scripts/check_mcp.py) · [MCP lifecycle technical diagram](docs/assets/readme/mcp-runtime-lifecycle.svg)
+Install the `agent` extra for local stdio MCP; the dependency contract is `mcp>=1.30.0,<2`. The service lifespan starts and stops one scheduler/PoolManager. [Implementation](src/aspenops_nexus/mcp_server.py) · [Compatibility check](scripts/check_mcp.py) · [Historical MCP lifecycle diagram](docs/assets/readme/mcp-runtime-lifecycle.svg)
 
 Agent sequence: `system_info` → `list_semantic_variables` → `dry_run_request` → `submit_batch` → `job_status` / `job_result` → `verify_evidence_bundle`. `run_batch_sync` is capped at 16 points; long solves should use the background queue even with fewer points. Optimization tools are `submit_optimization`, `optimization_status`, `optimization_result`, and `cancel_optimization`. Accept only `ok=true` points and separately verify the evidence and engineering interpretation.
 
@@ -335,6 +238,8 @@ v1 validates components, equipment, ports, streams, references and resource caps
 v2 native construction requires the `NativeBuildAdapter` protocol, manifest, input/output schemas, units, failure isolation, transactions and topology/layout readback. Execution also binds adapter code, runtime identity, signed qualification, revocation policy and a valid witness. Plans missing this evidence are blocked; a declared compatible version is not certification of a commercial target. [Adapter gate](src/aspenops_nexus/native_adapter_conformance.py) · [Controlled execution](src/aspenops_nexus/native_builder.py) · [Guide](docs/native-adapter-conformance.md)
 
 ## Cache, batch deduplication and singleflight
+
+Canonical JSON uses sorted keys and fixed separators for stable digests, with `allow_nan=False` rejecting nonfinite output. The request parser separately checks original decimal input. [Hashing implementation](src/aspenops_nexus/hashing.py)
 
 Independent `reinitialize` requests can use persistent cache, `same_batch_dedup`, and `inflight_singleflight`. Failures are not cached by default; `ASPENOPS_CACHE_FAILURES` still excludes communication/engine failures and tainted workers. SQLite WAL and an in-memory LRU reduce repeat access; deep copies isolate callers' result mutations. [Cache](src/aspenops_nexus/cache.py) · [Regressions](tests/test_pool_cache_efficiency.py)
 
@@ -444,7 +349,7 @@ uv run python scripts/verify_delivery.py \
 | `tests/` | Numerical, protocol, concurrency, file-safety, packaging, documentation and workflow regressions |
 | `scripts/` | Audits, IR validation, benchmarks, dashboards and deterministic delivery |
 | `.github/workflows/` | Software, Windows control-plane, performance and licensed workflows |
-| `docs/assets/readme-vnext/` | Language-specific README AI design assets |
+| `docs/assets/ai-generated/` | Four complete current AI-generated schematics with prompts and provenance |
 | `docs/assets/README.md` | Historical gallery of twenty-three engineering SVGs and acceptance illustrations |
 
 ## Troubleshooting
@@ -464,6 +369,8 @@ uv run python scripts/verify_delivery.py \
 ## License
 
 [Apache-2.0](LICENSE) covers this repository. Aspen Plus, Aspen HYSYS, Windows, customer models and commercial process data remain subject to their own licensing and data-use requirements.
+
+</details>
 
 <!-- CURRENT_MAIN_ACCEPTANCE_V2:START -->
 ## Regenerable implementation index

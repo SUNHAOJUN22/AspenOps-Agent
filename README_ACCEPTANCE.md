@@ -1,145 +1,94 @@
 # AspenOps 2.0 — Final Acceptance README / 最终验收说明
 
-> **Status scope / 状态边界：** this document qualifies the repository's software, contracts, documentation and deterministic evidence only. It does not claim that an external solver, licensed commercial program, laboratory experiment or industrial campaign was executed. Boundary marker: `PENDING_REAL_ASPEN_CERTIFICATION`.
+> **Status scope / 状态边界：** 本页规定软件、文档和证据的核验方式，不自动认证当前提交，也不声称商业模拟器、实验或工业装置已经执行。This page defines software and evidence checks; it is not an automatic attestation for the current commit or an external run. Boundary marker: `PENDING_REAL_ASPEN_CERTIFICATION`.
 
-![Final acceptance map](docs/assets/acceptance/final-acceptance-map.svg)
+![AI-generated technical route and separate acceptance gates](docs/assets/ai-generated/roadmap.png)
+
+当前图是完整 AI 生成的 PNG 示意图。原[确定性验收 SVG](docs/assets/acceptance/final-acceptance-map.svg)保留为历史普通链接，继续接受原完整性检查。图像均不提供测量或外部执行证据。
 
 ## 中文：交付定位
 
-本文件是面向验收的双语补充 README。根目录原 README 继续保留完整功能说明；本文件固定最终交付平台、数理合同、执行策略、证据边界与验收命令。支持平台仅为 **Windows 与 Linux**，macOS 不属于发布资格矩阵。
+支持的发布资格平台为 **Windows 与 Linux**。Linux 检查可移植控制面、验证和打包路径；真实 Aspen Plus/HYSYS COM 执行依赖许可 Windows 环境。macOS 不属于发布资格矩阵。使用说明见[中文首页](README.md)与[完整实现指南](docs/implementation-guide.zh-CN.md)。
 
-### 1. 代码—模型—证据链
+### 1. 明确执行和验收顺序
 
-| 层级 | 合同 | 机器表达 |
-|---:|---|---|
-| 1 | **INTENT / 过程意图** | `typed Process IR` |
-| 2 | **RULES / 工程规则** | `units · DOF · recycle` |
-| 3 | **SCHEDULER / 隔离调度** | `pool · license · retry` |
-| 4 | **SIMULATOR / 商业求解器** | `Aspen Plus / HYSYS` |
-| 5 | **EVIDENCE / 交付证据** | `hash · SBOM · receipt` |
+| 阶段 | 实际职责 | 不能代替的证据 |
+|---|---|---|
+| INTENT / 意图 | 有类型的请求与 Process IR、引用假设 | 实际模型和授权 |
+| RULES / 规则 | 单位、边界、拓扑和声明的工程检查 | 物性模型的适用性 |
+| SCHEDULER / 调度 | 路径、预算、隔离 Worker、许可配置 | 真实许可数量及容量测量 |
+| SIMULATOR / 求解 | 已有模型的受控调用 | 收敛与物理可行性 |
+| EVIDENCE / 证据 | 原始结果、摘要、签名与来源身份 | 工程师接受和工业验证 |
 
-### 2. 统一数理资格原则
+### 2. 按实际合同判断数值结果
 
-软件输出必须满足有限性、边界、守恒/一致性和证据身份约束：
-
-\[
-\mathcal A = C_{schema}\land C_{finite}\land C_{boundary}\land C_{evidence}\land C_{reproducible}.
-\]
-
-任一强制门失败时，整体结论采用最保守聚合：
-
-\[
-G=\min(g_1,g_2,\ldots,g_m),\qquad \mathrm{BLOCK}<\mathrm{REVIEW}<\mathrm{PASS}.
-\]
-
-数值比较采用绝对—相对混合容差：
-
-\[
-|x-x_{ref}|\le a_{tol}+r_{tol}|x_{ref}|.
-\]
-
-所有交付身份由规范化字节的 SHA-256 固定：
-
-\[
-H_{delivery}=\operatorname{SHA256}(H_{code}\Vert H_{config}\Vert H_{evidence}\Vert H_{environment}).
-\]
-
-性能声明必须来自重复运行的稳健统计量，并先通过数值等价门：
-
-\[
-S=\frac{\operatorname{median}(t_{reference})}{\operatorname{median}(t_{candidate})},
-\qquad n_{repeat}\ge3.
-\]
-
-不确定度必须传播到真正的决策观测量：
-
-\[
-\Sigma_y\approx J\Sigma_\theta J^\mathsf{T}+\Sigma_{num}+\Sigma_{sample}+\Sigma_{model}+\Sigma_{transfer}.
-\]
-
-### 3. Aspen 执行与并发策略
-
-批处理总时间可写成
-
-\[
-T_{pool}\approx W(T_{start}+T_{open})+
-\frac{N_{unique}}{W_{effective}}(T_{solve}+T_{verify})+T_{IPC},
-\]
-
-其中
-
-\[
-W_{effective}=\min(W_{configured},W_{license},W_{memory},W_{stable}).
-\]
-
-每个 Windows Worker 独占一个 COM/Aspen 会话；冷态独立工况可以并行，`warm_start` 轨迹必须固定到同一 Worker 且顺序执行。缓存只接受模型、registry、runtime 和物理请求身份完全一致且所有有效性门通过的 `reinitialize` 结果。
-
-质量判定不是退出码判定：
+完整点接受是通信、引擎、收敛与可行性的合取；其中可行性还包含有限输出、JSON 安全诊断和声明的约束／衡算：
 
 \[
 OK=C_{comm}\land C_{engine}\land C_{conv}\land C_{finite}\land C_{constraint}\land C_{balance}.
 \]
 
-物料衡算残差为
+线性衡算将每项转换到共同单位，再计算
 
 \[
-R_i=\sum_s \dot n_{i,s}^{in}-\sum_s \dot n_{i,s}^{out}
-+\sum_r\nu_{ir}r_rV,
+r=\operatorname{fsum}(c_1q_1,\ldots,c_nq_n,-b),\quad
+S=\max\left(\sum_i|c_iq_i|,f\right),\quad \rho=|r|/S.
 \]
 
-只有声明的容差满足时才允许进入工程审查。
+只有各项和派生量有效时，才检查实际的绝对**或**相对门：
 
-### 4. 使用策略
+\[
+C_{balance}=C_{valid}\land\left(|r|\le a_{tol}\ \lor\ \rho\le r_{tol}\right).
+\]
 
-1. 先运行快速预检，确认平台、关键文件、双语数学说明、示意图和外部资格边界完整。
-2. 再运行仓库原有的严格质量门；预检不能替代全量测试、静态分析、依赖审计和构建验证。
-3. 所有外部软件、许可证、真实模型、硬件和实验数据必须作为独立证据登记；模板、Mock、图示与 PASS 标签不能替代真实执行。
-4. 任何性能优化先保留确定性参考路径，再比较数值等价、失败回退、资源上限和重复计时。
-5. 最终交付包应绑定 Git commit/tree、依赖锁、环境摘要、产物哈希、测试报告和适用域。
+$S$ 不含目标 $|b|$，且必须为正；$r,S,f,a_{tol}$ 具有共同单位，$\rho,r_{tol}$ 无量纲。非零乘积下溢为无效证据；非零比值下溢的保守上界在诊断中单独标注。这里没有把一般的 $a+r|x|$ 形式写成所有检查的统一实现。不同标量比较仍服从其声明运算符和容差。
+
+真实物料与能量衡算还需要完整的流股、反应和传递项。示例的 feed-setpoint 一致性检查不等于完整装置质量守恒。
+
+### 3. 并发、状态与身份
+
+代码使用声明容量的实际最小值：
+
+\[
+W_{effective}=\min(W_{request},W_{max},L_{declared}).
+\]
+
+许可证、内存和稳定性需要部署时另行核实；上式不自动发现这些资源。每个 Worker 使用私有模型快照与隔离会话。`warm_start` 必须单 Worker、同一 session、严格递增 step；缓存命中只返回独立历史结果，不恢复当前求解器状态。
+
+独立冷态请求可使用缓存；默认不缓存失败。显式 `ASPENOPS_CACHE_FAILURES` 仍拒绝通信／引擎失败与污染 Worker 结果。状态丢失后，只有当前 Worker 实际完成且通信、引擎和收敛成功的 `reinitialize` 才恢复续算资格，约束接受仍单独判定。
+
+SHA-256 固定声明字节，规范 JSON 使用 `allow_nan=False`。它不认证测量真伪或签名者权限；Ed25519 需要外部可信公钥。发布证据必须绑定真实 commit、锁文件、环境与产物摘要，不能用未提交 tree 冒充已验收 commit。
+
+### 4. 执行检查
 
 ```bash
 python scripts/final_acceptance_preflight.py --root . --json
-python scripts/final_acceptance_preflight.py --root . --output final-acceptance.json
 uv lock --check
 uv sync --frozen --extra dev --extra agent --extra signing
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
-uv run pytest -W error::ResourceWarning
+uv run python -m compileall -q src scripts
+uv run python scripts/audit_source_tree.py
+uv run pytest -W error::ResourceWarning --cov=aspenops_nexus --cov-branch --cov-fail-under=95.0
 uv build
 ```
 
-### 5. 验收判定
-
-- `PASS`：软件交付面完整且预检无阻断项。
-- `BLOCK`：平台、文件、数学说明、SVG、证据边界或身份合同缺失。
-- `PENDING_REAL_ASPEN_CERTIFICATION`：外部科学/工程资格未被软件测试替代。
-
----
+预检的 PASS 只表示其检查的交付表面完整，不替代原完整 CI、顺序测试、依赖审计、Windows 资格、当前来源证明或许可运行。性能比较须先验证数值等价，再保留同环境、同负载和重复测量记录；没有测量时不声明加速。完整命令和守卫见[交付文档](docs/delivery-acceptance.md)。
 
 ## English: delivery contract
 
-This bilingual acceptance README fixes the release contract without replacing the detailed root README. The qualified operating-system matrix is **Windows and Linux only**; macOS is intentionally outside release qualification. Linux qualifies the portable control plane, validation and packaging paths. Licensed Aspen Plus/HYSYS COM execution remains a Windows-only external boundary.
+The release-qualification platform matrix is **Windows and Linux**. Linux covers portable control-plane, validation and packaging paths; licensed Aspen Plus/HYSYS COM execution requires Windows. macOS is outside this matrix. See the [English home](README.en.md) and [implementation guide](docs/implementation-guide.en.md).
 
-### 1. Acceptance invariant
+Acceptance is conjunctive: communication, engine, convergence, valid numerical evidence, declared constraints and declared balances all matter. Linear balances use the finite-value/underflow checks followed by the absolute **OR** relative condition above. The scale excludes the target magnitude; its residual, floor and absolute tolerance share one physical unit. Scalar comparisons retain their own operators and declared tolerances.
 
-\[
-\mathcal A = C_{schema}\land C_{finite}\land C_{boundary}\land C_{evidence}\land C_{reproducible}.
-\]
+The effective capacity is the minimum of requested workers, configured maximum and declared license slots. Memory, stability and actual entitlement need separate deployment evidence. Warm starts require one live worker and an ordered session. A cache hit is an independent historical result, not restoration of simulator state. Default failure caching is off; opting in does not admit communication/engine failures or tainted results.
 
-A pass is conservative and conjunctive. A missing mandatory gate cannot be averaged away. Numerical equivalence precedes performance qualification, and external execution evidence remains separate from software evidence.
+Run the original frozen quality gates after the fast preflight. The preflight reports software/documentation checks, not current-commit release qualification. Benchmark claims need numerical equivalence and repeatable same-environment measurements. Digests establish declared byte identity; authenticity also requires externally trusted keys. Real engineering acceptance remains `PENDING_REAL_ASPEN_CERTIFICATION` until licensed evidence and human review exist.
 
-### 2. Operating strategy
+### Machine-readable scope
 
-1. Run `final_acceptance_preflight.py` as the fast deterministic entry point.
-2. Run the repository's existing complete CI and release commands.
-3. Treat generated diagrams as AI-assisted conceptual documentation, never as scientific data.
-4. Bind results to immutable source, configuration, environment and artifact identities.
-5. Keep the external qualification marker `PENDING_REAL_ASPEN_CERTIFICATION` until real, independently reviewable evidence exists.
-
-### 3. Machine-readable output
-
-The preflight emits schema `tsao.final-acceptance-preflight/v1`, sorted SHA-256 identities, platform classification and explicit non-execution fields:
+The preflight retains schema `tsao.final-acceptance-preflight/v1`, SHA-256 identities and explicit non-execution fields:
 
 ```json
 {
@@ -149,6 +98,6 @@ The preflight emits schema `tsao.final-acceptance-preflight/v1`, sorted SHA-256 
 }
 ```
 
-## AI-image declaration / AI图像声明
+## AI-image declaration / AI 图像声明
 
-`docs/assets/acceptance/final-acceptance-map.svg` is an **AI-assisted conceptual diagram** generated for repository documentation. It is not measured data, solver output, a flowsheet result, an electronic-structure result, or proof of external execution.
+The active `docs/assets/ai-generated/roadmap.png` is an unmodified full imagegen raster with an exact prompt and hash record. The earlier SVG is a historical deterministic drawing, not a newly generated AI raster. Neither is measured data, solver output or evidence that external execution occurred. [Current figure provenance](docs/assets/ai-generated/README.md).

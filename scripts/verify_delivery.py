@@ -52,6 +52,12 @@ AI_ACCEPTANCE_ASSETS = {
     "native-failure-isolation.svg",
     "warm-start-trajectory.svg",
 }
+CURRENT_AI_GALLERY_IMAGES = {
+    "ai-generated/architecture.png",
+    "ai-generated/algorithm.png",
+    "ai-generated/roadmap.png",
+    "ai-generated/seven-repo-roadmap.png",
+}
 LOCALIZED_README_ASSETS = {"hero.zh-CN.svg": "zh-CN", "hero.en.svg": "en"}
 TEMPORARY_NAME = re.compile(
     r"(?:once|finali[sz]er|diagnostic|running|temporary|tmp-do-not-use)",
@@ -546,15 +552,36 @@ def _check_readmes(root: Path, issues: list[dict[str, str]]) -> None:
     gallery_path = root / "docs/assets/README.md"
     gallery = gallery_path.read_text(encoding="utf-8") if gallery_path.is_file() else ""
     expected_paths = {f"readme/{name}" for name in GOVERNED_VISUAL_ASSETS}
-    pattern = re.compile(r"!\[[^\]]*\]\((readme/[^)]+\.svg)\)")
-    observed = set(pattern.findall(gallery))
-    if observed != expected_paths:
+    pattern = re.compile(r"(?<!!)\[[^\]]*\]\((readme/[^)]+\.svg)\)")
+    observed = pattern.findall(gallery)
+    if set(observed) != expected_paths or len(observed) != len(expected_paths):
         _issue(
             issues,
             "readme_visual_inventory_mismatch",
             "docs/assets/README.md",
-            f"Expected {len(expected_paths)} unique SVG references; observed {len(observed)}",
+            f"Expected {len(expected_paths)} unique historical SVG links; "
+            f"observed {len(observed)} links with {len(set(observed))} unique targets",
         )
+    images = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", gallery)
+    image_markers = re.findall(r"!\[", gallery)
+    html_image = re.search(r"<\s*(?:img|picture|source|object|embed|iframe|svg)\b", gallery, re.I)
+    if (
+        set(images) != CURRENT_AI_GALLERY_IMAGES
+        or len(images) != len(CURRENT_AI_GALLERY_IMAGES)
+        or len(image_markers) != len(images)
+        or html_image is not None
+    ):
+        _issue(
+            issues,
+            "readme_current_visual_inventory_mismatch",
+            "docs/assets/README.md",
+            "Gallery must display exactly the four specified AI PNGs once each; "
+            "historical image embeds and alternative image markup are not permitted",
+        )
+    for relative in sorted(CURRENT_AI_GALLERY_IMAGES):
+        image = root / "docs/assets" / relative
+        if not image.is_file() or image.is_symlink():
+            _issue(issues, "readme_current_visual_missing", "docs/assets/README.md", relative)
     for name in sorted(AI_ACCEPTANCE_ASSETS):
         if f"](ai/{name})" not in gallery:
             _issue(issues, "readme_ai_visual_missing", "docs/assets/README.md", name)

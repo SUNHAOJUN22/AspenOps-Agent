@@ -73,7 +73,10 @@ _NEGATIVE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "convergence_denied",
         re.compile(
             r"\b(?:converged|convergence)[ \t]*(?:[:=]|is\b)[ \t]*"
-            r"(?:false|no|0)(?![\w.+-])",
+            # Recognize zero lexically: float conversion can underflow nonzero flags.
+            r"(?:false|no|[+-]?(?:0+(?:\.0*)?|\.0+)(?:e[+-]?[0-9]+)?)"
+            # Sentence punctuation may end a value, but dotted/word prefixes may not.
+            r"(?![\w+-]|\.+[\w+-])",
             re.IGNORECASE,
         ),
     ),

@@ -18,25 +18,28 @@ NO_MACHINE_LEARNING
 
 The canonical document schema marker is `aspenops.research-study/v1`.
 
-## Object relationship diagram
+## Object relationships
 
-```mermaid
-flowchart TD
-    Study --> Dataset
-    Study --> Target
-    Study --> Parameter
-    Study --> Assumption
-    Study --> Calibration
-    Study --> Validation
-    Study --> Claim
-    Dataset --> Target
-    Dataset --> Calibration
-    Dataset --> Validation
-    Parameter --> Calibration
-    Calibration -->|immutable accepted snapshot| Validation
-    Assumption -->|restrictions| Claim
-    Validation -->|claim ceiling| Claim
-```
+The [AI-generated execution overview](assets/ai-generated/architecture.png) illustrates the
+surrounding control plane. The table below states the relationships in this schema-only layer;
+it does not describe a running simulator or a completed research study.
+
+| Source object | Related object | Relationship |
+|---|---|---|
+| Study | Dataset | Study context |
+| Study | Target | Study context |
+| Study | Parameter | Study context |
+| Study | Assumption | Study context |
+| Study | Calibration | Study context |
+| Study | Validation | Study context |
+| Study | Claim | Study context |
+| Dataset | Target | Data binding |
+| Dataset | Calibration | Calibration data binding |
+| Dataset | Validation | Held-out or stress data binding |
+| Parameter | Calibration | Declared parameter binding |
+| Calibration | Validation | Immutable accepted snapshot |
+| Assumption | Claim | Inherited restrictions |
+| Validation | Claim | Claim ceiling |
 
 The eight first-class objects are:
 
@@ -56,21 +59,16 @@ Source contradictions are represented by `Assumption` entries with
 silently repaired. Their competing interpretation, risk, resolution state, affected objects, and claim
 restrictions remain machine readable.
 
-## Model qualification state machine
+## Model qualification levels
 
-```text
-STRUCTURE_ONLY
-        ↓
-SOURCE_CASE_REPRODUCED
-        ↓
-CALIBRATED_IN_DOMAIN
-        ↓
-VALIDATED_HELD_OUT
-        ↓
-ROBUSTNESS_TESTED
-        ↓
-LICENSED_ENGINEERING_REVIEWED
-```
+The qualification levels are ordered from least to most qualified:
+
+1. `STRUCTURE_ONLY`
+2. `SOURCE_CASE_REPRODUCED`
+3. `CALIBRATED_IN_DOMAIN`
+4. `VALIDATED_HELD_OUT`
+5. `ROBUSTNESS_TESTED`
+6. `LICENSED_ENGINEERING_REVIEWED`
 
 Advancement is evidence driven. A source-reproduction Study cannot support an independent-validation
 Claim. A critical unresolved Assumption caps linked Claims at `STRUCTURE_ONLY`. Mock or Fake COM

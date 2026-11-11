@@ -33,7 +33,15 @@ EXPECTED = {
     "validity-gates.svg",
     "worker-ownership-recycle.svg",
 }
-IMAGE_LINK = re.compile(r"!\[[^\]]*\]\((readme/[^)]+\.svg)\)")
+IMAGE_LINK = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+HISTORICAL_README_LINK = re.compile(r"(?<!!)\[[^\]]*\]\((readme/[^)]+\.svg)\)")
+HISTORICAL_ACCEPTANCE_LINK = re.compile(r"(?<!!)\[[^\]]*\]\((ai/[^)]+\.svg)\)")
+AI_GALLERY_IMAGES = {
+    "ai-generated/architecture.png",
+    "ai-generated/algorithm.png",
+    "ai-generated/roadmap.png",
+    "ai-generated/seven-repo-roadmap.png",
+}
 CJK_TEXT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 SHELL_PLACEHOLDER = re.compile(r"(?m)^uv run aspenops .*<[^>]+>")
 FORBIDDEN = (
@@ -164,7 +172,21 @@ def test_readme_visual_asset_inventory_is_complete_and_referenced() -> None:
 
     expected_paths = {f"readme/{name}" for name in EXPECTED}
     gallery = (ROOT / "docs/assets/README.md").read_text(encoding="utf-8")
-    assert set(IMAGE_LINK.findall(gallery)) == expected_paths
+    assert set(HISTORICAL_README_LINK.findall(gallery)) == expected_paths
+    assert set(HISTORICAL_ACCEPTANCE_LINK.findall(gallery)) == {
+        "ai/delivery-acceptance.svg",
+        "ai/mathematical-contracts.svg",
+        "ai/native-failure-isolation.svg",
+        "ai/warm-start-trajectory.svg",
+    }
+    current_images = IMAGE_LINK.findall(gallery)
+    assert len(current_images) == len(AI_GALLERY_IMAGES)
+    assert set(current_images) == AI_GALLERY_IMAGES
+    assert "<img" not in gallery.casefold()
+    for relative in AI_GALLERY_IMAGES:
+        image = ROOT / "docs/assets" / relative
+        assert image.is_file()
+        assert not image.is_symlink()
     for filename, asset in (
         ("README.md", "hero.zh-CN.svg"),
         ("README.en.md", "hero.en.svg"),
