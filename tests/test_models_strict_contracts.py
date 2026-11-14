@@ -14,7 +14,7 @@ from aspenops_nexus.models import (
 )
 
 
-@pytest.mark.parametrize("value", [True, False, 0, -1, float("nan"), float("inf")])
+@pytest.mark.parametrize("value", [True, False, 0, -1, float("nan"), float("inf"), 10**400])
 def test_timeout_requires_finite_positive_non_boolean_number(value: object) -> None:
     with pytest.raises(ValueError, match="timeout_s must be a finite positive number"):
         EvaluationRequest.from_dict(
@@ -138,6 +138,14 @@ def test_constraint_numbers_are_finite_and_not_boolean(field: str) -> None:
     payload[field] = True
     with pytest.raises(ValueError, match=f"constraint {field} must be a finite number"):
         ConstraintSpec.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [10**400, -(10**400)])
+def test_model_numeric_overflow_is_a_validation_error(value: int) -> None:
+    with pytest.raises(ValueError, match="constraint value must be a finite number"):
+        ConstraintSpec.from_dict({"key": "x", "value": value})
+    with pytest.raises(ValueError, match="balance abs_tol must be a finite non-negative number"):
+        BalanceSpec.from_dict({"name": "mass", "terms": [{"key": "x"}], "abs_tol": value})
 
 
 def test_constraint_contract_rejects_missing_invalid_and_negative_fields() -> None:

@@ -64,102 +64,67 @@ GOVERNED_WORKFLOWS = (
     "windows-control-plane.yml",
     "licensed-aspen-certification.yml",
 )
-README_CONTRACTS = {
+README_SECTIONS = {
     "README.md": (
-        "## 原生适配器一致性门",
+        "## 执行架构",
         "## 快速开始",
-        "## 配置边界",
-        "## 配置与路径安全策略",
-        "## 独立有效性门",
-        "## 典型工作流",
-        "## MCP 兼容性与服务生命周期",
-        "## 约束优化闭环",
-        "## 调度与恢复",
-        "## 缓存、批内去重与单航班",
-        "## Worker 所有权与回收",
-        "## 性能工程与证据",
-        "## 工业应用场景",
-        "## 证据包完整性与真实性",
-        "## 项目结构",
-        "## 故障排查",
-        "git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git",
-        "uv sync --frozen --extra dev --extra agent --extra signing",
-        "mcp>=1.30.0,<2",
-        "uv run aspenops doctor --probe",
-        "uv run aspenops run-batch",
-        "uv run aspenops scheduler",
-        "JOB_ID=$( ".strip(),
-        "uv run aspenops submit",
-        "uv run aspenops job",
-        "uv run aspenops cancel",
-        "uv run aspenops optimize examples/optimization-request.example.json",
-        "uv run aspenops verify-bundle",
-        "uv run aspenops mcp",
-        "scripts/measure_cli_startup.py",
-        "scripts/measure_operation_counts.py",
-        "scripts/measure_job_store_queries.py",
-        "cli-startup.json",
-        "operation-counts.json",
-        "job-store-query-plan.json",
-        "Performance Audit V2",
-        "paths_pinned",
-        "submission_cwd",
-        "retry_wait",
-        "dead_letter",
-        "inflight_singleflight",
-        "constraint_non_finite",
-        "balance_non_finite",
-        "allow_nan=False",
-        "PENDING_REAL_ASPEN_CERTIFICATION",
+        "## 简洁技术路线",
+        "## 数学与工程合同",
+        "## 统计力学背景与七仓总路线",
+        "## 实际工作流与配置",
+        "## 原生失败隔离",
+        "## 优化建议与使用边界",
+        "## 交付验收",
+        "## 确定性交付包",
+        "## 开发与故障定位",
     ),
     "README.en.md": (
-        "## Native adapter conformance gate",
+        "## Execution architecture",
         "## Quick start",
-        "## Configuration boundaries",
-        "## Configuration and path safety",
-        "## Independent validity gates",
-        "## Common workflows",
-        "## MCP compatibility and server lifecycle",
-        "## Constrained optimization lifecycle",
-        "## Scheduling and recovery",
-        "## Cache, batch deduplication and singleflight",
-        "## Worker ownership and recycling",
-        "## Performance engineering and evidence",
-        "## Industrial use cases",
-        "## Evidence bundle integrity and authenticity",
-        "## Repository structure",
-        "## Troubleshooting",
-        "git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git",
-        "uv sync --frozen --extra dev --extra agent --extra signing",
-        "mcp>=1.30.0,<2",
-        "uv run aspenops doctor --probe",
-        "uv run aspenops run-batch",
-        "uv run aspenops scheduler",
-        "JOB_ID=$( ".strip(),
-        "uv run aspenops submit",
-        "uv run aspenops job",
-        "uv run aspenops cancel",
-        "uv run aspenops optimize examples/optimization-request.example.json",
-        "uv run aspenops verify-bundle",
-        "uv run aspenops mcp",
-        "scripts/measure_cli_startup.py",
-        "scripts/measure_operation_counts.py",
-        "scripts/measure_job_store_queries.py",
-        "cli-startup.json",
-        "operation-counts.json",
-        "job-store-query-plan.json",
-        "Performance Audit V2",
-        "paths_pinned",
-        "submission_cwd",
-        "retry_wait",
-        "dead_letter",
-        "inflight_singleflight",
-        "constraint_non_finite",
-        "balance_non_finite",
-        "allow_nan=False",
-        "PENDING_REAL_ASPEN_CERTIFICATION",
+        "## Concise technical route",
+        "## Mathematical and engineering contracts",
+        "## Statistical-mechanics context and the seven-repository route",
+        "## Operational workflows and configuration",
+        "## Native failure isolation",
+        "## Improvement priorities and practical limits",
+        "## Delivery acceptance",
+        "## Deterministic delivery bundle",
+        "## Development and troubleshooting",
     ),
 }
+# Operational assertions remain language-independent; editorial headings no longer
+# require one section for each of the twenty-three archived SVGs.
+OPERATIONAL_CONTRACTS = (
+    "git clone https://github.com/SUNHAOJUN22/AspenOps-Agent.git",
+    "uv sync --frozen --extra dev --extra agent --extra signing",
+    "mcp>=1.30.0,<2",
+    "uv run aspenops doctor --probe",
+    "uv run aspenops run-batch",
+    "uv run aspenops scheduler",
+    "JOB_ID=$(",
+    "uv run aspenops submit",
+    "uv run aspenops job",
+    "uv run aspenops cancel",
+    "uv run aspenops optimize examples/optimization-request.example.json",
+    "uv run aspenops verify-bundle",
+    "uv run aspenops mcp",
+    "scripts/measure_cli_startup.py",
+    "scripts/measure_operation_counts.py",
+    "scripts/measure_job_store_queries.py",
+    "cli-startup.json",
+    "operation-counts.json",
+    "job-store-query-plan.json",
+    "Performance Audit V2",
+    "paths_pinned",
+    "submission_cwd",
+    "retry_wait",
+    "dead_letter",
+    "inflight_singleflight",
+    "constraint_non_finite",
+    "balance_non_finite",
+    "allow_nan=False",
+    "PENDING_REAL_ASPEN_CERTIFICATION",
+)
 
 
 def _local_name(tag: str) -> str:
@@ -371,11 +336,46 @@ def test_visuals_remain_bound_to_implemented_runtime_contracts() -> None:
 
 
 def test_readmes_keep_operational_product_surface_complete() -> None:
-    for filename, markers in README_CONTRACTS.items():
+    for filename, sections in README_SECTIONS.items():
         text = (ROOT / filename).read_text(encoding="utf-8")
-        for marker in markers:
+        for marker in (*sections, *OPERATIONAL_CONTRACTS):
             assert marker in text, f"{filename} is missing {marker}"
         assert SHELL_PLACEHOLDER.search(text) is None
+
+
+def test_readmes_preserve_ordered_execution_and_physical_scope() -> None:
+    for filename, heading in (
+        ("README.md", "## 简洁技术路线"),
+        ("README.en.md", "## Concise technical route"),
+    ):
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        route = text.split(heading, 1)[1].split("\n## ", 1)[0]
+        sequence = (
+            "system_info",
+            "list_semantic_variables",
+            "dry_run_request",
+            "submit_batch",
+            "job_status",
+            "job_result",
+            "ok=true",
+            "verify_evidence_bundle",
+        )
+        positions = [route.index(token) for token in sequence]
+        assert positions == sorted(positions)
+        for marker in ("ProgID", "16", "C_{\\rm finite}", "L_{\\rm declared}"):
+            assert marker in route
+        for marker in (
+            "src/aspenops_nexus/units.py",
+            "src/aspenops_nexus/evaluation.py",
+            "src/aspenops_nexus/optimizer.py",
+            "https://www.damtp.cam.ac.uk/user/tong/statphys/statmechhtml/S1.html",
+            r"\operatorname{fsum}",
+            r"\lor",
+            "relative_upper_bound",
+            "k_B",
+            r"\nu_{ia}r_a",
+        ):
+            assert marker in text
 
 
 def test_scheduler_documents_match_recovery_state_machine() -> None:

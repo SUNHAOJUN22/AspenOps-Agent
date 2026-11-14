@@ -1,0 +1,28 @@
+{
+  "schema_version": "tsao.ai-illustration.v1",
+  "asset": "roadmap.png",
+  "generator": "image_gen",
+  "tool": "image_gen.imagegen",
+  "model_id": null,
+  "generation_session_date_utc": "2026-11-14",
+  "timestamp_note": "Session date, not provider-certified generation time.",
+  "source_artifact": "exec-f5af82eb-4c1a-46c7-8c84-aa6eb64203e0.png",
+  "sha256": "9fb94cd4e1f35493e88a74f72b1b64efc1c6e6b10f208b199a49e1b1092fa3ab",
+  "byte_count": 2147641,
+  "pixel_dimensions": [
+    1536,
+    1024
+  ],
+  "native_generated_image": true,
+  "post_generation_compositing": false,
+  "scope": "AI-generated conceptual illustration; not numerical or experimental evidence.",
+  "prompt": "Edit this complete scientific route illustration. Preserve the layout, palette, process objects, five stage names and footer. Correct ONLY the mathematical callouts. Replace the invented numerical temperature and pressure ranges on the step-2 sheet with symbolic bounds T_min ≤ T ≤ T_max and P_min ≤ P ≤ P_max. On BOTH of the two balance sheets at right, REMOVE every sum-of-moles or sum-of-enthalpies equality; they are not general physical conservation laws. Replace with just |R_mass| ≤ τ_mass and |R_energy| ≤ τ_energy, with the short caption 'Declared residuals and units'. Keep all other approved text. Render no added equations, numerical values, claims or data. All changes must be native AI image generation, no collage. The formula text must be clean and exact.",
+  "method": "image-to-image scientific correction",
+  "visual_review": "Root inspected native output and mathematical labels; independent review pending.",
+  "input_image": {
+    "source_artifact": "exec-bdf0058c-9093-44b9-a44f-47f531c62430.png",
+    "sha256": "f947496fee44600168bf4207b09ad13ed815b4e3654971147ef417a63b72558e"
+  },
+  "initial_prompt": "Create ONE intact AI-generated scientific conceptual figure, landscape 1536 x 1024, for a research software README. Premium Nature / Chemical Reviews graphical-abstract art direction: ivory background, sophisticated multi-color palette, dark readable typography, sharp scientific symbols, subtly dimensional physical objects and purposeful connecting paths. A single complete designed composition with a clearly populated lower caption band; no pasted collage, no repeated panel borders, no large blank bottom, no robot/brain/neon-circuit clichés, no invented performance numbers, no fake measured plots. English labels must be spelled correctly. Exact formulas should be clean and moderate in size, never decorative gibberish. Include footer \"AI-generated conceptual illustration\". These visuals explain scientific ideas and software responsibilities; they do not certify execution, physical accuracy or deployed integrations.\nPalette: cobalt, deep navy, brushed gold, pale blue.\nTitle \"AspenOps-Agent | TECHNICAL ROUTE\". Compact five-step scientific concept route integrated with subtle process vessels and model-document objects, not a long box chain: \"1 Discover\", \"2 Bind variables\", \"3 Dry run\", \"4 Execute batch\", \"5 Verify evidence\". Use thin directed ribbons. Near step 2 show \"units + bounds\"; near execution show \"workers ≤ licensed capacity\"; near final independent checks show \"ε_balance ≤ tolerance\". A short lower band reads \"system_info · list_semantic_variables · dry_run_request · submit_batch\". Small text \"IR validation does not grant licensed execution\". Keep total typography sparse and legible.",
+  "review_scope": "Parent visual inspection; independent review is recorded separately in the audit reports."
+}

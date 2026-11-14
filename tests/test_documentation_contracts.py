@@ -16,6 +16,9 @@ WORKFLOWS = {
 DOCUMENTS = (
     ROOT / "README.md",
     ROOT / "README.en.md",
+    ROOT / "README_ACCEPTANCE.md",
+    ROOT / "docs/assets/README.md",
+    ROOT / "design-system/aspenops-readme/pages/readme-visuals.md",
     ROOT / "AGENTS.md",
     ROOT / "CLAUDE.md",
     ROOT / "CONTRIBUTING.md",
@@ -262,7 +265,7 @@ def test_warm_start_docs_distinguish_cache_results_from_live_state() -> None:
     assert "缓存命中只返回独立历史结果" in chinese
     assert "warm_start_state_lost" in chinese
     assert "Mock 回归验证不代表真实 Aspen 已验收" in chinese
-    assert "a cache hit is an independent historical result" in english
+    assert "a cache hit is an independent historical result" in english.casefold()
     assert "warm_start_state_lost" in english
     assert "Mock regressions do not qualify real Aspen" in english
     assert "communication success, engine success, and convergence" in architecture

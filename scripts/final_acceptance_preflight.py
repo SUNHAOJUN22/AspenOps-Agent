@@ -140,12 +140,20 @@ def build_report(root: Path, *, platform_name: str | None = None) -> dict[str, A
             EXTERNAL_BOUNDARY_MARKER,
             "Windows",
             "Linux",
-            "\\[",
             "W_{effective}",
             "C_{balance}",
+            "\\operatorname{fsum}",
+            "\\lor",
         ):
             if marker not in text:
                 _issue(issues, "acceptance_readme_marker_missing", "README_ACCEPTANCE.md", marker)
+        if "$$" not in text and "\\[" not in text:
+            _issue(
+                issues,
+                "acceptance_readme_marker_missing",
+                "README_ACCEPTANCE.md",
+                "displayed mathematical contracts",
+            )
 
     svg = root / "docs" / "assets" / "acceptance" / "final-acceptance-map.svg"
     if svg.is_file():

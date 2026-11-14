@@ -1,0 +1,23 @@
+{
+  "schema_version": "tsao.ai-illustration.v1",
+  "asset": "seven-repo-roadmap.png",
+  "generator": "image_gen",
+  "tool": "image_gen.imagegen",
+  "model_id": null,
+  "generation_session_date_utc": "2026-11-14",
+  "timestamp_note": "Session date, not provider-certified generation time.",
+  "source_artifact": "exec-e1332f2f-5d45-4bfe-bd5d-04805d07f146.png",
+  "sha256": "a9a7cbc41e320d9b1d790d9f6b933db4bc29dd7081eb2b324ef5c05c8687240f",
+  "byte_count": 2024246,
+  "pixel_dimensions": [
+    1536,
+    1024
+  ],
+  "native_generated_image": true,
+  "post_generation_compositing": false,
+  "scope": "AI-generated conceptual illustration; not numerical or experimental evidence.",
+  "prompt": "Create ONE complete, publication-quality AI-generated scientific conceptual illustration for the seven-repository TSAO research ecosystem. Landscape 1536 x 1024. Premium Nature/Chemical Reviews graphical abstract aesthetic: ivory background, precise dark typography, dimensional molecular and continuum objects, refined colored ribbons, generous but purposeful spacing. It is a single intact composition, never a montage or collage, no empty lower strip.\nTitle verbatim: \"TSAO | FROM LAWS TO EVIDENCE\"\nSubtitle: \"Seven independent repositories · proposed scientific handoffs\"\nOrganize a compact multiscale path through three gently curved levels, with seven precisely spelled repository names, each only once, and a short meaningful descriptor:\n\"OpenDeepMind_skill\" — \"Foundations & falsifiers\", indigo/crimson\n\"TsaoSciResearcher\" — \"Questions & evidence\", teal/amber\n\"TsaoDFT_skill\" — \"Electronic structure\", plum/copper\n\"TsaoSciComputation\" — \"Numerics & verification\", cyan/coral\n\"TSAO-PROCESSING-SKILL\" — \"Kinetics & balances\", terracotta/deep blue\n\"AspenOps-Agent\" — \"Guarded process execution\", cobalt/gold\n\"ResinDB-Pro-by-SunHJ\" — \"Materials data & screening\", jade/coral\nConnect with thin dotted colored ribbons to indicate proposed handoffs, not a deployed integrated runtime; a graceful feedback ribbon returns evidence to question formulation. Use physical objects that progress from electronic orbitals, to statistical ensembles and polymer coils, to a reactor/flowsheet, to curated material records. Avoid robot heads, brains, neon circuits and generic computer dashboards.\nInclude these six clean, modest mathematical callouts, accurately typeset and fully visible:\n\"Hψ = Eψ\"\n\"Z = Σᵢ exp[−Eᵢ/(kᴮT)]\"\n\"F = −kᴮT ln Z\"\n\"k(T) = κ(kᴮT/h) exp[−ΔG‡/(RT)]\"\n\"Σᵧ ≈ JΣₓJᵀ\"\n\"p(θ|D) ∝ p(D|θ)p(θ)\"\nFor kᴮ use a normal k with proper subscript B. Include tiny labels \"canonical equilibrium\", \"molar activation free energy\", \"local uncertainty propagation\" next to the relevant formulas. These formulas are scientific context, not claims of implemented solvers.\nBottom footer is fully designed and populated: \"Units · provenance · uncertainty · independent validation\" and \"AI-generated conceptual illustration\". No numeric performance claims or fake data curves. Careful short labels, readable mathematics and balanced visual hierarchy.",
+  "method": "text-to-image",
+  "visual_review": "Root inspected the complete native image; exact repository names, contextual equations, proposed-handoff qualification and populated footer checked. Independent review pending.",
+  "review_scope": "Parent visual inspection; independent review is recorded separately in the audit reports."
+}

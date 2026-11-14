@@ -4,6 +4,9 @@ import math
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
+from numbers import Real
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,13 +108,13 @@ def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
         try:
             valid = (
                 bool(point.objectives)
-                and point.violation >= 0
                 and all(
                     not isinstance(v, bool) and math.isfinite(v)
                     for v in (*point.x, *point.objectives, point.violation)
                 )
+                and point.violation >= 0
             )
-        except (TypeError, OverflowError) as exc:
+        except (TypeError, ValueError, ArithmeticError) as exc:
             raise ValueError(
                 "Pareto points require finite numeric vectors and nonnegative violation"
             ) from exc
@@ -140,13 +143,26 @@ def pareto_front(points: Sequence[ParetoPoint]) -> tuple[ParetoPoint, ...]:
     return _pareto_front_general(feasible)
 
 
+def _finite_scalar(value: Any, label: str) -> float:
+    """Preserve zero/nonzero semantics while converting real numbers to binary64."""
+    if isinstance(value, bool) or not isinstance(value, Real | Decimal):
+        raise ValueError(f"{label} must be a finite real number")
+    try:
+        number = float(value)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise ValueError(f"{label} must be a finite real number") from exc
+    if not math.isfinite(number) or (number == 0.0 and value != 0):
+        raise ValueError(f"{label} must be finite and must not underflow to zero")
+    return number
+
+
 def _validate_parameters(
     bounds: Sequence[tuple[float, float]],
     population_size: int,
     generations: int,
     mutation: float,
     crossover: float,
-) -> None:
+) -> tuple[tuple[tuple[float, float], ...], float, float]:
     if not bounds:
         raise ValueError("bounds must not be empty")
     if isinstance(population_size, bool) or not isinstance(population_size, int):
@@ -157,18 +173,24 @@ def _validate_parameters(
         raise ValueError("population_size must be at least 4")
     if generations < 0:
         raise ValueError("generations cannot be negative")
-    if not math.isfinite(mutation) or mutation <= 0:
+    mutation_value = _finite_scalar(mutation, "mutation")
+    crossover_value = _finite_scalar(crossover, "crossover")
+    if mutation_value <= 0:
         raise ValueError("mutation must be positive and finite")
-    if not math.isfinite(crossover) or not 0 <= crossover <= 1:
+    if not 0 <= crossover_value <= 1:
         raise ValueError("crossover must be finite and between zero and one")
-    if any(
-        not math.isfinite(lower)
-        or not math.isfinite(upper)
-        or upper <= lower
-        or not math.isfinite(upper - lower)
+    normalized_bounds = tuple(
+        (
+            _finite_scalar(lower, "bound lower endpoint"),
+            _finite_scalar(upper, "bound upper endpoint"),
+        )
         for lower, upper in bounds
+    )
+    if any(
+        upper <= lower or not math.isfinite(upper - lower) for lower, upper in normalized_bounds
     ):
         raise ValueError("every bound must have finite endpoints and a finite positive width")
+    return normalized_bounds, mutation_value, crossover_value
 
 
 def differential_evolution_batch(
@@ -184,8 +206,9 @@ def differential_evolution_batch(
     checkpoint: Callable[[int, tuple[Candidate, ...], int], None] | None = None,
 ) -> DifferentialEvolutionResult:
     """Run bounded DE/rand/1/bin with one batch evaluation per generation."""
-    bounds_tuple = tuple(bounds)
-    _validate_parameters(bounds_tuple, population_size, generations, mutation, crossover)
+    bounds_tuple, mutation, crossover = _validate_parameters(
+        tuple(bounds), population_size, generations, mutation, crossover
+    )
     if max_evaluations is not None and (
         isinstance(max_evaluations, bool) or not isinstance(max_evaluations, int)
     ):
@@ -206,10 +229,13 @@ def differential_evolution_batch(
             raise ValueError("evaluate_many returned a different number of scores")
         candidates: list[Candidate] = []
         for vector, (objective, violation) in zip(vectors, scores, strict=True):
-            objective_value = float(objective)
-            violation_value = float(violation)
-            if not math.isfinite(objective_value) or not math.isfinite(violation_value):
-                raise ValueError("evaluate_many returned a non-finite score")
+            try:
+                objective_value = _finite_scalar(objective, "objective score")
+                violation_value = _finite_scalar(violation, "violation score")
+            except ValueError as exc:
+                raise ValueError(
+                    "evaluate_many returned a non-finite score or an invalid numeric score"
+                ) from exc
             candidates.append(Candidate(vector, objective_value, max(0.0, violation_value)))
         return candidates
 

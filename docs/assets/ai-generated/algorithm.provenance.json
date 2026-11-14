@@ -1,0 +1,28 @@
+{
+  "schema_version": "tsao.ai-illustration.v1",
+  "asset": "algorithm.png",
+  "generator": "image_gen",
+  "tool": "image_gen.imagegen",
+  "model_id": null,
+  "generation_session_date_utc": "2026-11-14",
+  "timestamp_note": "Session date, not provider-certified generation time.",
+  "source_artifact": "exec-d17f186f-0c5d-4cc6-af25-1a80944b255c.png",
+  "sha256": "1f3a7ffd93f77ffd47b9b643b3b0644fff445b6ffd738568d024247742cb043f",
+  "byte_count": 2089419,
+  "pixel_dimensions": [
+    1536,
+    1024
+  ],
+  "native_generated_image": true,
+  "post_generation_compositing": false,
+  "scope": "AI-generated conceptual illustration; not numerical or experimental evidence.",
+  "prompt": "Edit this scientific algorithm illustration. Preserve its exact layout, colors, all equations, labels and footer except ONE correction: replace the bottom-right label 'Completed engine run' with 'Scoped candidate'. The terminal box must read exactly 'Scoped candidate', because independent physical checks happen AFTER engine completion. Remove the golden check-mark seal inside that terminal box; use a neutral candidate-point symbol. No new formulas, claims, boxes or numbers. Keep everything else unchanged.",
+  "method": "image-to-image scientific correction",
+  "visual_review": "Root inspected native output and mathematical labels; independent review pending.",
+  "input_image": {
+    "source_artifact": "exec-8e51f64f-b121-45d8-a250-de975091958c.png",
+    "sha256": "213a8ca12bf4501096927d2bab60ac8823649052e6323877a4e63c0a56ea8f16"
+  },
+  "initial_prompt": "Create ONE intact AI-generated scientific conceptual figure, landscape 1536 x 1024, for a research software README. Premium Nature / Chemical Reviews graphical-abstract art direction: ivory background, sophisticated multi-color palette, dark readable typography, sharp scientific symbols, subtly dimensional physical objects and purposeful connecting paths. A single complete designed composition with a clearly populated lower caption band; no pasted collage, no repeated panel borders, no large blank bottom, no robot/brain/neon-circuit clichés, no invented performance numbers, no fake measured plots. English labels must be spelled correctly. Exact formulas should be clean and moderate in size, never decorative gibberish. Include footer \"AI-generated conceptual illustration\". These visuals explain scientific ideas and software responsibilities; they do not certify execution, physical accuracy or deployed integrations.\nPalette: cobalt, deep navy, brushed gold, pale blue.\nTitle \"AspenOps-Agent | CONSTRAINED SEARCH\". Create an elegant continuous composition of a bounded objective landscape, a small population of candidate points, a scientific process object and separate feasibility/evidence gates. Landscape has no numeric axes or measured curves. Labels \"Dimensionless objectives\", \"Bounded differential evolution\", \"Feasibility first\", \"Evaluation budget\", \"Balance residuals\". Exact mathematical callouts: \"v = a + F(b − c)\", \"h(x) = 0\", \"g(x) ≤ 0\", \"x_min ≤ x ≤ x_max\", \"N_eval ≤ B\". Footer line \"Finite values · explicit units · reproducible records\". Show uncertain candidates returning to search; a completed engine run still faces independent physical checks.",
+  "review_scope": "Parent visual inspection; independent review is recorded separately in the audit reports."
+}

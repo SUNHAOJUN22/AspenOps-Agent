@@ -1,0 +1,23 @@
+{
+  "schema_version": "tsao.ai-illustration.v1",
+  "asset": "architecture.png",
+  "generator": "image_gen",
+  "tool": "image_gen.imagegen",
+  "model_id": null,
+  "generation_session_date_utc": "2026-11-14",
+  "timestamp_note": "Session date, not provider-certified generation time.",
+  "source_artifact": "exec-9789fc59-1e61-402e-acf9-b8b5b055067b.png",
+  "sha256": "0995ac76a2519262616037ff85fe6ca7f5bdb9bc29d6c9153e3c6f6ade1a04e3",
+  "byte_count": 2050367,
+  "pixel_dimensions": [
+    1536,
+    1024
+  ],
+  "native_generated_image": true,
+  "post_generation_compositing": false,
+  "scope": "AI-generated conceptual illustration; not numerical or experimental evidence.",
+  "prompt": "Create ONE intact AI-generated scientific conceptual figure, landscape 1536 x 1024, for a research software README. Premium Nature / Chemical Reviews graphical-abstract art direction: ivory background, sophisticated multi-color palette, dark readable typography, sharp scientific symbols, subtly dimensional physical objects and purposeful connecting paths. A single complete designed composition with a clearly populated lower caption band; no pasted collage, no repeated panel borders, no large blank bottom, no robot/brain/neon-circuit clichés, no invented performance numbers, no fake measured plots. English labels must be spelled correctly. Exact formulas should be clean and moderate in size, never decorative gibberish. Include footer \"AI-generated conceptual illustration\". These visuals explain scientific ideas and software responsibilities; they do not certify execution, physical accuracy or deployed integrations.\nPalette: cobalt, deep navy, brushed gold, pale blue.\nTitle \"AspenOps-Agent | EXECUTION WITH EVIDENCE\". Visual centerpiece: a carefully drawn stylized process reactor and column surrounded by four clear functional regions, \"Process Intent IR\", \"Validation & dry run\", \"License-bound worker pool\", \"Independent evidence\". A separate thin band shows \"Transport · engine · convergence · constraints · balances\" as distinct checks. Show a source model protected beside a working case. Two physical callouts: \"dn/dt = ṅ_in − ṅ_out + νrV\" and \"x_min ≤ x ≤ x_max\". Label r \"volumetric reaction rate\". Bottom line \"Declare → preflight → isolate → execute → verify\". Small qualification \"Real Aspen certification requires licensed evidence\". Diagram is conceptual, not an exact engineering flowsheet.",
+  "method": "text-to-image",
+  "visual_review": "Root inspected native output and mathematical labels; independent review pending.",
+  "review_scope": "Parent visual inspection; independent review is recorded separately in the audit reports."
+}

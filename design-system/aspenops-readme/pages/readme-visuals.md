@@ -1,25 +1,23 @@
-# README Visuals Override
+# README figure contract
 
-This page override specializes the global AspenOps design system for the 23 README
-capability diagrams.
+The active Chinese and English READMEs share four native AI PNG schematics. Exact formulas, API ordering and capability boundaries are defined by the accompanying Markdown and source links. A generated visual is explanatory material, never measurement or qualification evidence.
 
-## Asset taxonomy
+## Current figures
 
-| Diagram family | Assets | Layout rule |
+| Asset in `docs/assets/ai-generated/` | Purpose | Review requirement |
 |---|---|---|
-| System architecture | hero, CLI/MCP, COM isolation | left-to-right ownership flow |
-| Policy and validity | path safety, validity gates | sequential gates plus fail-closed rail |
-| Process and agents | Process Intent, Agent pipeline | declarative stages with authority boundary |
-| Runtime lifecycle | Worker, MCP, Scheduler | explicit states and transitions |
-| Native execution | adapter conformance | requirements, manifest identity, fail-before-mutation |
-| Data reuse and performance | cache, startup, hotspot map | bento metrics and operation-count evidence |
-| Quality and evidence | test matrix, evidence chain, integrity | table or chain with provenance boundary |
-| Product boundary | industrial scenarios, certification, roadmap | supported / pending / planned separation |
+| `architecture.png` | Intent, governed execution, private workers and evidence | Preserve one runtime/scheduler/PoolManager; valid IR grants no execution authority |
+| `algorithm.png` | Numerical admission, objectives, bounded DE and balances | Candidate is scoped; objective scales are dimensionally compatible; balance tolerances match code |
+| `roadmap.png` | Compact ordered execution and evidence route | Discover → bind → dry run → submit → inspect points → verify evidence |
+| `seven-repo-roadmap.png` | Proposed handoffs and scientific background | Repositories remain independent; ensemble, rate and uncertainty assumptions remain explicit |
 
-## Required implementation markers
+Use complete unmodified imagegen rasters, meaningful alternative text and localized captions. Preserve exact prompts, byte hashes and generation provenance. Do not infer a provider model identifier or a measured physical result from an image. Review symbols and labels visually, while keeping authoritative formulas in Markdown for accessibility and exact interpretation.
 
-The following exact labels remain present because automated tests bind visual claims to
-implemented code:
+The canonical entry points and the visual index each embed the four current images exactly once. The acceptance README embeds the current route. Historical SVGs remain ordinary links; generators must not restore inline SVG galleries or describe deterministic SVGs as newly generated AI images. Data dashboards remain data dashboards.
+
+## Historical SVG contracts
+
+The twenty-three engineering SVGs remain archived and governed by their existing tests. These exact labels connect historical drawings to implementation contracts:
 
 - `Python Settings`, `Canonical Paths`, `Operation Gates`
 - `Communication`, `Finite Evidence`, `JSON-Safe Evidence`
@@ -32,11 +30,8 @@ implemented code:
 - `Plan Requirements`, `Manifest Identity`, `Fail Before Mutation`
 - `retry_wait`, `dead_letter`
 
-## Delivery checks
+Archived SVGs continue to require XML parsing, a `viewBox`, `role="img"`, one title, one description and correct ARIA links. Keep each below 64 KB and reject scripts, embedded images, event handlers, remote resources and Data URIs. English embedded labels avoid renderer-dependent CJK fonts. These are SVG archive rules, not PNG byte-size or XML requirements.
 
-- render every SVG at 720 × 360 for a half-scale readability check
-- parse all files with the standard-library XML parser
-- keep every file below the repository's 64 KB limit
-- verify one title, one description, `viewBox`, `role="img"`, and ARIA linkage
-- reject CJK glyphs, scripts, images, event handlers, remote resources, and Data URIs
-- retain English embedded labels so both README languages reuse identical assets
+## Documentation checks
+
+Run `uv run pytest tests/test_readme_visual_assets.py tests/test_documentation_contracts.py tests/test_current_main_readme_generator.py` and `uv run python scripts/update_readme_gallery.py --check`. The legacy gallery command now checks the current image contract without changing qualification claims. Operational assertions still cover the simulator sequence, frozen gates, queue/MCP commands, numerical boundaries and pending licensed qualification.

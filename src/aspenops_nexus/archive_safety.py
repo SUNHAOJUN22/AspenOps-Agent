@@ -48,7 +48,8 @@ def _validate_member_name(name: str) -> None:
     if not name or "\x00" in name or "\\" in name or name.endswith("/"):
         raise ArchiveSafetyError(f"unsafe archive member name: {name!r}")
     path = PurePosixPath(name)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    # PurePosixPath normalizes empty and dot components before exposing parts.
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in name.split("/")):
         raise ArchiveSafetyError(f"unsafe archive member path: {name!r}")
     if path.parts and ":" in path.parts[0]:
         raise ArchiveSafetyError(f"unsafe archive member drive path: {name!r}")

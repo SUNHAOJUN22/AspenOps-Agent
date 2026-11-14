@@ -242,7 +242,7 @@ def test_gallery_contract_rejects_incomplete_duplicate_or_bypassed_display(
 ) -> None:
     gallery = gallery_contract_root / "docs/assets/README.md"
     original = gallery.read_text(encoding="utf-8")
-    historical = re.search(r"(?m)^\[[^\]]*\]\(readme/adapter-conformance\.svg\)$", original)
+    historical = re.search(r"(?<!!)\[[^\]]*\]\(readme/adapter-conformance\.svg\)", original)
     current = re.search(r"!\[[^\]]*\]\(ai-generated/architecture\.png\)", original)
     assert historical is not None and current is not None
     if mutation == "missing_historical":

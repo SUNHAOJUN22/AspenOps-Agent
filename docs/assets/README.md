@@ -1,157 +1,67 @@
 # 当前 AI 示意图与历史图集 / Current AI schematics and historical gallery
 
-[中文 README](../../README.md) · [English README](../../README.en.md)
+[中文 README](../../README.md) · [English README](../../README.en.md) · [验收合同 / Acceptance](../../README_ACCEPTANCE.md)
 
-## 当前完整 AI 图像 / Current complete AI images
+本页是四幅当前原生 AI 图像的入口及旧图追溯索引。四幅 PNG 均由图像生成工具完整生成，未用代码绘图或文字覆盖；英文图内标签由中英文图注解释。图像说明软件关系和科学背景，不提供测量、真实模拟器执行或工程资格证据。
 
-四幅当前科学示意图均为真实图像生成工具产生的完整 PNG，未经代码绘图或文字覆盖。图内英文标签共用；两份主 README 的标题、替代文本和图注分别本地化。它们只解释软件关系、算法和路线，不是测量、模拟结果或工程资格。
+This index separates four current native AI schematics from retained historical assets. Every current PNG is a complete imagegen raster without programmatic drawing or text overlays. Shared English labels have bilingual explanations. These figures describe software and scientific context; they do not establish measurements, real-engine execution or engineering qualification.
 
-All four current scientific schematics are complete imagegen rasters, with no programmatic drawing or text overlay. Their English labels are shared; titles, alternative text and captions are localized in the main READMEs. They illustrate software relations, algorithms and routes, not measurements, solver results or engineering qualification.
+## 当前图像 / Current figures
 
-### 架构 / Architecture
+### 1. 执行架构 / Execution architecture
 
-![AI-generated synthetic architecture / AI 生成的合成架构示意图](ai-generated/architecture.png)
+![AI-generated architecture: intent, governed execution, isolated workers and evidence / AI 生成的意图、执行、隔离与证据架构](ai-generated/architecture.png)
 
-### 算法 / Algorithm
+意图通过声明检查后进入唯一运行时；每个 Worker 使用私有模型，结果须逐点核验。开放反应衡算是物理背景，不是软件自行提供的物性模型。
 
-![AI-generated synthetic numerical contracts / AI 生成的合成数值合同示意图](ai-generated/algorithm.png)
+Intent passes declared checks before reaching the single runtime. Workers own private models; results require per-point acceptance. Open-reaction balances provide physical context, not an internally implemented property model. [Source / 实现](../../src/aspenops_nexus/pool.py)
 
-### 仓内技术路线 / Technical route
+### 2. 数值与搜索 / Numerics and search
 
-![AI-generated synthetic technical route / AI 生成的合成技术路线图](ai-generated/roadmap.png)
+![AI-generated algorithm: dimensional observations, normalized objectives, bounded search and acceptance / AI 生成的数值与有界搜索算法](ai-generated/algorithm.png)
 
-### 七仓总路线 / Seven-repository route
+单位转换、目标归一化、预算与容差应按 README 的精确文本读取。搜索终点是待核验候选；DE 种群不是 Boltzmann 系综。
 
-![AI-generated synthetic seven-repository route / AI 生成的合成七仓总路线图](ai-generated/seven-repo-roadmap.png)
+Read the precise unit, normalization, budget and tolerance definitions in the main README. Search yields a scoped candidate; DE populations are not Boltzmann ensembles. [Optimizer / 优化器](../../src/aspenops_nexus/optimizer.py) · [Acceptance / 接受门](../../src/aspenops_nexus/evaluation.py)
 
-[Exact prompts and provenance / 精确提示词与来源](ai-generated/README.md)
+### 3. 简洁技术路线 / Concise technical route
 
-旧 `readme-vnext/hero.zh-CN.svg` 与 `hero.en.svg` 仅保留历史身份，不是当前入口。本页下方全部旧 SVG 是确定性绘图历史档案，不声称由本轮图像生成工具产生。原安全和合同检查继续约束这些文件。
+![AI-generated route: discovery, binding, dry run, queued execution and evidence verification / AI 生成的简洁技术路线](ai-generated/roadmap.png)
 
-The prior hero files and every old SVG below are historical records. Deterministic drawings are not presented as newly generated AI images. Their original safety and contract checks remain in force.
+遵循 `system_info` → `list_semantic_variables` → `dry_run_request` → `submit_batch` → `job_status` / `job_result` → `verify_evidence_bundle`。图中范围符号由实际模型声明，不是通用温度或压力许可。
 
-## 保留的工程 SVG / Retained engineering SVGs
+Follow the ordered tool sequence above. Symbolic bounds come from the actual model, not universal permitted temperature or pressure ranges. [MCP contract / MCP 合同](../../src/aspenops_nexus/mcp_server.py)
 
-以下二十三幅确定性 SVG 保留原工程合同说明和安全验证，作为普通历史链接按需打开；本页及主 README 的现行图像使用上述完整 AI PNG。历史路线图和测试图不证明当前提交已通过测试；当前状态以实现及目标提交证据为准。
+### 4. 七仓总路线 / Seven-repository route
 
-These twenty-three deterministic SVGs retain their engineering explanations and safety checks as ordinary historical links. This page and the main READMEs display the complete AI images above. Historical roadmap/test graphics do not attest that the current commit passed; consult the implementation and evidence for the target commit.
+![AI-generated seven-repository overview: proposed handoffs and physical context / AI 生成的七仓建议交接与物理背景总路线](ai-generated/seven-repo-roadmap.png)
 
-### 原生适配器 / Native adapter conformance
+七仓独立，虚线交接尚非统一运行时。正则系综、过渡态理论和协方差近似是有条件的科学背景；README 定义本仓实际实现与未实现边界。
 
-[原生适配器 / Native adapter conformance](readme/adapter-conformance.svg)
+Repositories remain independent; dashed handoffs are proposed. Canonical ensembles, transition-state theory and covariance approximations have explicit scientific assumptions and are not evidence of implemented integration. The README defines this repository's implementation boundary.
 
-### Agent 处理链 / Agent pipeline
+[精确提示词、来源及 SHA-256 / Exact prompts, provenance and SHA-256](ai-generated/README.md)
 
-[Agent 处理链 / Agent pipeline](readme/agent-pipeline.svg)
+## 历史工程图 / Historical engineering figures
 
-### 后端边界 / Backend capabilities
+以下二十三幅确定性 SVG 以普通链接保留，继续接受原安全、可访问性及实现标记检查。它们不属于本轮 AI 图像，不证明当前提交通过测试。历史文件的布局规则与当前 PNG 分开维护。
 
-[后端边界 / Backend capabilities](readme/backend-capabilities.svg)
+These twenty-three deterministic SVGs remain ordinary links, governed by their original safety, accessibility and implementation-marker tests. They are not current AI-generated rasters or proof of qualification for the current commit.
 
-### 缓存与去重 / Cache and singleflight
+| 主题 / Topic | 历史链接 / Historical links |
+|---|---|
+| 架构与入口 / Architecture and interfaces | [控制面 / Control plane](readme/hero-architecture.svg) · [Agent stages](readme/agent-pipeline.svg) · [CLI / MCP](readme/cli-mcp-workflow.svg) · [MCP lifecycle](readme/mcp-runtime-lifecycle.svg) |
+| 模型与权限 / Models and authority | [Process Intent](readme/process-intent-ir.svg) · [Backend capabilities](readme/backend-capabilities.svg) · [Adapter conformance](readme/adapter-conformance.svg) · [Policy / paths](readme/policy-path-safety.svg) |
+| 执行与恢复 / Execution and recovery | [COM isolation](readme/com-isolation.svg) · [Worker ownership](readme/worker-ownership-recycle.svg) · [Scheduler lifecycle](readme/scheduler-lifecycle.svg) · [Durable paths](readme/durable-path-portability.svg) |
+| 数值与性能 / Numerics and performance | [Validity gates](readme/validity-gates.svg) · [Optimization lifecycle](readme/optimization-lifecycle.svg) · [Cache / singleflight](readme/cache-singleflight.svg) · [Startup paths](readme/cold-warm-startup.svg) · [Performance measurement](readme/performance-hotspot-map.svg) |
+| 证据与资格 / Evidence and qualification | [Evidence chain](readme/evidence-chain.svg) · [Evidence integrity](readme/evidence-integrity.svg) · [Test matrix](readme/test-matrix.svg) · [Licensed certification](readme/licensed-certification.svg) |
+| 用途与规划 / Uses and planning | [Industrial scenarios](readme/industrial-scenarios.svg) · [Historical roadmap](readme/roadmap.svg) |
 
-[缓存与去重 / Cache and singleflight](readme/cache-singleflight.svg)
+### 历史验收与其他版本 / Earlier acceptance and versions
 
-### CLI 与 MCP / CLI and MCP workflow
+- [Delivery acceptance](ai/delivery-acceptance.svg) · [Mathematical contracts](ai/mathematical-contracts.svg) · [Native failure isolation](ai/native-failure-isolation.svg) · [Warm-start trajectory](ai/warm-start-trajectory.svg)
+- [Chinese hero](readme-vnext/hero.zh-CN.svg) · [English hero](readme-vnext/hero.en.svg)
+- [Chinese architecture](atlas-v2/architecture-zh.svg) · [English architecture](atlas-v2/architecture-en.svg) · [Acceptance map](acceptance/final-acceptance-map.svg)
+- [Earlier Chinese AI bitmap](vision-zh.png) · [Earlier English AI bitmap](vision-en.png)
 
-[CLI 与 MCP / CLI and MCP workflow](readme/cli-mcp-workflow.svg)
-
-### 启动路径 / Startup paths
-
-[启动路径 / Startup paths](readme/cold-warm-startup.svg)
-
-### COM 隔离 / COM isolation
-
-[COM 隔离 / COM isolation](readme/com-isolation.svg)
-
-### 持久路径 / Durable paths
-
-[持久路径 / Durable paths](readme/durable-path-portability.svg)
-
-### 证据链 / Evidence chain
-
-[证据链 / Evidence chain](readme/evidence-chain.svg)
-
-### 证据完整性 / Evidence integrity
-
-[证据完整性 / Evidence integrity](readme/evidence-integrity.svg)
-
-### 控制面架构 / Control-plane architecture
-
-[控制面架构 / Control-plane architecture](readme/hero-architecture.svg)
-
-### 使用场景 / Usage scenarios
-
-[使用场景 / Usage scenarios](readme/industrial-scenarios.svg)
-
-### 许可认证边界 / Licensed qualification boundary
-
-[许可认证边界 / Licensed qualification boundary](readme/licensed-certification.svg)
-
-### MCP 生命周期 / MCP lifecycle
-
-[MCP 生命周期 / MCP lifecycle](readme/mcp-runtime-lifecycle.svg)
-
-### 优化生命周期 / Optimization lifecycle
-
-[优化生命周期 / Optimization lifecycle](readme/optimization-lifecycle.svg)
-
-### 性能测量 / Performance measurements
-
-[性能测量 / Performance measurements](readme/performance-hotspot-map.svg)
-
-### 策略与路径 / Policy and paths
-
-[策略与路径 / Policy and paths](readme/policy-path-safety.svg)
-
-### 过程意图 / Process Intent IR
-
-[过程意图 / Process Intent IR](readme/process-intent-ir.svg)
-
-### 历史路线图 / Historical roadmap
-
-[历史路线图 / Historical roadmap](readme/roadmap.svg)
-
-### 调度恢复 / Scheduler lifecycle
-
-[调度恢复 / Scheduler lifecycle](readme/scheduler-lifecycle.svg)
-
-### 测试矩阵 / Test matrix
-
-[测试矩阵 / Test matrix](readme/test-matrix.svg)
-
-### 独立有效性门 / Independent validity gates
-
-[独立有效性门 / Independent validity gates](readme/validity-gates.svg)
-
-### Worker 所有权 / Worker ownership and recycling
-
-[Worker 所有权 / Worker ownership and recycling](readme/worker-ownership-recycle.svg)
-
-## 保留的验收图 / Retained acceptance illustrations
-
-以下仅为历史链接，保留原确定性技术图，不代表当前测量或资格。
-
-These links retain historical deterministic illustrations. They are not current measurements or certification.
-
-[delivery acceptance](ai/delivery-acceptance.svg)
-
-[mathematical contracts](ai/mathematical-contracts.svg)
-
-[native failure isolation](ai/native-failure-isolation.svg)
-
-[warm start trajectory](ai/warm-start-trajectory.svg)
-
-## 其他历史视觉 / Other historical visuals
-
-- [Earlier Chinese hero](readme-vnext/hero.zh-CN.svg)
-- [Earlier English hero](readme-vnext/hero.en.svg)
-- [Earlier Chinese architecture](atlas-v2/architecture-zh.svg)
-- [Earlier English architecture](atlas-v2/architecture-en.svg)
-- [Earlier acceptance map](acceptance/final-acceptance-map.svg)
-
-These historical SVGs are retained without being rendered as current AI illustrations.
-
-## 历史 AI 位图 / Earlier AI bitmap art
-
-[vision-zh.png](vision-zh.png) and [vision-en.png](vision-en.png) were generated as concept illustrations for earlier README revisions. They are retained for provenance and are not embedded in the current READMEs.
+旧位图保留来源身份，旧 SVG 保留技术合同；主 README 和本页仅嵌入四幅当前原生 AI PNG。/ Earlier bitmaps retain provenance and SVGs retain technical contracts; only the four current native AI PNGs are embedded here and in the main READMEs.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import runpy
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -16,7 +17,7 @@ SVG_FONT_SHORTHAND = re.compile(r"(?<![-\w])font\s*:")
 
 @pytest.fixture(scope="session", autouse=True)
 def enforce_readme_visual_system_v3() -> None:
-    """Keep the persisted design system and all README SVGs on the governed V3 contract."""
+    """Preserve archived V3 SVG contracts and the current native-image design scope."""
 
     master = MASTER.read_text(encoding="utf-8")
     override = README_OVERRIDE.read_text(encoding="utf-8")
@@ -30,9 +31,13 @@ def enforce_readme_visual_system_v3() -> None:
         assert marker in master
 
     for marker in (
-        "23 README",
-        "Required implementation markers",
-        "render every SVG at 720 × 360",
+        "four native AI PNG",
+        "Historical SVG contracts",
+        "architecture.png",
+        "algorithm.png",
+        "roadmap.png",
+        "seven-repo-roadmap.png",
+        "exactly once",
         "retry_wait",
         "dead_letter",
         "Plan Requirements",
@@ -40,6 +45,9 @@ def enforce_readme_visual_system_v3() -> None:
         "Fail Before Mutation",
     ):
         assert marker in override
+
+    current = runpy.run_path(str(ROOT / "scripts/update_readme_gallery.py"))
+    assert current["check_current_figures"](ROOT) == []
 
     assets = sorted(ASSET_DIR.glob("*.svg"))
     assert len(assets) == 23

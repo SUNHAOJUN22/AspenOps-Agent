@@ -44,11 +44,28 @@ def test_archive_limits_reject_nonpositive_values(
 
 @pytest.mark.parametrize(
     "name",
-    ["", "nul\x00name", r"folder\file", "folder/", "/absolute", "../escape", "C:/drive"],
+    [
+        "",
+        "nul\x00name",
+        r"folder\file",
+        "folder/",
+        "/absolute",
+        "../escape",
+        "C:/drive",
+        "a/./b",
+        "a//b",
+        "./manifest.json",
+        ".",
+        "a/.",
+    ],
 )
 def test_archive_member_names_fail_closed(name: str) -> None:
     with pytest.raises(ArchiveSafetyError, match="unsafe archive member"):
         _validate_member_name(name)
+
+
+def test_archive_member_names_preserve_canonical_nested_paths() -> None:
+    _validate_member_name("evidence/.metadata/result.v1.json")
 
 
 def test_validate_archive_reports_stat_failure(tmp_path: Path) -> None:

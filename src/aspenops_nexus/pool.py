@@ -132,8 +132,8 @@ class CasePool:
                 for worker_id in range(self.workers):
                     self._generation[worker_id] = 0
                     handle = self._new_handle(worker_id)
-                    self._assert_handle_identity(handle)
                     started.append(handle)
+                    self._assert_handle_identity(handle)
                 identities: list[Any] = []
                 for handle in started:
                     runtime = getattr(handle, "runtime", None)
@@ -146,7 +146,7 @@ class CasePool:
                         "CasePool workers expose heterogeneous simulator runtime identities"
                     )
                 self._handles = started
-            except Exception:
+            except BaseException:
                 for handle in started:
                     if isinstance(handle, WorkerHandle):
                         stop_worker(handle)
@@ -246,7 +246,7 @@ class CasePool:
                     raise RuntimeError(
                         "Replacement worker runtime identity differs from the CasePool identity"
                     )
-            except Exception:
+            except BaseException:
                 abort_worker(new)
                 raise
             self._handles[index] = new

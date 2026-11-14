@@ -1,4 +1,9 @@
-# AspenOps README Visual Design System
+# AspenOps historical SVG design system
+
+This file preserves the V3 rules for the twenty-three archived engineering SVGs.
+The active README illustrations are four native AI PNGs; their display, provenance
+and scientific boundaries are defined in [the current figure contract](pages/readme-visuals.md).
+The SVG geometry, font and no-raster rules below apply to the historical archive.
 
 ## Source of truth
 
@@ -7,9 +12,9 @@
 - Chinese guide revision: `dd17b017d130d3ba0e84a44f9ac96ee3e50ffc21`
 - Product match: `Developer Tool / IDE`
 - Supporting matches: `Analytics Dashboard`, `Design System / Component Library`, `Cybersecurity Platform`
-- Delivery surface: GitHub README and technical documentation SVGs
+- Delivery surface: historical technical documentation SVGs
 
-This file is the global source of truth. Page-specific diagram rules live in
+This file is the historical SVG source of truth. Current figure rules live in
 `pages/readme-visuals.md`.
 
 ## Product reasoning
@@ -124,6 +129,6 @@ data-design-system="ui-ux-pro-max"
 data-visual-version="3"
 ```
 
-The existing visual-asset test governs the exact 22-file inventory, README references,
+The existing visual-asset test governs the exact 23-file archive, historical links,
 XML, accessibility metadata, CJK independence, resource safety, implementation markers,
 and workflow inclusion.

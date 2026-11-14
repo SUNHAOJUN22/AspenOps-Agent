@@ -46,26 +46,31 @@ def _optional_text(value: Any, label: str) -> str | None:
 def _finite_number(value: Any, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{label} must be a finite number")
-    number = float(value)
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{label} must be a finite number") from exc
     if not math.isfinite(number):
         raise ValueError(f"{label} must be a finite number")
     return number
 
 
 def _nonnegative_number(value: Any, label: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"{label} must be a finite non-negative number")
-    number = float(value)
-    if not math.isfinite(number) or number < 0:
+    try:
+        number = _finite_number(value, label)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a finite non-negative number") from exc
+    if number < 0:
         raise ValueError(f"{label} must be a finite non-negative number")
     return number
 
 
 def _positive_number(value: Any, label: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"{label} must be a finite positive number")
-    number = float(value)
-    if not math.isfinite(number) or number <= 0:
+    try:
+        number = _finite_number(value, label)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a finite positive number") from exc
+    if number <= 0:
         raise ValueError(f"{label} must be a finite positive number")
     return number
 
