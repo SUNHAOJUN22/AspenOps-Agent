@@ -119,12 +119,10 @@ class HysysBackend(SimulatorBackend):
         cell = self._cell(node)
         cell.CellValue = value
         observed = cell.CellValue
-        if isinstance(value, (int, float)) and isinstance(observed, (int, float)):
-            tolerance = 1e-10 + 1e-8 * max(abs(float(value)), 1.0)
-            if abs(float(observed) - float(value)) > tolerance:
-                raise BackendError(
-                    f"HYSYS write verification failed for {node.key}: {value} != {observed}"
-                )
+        if not self.values_equal(observed, value):
+            raise BackendError(
+                f"HYSYS write verification failed for {node.key}: {value} != {observed}"
+            )
 
     def read(self, node: ResolvedNode) -> Any:
         return self._cell(node).CellValue

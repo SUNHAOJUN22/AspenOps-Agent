@@ -83,6 +83,8 @@ class SimulatorBackend(ABC):
         try:
             observed_value = float(observed)
             expected_value = float(expected)
+        except OverflowError:
+            return False
         except (TypeError, ValueError):
             return bool(observed == expected)
         if not math.isfinite(observed_value) or not math.isfinite(expected_value):
