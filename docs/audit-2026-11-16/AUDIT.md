@@ -44,7 +44,7 @@ solver reset operations without explicitly restoring every earlier input. A
 controlled HYSYS cell test shows that toggling the solver can leave a previously
 written value at `95`. A pool fixture with retained input state then showed a
 later nominally independent cold request inheriting `95`, instead of the model's
-baseline `60`. The old cache identity could replay such a result.
+baseline `80`. The old cache identity could replay such a result.
 
 For Aspen/HYSYS, an uncached `reinitialize` point now replaces a worker that has
 already evaluated a point. Replacement uses the established ownership, shutdown,
