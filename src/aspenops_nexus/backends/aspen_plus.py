@@ -377,7 +377,9 @@ class AspenPlusBackend(SimulatorBackend):
     def runtime_identity(self) -> dict[str, Any]:
         exposed: dict[str, Any] = {}
         if self.document is not None:
-            for attribute in ("Version", "VersionNumber", "Name", "FullName"):
+            # The private staged filename is recorded by model_path below; it
+            # must not masquerade as a different simulator runtime on recycling.
+            for attribute in ("Version", "VersionNumber", "Name"):
                 with suppress(Exception):
                     value = getattr(self.document, attribute)
                     if value is not None:

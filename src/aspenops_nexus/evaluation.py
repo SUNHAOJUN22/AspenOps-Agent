@@ -151,6 +151,7 @@ def evaluate(
     feasible = True
     values: dict[str, Any] = {}
     units: dict[str, str | None] = {}
+    backend_mutation_started = False
     try:
         if plan is not None and canonical_bytes(plan.physical_identity) != canonical_bytes(
             request.physical_identity()
@@ -168,6 +169,9 @@ def evaluate(
             "com_writes": active_plan.estimated_io.declared_writes,
         }
 
+        # A simulator call can mutate state before it raises. In particular, a
+        # reset can fail after disabling a solver, before any write is committed.
+        backend_mutation_started = True
         if request.reinitialize:
             backend.reinitialize()
             diagnostics["state_trace"].append("reinitialized")
@@ -534,10 +538,7 @@ def evaluate(
     except Exception as exc:
         diagnostics["exception_type"] = type(exc).__name__
         diagnostics["exception"] = str(exc)
-        if any(
-            state in diagnostics["state_trace"]
-            for state in ("writes_committed", "engine_returned", "outputs_read")
-        ):
+        if backend_mutation_started:
             diagnostics["worker_tainted"] = True
         diagnostics["state_trace"].append("failed")
         violations.append(f"execution_error:{type(exc).__name__}")

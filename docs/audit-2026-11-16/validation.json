@@ -1,0 +1,312 @@
+{
+  "baseline_commit": "c72d42ec3d54bdd89546b39af500a88e87cfab0c",
+  "claim_boundary": "Python orchestration, controlled native-adapter objects and Mock only. No licensed Aspen/HYSYS physical calculation or real native certification. PENDING_REAL_ASPEN_CERTIFICATION remains unchanged.",
+  "commands": [
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-q",
+        "tests/test_mutation_failure_recycling.py"
+      ],
+      "elapsed_seconds": 0.44,
+      "label": "baseline-mutation-counted",
+      "returncode": 1,
+      "started_at": "2026-11-16T04:50:57.390817+00:00"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-q",
+        "tests/test_native_reset_baseline.py"
+      ],
+      "elapsed_seconds": 0.835,
+      "label": "baseline-native-reset",
+      "returncode": 1,
+      "started_at": "2026-11-16T04:54:29.846842+00:00"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-q",
+        "tests/test_native_reset_baseline.py"
+      ],
+      "elapsed_seconds": 0.682,
+      "label": "baseline-native-location",
+      "returncode": 1,
+      "started_at": "2026-11-16T05:00:25.317225+00:00"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-q",
+        "tests/test_native_reset_baseline.py",
+        "tests/test_mutation_failure_recycling.py",
+        "tests/test_backend_adapter_edges.py",
+        "tests/test_phase0_artifact_identity.py",
+        "tests/test_phase0_provenance_identity.py",
+        "tests/test_pool_startup_ownership.py",
+        "tests/test_warm_start_continuity.py",
+        "tests/test_v2_reliability.py"
+      ],
+      "elapsed_seconds": 4.665,
+      "label": "targeted-final-lifecycle",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:01:22.068818+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "lock",
+        "--check"
+      ],
+      "elapsed_seconds": 0.012,
+      "label": "final-frozen-lock",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:10.727231+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "sync",
+        "--frozen",
+        "--extra",
+        "dev",
+        "--extra",
+        "agent",
+        "--extra",
+        "signing"
+      ],
+      "elapsed_seconds": 0.018,
+      "label": "final-frozen-sync",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:10.768302+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "ruff",
+        "check",
+        "."
+      ],
+      "elapsed_seconds": 0.024,
+      "label": "final-ruff-lint",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:10.819529+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "ruff",
+        "format",
+        "--check",
+        "."
+      ],
+      "elapsed_seconds": 0.026,
+      "label": "final-ruff-format",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:10.873516+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "mypy",
+        "src"
+      ],
+      "elapsed_seconds": 0.34,
+      "label": "final-mypy",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:10.926721+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "scripts"
+      ],
+      "elapsed_seconds": 0.053,
+      "label": "final-compile",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:11.294452+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/audit_source_tree.py"
+      ],
+      "elapsed_seconds": 0.358,
+      "label": "final-source-audit",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:11.385731+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "pytest",
+        "-W",
+        "error::ResourceWarning",
+        "--cov=aspenops_nexus",
+        "--cov-branch",
+        "--cov-fail-under=95.0"
+      ],
+      "elapsed_seconds": 44.023,
+      "label": "final-full-tests",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:11.772725+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "build"
+      ],
+      "elapsed_seconds": 0.619,
+      "label": "final-build",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:55.855454+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/check_mcp.py"
+      ],
+      "elapsed_seconds": 0.616,
+      "label": "final-mcp",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:56.502169+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/check_wheel_metadata.py",
+        "--dist-dir",
+        "dist"
+      ],
+      "elapsed_seconds": 0.076,
+      "label": "final-wheel-metadata",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:57.151861+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/validate_process_ir.py",
+        "examples/process-intent.example.json"
+      ],
+      "elapsed_seconds": 0.085,
+      "label": "final-process-ir",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:57.260199+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "aspenops",
+        "--version"
+      ],
+      "elapsed_seconds": 0.062,
+      "label": "final-version",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:57.372538+00:00"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "aspenops",
+        "demo"
+      ],
+      "elapsed_seconds": 0.432,
+      "label": "final-demo",
+      "returncode": 0,
+      "started_at": "2026-11-16T05:02:57.469062+00:00"
+    }
+  ],
+  "date": "2026-11-16",
+  "demo_boundary": "CLI smoke succeeded using cached historical Mock results; the automated lifecycle regression suite exercised current source.",
+  "environment": {
+    "dependencies": "unchanged uv.lock, frozen dev/agent/signing extras",
+    "mcp_sdk": "1.30.0",
+    "platform": "Linux",
+    "python": "3.12.14"
+  },
+  "full_suite": {
+    "coverage": {
+      "covered_branches": 3444,
+      "covered_lines": 10626,
+      "excluded_lines": 70,
+      "missing_branches": 298,
+      "missing_lines": 387,
+      "num_branches": 3742,
+      "num_partial_branches": 276,
+      "num_statements": 11013,
+      "percent_branches_covered": 92.03634420096205,
+      "percent_branches_covered_display": "92.04",
+      "percent_covered": 95.35750593019316,
+      "percent_covered_display": "95.36",
+      "percent_statements_covered": 96.48597112503406,
+      "percent_statements_covered_display": "96.49"
+    },
+    "passed": 2171,
+    "skipped": 0
+  },
+  "operational_change": "Uncached native cold points replace a previously evaluated worker and reopen the immutable model; this incurs model/worker startup cost. Explicit warm trajectories and Mock complete resets retain reuse.",
+  "regressions": {
+    "cold_baseline_before": {
+      "failed": 4,
+      "passed": 3
+    },
+    "mutation_before": {
+      "failed": 4,
+      "passed": 1
+    },
+    "new_cases": 14,
+    "runtime_metadata_before": {
+      "failed": 4,
+      "passed": 5
+    },
+    "targeted_final_passed": 76
+  },
+  "schema_version": "1.0",
+  "source_sha256": {
+    "src/aspenops_nexus/backends/aspen_plus.py": "22288026c193f42fc9a89f5b8d167394e60ff1a1a18507ce8c3936554e343c0a",
+    "src/aspenops_nexus/backends/hysys.py": "c61815e318a96af55a216583d1e45605a32337fc6846b38125c6d38017aa7c85",
+    "src/aspenops_nexus/evaluation.py": "b7024af173462f986b7c1c01126aad0dc2ca959a541a45d2f5cc56900abfe095",
+    "src/aspenops_nexus/pool.py": "4e5b23d20a93e7be537567835bef272b9f3f18b0209e14e422156b057bf7de5d",
+    "tests/test_mutation_failure_recycling.py": "868c6bcfce7f6f369e261a64a86fa851f05c7eecdf7def9e3c04fd7cdc88bec1",
+    "tests/test_native_reset_baseline.py": "808c82a43df535f17aa34b0d1e7a73c99783f5668686e599a35b07caa28aff1b",
+    "uv.lock": "c1e32d4d19592a6b6bdad489b29e30ed96db136bcc459e8f6a4ce5d5776b5bc4"
+  }
+}

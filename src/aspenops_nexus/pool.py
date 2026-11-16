@@ -315,6 +315,10 @@ class CasePool:
             "registry_sha256": self._registry_digest(),
             "request": request.physical_identity(),
         }
+        if request.reinitialize and self.backend_name != "mock":
+            # Native solver Reinit/CanSolve calls do not restore earlier input
+            # writes. Exclude cached results produced before pristine resets.
+            identity["reinitialize_state_semantics"] = "pristine-native-model-v1"
         if any(spec.operator in {"<", ">"} for spec in request.constraints):
             # Do not replay cached feasibility decisions from closed-boundary semantics.
             identity["strict_constraint_semantics"] = "open-boundary-v1"
@@ -619,6 +623,16 @@ class CasePool:
 
                     recycle_event: tuple[str, int, int] | None = None
                     pre_reason = self._recycle_reason(handle)
+                    if (
+                        pre_reason is None
+                        and request.reinitialize
+                        and self.backend_name != "mock"
+                        and handle.evaluations > 0
+                    ):
+                        # Reopen the immutable model through normal owned-worker
+                        # startup. Merely resetting the native solver can retain
+                        # parameters omitted by this independent cold request.
+                        pre_reason = "model_baseline"
                     if not request.reinitialize:
                         loss_reason = self._warm_start_loss_reason or pre_reason
                         if loss_reason is not None:

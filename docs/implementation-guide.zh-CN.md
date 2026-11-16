@@ -282,6 +282,8 @@ v2 原生构建要求 `NativeBuildAdapter` 协议、manifest、输入/输出 sch
 
 独立 `reinitialize` 请求可使用持久缓存、`same_batch_dedup`、`inflight_singleflight`。默认不缓存失败；启用 `ASPENOPS_CACHE_FAILURES` 仍排除通信/引擎失败及污染 Worker。SQLite WAL、内存 LRU 减少重复访问；结果深复制隔离调用方修改。[缓存](../src/aspenops_nexus/cache.py) · [回归](../tests/test_pool_cache_efficiency.py)
 
+原生 Aspen/HYSYS 的未命中缓存冷请求会在 Worker 已执行过计算时替换该 Worker，重新打开不可变模型快照，再应用本次输入。原生求解器重置本身不会撤销此前的输入写入，因此后续每个未命中缓存的冷请求都承担 Worker 与模型启动成本；显式热启动及完整恢复输入的 Mock 仍复用 Worker。旧语义下的原生冷请求缓存不会复用。[基线独立性回归](../tests/test_native_reset_baseline.py)
+
 **缓存命中只返回独立历史结果**，不会把参数写回当前 Worker。`warm_start` 禁用结果缓存，要求单 Worker、同一 session、递增且唯一的 step，不能与冷点混在一个 pool 调用。实时池在跨调用、跨租约复用时继续绑定 session 与最后派发的 step；跨 session、重复或倒退步骤在任何参数写入和读回之前拒绝，返回 `warm_start_session_mismatch` 或 `warm_start_step_not_increasing`，原轨迹状态保持不变。
 
 已派发的步骤即使不收敛也占用其编号；派发前取消不消耗编号。需要恢复时使用同一 session 的更大 step，或实际执行一次冷初始化后开启新 session。这些标签是轨迹顺序合同，不是用户身份认证。关闭、替换、超时、失败冷初始化或冷请求只命中缓存会阻断延续；只有当前 Worker 真正完成通信/引擎成功且收敛的 `reinitialize` 才清除旧绑定并恢复延续资格。失败约束与实时状态有效性仍分开判断。[热启动回归](../tests/test_warm_start_continuity.py) · [跨调用/租约绑定回归](../tests/test_warm_start_session_binding.py)

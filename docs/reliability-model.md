@@ -28,6 +28,12 @@ All original values are captured before mutation. The currently failing node is
 included in rollback. Numeric verification uses absolute-or-relative tolerance;
 strings and booleans use exact equality. A `TAINTED` Worker is recycled.
 
+An unexpected exception after entering a simulator mutation also taints the
+Worker, including a partially completed reinitialization or an unclassified
+write failure. A failed call does not prove that the simulator was unchanged.
+Plan rejection before backend access does not taint a healthy Worker; a write
+transaction with a verified rollback retains its explicit transaction state.
+
 ## Worker protocol and recycle states
 
 Worker startup validates protocol, Worker ID, generation and runtime identity.
@@ -45,11 +51,29 @@ Recycle reasons include:
 - `crash`
 - `age`
 - `point_budget`
+- `model_baseline`
 - `cancel_deadline`
 - `lease_lost`
 
 A recycle event records the reason and old/new generations. Expected-handle
 checks prevent an older dispatcher from recycling a newer generation.
+
+Native Aspen/HYSYS cold (`reinitialize`) points start from the immutable model
+snapshot. A worker that has already evaluated a point is replaced before another
+uncached cold point: solver reset APIs alone do not restore previously written
+input values. The `model_baseline` recycle reason records this boundary, and a
+new cache identity excludes results computed under the former reset semantics.
+Explicit `warm_start` points preserve live inputs and generation. Mock resets
+already restore their full input baseline and retain worker reuse. Native cold
+evaluation therefore incurs model-opening and worker-startup costs; the licensed
+certification workflow must measure that cost on real cases.
+
+Native runtime metadata retains simulator versions, application identity, case
+name and the diagnostic `model_path`. It does not duplicate the private staged
+case location in `exposed.FullName` / `exposed.case.FullName`: those locations
+change across worker generations while the model SHA-256 remains authoritative.
+Version changes still invalidate runtime identity. Existing evidence-bundle
+verification retains its original hash rules.
 
 ## Job states
 

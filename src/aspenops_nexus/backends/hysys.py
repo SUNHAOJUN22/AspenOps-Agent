@@ -269,7 +269,12 @@ class HysysBackend(SimulatorBackend):
         for owner_name, owner in (("application", self.application), ("case", self.case)):
             if owner is None:
                 continue
-            for attribute in ("Version", "Name", "FullName"):
+            # Case locations vary across isolated workers and are already kept
+            # in model_path. Keep application identity and case version/name.
+            attributes = (
+                ("Version", "Name") if owner_name == "case" else ("Version", "Name", "FullName")
+            )
+            for attribute in attributes:
                 with suppress(Exception):
                     value = getattr(owner, attribute)
                     if value is not None:
