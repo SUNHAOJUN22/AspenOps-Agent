@@ -612,6 +612,7 @@ def verify_run_bundle(
         TypeError,
         ValueError,
         OverflowError,
+        RecursionError,
     ) as exc:
         return _structure_invalid(f"{type(exc).__name__}: {exc}")
 
