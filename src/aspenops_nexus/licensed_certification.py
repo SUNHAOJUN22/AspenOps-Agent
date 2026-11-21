@@ -34,6 +34,7 @@ from .config import Settings
 from .hashing import canonical_hash, sha256_file
 from .json_input import strict_json_loads
 from .models import BalanceSpec, VariableRead
+from .policy import assert_no_output_aliases
 
 PLAN_SCHEMA = "aspenops.licensed-certification-plan/v1"
 PREFLIGHT_SCHEMA = "aspenops.licensed-certification-preflight/v1"
@@ -41,6 +42,11 @@ REPORT_SCHEMA = "aspenops.licensed-certification-report/v1"
 BUNDLE_SCHEMA = "aspenops.licensed-certification-bundle/v1"
 PENDING_ENGINEERING_ACCEPTANCE = "PENDING_ENGINEERING_ACCEPTANCE"
 REAL_ASPEN_CERTIFIED = "REAL_ASPEN_CERTIFIED"
+CERTIFICATION_OUTPUT_NAMES = (
+    "preflight.json",
+    "licensed-certification-report.json",
+    "licensed-certification-bundle.zip",
+)
 
 KeySource: TypeAlias = str | Path | bytes
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -776,6 +782,9 @@ def write_licensed_certification_bundle(
     output_path: str | Path,
     signing_private_key: KeySource,
 ) -> tuple[Path, bytes]:
+    output = Path(output_path).expanduser().resolve()
+    key_paths = (Path(signing_private_key),) if isinstance(signing_private_key, str | Path) else ()
+    assert_no_output_aliases((output,), plan.request, additional_inputs=key_paths)
     private_key = _load_private_key(signing_private_key)
     public_key = private_key.public_key()
     key_id = _key_id(public_key)
@@ -807,7 +816,6 @@ def write_licensed_certification_bundle(
         ),
     }
     signature = base64.b64encode(private_key.sign(_canonical_bytes(manifest)))
-    output = Path(output_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
@@ -1104,6 +1112,13 @@ def execute_licensed_certification(
         raise PermissionError(
             "Licensed certification output must be inside state_dir or allowed roots"
         )
+    key_path = env.get("ASPENOPS_CERT_SIGNING_KEY")
+    key_paths = (Path(key_path),) if key_path else ()
+    assert_no_output_aliases(
+        tuple(output / name for name in CERTIFICATION_OUTPUT_NAMES),
+        plan.request,
+        additional_inputs=key_paths,
+    )
     output.mkdir(parents=True, exist_ok=True)
     preflight = certification_preflight(plan, settings, environment=env)
     preflight_path = output / "preflight.json"

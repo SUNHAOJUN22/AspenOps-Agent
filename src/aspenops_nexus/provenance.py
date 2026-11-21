@@ -23,6 +23,7 @@ from .archive_safety import (
 )
 from .hashing import canonical_hash, sha256_file
 from .json_input import finite_json_float
+from .policy import assert_no_output_aliases
 
 KeySource: TypeAlias = str | Path | bytes
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -236,6 +237,8 @@ def write_run_bundle(
     bytes actually opened by a simulator.
     """
     output = Path(output_path).expanduser().resolve()
+    key_paths = (Path(signing_private_key),) if isinstance(signing_private_key, str | Path) else ()
+    assert_no_output_aliases((output,), request, additional_inputs=key_paths)
     output.parent.mkdir(parents=True, exist_ok=True)
     derived_identity = _derive_execution_identity(results)
     if execution_identity is not None:

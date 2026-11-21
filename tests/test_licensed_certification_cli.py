@@ -32,7 +32,7 @@ def test_certification_preflight_command_writes_machine_readable_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     active = use_settings(monkeypatch, tmp_path)
-    plan = object()
+    plan = SimpleNamespace(request={})
     monkeypatch.setattr(cli, "load_licensed_plan", lambda path: plan)
     monkeypatch.setattr(
         cli,
@@ -67,7 +67,7 @@ def test_certify_licensed_command_never_maps_pending_status_to_success_by_itself
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     active = use_settings(monkeypatch, tmp_path)
-    plan = object()
+    plan = SimpleNamespace(request={})
     monkeypatch.setattr(cli, "load_licensed_plan", lambda path: plan)
     captured: dict[str, Any] = {}
 

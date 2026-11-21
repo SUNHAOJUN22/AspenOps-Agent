@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,31 @@ class PolicyError(PermissionError):
 
 
 _SUPPORTED_MODES = {"readonly", "default", "enhanced"}
+
+
+def assert_no_output_aliases(
+    outputs: tuple[Path, ...],
+    request: Mapping[str, object],
+    *,
+    additional_inputs: tuple[Path, ...] = (),
+) -> None:
+    """Reject source/output aliases before execution or publication changes any file."""
+    inputs = list(additional_inputs)
+    for field in ("model_path", "registry_path"):
+        value = request.get(field)
+        if isinstance(value, str | Path) and str(value):
+            inputs.append(Path(value))
+    protected = [path.expanduser().resolve() for path in inputs]
+    for output in outputs:
+        resolved = output.expanduser().resolve()
+        for source in protected:
+            if resolved == source or (
+                resolved.exists() and source.exists() and resolved.samefile(source)
+            ):
+                raise PolicyError(
+                    f"Output path must not alias an input or another output: {output}"
+                )
+        protected.append(resolved)
 
 
 @dataclass(frozen=True, slots=True)

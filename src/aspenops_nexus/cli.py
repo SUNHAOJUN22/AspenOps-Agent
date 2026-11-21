@@ -21,13 +21,14 @@ from .durable_request import (
 )
 from .json_input import load_request_object as _load
 from .licensed_certification import (
+    CERTIFICATION_OUTPUT_NAMES,
     certification_preflight,
     execute_licensed_certification,
     load_licensed_plan,
     verify_licensed_certification_bundle,
 )
 from .optimization import OptimizationProblem, run_optimization_document
-from .policy import Policy
+from .policy import Policy, assert_no_output_aliases
 from .pool_manager import PoolManager
 from .provenance import verify_run_bundle, write_run_bundle
 from .scheduler import BackgroundScheduler, JobStore
@@ -161,6 +162,7 @@ def command_run_batch(args: argparse.Namespace) -> int:
         args.bundle or settings.state_dir / "latest-run-bundle.zip",
         settings,
     )
+    assert_no_output_aliases((output, bundle_path), request, additional_inputs=(request_path,))
     results = run_batch_file(request_path, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
@@ -266,6 +268,7 @@ def command_optimize(args: argparse.Namespace) -> int:
         else configured_output
     )
     output = _controlled_path(output_target, settings)
+    assert_no_output_aliases((output,), document, additional_inputs=(Path(args.request),))
     with PoolManager(
         cache_path=settings.state_dir / "cache.sqlite3",
         license_slots=settings.license_slots,
@@ -297,6 +300,7 @@ def command_certify(args: argparse.Namespace) -> int:
         args.output or settings.state_dir / "certification-report.json",
         settings,
     )
+    assert_no_output_aliases((output,), document, additional_inputs=(Path(args.request),))
     kwargs: dict[str, Any] = {
         "repeats": args.repeats,
         "abs_tol": args.abs_tol,
@@ -323,6 +327,7 @@ def command_certification_preflight(args: argparse.Namespace) -> int:
         settings,
     )
     plan = load_licensed_plan(args.plan)
+    assert_no_output_aliases((output,), plan.request, additional_inputs=(Path(args.plan),))
     report = certification_preflight(plan, settings)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
@@ -340,6 +345,11 @@ def command_certify_licensed(args: argparse.Namespace) -> int:
         settings,
     )
     plan = load_licensed_plan(args.plan)
+    assert_no_output_aliases(
+        tuple(output_dir / name for name in CERTIFICATION_OUTPUT_NAMES),
+        plan.request,
+        additional_inputs=(Path(args.plan),),
+    )
     report = execute_licensed_certification(
         plan,
         settings,
