@@ -63,3 +63,30 @@ def test_missing_required_member_is_structure_invalid(tmp_path: Path) -> None:
     assert result["ok"] is False
     assert result["verification_status"] == "structure-invalid"
     assert "results.json" in result["missing"]
+
+
+@pytest.mark.parametrize(
+    "bundle_format", [None, "", "aspenops.integrity-bundle/v999", "unrecognized", True]
+)
+def test_unknown_bundle_format_cannot_fall_back_to_legacy_validation(
+    tmp_path: Path, bundle_format: object
+) -> None:
+    request = {"model_path": "case.json", "registry_path": "registry.json"}
+    results = [{"ok": True}]
+    manifest = {
+        "request_sha256": canonical_hash(request),
+        "results_sha256": canonical_hash(results),
+        "result_count": 1,
+    }
+    if bundle_format is not None:
+        manifest["format"] = bundle_format
+    path = tmp_path / "unknown-format.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("request.json", json.dumps(request))
+        archive.writestr("results.json", json.dumps(results))
+        archive.writestr("environment.json", b"{}")
+    result = verify_run_bundle(path)
+    assert result["ok"] is False
+    assert result["verification_status"] == "structure-invalid"
+    assert "format" in result["error"]

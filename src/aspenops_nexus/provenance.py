@@ -514,11 +514,13 @@ def verify_run_bundle(
                 return _structure_invalid("environment.json root must be an object")
 
             bundle_format = manifest.get("format")
+            if bundle_format == "aspenops.run-bundle/v1":
+                return _verify_v1(manifest, request, results)
             if bundle_format not in {
                 "aspenops.integrity-bundle/v2",
                 "aspenops.integrity-bundle/v3",
             }:
-                return _verify_v1(manifest, request, results)
+                return _structure_invalid(f"Unsupported bundle format: {bundle_format!r}")
 
             declared_members, declaration_error = _validate_member_declarations(
                 manifest.get("members")
