@@ -38,7 +38,6 @@ class SimulatorBackend(ABC):
     name: str
     rollback_abs_tol: float = 1e-10
     rollback_rel_tol: float = 1e-8
-    rollback_floor: float = 1.0
 
     @abstractmethod
     def open(self, model_path: Path, *, visible: bool = False) -> None: ...
@@ -90,8 +89,12 @@ class SimulatorBackend(ABC):
         if not math.isfinite(observed_value) or not math.isfinite(expected_value):
             return observed_value == expected_value
         absolute = abs(observed_value - expected_value)
-        scale = max(abs(observed_value), abs(expected_value), self.rollback_floor)
-        return absolute <= self.rollback_abs_tol or absolute / scale <= self.rollback_rel_tol
+        # Near-zero readback tolerance is explicit in native units. A unit-sized
+        # floor would silently accept complete loss of a trace setpoint.
+        scale = max(abs(observed_value), abs(expected_value))
+        return absolute <= self.rollback_abs_tol or (
+            scale > 0.0 and absolute / scale <= self.rollback_rel_tol
+        )
 
     def bulk_write(self, items: list[tuple[ResolvedNode, Any]]) -> None:
         """Apply writes with mandatory read-after-write and verified rollback.

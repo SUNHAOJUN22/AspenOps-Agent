@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from aspenops_nexus.backends.aspen_plus import AspenPlusBackend
-from aspenops_nexus.backends.base import BackendError
+from aspenops_nexus.backends.base import BackendError, TransactionState, WriteTransactionError
 from aspenops_nexus.backends.hysys import HysysBackend
 from aspenops_nexus.registry import ResolvedNode
 
@@ -72,6 +72,8 @@ def bind_target(
         ("1", 1),
         (1.0, 10**400),
         (1e308, -1e308),
+        (1e-9, 0.0),
+        (-1e-9, 0.0),
     ],
 )
 def test_direct_backend_write_rejects_invalid_or_changed_readback(
@@ -87,7 +89,15 @@ def test_direct_backend_write_rejects_invalid_or_changed_readback(
 
 @pytest.mark.parametrize(
     ("requested", "observed"),
-    [(1.0, 1.0 + 1e-11), (1, 1.0), (True, True), ("new", "new"), (1e308, 1e308)],
+    [
+        (1.0, 1.0 + 1e-11),
+        (1, 1.0),
+        (True, True),
+        ("new", "new"),
+        (1e308, 1e308),
+        (0.0, 0.0),
+        (1e-9, 1e-9 + 1e-11),
+    ],
 )
 def test_direct_backend_write_accepts_verified_values(
     backend: AspenPlusBackend | HysysBackend,
@@ -97,3 +107,49 @@ def test_direct_backend_write_accepts_verified_values(
 ) -> None:
     node = bind_target(backend, observed, monkeypatch)
     backend.write(node, requested)
+
+
+def test_ignored_trace_write_is_rejected_and_its_original_is_restored(
+    backend: AspenPlusBackend | HysysBackend,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = bind_target(backend, 0.0, monkeypatch)
+    with pytest.raises(WriteTransactionError) as caught:
+        backend.bulk_write([(node, 1e-9)])
+    assert caught.value.state is TransactionState.ROLLED_BACK
+    assert caught.value.rollback_errors == ()
+    assert backend.read(node) == 0.0
+
+
+class LostTraceRollbackTarget:
+    def __init__(self) -> None:
+        self.value = 1e-9
+
+    @property
+    def Value(self) -> float:
+        return self.value
+
+    @Value.setter
+    def Value(self, value: float) -> None:
+        if value == 1.0:
+            self.value = value
+            raise BackendError("transport failed after changing the setpoint")
+        # Model a failed restoration that silently drops the trace original.
+        self.value = 0.0
+
+    CellValue = Value
+
+
+def test_lost_trace_original_taints_a_failed_write_transaction(
+    backend: AspenPlusBackend | HysysBackend,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = bind_target(backend, 1e-9, monkeypatch)
+    target = LostTraceRollbackTarget()
+    method = "_find_node" if isinstance(backend, AspenPlusBackend) else "_cell"
+    monkeypatch.setattr(backend, method, lambda node: target)
+    with pytest.raises(WriteTransactionError) as caught:
+        backend.bulk_write([(node, 1.0)])
+    assert caught.value.state is TransactionState.TAINTED
+    assert caught.value.rollback_errors
+    assert backend.read(node) == 0.0
